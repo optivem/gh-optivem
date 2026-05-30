@@ -13,6 +13,7 @@ const (
 	agentsDir             = "runtime/agents/atdd"
 	preamblePath          = "runtime/shared/preamble.md"
 	scopePath             = "runtime/shared/scope.md"
+	fixerPreamblePath     = "runtime/shared/fixer-preamble.md"
 	interactiveSuffixPath = "runtime/shared/interactive-suffix.md"
 )
 
@@ -20,14 +21,19 @@ const (
 // prepended to every agent prompt. sharedScope is the universal phase-scope
 // doctrine inserted between preamble and body — every agent must honour the
 // scope-exception contract, so the rule belongs in argv rather than a Read
-// directive resolved per dispatch. interactiveSuffix is the operator-facing
+// directive resolved per dispatch. fixerPreamble is the failure-kind fixers'
+// shared contract — the git read-carve-out + one-attempt/approval-gated/
+// stay-in-scope block — inserted between scope and the body for `*-fixer`
+// agents only (see isFixer), so the contract lives in one place instead of
+// being copied into all five bodies. interactiveSuffix is the operator-facing
 // /exit + redirect hint appended only when the dispatcher invokes the agent
-// interactively (see InteractiveSuffix). All three load once at init so a
-// missing asset fails the binary at startup rather than at first dispatch.
+// interactively (see InteractiveSuffix). All load once at init so a missing
+// asset fails the binary at startup rather than at first dispatch.
 var (
-	sharedPreamble     = mustReadAsset(preamblePath)
-	sharedScope        = mustReadAsset(scopePath)
-	interactiveSuffix  = mustReadAsset(interactiveSuffixPath)
+	sharedPreamble    = mustReadAsset(preamblePath)
+	sharedScope       = mustReadAsset(scopePath)
+	fixerPreamble     = mustReadAsset(fixerPreamblePath)
+	interactiveSuffix = mustReadAsset(interactiveSuffixPath)
 )
 
 func mustReadAsset(path string) string {
@@ -79,9 +85,20 @@ func Prompt(name string) (string, error) {
 	}
 	_, body := splitFrontmatter(string(data))
 	body = strings.TrimRight(body, "\n")
-	return sharedPreamble + "\n\n" +
-		sharedScope + "\n\n" +
-		body + "\n", nil
+	prompt := sharedPreamble + "\n\n" + sharedScope + "\n\n"
+	if isFixer(name) {
+		prompt += fixerPreamble + "\n\n"
+	}
+	return prompt + body + "\n", nil
+}
+
+// isFixer reports whether name is one of the failure-kind fixer agents.
+// process-flow.yaml's `fix` MID dispatches `${failure-kind}-fixer`, so the
+// `-fixer` suffix is the same load-bearing dispatch convention
+// TestFixKindAgentsExist pins. These agents — and only these — get
+// fixerPreamble prepended between scope.md and the body.
+func isFixer(name string) bool {
+	return strings.HasSuffix(name, "-fixer")
 }
 
 // InteractiveSuffix returns the operator-facing block the dispatcher

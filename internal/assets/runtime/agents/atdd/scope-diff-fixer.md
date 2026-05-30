@@ -36,9 +36,7 @@ Note: the `### Scope` block above carries the originating task's scope plus `pro
 
 ## Steps
 
-Per the preamble carve-out for `fix-*` tasks, you MAY run `git diff`, `git diff HEAD`, `git show HEAD:<path>`, and `git checkout HEAD -- <path>` (the Mode B/C revert action; only invoke after classification) to read or revert files in `${changed-files}`. No other `git`/`gh` calls.
-
-One attempt only — do not retry, do not re-dispatch `${failing-task-name}` (the caller re-validates after you exit). Approval upstream of you already gated this dispatch. Stay inside `${scope-block}` (note that `process-flow.yaml` is included so you can widen `scopes:`) — emit the scope-exception envelope if you need to widen further.
+In addition to the shared `fix-*` git carve-out, you MAY run `git checkout HEAD -- <path>` (the Mode B/C revert action; only invoke after classification) to revert files in `${changed-files}`. Your `${scope-block}` includes `process-flow.yaml` so you can widen `scopes:` directly.
 
 1. **Read the failing agent's prompt and the call-site's scopes.** Open `internal/assets/runtime/agents/atdd/${failing-task-name}.md` and the call-activity in `process-flow.yaml` that dispatched it. Note which Family B layer tokens the call-site listed in `scopes:` and what each maps to in `gh-optivem.yaml`'s `paths:` block.
 
@@ -47,9 +45,9 @@ One attempt only — do not retry, do not re-dispatch `${failing-task-name}` (th
    - **Over-reach into an adjacent layer** — the agent misread its remit and edited a layer outside its declared contract (e.g. a test-writing agent edited SUT source). The fix is to revert the violating edit (`git checkout HEAD -- <path>` or equivalent).
    - **"While I'm here" cleanup** — the edit is unrelated to the agent's task (formatting, unrelated refactor, stray edit in a sibling file). The fix is to revert the violating edit; no re-dispatch is needed for the unrelated change.
 
-3. **Present the diagnosis and pick the side.** One paragraph per distinct root cause (multiple violating paths often share one). State the failing agent (`${failing-task-name}`), the violating paths (`${violating-paths}`), the mode that applies to each, and — for legitimate-but-narrow cases — the `paths:` key the call-site should be widened with. When a violating path is plausibly either "legitimate widen" or "over-reach revert," pick the more likely side and surface the reasoning so the caller's verify can catch a wrong pick.
+3. **Present the diagnosis and pick the side.** One paragraph per distinct root cause (multiple violating paths often share one). State the failing agent (`${failing-task-name}`), the violating paths (`${violating-paths}`), the mode that applies to each, and — for legitimate-but-narrow cases — the `paths:` key the call-site should be widened with. When a violating path is plausibly either "legitimate widen" or "over-reach revert," pick the more likely side and surface the reasoning so the caller's verify can catch a wrong pick. Note the asymmetry: a wrong *widen* leaves the diff in place and the caller's re-validate catches it, but a wrong *revert* passes re-validation (the tree is now scope-clean) while real work is silently dropped — the safety net cannot see a wrong revert. So when the choice is genuinely ambiguous, **prefer widening and surface the uncertainty** rather than reverting.
 
-4. **Apply the smallest fix within `${scope-block}`.** For Mode A widen the call-site's `scopes:` in `process-flow.yaml` (add the missing Family B token). For Mode B/C revert the violating edits in the working tree. If the fix would require editing a path outside `${scope-block}` (e.g. a different config file or a Family B token that doesn't exist yet in `gh-optivem.yaml`), emit the scope-exception envelope and stop. The caller's verify re-runs `validate-outputs-and-scopes` after you exit — it is the safety net for a wrong pick.
+4. **Apply the smallest fix within `${scope-block}`.** For Mode A widen the call-site's `scopes:` in `process-flow.yaml` (add the missing Family B token). For Mode B/C revert the violating edits in the working tree. If the fix would require editing a path outside `${scope-block}` (e.g. a different config file or a Family B token that doesn't exist yet in `gh-optivem.yaml`), emit the scope-exception envelope and stop.
 
 ## Additional Notes
 

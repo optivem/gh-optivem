@@ -175,6 +175,29 @@ func TestFixKindAgentsExist(t *testing.T) {
 	}
 }
 
+func TestPrompt_FixerPreamble(t *testing.T) {
+	// The five failure-kind fixers share the fixer-preamble chunk (the git
+	// read-carve-out + one-attempt/approval-gated/stay-in-scope contract),
+	// prepended between scope.md and the body. Every other agent must NOT
+	// carry it — the chunk speaks in fixer-only terms ("the caller
+	// re-validates after you exit"). Walking Names() keeps the assertion
+	// honest as agents are added: a new `*-fixer` is covered for free, and
+	// a non-fixer that accidentally grew the chunk fails here.
+	for _, name := range Names() {
+		t.Run(name, func(t *testing.T) {
+			body, err := Prompt(name)
+			if err != nil {
+				t.Fatalf("Prompt: %v", err)
+			}
+			got := strings.Contains(body, fixerPreamble)
+			want := strings.HasSuffix(name, "-fixer")
+			if got != want {
+				t.Errorf("fixer-preamble present = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestPrompt_StripsFrontmatter(t *testing.T) {
 	// The dispatched prompt must NOT contain the frontmatter — it
 	// would confuse the agent (and waste tokens). Walk every embedded

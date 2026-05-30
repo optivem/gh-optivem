@@ -38,10 +38,6 @@ ${scope-block}
 
 ## Steps
 
-Per the preamble carve-out for `fix-*` tasks, you MAY run `git diff`, `git diff HEAD`, and `git show HEAD:<path>` to read the content of files in `${changed-files}`. No other `git`/`gh` calls.
-
-One attempt only — do not retry, do not re-run `${command}` (the caller re-validates after you exit). Approval upstream of you already gated this dispatch. Stay inside `${scope-block}` — emit the scope-exception envelope if you need to widen.
-
 1. **Read the stderr tail.** `${command-stderr-tail}` is the entire signal. Locate the first concrete error (file:line, missing dependency, configuration key, network endpoint) — most command failures point at one root cause and a wall of downstream noise.
 
 2. **Classify the failure.** Each one is one of:
@@ -51,7 +47,7 @@ One attempt only — do not retry, do not re-run `${command}` (the caller re-val
 
 3. **Present the diagnosis.** One paragraph per distinct root cause (most command failures collapse to one). State the failing command, the line in `${command-stderr-tail}` that identifies the root cause, and — if applicable — the file in `${changed-files}` that explains it.
 
-4. **Apply the smallest fix within `${scope-block}`.** For env/config bugs, edit the config file in place; for SUT regressions, restore the previously-working behaviour. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop instead of widening silently. The caller's verify re-runs the command after you exit — it is the safety net for a wrong fix.
+4. **Apply the smallest fix within `${scope-block}`.** For env/config bugs, edit the config file in place; for SUT regressions, restore the previously-working behaviour. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop instead of widening silently.
 
 ## Additional Notes
 

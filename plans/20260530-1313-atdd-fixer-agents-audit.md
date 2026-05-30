@@ -139,51 +139,6 @@ are substituted in `clauderun.go::renderPrompt`.
 > (these files don't feed the diagram); no commit without approval
 > ([[feedback_no_commit_without_approval]]).
 
-- [ ] **Item 1: Add a shared `fixer-preamble.md` chunk and prepend it to
-  fixer agents (T1).**
-  Create `internal/assets/runtime/shared/fixer-preamble.md` carrying the
-  two shared paragraphs (git read-carve-out base + the one-attempt /
-  approval-already-gated / stay-in-scope contract). Wire it in
-  `internal/atdd/runtime/agents/embed.go` so it is prepended **only to
-  the five `*-fixer` agents** (gate on the `-fixer` name suffix, or an
-  explicit set — mirror how `sharedPreamble` / `sharedScope` load once at
-  init via `mustReadAsset`). Add an embed-presence test alongside the
-  existing `embed_test.go` cases. **Decision to confirm at execution:**
-  suffix-match vs. explicit allow-list — prefer the explicit set if the
-  `-fixer` suffix isn't already a load-bearing convention elsewhere.
-
-- [ ] **Item 2: Strip the now-shared boilerplate from the five bodies
-  (T1, T2, T3, T4).**
-  In each of `command-failed-fixer.md`, `missing-output-fixer.md`,
-  `scope-diff-fixer.md`, `unexpected-failing-tests-fixer.md`,
-  `unexpected-passing-tests-fixer.md`: delete the two duplicated `##
-  Steps` opening paragraphs (now in Item 1's chunk), the second
-  scope-exception restatement, and the duplicate "caller's verify is the
-  safety net" sentence. Keep exactly one in-body pointer where a step
-  genuinely depends on the contract. **`scope-diff-fixer` exception:**
-  its body keeps the one extra sentence granting `git checkout HEAD --
-  <path>` (the revert action the shared base doesn't cover), phrased as
-  an addition to the shared carve-out.
-
-- [ ] **Item 3: Re-read each trimmed body end-to-end for standalone
-  coherence.**
-  After Items 1–2 the bodies must still read as complete prompts when
-  concatenated with `preamble.md` + `scope.md` + `fixer-preamble.md`.
-  Confirm no step references a sentence that was moved out, and that the
-  Inputs / Steps / Anti-patterns structure still flows. Dispatch one
-  rendered prompt per fixer via the `RenderPrompt` test seam (or `gh
-  optivem … --show-prompt`) and eyeball the assembled output.
-
-- [ ] **Item 4: Surface the wrong-revert asymmetry in
-  `scope-diff-fixer.md` (Q3).**
-  In the classification step, add one sentence making the safety-net
-  asymmetry explicit: a wrong *widen* is caught by the caller's
-  re-validate, but a wrong *revert* passes validation while dropping real
-  work — so when a violating path is genuinely ambiguous between "Mode A
-  widen" and "Mode B/C revert," **prefer widening and surface the
-  uncertainty** rather than reverting. This tightens an existing
-  anti-pattern into the decision step; it is not new behaviour.
-
 - [ ] **Item 5: Align all five bodies' scope-exception wording to the
   resolved gateway semantics (Q1) — blocked.**
   ⏳ Blocked on [[20260528-1230-wire-scope-exception-gateway-in-execute-agent]].

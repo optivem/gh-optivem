@@ -22,10 +22,6 @@ ${scope-block}
 
 ## Steps
 
-Per the preamble carve-out for `fix-*` tasks, you MAY run `git diff`, `git diff HEAD`, and `git show HEAD:<path>` to read the content of files in `${changed-files}`. No other `git`/`gh` calls.
-
-One attempt only — do not retry, do not re-run verify (the caller re-validates after you exit). Approval upstream of you already gated this dispatch. Stay inside `${scope-block}` — emit the scope-exception envelope if you need to widen.
-
 The calling CYCLE is **behaviour-preserving by definition**. Red here is a hard signal, not feedback: either the WRITE-phase edit broke a behaviour that was previously green (fix the SUT), or a test was coupled to the surface the WRITE phase legitimately reshaped (update the test to track the new surface, preserving the behaviour it asserts).
 
 1. **Read every failed verify block.** For compile failures, locate the file:line and identify the broken construct (renamed symbol, changed signature, missing import). For test failures, group by suite/test and read the captured stderr/stdout — that is the entire signal.
@@ -36,7 +32,7 @@ The calling CYCLE is **behaviour-preserving by definition**. Red here is a hard 
 
 3. **Present the diagnosis and pick the side.** One paragraph per distinct root cause (compile failures often share one root; multiple test failures sometimes do too). State the failure, the line in `${changed-files}` that explains it, and which side you are fixing (SUT regression vs. test tracking the reshaped surface). When both readings are plausible, pick the more likely one and surface the reasoning so the caller's verify can catch a wrong pick.
 
-4. **Apply the smallest fix within `${scope-block}`.** Edit the SUT for regressions; update the test for surface-tracking changes. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop. The caller's verify re-runs the build and tests after you exit — it is the safety net for a wrong pick.
+4. **Apply the smallest fix within `${scope-block}`.** Edit the SUT for regressions; update the test for surface-tracking changes. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop.
 
 ## Additional Notes
 

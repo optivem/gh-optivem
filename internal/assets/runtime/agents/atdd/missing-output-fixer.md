@@ -34,9 +34,7 @@ Your effective scope is the originating task's full scope (inherited from `${fai
 
 ## Steps
 
-Per the preamble carve-out for `fix-*` tasks, you MAY run `git diff`, `git diff HEAD`, and `git show HEAD:<path>` to read the content of files in `${changed-files}`. No other `git`/`gh` calls.
-
-One attempt only — do not retry, do not re-dispatch `${failing-task-name}` separately (your own dispatch IS the re-run; the caller re-validates after you exit). Approval upstream of you already gated this dispatch. Stay inside `${scope-block}` — emit the scope-exception envelope if you need to widen.
+Your own dispatch IS the re-run of `${failing-task-name}` — redo its work here, do not re-dispatch it separately.
 
 1. **Read the failing agent's prompt.** Open `internal/assets/runtime/agents/atdd/${failing-task-name}.md` and locate the `## Outputs` section — the prompt names each declared key the MID required (the `${missing-outputs}` list) and what each one was supposed to signal. Treat the prompt as the contract for both *the work* and *the keys to emit*.
 
@@ -44,7 +42,7 @@ One attempt only — do not retry, do not re-dispatch `${failing-task-name}` sep
 
 3. **Present the diagnosis.** One paragraph: state the failing agent (`${failing-task-name}`), the missing keys (`${missing-outputs}`), and what your inspection of `${changed-files}` suggests about whether the work was done at all, done partially, or done and the emission was the only slip. End with: "Re-running the task's work and emitting the required keys."
 
-4. **Redo the failing agent's work and emit the missing outputs.** Follow `${failing-task-name}`'s prompt as if the dispatch were fresh — produce the in-scope edits the prompt specifies, then call `gh optivem output write KEY=VAL` for every key in `${missing-outputs}`. Idempotency carries the day here: if the edits already landed correctly, re-applying produces no diff; if they were partial, you finish them; if they didn't land at all, you do them now. If completing the work would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop. The caller's verify re-runs validation after you exit.
+4. **Redo the failing agent's work and emit the missing outputs.** Follow `${failing-task-name}`'s prompt as if the dispatch were fresh — produce the in-scope edits the prompt specifies, then call `gh optivem output write KEY=VAL` for every key in `${missing-outputs}`. Idempotency carries the day here: if the edits already landed correctly, re-applying produces no diff; if they were partial, you finish them; if they didn't land at all, you do them now. If completing the work would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop.
 
 ## Additional Notes
 
