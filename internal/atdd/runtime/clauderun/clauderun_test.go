@@ -221,7 +221,12 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 		//   - ${checklist} — refactor / structural-task agents
 		//   - ${touches-system-driver} — dsl-implementer
 		opts.Checklist = "- [ ] placeholder checklist item"
-		opts.NodeParams = map[string]string{"touches-system-driver": "false"}
+		//   - ${channel} / ${common} — channel-aware implement-system
+		opts.NodeParams = map[string]string{
+			"touches-system-driver": "false",
+			"channel":               "api",
+			"common":                "true",
+		}
 
 		got, err := renderPrompt(opts)
 		if err != nil {
@@ -256,6 +261,9 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 	// (populated by parse-ticket); supply directly so the no-leftover-${...}
 	// assertion below doesn't trip.
 	opts.Checklist = "- [ ] Refactor X"
+	// channel-aware implement-system: production binds these per channel via
+	// the UnrollSystemChannels caller; supply directly for the render test.
+	opts.NodeParams = map[string]string{"channel": "api", "common": "true"}
 	// implement-system now inlines phase-doc placeholders
 	// in its body; without these the no-leftover-${...} assertion below
 	// would catch the inlined Family B path references. The full canonical
@@ -1659,6 +1667,9 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.ScopeRead = []string{"system-path"}
 	opts.ScopeWrite = []string{"system-path"}
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
+	// channel-aware implement-system: production binds these per channel via
+	// the UnrollSystemChannels caller; supply directly for the render test.
+	opts.NodeParams = map[string]string{"channel": "api", "common": "true"}
 	opts.PromptLogPath = "/tmp/runs/001-system-implementer.prompt.md"
 	// implement-system's inlined phase-doc body now references the full
 	// CanonicalPathKeys set (driver-{port,adapter}, external-system-driver-

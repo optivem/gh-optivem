@@ -1,9 +1,9 @@
 ---
-# GREEN-stage production code to make failing acceptance tests pass. Opus high covers the cross-channel reasoning.
+# GREEN-stage production code to make failing acceptance tests pass. Opus high covers the common-layer + adapter implementation on the first channel.
 model: opus
 effort: high
 ---
-The implement-system task writes production code under the system surface (`${system-path}`) to make the failing acceptance tests pass.
+The implement-system task writes production code under the system surface (`${system-path}`) to make the failing acceptance tests pass for one delivery channel — the `${channel}` channel.
 
 Architecture: ${architecture}
 
@@ -16,9 +16,13 @@ ${scope-block}
 ### Parameters
 
 - `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `channel` — the delivery channel this dispatch must green (e.g. `api`, `ui`). The acceptance run is scoped to this channel's suite (`acceptance-${channel}`), so you only need to satisfy the `${channel}` slice of the failing test.
+- `common` — whether this is the first channel of the cycle. `true` → build the channel-agnostic **common** layer plus the `${channel}` adapter; `false` → the `${channel}` adapter delta only (the common layer already landed in an earlier channel's dispatch).
 
 ## Steps
 
 1. Read the failing Acceptance Test (`${at-test}`) to see the required behaviour, then trace through the DSL Port (`${dsl-port}`) and DSL Core (`${dsl-core}`) to the System Driver port/adapter pair (`${driver-port}`, `${driver-adapter}`) to see how the test reaches the production system. If the test stages stub external interactions, also read the External System Driver port/adapter pair (`${external-system-driver-port}`, `${external-system-driver-adapter}`) and the Contract Tests (`${ct-test}`) to see the stub contract the implementation must satisfy.
-2. Do the simplest implementation possible under the system surface (`${system-path}`) with the goal of making the acceptance test pass.
-3. When the AT asserts persisted state (a column read/written, an audit-log entry, a soft-delete tombstone, etc.), also add a schema migration under the shared migration set (`${system-db-migration-path}`) — a single timestamped SQL file in the Flyway naming convention (`V{YYYYMMDDHHMMSS}__{description}.sql`, forward-only, no undo). Read the existing migrations first to see the current schema; do not redeclare columns that already exist. The migration set is shared across every SUT (3 languages × 2 architectures); your one file is consumed by all of them.
+2. Do the simplest implementation possible under the system surface (`${system-path}`) that greens the `${channel}` acceptance slice. Scope the work by the `common` flag:
+   - **`common: true`** (first channel of the cycle): implement the channel-agnostic **common** layer — the DTO / entity / service logic the behaviour needs, shared across every channel — **and** the `${channel}` adapter that exposes it through this channel.
+   - **`common: false`** (a later channel): implement **only** the `${channel}` adapter delta that wires this channel to the already-built common layer. Do not re-touch the common layer or its migration — they landed in the first channel's dispatch and are verified by their own commit.
+3. When the AT asserts persisted state (a column read/written, an audit-log entry, a soft-delete tombstone, etc.) **and** `common: true`, also add a schema migration under the shared migration set (`${system-db-migration-path}`) — a single timestamped SQL file in the Flyway naming convention (`V{YYYYMMDDHHMMSS}__{description}.sql`, forward-only, no undo). The migration belongs to the common layer, so it is authored once on the first channel and not repeated on later channels. Read the existing migrations first to see the current schema; do not redeclare columns that already exist. The migration set is shared across every SUT (3 languages × 2 architectures); your one file is consumed by all of them.

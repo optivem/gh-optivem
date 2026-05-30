@@ -580,6 +580,10 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 		"agent":       "system-implementer",
 		"task-name":   "implement-system",
 		"change_type": "SYSTEM UI REDESIGN",
+		// channel/common are bound per channel by the UnrollSystemChannels
+		// caller in production; seed them so the channel-aware prompt renders.
+		"channel": "api",
+		"common":  "true",
 	}
 
 	out := fn(ctx)
@@ -781,6 +785,11 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 	// below). The dispatcher's scopeKey precedence resolves to task-name
 	// post-1701 split.
 	sCtx.Params["task-name"] = "implement-system"
+	// channel/common are bound per channel by the UnrollSystemChannels caller
+	// in production; seed them so the channel-aware implement-system prompt
+	// renders without an unfilled ${channel} / ${common}.
+	sCtx.Params["channel"] = "api"
+	sCtx.Params["common"] = "true"
 	seedScopeState(sCtx, cfg)
 
 	rs := &runState{runTimestamp: "20260505-150000", repoPath: tmpRepo}

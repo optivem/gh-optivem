@@ -280,6 +280,20 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	eng.ActionFn = actionReg.Lookup
 	eng.AgentFn = agentReg.Lookup
 
+	// Statically unroll the channel loop in change-system-behavior from the
+	// project-declared `channels:` (plan 20260530-1702 Item 4). The channel
+	// set is project-dependent, so this in-memory rewrite happens per run
+	// from config rather than in the shared static YAML. Done before Bind so
+	// the synthesized per-channel call-activity nodes get NodeFns resolved.
+	// Absent/empty channels: skip the unroll and keep the single static node
+	// (today's `suite: acceptance` behaviour) — graceful fallback for older
+	// configs. Channels are already enum-validated by projectconfig.Validate.
+	if cfg != nil && len(cfg.Channels) > 0 {
+		if err := eng.UnrollSystemChannels(cfg.Channels); err != nil {
+			return fmt.Errorf("driver: unroll system channels: %w", err)
+		}
+	}
+
 	if err := eng.Bind(); err != nil {
 		return fmt.Errorf("driver: bind engine: %w", err)
 	}
