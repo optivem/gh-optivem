@@ -2132,6 +2132,20 @@ processes:
         action: validate-outputs-and-scopes
         name: "Validate outputs & scopes"
 
+      # Layer 1 scope-exception escape hatch. Sits between validation and
+      # GATE_OUTPUTS_AND_SCOPES_VALID — not on the latter's false-branch —
+      # because the envelope is the agent's *explicit* "halt with a scope
+      # verdict" signal, independent of whether outputs-and-scopes-valid is
+      # false for some unrelated reason. Checking the exception first makes
+      # the precedence obvious in the YAML and matches the binding docstring
+      # ("skipping DISABLE / Layer 2 / COMMIT"). A FIX fall-through cannot
+      # correct a too-narrow scope: FIX loops back to RUN_AGENT against the
+      # identical scope:, so the only loop-free, honest option is a halt.
+      - id: GATE_SCOPE_EXCEPTION_REQUESTED
+        type: gateway
+        binding: scope-exception-requested
+        name: "Scope Exception Requested?"
+
       - id: GATE_OUTPUTS_AND_SCOPES_VALID
         type: gateway
         binding: outputs-and-scopes-valid
@@ -2185,13 +2199,26 @@ processes:
         type: error-end-event
         name: "Agent Output Rejected"
 
+      # Scope-exception halt (Layer 1). Distinct from OUTPUT_REJECTED above:
+      # that terminal means "operator rejected broken output"; this one means
+      # "agent refused to write outside scope — the BPMN was authored with a
+      # too-narrow scope:, a human must widen it." Modelled as an
+      # error-end-event (deliberate halt, not a soft skip); the caller phase
+      # decides what to do with the verdict. This MID's contract is "I
+      # refused to write outside scope, here's the envelope."
+      - id: STOP_SCOPE_VIOLATION
+        type: error-end-event
+        name: "Scope Violation — Agent Refused"
+
     sequence-flows:
       - {from: APPROVE_PRE,                   to: GATE_APPROVED_PRE}
       - {from: GATE_APPROVED_PRE,             to: SNAPSHOT_WORKING_TREE,       when: "approval-outcome == approved"}
       - {from: GATE_APPROVED_PRE,             to: EXECUTE_AGENT_REJECTED_END,  when: "approval-outcome == rejected"}
       - {from: SNAPSHOT_WORKING_TREE,         to: RUN_AGENT}
       - {from: RUN_AGENT,                     to: VALIDATE_OUTPUTS_AND_SCOPES}
-      - {from: VALIDATE_OUTPUTS_AND_SCOPES,   to: GATE_OUTPUTS_AND_SCOPES_VALID}
+      - {from: VALIDATE_OUTPUTS_AND_SCOPES,   to: GATE_SCOPE_EXCEPTION_REQUESTED}
+      - {from: GATE_SCOPE_EXCEPTION_REQUESTED, to: STOP_SCOPE_VIOLATION,           when: "scope-exception-requested == true"}
+      - {from: GATE_SCOPE_EXCEPTION_REQUESTED, to: GATE_OUTPUTS_AND_SCOPES_VALID,  when: "scope-exception-requested == false"}
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: APPROVE_POST,        when: "outputs-and-scopes-valid == true"}
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: GATE_FIX_ON_FAILURE, when: "outputs-and-scopes-valid == false"}
       - {from: GATE_FIX_ON_FAILURE,           to: FIX,             when: "fix-on-failure-enabled == true"}

@@ -183,6 +183,52 @@ func TestExecuteCommand_FailureRoutesThroughFixOnFailureGate(t *testing.T) {
 	wantEdge(t, proc, "GATE_FIX_ON_FAILURE", "EXECUTE_COMMAND_END", "fix-on-failure-enabled == false")
 }
 
+// execute-agent must route the agent's explicit scope-exception envelope
+// to STOP_SCOPE_VIOLATION (a hard halt), not fall through to the FIX loop.
+// GATE_SCOPE_EXCEPTION_REQUESTED sits ahead of GATE_OUTPUTS_AND_SCOPES_VALID
+// so the explicit refusal takes precedence over an unrelated validation
+// failure. Without this gate the scope-exception signal lands in ctx and
+// nothing routes on it — the cycle re-dispatches RUN_AGENT against the same
+// too-narrow scope: and loops.
+func TestExecuteAgent_ScopeExceptionRoutesToStopViolation(t *testing.T) {
+	eng := loadSnapshot(t)
+	proc, ok := eng.Processes["execute-agent"]
+	if !ok {
+		t.Fatalf("process execute-agent missing")
+	}
+
+	// 1. GATE_SCOPE_EXCEPTION_REQUESTED node exists and binds the right gate.
+	gate, ok := proc.Nodes["GATE_SCOPE_EXCEPTION_REQUESTED"]
+	if !ok {
+		t.Fatalf("execute-agent: GATE_SCOPE_EXCEPTION_REQUESTED node missing")
+	}
+	if gate.Kind != Gateway {
+		t.Errorf("execute-agent: GATE_SCOPE_EXCEPTION_REQUESTED kind = %v, want Gateway", gate.Kind)
+	}
+	if gate.Raw.Binding != "scope-exception-requested" {
+		t.Errorf("execute-agent: GATE_SCOPE_EXCEPTION_REQUESTED binding = %q, want %q", gate.Raw.Binding, "scope-exception-requested")
+	}
+
+	// 2. STOP_SCOPE_VIOLATION is an error-end-event (deliberate halt, must
+	//    bubble up — not a soft end-event).
+	stop, ok := proc.Nodes["STOP_SCOPE_VIOLATION"]
+	if !ok {
+		t.Fatalf("execute-agent: STOP_SCOPE_VIOLATION node missing")
+	}
+	if stop.Kind != ErrorEndEvent {
+		t.Errorf("execute-agent: STOP_SCOPE_VIOLATION kind = %v, want ErrorEndEvent", stop.Kind)
+	}
+
+	// 3. Validation feeds the exception gate first, and the old direct edge
+	//    VALIDATE_OUTPUTS_AND_SCOPES -> GATE_OUTPUTS_AND_SCOPES_VALID is gone.
+	wantEdge(t, proc, "VALIDATE_OUTPUTS_AND_SCOPES", "GATE_SCOPE_EXCEPTION_REQUESTED", "")
+	notEdge(t, proc, "VALIDATE_OUTPUTS_AND_SCOPES", "GATE_OUTPUTS_AND_SCOPES_VALID")
+
+	// 4. Exception requested -> hard halt; not requested -> normal validation.
+	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "STOP_SCOPE_VIOLATION", "scope-exception-requested == true")
+	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "GATE_OUTPUTS_AND_SCOPES_VALID", "scope-exception-requested == false")
+}
+
 // Both verify-tests-pass and verify-tests-fail must route
 // test-outcome=="infra" to TESTS_INFRA_HALT (an error-end-event), not
 // to the same node that pass/fail routes to. An infra failure means

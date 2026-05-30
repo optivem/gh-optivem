@@ -103,50 +103,6 @@ outside scope, here's the envelope."
 
 ## Items
 
-- [ ] **Item 1: Add `STOP_SCOPE_VIOLATION` end-event to `execute-agent`.**
-  In `internal/atdd/runtime/statemachine/process-flow.yaml`, under the
-  `execute-agent` process's `nodes:` block, add a new
-  `error-end-event` node id `STOP_SCOPE_VIOLATION` with a name like
-  `"Scope Violation — Agent Refused"`. Place it next to the existing
-  `EXECUTE_AGENT_OUTPUT_REJECTED_END` so reviewers can see the two
-  hard-abort terminations side by side.
-
-- [ ] **Item 2: Add `GATE_SCOPE_EXCEPTION_REQUESTED` gateway.**
-  Same YAML, same `nodes:` block: add a `gateway` node id
-  `GATE_SCOPE_EXCEPTION_REQUESTED` with `binding:
-  scope-exception-requested` and a name like
-  `"Scope Exception Requested?"`. Place it directly after
-  `VALIDATE_OUTPUTS_AND_SCOPES` so the YAML node order matches the
-  flow order (useful when diffing against the auto-generated diagram).
-
-- [ ] **Item 3: Rewire `execute-agent` sequence-flows.**
-  In the `sequence-flows:` block, replace the single flow
-  `{from: VALIDATE_OUTPUTS_AND_SCOPES, to: GATE_OUTPUTS_AND_SCOPES_VALID}`
-  with two flows fanning out from the new gateway:
-
-  ```yaml
-  - {from: VALIDATE_OUTPUTS_AND_SCOPES,       to: GATE_SCOPE_EXCEPTION_REQUESTED}
-  - {from: GATE_SCOPE_EXCEPTION_REQUESTED,    to: STOP_SCOPE_VIOLATION,             when: "scope-exception-requested == true"}
-  - {from: GATE_SCOPE_EXCEPTION_REQUESTED,    to: GATE_OUTPUTS_AND_SCOPES_VALID,    when: "scope-exception-requested == false"}
-  ```
-
-  Leave the existing `GATE_OUTPUTS_AND_SCOPES_VALID` →
-  `APPROVE_POST` / `GATE_FIX_ON_FAILURE` fan-out untouched.
-
-- [ ] **Item 4: Update transitions test for `execute-agent`.**
-  Find the existing transitions test for `execute-agent` (likely under
-  `internal/atdd/runtime/statemachine/` — grep for
-  `GATE_OUTPUTS_AND_SCOPES_VALID` in `_test.go` files). Add two cases:
-
-  1. `scope-exception-files` non-empty in ctx → flow terminates at
-     `STOP_SCOPE_VIOLATION`, never reaches `GATE_OUTPUTS_AND_SCOPES_VALID`.
-  2. `scope-exception-files` absent (or empty `[]string`) + valid
-     outputs → flow reaches `APPROVE_POST` (unchanged baseline path).
-
-  Reuse the existing `scope_exception_requested` binding test fixtures
-  in `internal/atdd/runtime/gates/bindings_test.go` as the shape
-  reference.
-
 - [ ] **Item 5: Smoke-check the auto-generated process diagram.**
   After regeneration the diagram should show `STOP_SCOPE_VIOLATION` as
   an error-end terminator off the new gateway, with the existing
