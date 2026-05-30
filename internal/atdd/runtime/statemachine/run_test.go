@@ -1572,3 +1572,250 @@ func TestVerifyTests_FixLoopHaltsAtCap(t *testing.T) {
 	}
 }
 
+// TestExecuteCommand_FixLoopHaltsAtCap is the flow-level proof of the
+// fix-attempt cap on the REAL embedded execute-command (plan 20260530-1604
+// Step 2). It drives execute-command with a run-command stub that NEVER
+// succeeds, so under the old flow FIX -> RUN_COMMAND would spin until the
+// maxDispatchesPerProcess backstop (~2500 cycles — the rehearsal-71
+// endless re-prompt). With max-visits: 2 + on-max-visits:
+// COMMAND_FIX_EXHAUSTED, the walk halts at COMMAND_FIX_EXHAUSTED after
+// exactly 2 fix attempts.
+//
+// The assertions pin the SPECIFIC halt, not the 10000 backstop:
+//   - the error references COMMAND_FIX_EXHAUSTED and NOT "exceeded … dispatches", and
+//   - run-command fired exactly N+1=3 times (RUN_COMMAND runs once per lap;
+//     the 3rd lap's FIX arrival is intercepted before re-dispatch).
+//
+// feedback_statemachine_test_loop_hazard: the cap (and, failing it, the
+// 10000 backstop) bounds this fixture, so a regression fails the
+// run-command-count check loudly rather than hanging the suite.
+func TestExecuteCommand_FixLoopHaltsAtCap(t *testing.T) {
+	eng, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+
+	runCommandCalls := 0
+	eng.ActionFn = func(name string) NodeFn {
+		switch name {
+		case "run-command":
+			return func(ctx *Context) Outcome {
+				runCommandCalls++
+				// Never converge; stamp the failure-kind the fix dispatch
+				// templates ${failure-kind}-fixer / fix-${failure-kind} on.
+				ctx.Set("command-succeeded", false)
+				ctx.Set("failure-kind", "command-failed")
+				return Outcome{}
+			}
+		case "validate-outputs-and-scopes":
+			// The inner fixer's execute-agent validates clean so the fix
+			// subprocess terminates each lap (we're testing the OUTER cap).
+			return func(ctx *Context) Outcome {
+				ctx.Set("outputs-and-scopes-valid", true)
+				return Outcome{}
+			}
+		default:
+			return func(ctx *Context) Outcome { return Outcome{} }
+		}
+	}
+	eng.AgentFn = func(name string) NodeFn {
+		return func(ctx *Context) Outcome { return Outcome{} }
+	}
+	eng.GateFn = capLoopGateFn()
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+
+	ctx := NewContext()
+	ctx.Params["command"] = "synthetic-cmd"
+	ctx.Params["category"] = "command"
+	ctx.Params["task-name"] = "synthetic-task"
+	err = eng.RunProcess("execute-command", ctx)
+	if err == nil {
+		t.Fatalf("RunProcess(execute-command) returned nil; want halt at COMMAND_FIX_EXHAUSTED")
+	}
+	if !strings.Contains(err.Error(), "COMMAND_FIX_EXHAUSTED") {
+		t.Fatalf("RunProcess(execute-command) error = %q; want it to reference COMMAND_FIX_EXHAUSTED", err.Error())
+	}
+	if strings.Contains(err.Error(), "exceeded") {
+		t.Errorf("RunProcess(execute-command) hit the maxDispatchesPerProcess backstop, not the max-visits cap: %q", err.Error())
+	}
+	if runCommandCalls != 3 {
+		t.Errorf("run-command fired %d time(s), want 3 (N+1) — the cap must halt after exactly 2 fix attempts", runCommandCalls)
+	}
+}
+
+// TestExecuteAgent_FixLoopHaltsAtCap mirrors the above for execute-agent
+// (plan 20260530-1604 Step 3). The validate stub NEVER validates, so the
+// outer agent routes to FIX every lap; under the old flow FIX -> RUN_AGENT
+// re-dispatches the (opus·high) writing agent unguarded under --auto. With
+// max-visits: 2 + on-max-visits: AGENT_FIX_EXHAUSTED the walk halts after
+// exactly 2 fix attempts.
+//
+// We count dispatches of the OUTER agent by name (the inner fixer dispatches
+// a distinct ${failure-kind}-fixer), and assert N+1=3 — RUN_AGENT runs once
+// per lap; the 3rd lap's FIX arrival is intercepted before re-dispatch.
+func TestExecuteAgent_FixLoopHaltsAtCap(t *testing.T) {
+	eng, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+
+	outerAgentCalls := 0
+	eng.ActionFn = func(name string) NodeFn {
+		switch name {
+		case "validate-outputs-and-scopes":
+			return func(ctx *Context) Outcome {
+				// Never converge for the outer agent; stamp failure-kind so
+				// the fix dispatch templates resolve to a distinct fixer name.
+				ctx.Set("outputs-and-scopes-valid", false)
+				ctx.Set("failure-kind", "agent-output-invalid")
+				return Outcome{}
+			}
+		default:
+			return func(ctx *Context) Outcome { return Outcome{} }
+		}
+	}
+	eng.AgentFn = func(name string) NodeFn {
+		n := name
+		return func(ctx *Context) Outcome {
+			if n == "synthetic-writer" {
+				outerAgentCalls++
+			}
+			return Outcome{}
+		}
+	}
+	eng.GateFn = capLoopGateFn()
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+
+	ctx := NewContext()
+	ctx.Params["agent"] = "synthetic-writer"
+	ctx.Params["task-name"] = "synthetic-task"
+	ctx.Params["category"] = "prod-agent"
+	err = eng.RunProcess("execute-agent", ctx)
+	if err == nil {
+		t.Fatalf("RunProcess(execute-agent) returned nil; want halt at AGENT_FIX_EXHAUSTED")
+	}
+	if !strings.Contains(err.Error(), "AGENT_FIX_EXHAUSTED") {
+		t.Fatalf("RunProcess(execute-agent) error = %q; want it to reference AGENT_FIX_EXHAUSTED", err.Error())
+	}
+	if strings.Contains(err.Error(), "exceeded") {
+		t.Errorf("RunProcess(execute-agent) hit the maxDispatchesPerProcess backstop, not the max-visits cap: %q", err.Error())
+	}
+	if outerAgentCalls != 3 {
+		t.Errorf("outer RUN_AGENT fired %d time(s), want 3 (N+1) — the cap must halt after exactly 2 fix attempts", outerAgentCalls)
+	}
+}
+
+// TestExecuteCommand_FixRejectHalts proves D2/D3 (plan 20260530-1604):
+// rejecting the fix's PRE approval halts the run (FIX_REJECTED_END is now an
+// error-end-event) instead of looping back to re-run the failed command. The
+// approval stub rejects ONLY the fix remediation prompt — keyed on
+// failure-kind, which run-command stamps before the fix dispatch and which is
+// absent at execute-command's own pre-approval — so the error propagates up
+// through the FIX call-activity and run-command fires only once. (Keying on
+// state, not a call counter, is robust: each approval point is evaluated
+// twice — once by the inner approve subprocess, once by the caller's
+// GATE_APPROVED_PRE.)
+func TestExecuteCommand_FixRejectHalts(t *testing.T) {
+	eng, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+
+	runCommandCalls := 0
+	eng.ActionFn = func(name string) NodeFn {
+		switch name {
+		case "run-command":
+			return func(ctx *Context) Outcome {
+				runCommandCalls++
+				ctx.Set("command-succeeded", false)
+				ctx.Set("failure-kind", "command-failed")
+				return Outcome{}
+			}
+		default:
+			return func(ctx *Context) Outcome { return Outcome{} }
+		}
+	}
+	eng.AgentFn = func(name string) NodeFn {
+		return func(ctx *Context) Outcome { return Outcome{} }
+	}
+	eng.GateFn = func(name string) NodeFn {
+		switch name {
+		case "approval-outcome":
+			return func(ctx *Context) Outcome {
+				// Reject only the fix remediation prompt: failure-kind is set
+				// by run-command before the fix dispatch and is absent at the
+				// outer command's pre-approval.
+				if _, isFix := ctx.State["failure-kind"]; isFix {
+					return Outcome{Value: "rejected"}
+				}
+				return Outcome{Value: "approved"}
+			}
+		case "fix-on-failure-enabled":
+			return func(ctx *Context) Outcome {
+				return Outcome{Bool: ctx.Params["fix-on-failure"] != "false"}
+			}
+		default:
+			return capDefaultGate(name)
+		}
+	}
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+
+	ctx := NewContext()
+	ctx.Params["command"] = "synthetic-cmd"
+	ctx.Params["category"] = "command"
+	ctx.Params["task-name"] = "synthetic-task"
+	err = eng.RunProcess("execute-command", ctx)
+	if err == nil {
+		t.Fatalf("RunProcess(execute-command) returned nil; want halt at FIX_REJECTED_END")
+	}
+	if !strings.Contains(err.Error(), "FIX_REJECTED_END") {
+		t.Fatalf("RunProcess(execute-command) error = %q; want it to reference FIX_REJECTED_END (reject must halt)", err.Error())
+	}
+	if runCommandCalls != 1 {
+		t.Errorf("run-command fired %d time(s), want 1 — fix-reject must halt, not loop back to re-run", runCommandCalls)
+	}
+}
+
+// capLoopGateFn is the shared GateFn for the two cap-halt flow tests:
+// approve everything, evaluate fix-on-failure from params, and read any
+// other binding from state (so run-command / validate stubs steer routing).
+func capLoopGateFn() func(string) NodeFn {
+	return func(name string) NodeFn {
+		switch name {
+		case "approval-outcome":
+			return func(ctx *Context) Outcome { return Outcome{Value: "approved"} }
+		case "fix-on-failure-enabled":
+			return func(ctx *Context) Outcome {
+				return Outcome{Bool: ctx.Params["fix-on-failure"] != "false"}
+			}
+		default:
+			return capDefaultGate(name)
+		}
+	}
+}
+
+// capDefaultGate reads a binding's value from state, mirroring the default
+// gate in TestVerifyTests_FixLoopHaltsAtCap.
+func capDefaultGate(name string) NodeFn {
+	return func(ctx *Context) Outcome {
+		v, ok := ctx.State[name]
+		if !ok {
+			return Outcome{}
+		}
+		switch t := v.(type) {
+		case bool:
+			return Outcome{Bool: t}
+		case string:
+			return Outcome{Value: t}
+		default:
+			return Outcome{}
+		}
+	}
+}
+

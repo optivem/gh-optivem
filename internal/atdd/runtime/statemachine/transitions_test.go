@@ -311,6 +311,72 @@ func TestRunTests_DisablesFixOnFailure(t *testing.T) {
 	}
 }
 
+// Both fix-dispatch loops must be bounded (plan 20260530-1604). The FIX
+// node in execute-command and execute-agent gets a max-visits cap routing
+// to a process-specific error-end-event, and the shared `fix` process's
+// PRE-reject terminal becomes an error-end-event so rejecting a fix halts
+// the run instead of looping back to re-run the failed step. Without the
+// cap, the FIX -> RUN_COMMAND / FIX -> RUN_AGENT back-edge spins until the
+// 10000-dispatch backstop (rehearsal-71's endless re-prompt); without the
+// reject=halt, `n` (or EOF-auto-reject under --auto) loops forever too.
+func TestFixDispatch_LoopsAreBounded(t *testing.T) {
+	eng := loadSnapshot(t)
+
+	// 1. The shared `fix` PRE-reject terminal is now an error-end-event.
+	t.Run("fix reject is a hard halt", func(t *testing.T) {
+		proc, ok := eng.Processes["fix"]
+		if !ok {
+			t.Fatalf("process fix missing")
+		}
+		node, ok := proc.Nodes["FIX_REJECTED_END"]
+		if !ok {
+			t.Fatalf("fix: FIX_REJECTED_END node missing")
+		}
+		if node.Kind != ErrorEndEvent {
+			t.Errorf("fix: FIX_REJECTED_END kind = %v, want ErrorEndEvent (reject must halt, not soft-skip)", node.Kind)
+		}
+		// The reject edge still targets it.
+		wantEdge(t, proc, "GATE_APPROVED_PRE", "FIX_REJECTED_END", "approval-outcome == rejected")
+	})
+
+	// 2. Both loops cap the FIX node and route to a distinct exhausted terminal.
+	caps := []struct {
+		proc, halt string
+	}{
+		{"execute-command", "COMMAND_FIX_EXHAUSTED"},
+		{"execute-agent", "AGENT_FIX_EXHAUSTED"},
+	}
+	for _, c := range caps {
+		t.Run(c.proc+" FIX is capped", func(t *testing.T) {
+			proc, ok := eng.Processes[c.proc]
+			if !ok {
+				t.Fatalf("process %q missing", c.proc)
+			}
+			fix, ok := proc.Nodes["FIX"]
+			if !ok {
+				t.Fatalf("%s: FIX node missing", c.proc)
+			}
+			if fix.Raw.MaxVisits != 2 {
+				t.Errorf("%s: FIX max-visits = %d, want 2", c.proc, fix.Raw.MaxVisits)
+			}
+			if fix.Raw.OnMaxVisits != c.halt {
+				t.Errorf("%s: FIX on-max-visits = %q, want %q", c.proc, fix.Raw.OnMaxVisits, c.halt)
+			}
+			halt, ok := proc.Nodes[c.halt]
+			if !ok {
+				t.Fatalf("%s: %s node missing", c.proc, c.halt)
+			}
+			if halt.Kind != ErrorEndEvent {
+				t.Errorf("%s: %s kind = %v, want ErrorEndEvent", c.proc, c.halt, halt.Kind)
+			}
+			// The back-edge to the originating step is preserved (the cap
+			// intercepts on the 3rd arrival; the loop itself stays intact).
+			origin := map[string]string{"execute-command": "RUN_COMMAND", "execute-agent": "RUN_AGENT"}[c.proc]
+			wantEdge(t, proc, "FIX", origin, "")
+		})
+	}
+}
+
 func wantEdge(t *testing.T, proc *Process, from, to, predicate string) {
 	t.Helper()
 	for _, e := range proc.OutgoingByNode[from] {

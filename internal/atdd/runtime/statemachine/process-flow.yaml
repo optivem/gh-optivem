@@ -2160,6 +2160,15 @@ processes:
         type: call-activity
         process: fix
         name: "Fix the Failure"
+        # Semantic fix-attempt cap (plan 20260530-1604). The FIX -> RUN_AGENT
+        # back-edge re-enters RUN_AGENT with NO re-approval (APPROVE_PRE
+        # guards first entry only), so under `--auto` each lap re-dispatches
+        # the opus·high writing agent unguarded — this cap is the only
+        # graceful bound on that token-burn before maxDispatchesPerProcess.
+        # After 2 fix passes the output is still invalid; halt for a human
+        # to widen scope or adjudicate. Mirrors the verify-loop cap.
+        max-visits: 2
+        on-max-visits: AGENT_FIX_EXHAUSTED
 
       - id: APPROVE_POST
         type: call-activity
@@ -2209,6 +2218,17 @@ processes:
       - id: STOP_SCOPE_VIOLATION
         type: error-end-event
         name: "Scope Violation — Agent Refused"
+
+      # Halt target for the fixer-retry cap (plan 20260530-1604). Reached on
+      # the 3rd FIX arrival, before re-dispatch — the agent's output is
+      # still invalid after 2 fix passes, so the BPMN scope is likely too
+      # narrow or the disagreement needs human adjudication. Distinct from
+      # STOP_SCOPE_VIOLATION (agent voluntarily refused) and
+      # EXECUTE_AGENT_OUTPUT_REJECTED_END (operator rejected output): this
+      # is the automated-recovery-exhausted verdict.
+      - id: AGENT_FIX_EXHAUSTED
+        type: error-end-event
+        name: "Agent Fix Exhausted — ${task-name} output still invalid after 2 fix attempts (widen scope or adjudicate)"
 
     sequence-flows:
       - {from: APPROVE_PRE,                   to: GATE_APPROVED_PRE}
@@ -2277,6 +2297,15 @@ processes:
         type: call-activity
         process: fix
         name: "Fix the Failure"
+        # Semantic fix-attempt cap (plan 20260530-1604), mirroring the
+        # verify-loop cap (verify-tests-{pass,fail}). The FIX -> RUN_COMMAND
+        # back-edge stays; the cap intercepts on the 3rd arrival, before
+        # re-dispatch, so a deterministic command (compile/test) that the
+        # fixer cannot resolve in-scope halts for a human instead of
+        # spinning. Layered under the engine-wide maxDispatchesPerProcess
+        # backstop.
+        max-visits: 2
+        on-max-visits: COMMAND_FIX_EXHAUSTED
 
       - id: EXECUTE_COMMAND_END
         type: end-event
@@ -2285,6 +2314,15 @@ processes:
       - id: EXECUTE_COMMAND_REJECTED_END
         type: end-event
         name: "Command Dispatch Rejected"
+
+      # Halt target for the fixer-retry cap (plan 20260530-1604). Reached on
+      # the 3rd FIX arrival, before re-dispatch — the command has failed
+      # under 2 fix passes, so the fault is almost certainly out of the
+      # fixer's scope (the rehearsal-71 Lombok/compile signature). Name is
+      # the concise headline (doubles as the diagram BPMN label).
+      - id: COMMAND_FIX_EXHAUSTED
+        type: error-end-event
+        name: "Command Fix Exhausted — ${command} still failing after 2 fix attempts (likely out of fixer scope)"
 
     sequence-flows:
       - {from: APPROVE_PRE,            to: GATE_APPROVED_PRE}
@@ -2370,9 +2408,21 @@ processes:
         type: end-event
         name: "Fix Complete"
 
+      # D2/D3 (plan 20260530-1604): fix-reject is a HARD HALT, not a soft
+      # skip. Modelled as error-end-event so it propagates up through the
+      # FIX call-activity in BOTH execute-command and execute-agent (they
+      # share this one `fix` process), giving the operator a clean exit and
+      # making `--auto` halt immediately on EOF-auto-reject — zero retry
+      # burn. This is the DELIBERATE exception to the documented
+      # "PRE-rejection = soft skip" philosophy (see execute-agent's
+      # EXECUTE_AGENT_REJECTED_END): that philosophy holds when a rejected
+      # writing agent lets downstream fail naturally on the missing
+      # artifact, but `fix`'s downstream is a RE-RUN of the step that just
+      # failed — so reject must halt, not loop. Routes/halts like
+      # STOP_SCOPE_VIOLATION.
       - id: FIX_REJECTED_END
-        type: end-event
-        name: "Fix Rejected"
+        type: error-end-event
+        name: "Fix Declined — Run Halted"
 
     sequence-flows:
       - {from: APPROVE_PRE,      to: GATE_APPROVED_PRE}
