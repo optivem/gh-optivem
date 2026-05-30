@@ -53,6 +53,20 @@ type RawNode struct {
 	// auto-yes or prompt. Default: "prompt" on approve nodes, "human" on
 	// human-STOP nodes — driver-side, not encoded here.
 	Category string `yaml:"category,omitempty"`
+	// MaxVisits caps how many times runProcess dispatches this node within
+	// a single process invocation. On the (N+1)th arrival the engine routes
+	// to OnMaxVisits instead of executing the node body — a per-node
+	// *semantic* cap layered UNDER the engine-wide maxDispatchesPerProcess
+	// catastrophe backstop (run.go). It bounds fixer-retry loops (the
+	// verify-tests-{pass,fail} FIX_* → RUN_TESTS loopbacks) before a third
+	// opus·high fixer pass is ever spent. Zero (the default) means uncapped.
+	// Declared together with OnMaxVisits; validated in buildProcess.
+	MaxVisits int `yaml:"max-visits,omitempty"`
+	// OnMaxVisits names the node runProcess routes to once this node's
+	// MaxVisits cap is reached — typically an error-end-event that halts the
+	// process for human adjudication. Required when MaxVisits > 0 and must
+	// reference a node in the same process.
+	OnMaxVisits string `yaml:"on-max-visits,omitempty"`
 }
 
 // approvalPrimitives is the closed set of primitive process IDs that
@@ -184,6 +198,23 @@ func buildProcess(id string, rp rawProcess) (*Process, error) {
 	}
 	if _, ok := process.Nodes[rp.Start]; !ok {
 		return nil, fmt.Errorf("process %q: start node %q not in nodes list", id, rp.Start)
+	}
+	// Per-node visit caps: max-visits and on-max-visits are declared
+	// together, and on-max-visits must target a node in this process
+	// (runProcess routes there in place of the over-cap dispatch).
+	for _, rn := range rp.Nodes {
+		if rn.MaxVisits == 0 && rn.OnMaxVisits == "" {
+			continue
+		}
+		if rn.MaxVisits <= 0 {
+			return nil, fmt.Errorf("process %q node %q: on-max-visits set without a positive max-visits", id, rn.ID)
+		}
+		if rn.OnMaxVisits == "" {
+			return nil, fmt.Errorf("process %q node %q: max-visits set without an on-max-visits target", id, rn.ID)
+		}
+		if _, ok := process.Nodes[rn.OnMaxVisits]; !ok {
+			return nil, fmt.Errorf("process %q node %q: on-max-visits references unknown node %q", id, rn.ID, rn.OnMaxVisits)
+		}
 	}
 	for _, re := range rp.SequenceFlows {
 		if _, ok := process.Nodes[re.From]; !ok {

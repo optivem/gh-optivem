@@ -229,6 +229,7 @@ func (e *Engine) RunProcess(name string, ctx *Context) error {
 func (e *Engine) runProcess(process *Process, ctx *Context) error {
 	cur := process.Start
 	dispatches := 0
+	visits := map[string]int{}
 	for cur != "" {
 		if dispatches >= maxDispatchesPerProcess {
 			return fmt.Errorf("process %q: exceeded %d dispatches (suspected loopback with unchanging gate state; last node %q)", process.ID, maxDispatchesPerProcess, cur)
@@ -238,6 +239,16 @@ func (e *Engine) runProcess(process *Process, ctx *Context) error {
 		if !ok {
 			return fmt.Errorf("process %q: dangling reference to node %q", process.ID, cur)
 		}
+		// Per-node visit cap (max-visits): on the (N+1)th arrival at a
+		// capped node, route to on-max-visits WITHOUT executing the node
+		// body — so the over-cap dispatch (e.g. a third opus·high fixer
+		// pass) is never spent. Layered under maxDispatchesPerProcess,
+		// which still catches non-progressing loops the cap doesn't govern.
+		if node.Raw.MaxVisits > 0 && visits[cur] >= node.Raw.MaxVisits {
+			cur = node.Raw.OnMaxVisits
+			continue
+		}
+		visits[cur]++
 		if node.Fn == nil {
 			return fmt.Errorf("process %q node %q: NodeFn not bound (call Bind first)", process.ID, cur)
 		}

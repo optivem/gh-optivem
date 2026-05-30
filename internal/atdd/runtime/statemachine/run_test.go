@@ -1314,3 +1314,261 @@ processes:
 	}
 }
 
+// TestMaxVisits_RoutesToOnMaxVisitsBeforeOverCapDispatch is the isolated
+// proof of the per-node visit cap (plan 20260530-1339 Item 1). WORK
+// self-loops unconditionally — under today's engine it would spin until
+// maxDispatchesPerProcess fires ~10000 dispatches later. With
+// `max-visits: 2` + `on-max-visits: GAVE_UP`, the engine dispatches WORK
+// exactly twice (attempt 1, attempt 2) and on the third arrival routes to
+// GAVE_UP (an error-end-event) WITHOUT executing the node body a third
+// time. The assertions pin both halves of the contract:
+//   - the action fires exactly N=2 times (the over-cap pass is never spent), and
+//   - the run terminates via GAVE_UP, NOT via the 10000-dispatch backstop.
+func TestMaxVisits_RoutesToOnMaxVisitsBeforeOverCapDispatch(t *testing.T) {
+	const yaml = `
+processes:
+  loop:
+    name: "Loop"
+    start: WORK
+    nodes:
+      - id: WORK
+        type: service-task
+        action: do-work
+        name: "Work"
+        max-visits: 2
+        on-max-visits: GAVE_UP
+      - id: GAVE_UP
+        type: error-end-event
+        name: "Gave Up After 2 Attempts"
+    sequence-flows:
+      - {from: WORK, to: WORK}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+
+	workCalls := 0
+	eng.ActionFn = func(name string) NodeFn {
+		return func(ctx *Context) Outcome {
+			if name == "do-work" {
+				workCalls++
+			}
+			return Outcome{}
+		}
+	}
+	eng.AgentFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+
+	err = eng.RunProcess("loop", NewContext())
+	if err == nil {
+		t.Fatal("RunProcess returned nil; want error-end-event halt from GAVE_UP")
+	}
+	if !strings.Contains(err.Error(), "GAVE_UP") {
+		t.Errorf("halt error = %q; want it to reference GAVE_UP (the on-max-visits target)", err.Error())
+	}
+	if strings.Contains(err.Error(), "exceeded") {
+		t.Errorf("halt error = %q; the run hit the maxDispatchesPerProcess backstop instead of the max-visits cap", err.Error())
+	}
+	if workCalls != 2 {
+		t.Errorf("do-work fired %d time(s), want 2 — the cap must route BEFORE the (N+1)th node-body dispatch", workCalls)
+	}
+}
+
+// TestMaxVisits_LoadValidation pins the buildProcess guards on the paired
+// max-visits / on-max-visits fields: they are declared together and the
+// target must exist in the same process. Each case is a wiring bug that
+// must fail fast at load time, not surface as a dangling route mid-run.
+func TestMaxVisits_LoadValidation(t *testing.T) {
+	cases := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{
+			name:    "max-visits without on-max-visits",
+			wantErr: "without an on-max-visits target",
+			yaml: `
+processes:
+  p:
+    name: "P"
+    start: A
+    nodes:
+      - id: A
+        type: service-task
+        action: noop
+        name: "A"
+        max-visits: 2
+    sequence-flows:
+      - {from: A, to: A}
+`,
+		},
+		{
+			name:    "on-max-visits without max-visits",
+			wantErr: "without a positive max-visits",
+			yaml: `
+processes:
+  p:
+    name: "P"
+    start: A
+    nodes:
+      - id: A
+        type: service-task
+        action: noop
+        name: "A"
+        on-max-visits: B
+      - id: B
+        type: error-end-event
+        name: "B"
+    sequence-flows:
+      - {from: A, to: A}
+`,
+		},
+		{
+			name:    "on-max-visits targets unknown node",
+			wantErr: "references unknown node",
+			yaml: `
+processes:
+  p:
+    name: "P"
+    start: A
+    nodes:
+      - id: A
+        type: service-task
+        action: noop
+        name: "A"
+        max-visits: 2
+        on-max-visits: NOWHERE
+    sequence-flows:
+      - {from: A, to: A}
+`,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := LoadBytes([]byte(c.yaml))
+			if err == nil {
+				t.Fatalf("LoadBytes succeeded; want error containing %q", c.wantErr)
+			}
+			if !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("error = %q; want it to contain %q", err.Error(), c.wantErr)
+			}
+		})
+	}
+}
+
+// TestVerifyTests_FixLoopHaltsAtCap is the flow-level proof of the
+// fix-attempt cap on the REAL embedded process-flow (plan 20260530-1339
+// Items 2-4). It drives verify-tests-pass / verify-tests-fail with a
+// run-command stub that NEVER converges — it always re-stamps the outcome
+// that routes back into the fixer — so under today's flow the FIX_* node
+// would re-dispatch until maxDispatchesPerProcess fires ~10000 dispatches
+// later. With `max-visits: 2` + `on-max-visits: FIX_LOOP_EXHAUSTED`, the
+// walk must instead halt at FIX_LOOP_EXHAUSTED after exactly N=2 fix
+// attempts.
+//
+// The assertions pin the SPECIFIC halt, not the 10000 backstop:
+//   - the error references FIX_LOOP_EXHAUSTED and NOT "exceeded … dispatches", and
+//   - run-command fired exactly N+1=3 times (RUN_TESTS runs once per lap;
+//     the 3rd lap's FIX arrival is intercepted before re-dispatch).
+//
+// feedback_statemachine_test_loop_hazard: the cap (and, failing it, the
+// 10000 backstop) bounds this fixture, so it cannot 20GB the suite even
+// if the cap regressed — but we assert on the cap, so a regression to the
+// backstop fails the run-command-count check loudly rather than hanging.
+func TestVerifyTests_FixLoopHaltsAtCap(t *testing.T) {
+	cases := []struct {
+		proc        string
+		testOutcome string
+		succeeded   bool
+	}{
+		// verify-tests-pass routes to FIX when tests unexpectedly FAIL.
+		{proc: "verify-tests-pass", testOutcome: "fail", succeeded: false},
+		// verify-tests-fail routes to FIX when must-fail tests unexpectedly PASS.
+		{proc: "verify-tests-fail", testOutcome: "pass", succeeded: true},
+	}
+	for _, c := range cases {
+		t.Run(c.proc, func(t *testing.T) {
+			eng, err := LoadDefault()
+			if err != nil {
+				t.Fatalf("LoadDefault: %v", err)
+			}
+
+			runCommandCalls := 0
+			eng.ActionFn = func(name string) NodeFn {
+				switch name {
+				case "run-command":
+					return func(ctx *Context) Outcome {
+						runCommandCalls++
+						// Never converge: re-stamp the outcome that routes
+						// back into the fixer on every lap.
+						ctx.Set("command-succeeded", c.succeeded)
+						ctx.Set("test-outcome", c.testOutcome)
+						return Outcome{}
+					}
+				case "validate-outputs-and-scopes":
+					return func(ctx *Context) Outcome {
+						ctx.Set("outputs-and-scopes-valid", true)
+						return Outcome{}
+					}
+				default:
+					return func(ctx *Context) Outcome { return Outcome{} }
+				}
+			}
+			eng.AgentFn = func(name string) NodeFn {
+				return func(ctx *Context) Outcome { return Outcome{} }
+			}
+			eng.GateFn = func(name string) NodeFn {
+				switch name {
+				case "approval-outcome":
+					return func(ctx *Context) Outcome { return Outcome{Value: "approved"} }
+				case "fix-on-failure-enabled":
+					return func(ctx *Context) Outcome {
+						return Outcome{Bool: ctx.Params["fix-on-failure"] != "false"}
+					}
+				default:
+					return func(ctx *Context) Outcome {
+						v, ok := ctx.State[name]
+						if !ok {
+							return Outcome{}
+						}
+						switch t := v.(type) {
+						case bool:
+							return Outcome{Bool: t}
+						case string:
+							return Outcome{Value: t}
+						default:
+							return Outcome{}
+						}
+					}
+				}
+			}
+			if err := eng.Bind(); err != nil {
+				t.Fatalf("Bind: %v", err)
+			}
+
+			ctx := NewContext()
+			ctx.Params["suite"] = "acceptance"
+			ctx.Params["test-names"] = "synthetic-test"
+			err = eng.RunProcess(c.proc, ctx)
+			if err == nil {
+				t.Fatalf("RunProcess(%s) returned nil; want halt at FIX_LOOP_EXHAUSTED", c.proc)
+			}
+			if !strings.Contains(err.Error(), "FIX_LOOP_EXHAUSTED") {
+				t.Fatalf("RunProcess(%s) error = %q; want it to reference FIX_LOOP_EXHAUSTED", c.proc, err.Error())
+			}
+			if strings.Contains(err.Error(), "exceeded") {
+				t.Errorf("RunProcess(%s) hit the maxDispatchesPerProcess backstop, not the max-visits cap: %q", c.proc, err.Error())
+			}
+			// N=2 fix attempts => RUN_TESTS runs on laps 1, 2, and 3 (the
+			// 3rd lap routes to the halt at the FIX arrival, before re-run).
+			if runCommandCalls != 3 {
+				t.Errorf("run-command fired %d time(s), want 3 (N+1) — the cap must halt after exactly 2 fix attempts", runCommandCalls)
+			}
+		})
+	}
+}
+
