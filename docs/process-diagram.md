@@ -716,6 +716,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    AGENT_FIX_EXHAUSTED((⚡))
     APPROVE_POST[Confirm Approval — see § approve]
     APPROVE_PRE[Request Approval — see § approve]
     EXECUTE_AGENT_END(( ))
@@ -756,7 +757,7 @@ flowchart TD
     class RUN_AGENT agentNode
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class EXECUTE_AGENT_OUTPUT_REJECTED_END,STOP_SCOPE_VIOLATION errorEndNode
+    class AGENT_FIX_EXHAUSTED,EXECUTE_AGENT_OUTPUT_REJECTED_END,STOP_SCOPE_VIOLATION errorEndNode
 ```
 
 ## Execute Command
@@ -764,6 +765,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     APPROVE_PRE[Request Approval — see § approve]
+    COMMAND_FIX_EXHAUSTED((⚡))
     EXECUTE_COMMAND_END(( ))
     EXECUTE_COMMAND_REJECTED_END(( ))
     FIX[Fix the Failure — see § fix]
@@ -784,6 +786,9 @@ flowchart TD
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class RUN_COMMAND serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class COMMAND_FIX_EXHAUSTED errorEndNode
 ```
 
 ## Fix
@@ -793,13 +798,16 @@ flowchart TD
     APPROVE_PRE[Request Approval — see § approve]
     EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
     FIX_END(( ))
-    FIX_REJECTED_END(( ))
+    FIX_REJECTED_END((⚡))
     GATE_APPROVED_PRE{Approval Outcome?}
 
     APPROVE_PRE --> GATE_APPROVED_PRE
     GATE_APPROVED_PRE -- Approved --> EXECUTE_AGENT
     GATE_APPROVED_PRE -- Rejected --> FIX_REJECTED_END
     EXECUTE_AGENT --> FIX_END
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class FIX_REJECTED_END errorEndNode
 ```
 
 ## Redesign External-System Structure
