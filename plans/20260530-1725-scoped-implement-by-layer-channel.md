@@ -173,6 +173,17 @@ signal is the **commit** — the `.gh-optivem/runs/` journal is forensic and
 machine-local (records *what ran*, never *where to resume*, and never leaves the
 mob's machine). Four parts, each reusing an existing primitive:
 
+> **Non-goal — there is NO status file.** Do not introduce a `progress.json`, a
+> `.gh-optivem/state`, a resume cursor, or any persisted "current phase" marker.
+> The status store **is the git repository**: a phase's "done-ness" is read back
+> out of its committed write-scope files each run (see below). A sidecar status
+> file would be *wrong*, not just redundant — it lives on one clone and the
+> handoff crosses clones, so a teammate pulling on another machine would see it
+> absent or stale. The commit is the only thing that travels; therefore the
+> commit is the only thing that may carry status. The `.gh-optivem/runs/`
+> journal is written but **must stay read-only for resume** — it is diagnostics,
+> not a cursor.
+
 **1. A phase's `write:` scope IS its artifact footprint (reuse — do not invent a
 map).** Every writing-agent MID already declares the layers it may modify in its
 inline `write:` set on the `EXECUTE_AGENT` node, accessed via
@@ -281,6 +292,12 @@ to check — only the shared upstream one.)
   `channels:` SSoT (1702 plan).
 - **Do not add a diagram-regeneration step** if `process-flow.yaml` is touched
   (the regenerate-diagram GH Actions workflow races a local regen).
+- **Do not persist a resume status file.** No `progress.json`, no
+  `.gh-optivem/state`, no "current phase" cursor — the status store IS the git
+  tree (committed write-scope files), read back each run. A sidecar marker lives
+  on one clone and breaks the cross-clone handoff. The `.gh-optivem/runs/`
+  journal stays read-only for resume (diagnostics only). See the "Resume
+  mechanism" Non-goal.
 
 ## Related
 
