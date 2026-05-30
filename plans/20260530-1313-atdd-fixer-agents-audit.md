@@ -216,9 +216,10 @@ are substituted in `clauderun.go::renderPrompt`.
 - **Item 6 (spin-off): bound the verify→fix loop (Q2).** A
   max-iteration guard / escalate-to-human after N failed fix attempts in
   `verify-tests-pass` / `verify-tests-fail`. Harness-side
-  (`process-flow.yaml` + engine), not a prompt edit — write a fresh plan
-  ([[feedback_new_plan_not_extend]]) when picked up. Highest-severity
-  finding; flagged here, not solved here.
+  (`process-flow.yaml` + engine), not a prompt edit. Highest-severity
+  finding; flagged here, not solved here. **Fresh plan written:**
+  [[20260530-1339-bound-verify-fix-loop]] (skeleton — refine before
+  executing).
 - **Item 7 (spin-off): model/effort tuning experiment (T5).** Trial
   `missing-output-fixer` and `command-failed-fixer` at a cheaper tier
   (e.g. sonnet · high or opus · medium) and measure fix success across a
