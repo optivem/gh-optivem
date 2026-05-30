@@ -1,6 +1,6 @@
 # Project-declared `channels:` + channel-by-channel system implementation
 
-**Status:** proposed — items 1–2 landed (config schema + validation + write-at-init); items 3–6 remain
+**Status:** proposed — items 1–3 landed (config schema + validation + write-at-init + ChannelType codegen + shop backfill); items 4–6 remain
 **Created:** 2026-05-30 17:02 CEDT
 
 ## Problem
@@ -154,27 +154,17 @@ nothing the process can iterate to implement one channel at a time.
 
 ## Items
 
-> Items 1–2 landed 2026-05-30 (config schema + closed-enum validation in
+> Items 1–3 landed 2026-05-30 (config schema + closed-enum validation in
 > `internal/projectconfig/{config,channels}.go` + `channels_test.go`;
 > write-at-init in `internal/steps/optivem_yaml.go::BuildOptivemYAML` via
-> `DefaultChannels()`). Item numbers below are unchanged so the Cross-repo note
-> and D-references still resolve. **Items 4, 5, 6 are a coupled unit** — item 5's
-> prompt references `${channel}`/`${common}` params that only item 4's caller
-> binds, and rendering hard-fails on unfilled placeholders
-> (`clauderun.go:574`), so item 5 must not land before item 4.
+> `DefaultChannels()`; ChannelType codegen in
+> `internal/templates/channeltype.go` wired through `copySystemTests`, plus the
+> `channels: [api, ui]` backfill across shop's 12 config files). Item numbers
+> below are unchanged so the D-references still resolve. **Items 4, 5, 6 are a
+> coupled unit** — item 5's prompt references `${channel}`/`${common}` params
+> that only item 4's caller binds, and rendering hard-fails on unfilled
+> placeholders (`clauderun.go:574`), so item 5 must not land before item 4.
 
-3. **Generate `ChannelType.{cs,java,ts}` from `channels:`** in the scaffold
-   templates — the SSoT codegen that retires the three hand-maintained copies.
-   Casing resolved (see "Resolved during execution"): emit the constant *value*
-   via an **uppercase transform** of the lowercase token (`api` → `"API"`); the
-   constant *name* is idiomatic uppercase; do **not** touch `tests.yaml`'s
-   `-e CHANNEL=API` literals. **Scope note:** there is no existing codegen for
-   these files — today `ChannelType.*` is copied verbatim from the shop template
-   by `apply_template.go` / `replacements.go` with name substitution only. This
-   item is a *new generation step* across three languages, not a small edit, and
-   carries its own cross-repo backfill (see Cross-repo note). Reuse
-   `projectconfig.DefaultChannels()` / the `canonicalChannels` enum as the token
-   source where the codegen runs server-side.
 4. **Static-unroll the channel loop in the caller (A2 — per D7)**
    (`process-flow.yaml` + the engine/loader): in `change-system-behavior`, read
    `channels:` at process-construction time and synthesize **one call-activity
@@ -198,16 +188,6 @@ nothing the process can iterate to implement one channel at a time.
    so fixture churn is minimal. **Audit the gate fixtures before running the
    statemachine tests** and watch RAM — even though the static unroll has no
    loopback by design, the statemachine loop hazard warrants the check.
-
-## Cross-repo note
-
-- Item 3's backfill (`channels: [api, ui]`) lands in the **`optivem/shop`**
-  repo, not in `gh-optivem`. Note: shop has **no single `gh-optivem.yaml`** — it
-  carries **12 per-flavor config files** (`gh-optivem-{monolith,multitier}-{dotnet,
-  java,typescript}{,-legacy}.yaml`). The backfill must add `channels: [api, ui]`
-  to all of them (validation accepts absence, so this is documentation of the
-  SSoT, not a correctness fix) and re-run shop's `validate-all-gh-optivem-config.sh`.
-  Treat as a separate, gated commit in that repo.
 
 ## Do NOT
 

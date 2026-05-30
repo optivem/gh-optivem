@@ -7,6 +7,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/templates"
 )
 
@@ -120,6 +121,11 @@ func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string)
 	files.CopyDir(filepath.Join(shop, Expand(Names.ShopDockerDir, vars)), dockerDst)
 
 	templates.CopyVersion(shop, repoDir, arch, systemLang)
+
+	// Regenerate ChannelType from the declared channel set (the SSoT), replacing
+	// the verbatim copy. DefaultChannels() is the scaffold-authoritative set —
+	// the same source BuildOptivemYAML writes into gh-optivem.yaml's channels:.
+	templates.WriteChannelType(testDst, testLang, projectconfig.DefaultChannels())
 	return testDst
 }
 
