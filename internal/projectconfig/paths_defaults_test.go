@@ -117,7 +117,7 @@ func TestDefaultPaths_EmptyForPartialConfig(t *testing.T) {
 
 // TestDefaultPaths_EmptyForUnknownLanguage — unsupported test languages
 // (e.g. an early-stage --test-lang=python) fall through to nil so
-// Validate's lang enum check fires before MaterializeProject would.
+// Validate's lang enum check fires and rejects the language cleanly.
 func TestDefaultPaths_EmptyForUnknownLanguage(t *testing.T) {
 	t.Parallel()
 	if got := DefaultPaths("python", "system-test", "shop"); got != nil {
@@ -128,8 +128,8 @@ func TestDefaultPaths_EmptyForUnknownLanguage(t *testing.T) {
 // TestDefaultPaths_KeysMatchPlaceholderDoctrine — the canonical key set
 // must stay aligned with the Family B doctrine. A drift here would
 // mean newly-scaffolded projects ship a paths: block that references
-// unknown keys (or omits keys the phase docs reference), and
-// MaterializeProject would error on first run.
+// unknown keys (or omits keys the phase docs reference), and the
+// phase-doc placeholder substitution at dispatch would fail on those keys.
 //
 // See `internal/projectconfig/path-keys.md` for the
 // canonical-key vocabulary doc.

@@ -203,9 +203,9 @@ func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 // TestBuildOptivemYAML_PathsBlockSeededPerLanguage — the scaffolder emits
 // a non-empty `paths:` Family B block whose keys match the placeholder
 // doctrine. Without this block a freshly-scaffolded project would fail
-// MaterializeProject on first dispatch (any phase doc referencing
-// ${driver-port} / ${driver-adapter} / ${external-system-driver-*} would
-// surface as an unfilled placeholder).
+// on first dispatch (any phase doc referencing ${driver-port} /
+// ${driver-adapter} / ${external-system-driver-*} would surface as an
+// unfilled placeholder).
 func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {

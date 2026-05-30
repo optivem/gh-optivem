@@ -1,8 +1,8 @@
 // Package expand provides the shared ${name} placeholder substitution
-// primitive used by both ATDD agent-prompt rendering (clauderun) and
-// phase-doc sync materialization (assets/sync). Both call sites use the
-// same syntax against a flat name→value map, so the substitution + the
-// guardrail that catches missing keys live here as one package.
+// primitive used by ATDD agent-prompt rendering (clauderun): a flat
+// name→value map is substituted into the prompt body, with a guardrail
+// that catches missing keys. The substitution + guardrail live here as one
+// package so the syntax stays consistent across any future call site.
 //
 // The package is a leaf — it depends only on stdlib regexp/strings — so
 // it can be imported from any layer without creating a cycle.

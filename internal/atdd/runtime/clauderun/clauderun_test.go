@@ -155,10 +155,9 @@ func newOpts() Options {
 		// minimal acceptance-test-writer-shaped scope so dispatch tests
 		// render cleanly. Tests exercising scope-specific behaviour override
 		// these.
-		ScopeRead:     []string{"at-test", "dsl-port"},
-		ScopeWrite:    []string{"at-test", "dsl-port", "dsl-core"},
-		ProjectConfig: cfg,
-		Placeholders:  cfg.PlaceholderMap(),
+		ScopeRead:    []string{"at-test", "dsl-port"},
+		ScopeWrite:   []string{"at-test", "dsl-port", "dsl-core"},
+		Placeholders: cfg.PlaceholderMap(),
 		// Discard banners so test output stays clean.
 		Stdout: io.Discard,
 		Stderr: io.Discard,
@@ -249,17 +248,9 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 	// dispatch time; for the render test we supply them directly.
 	opts.ScopeRead = []string{"system-path"}
 	opts.ScopeWrite = []string{"system-path"}
-	// ProjectConfig drives the ${scope-block} resolver — it joins each
-	// key against cfg.PlaceholderMap(). Seed a minimal monolith config so
-	// `system-path` resolves to a concrete path in the rendered block.
-	opts.ProjectConfig = &projectconfig.Config{
-		System: projectconfig.System{
-			Architecture:    projectconfig.ArchMonolith,
-			Path:            "system/monolith/java",
-			Lang:            "java",
-			DbMigrationPath: projectconfig.DefaultDbMigrationPath,
-		},
-	}
+	// The ${scope-block} resolver joins each scope key against
+	// opts.Placeholders; `system-path` is seeded in the Placeholders map
+	// below so it resolves to a concrete path in the rendered block.
 	// implement-system's body references ${checklist}, now load-bearing.
 	// Production dispatch fills this from ctx.State["checklist"]
 	// (populated by parse-ticket); supply directly so the no-leftover-${...}
@@ -401,168 +392,13 @@ func TestRenderPrompt_ReturnsErrorForUnknownAgent(t *testing.T) {
 	}
 }
 
-// Step 6/D6 stripped the inlined `### Reference: ...` blocks from every
-// prompt body. The external-system doctrine that previously distinguished
-// the two task subtype prompts was inlined from
-// references/atdd/architecture/driver-adapter.md; after the strip, both
-// subtype files point at that doc via ${references-root} instead of
-// inlining it, so the bodies are now identical except for routing. The
-// previous "external subtype includes doctrine inline / system subtype
-// excludes it" assertions are obsolete — the doctrine is read on-demand
-// from the synced ~/.gh-optivem/references/atdd/architecture/driver-adapter.md
-// by both variants. Subtype routing still works via the task-name lookup
-// in process-flow.yaml.
-
-// TestRenderPrompt_ReferencesRootSubstitutes covers the placeholder that
-// lets prompt bodies reference the per-user synced references root via
-// ${references-root}. The substituted value is an absolute path so the
-// agent's Read tool resolves it regardless of working directory.
-// Uses PromptOverride (which IS expanded, unlike OverrideText) to
-// inject a body that references the placeholder.
-func TestRenderPrompt_ReferencesRootSubstitutes(t *testing.T) {
-	opts := newOpts()
-	opts.PromptOverride = "Read ${references-root}/atdd/architecture/dsl-core.md."
-
-	got, err := renderPrompt(opts)
-	if err != nil {
-		t.Fatalf("renderPrompt: %v", err)
-	}
-	if strings.Contains(got, "${references-root}") {
-		t.Errorf("expected ${references-root} substituted; got: %q", got)
-	}
-	// references_root substitutes to an OS-native path (Windows uses
-	// backslashes); the literal trailing "/atdd/..." in the template
-	// stays as-is. Assert the two halves independently so the test
-	// is platform-portable.
-	if !strings.Contains(got, filepath.Join(".gh-optivem", "references")) {
-		t.Errorf("expected ${references-root} resolved to ~/.gh-optivem/references prefix; got: %q", got)
-	}
-	if !strings.Contains(got, "/atdd/architecture/dsl-core.md") {
-		t.Errorf("expected literal suffix preserved; got: %q", got)
-	}
-}
-
-// TestDispatch_MaterializesProjectReferencesWhenProjectConfigSet covers the
-// project-local-references wiring: when Options.ProjectConfig and RepoPath
-// are both set, Dispatch calls MaterializeProject before render and the
-// rendered prompt's ${references-root} resolves to
-// <RepoPath>/.gh-optivem/references instead of the user-global home path.
-//
-// To keep the test independent of the current state of the embedded
-// `runtime/references/**/*.md` corpus (some teaching docs intentionally
-// contain ${name}-shaped meta-references that the substituter can't
-// distinguish from real placeholders), the test pre-writes a sidecar
-// that matches the PlaceholderMap exactly. MaterializeProject's value-
-// based staleness check returns "not stale" and short-circuits without
-// walking the embedded tree — exercising the wiring path that matters
-// here: Dispatch → MaterializeProject → projectReferencesRoot → renderPrompt.
-func TestDispatch_MaterializesProjectReferencesWhenProjectConfigSet(t *testing.T) {
-	repoPath := t.TempDir()
-	cfg := &projectconfig.Config{
-		System: projectconfig.System{
-			Architecture: "monolith",
-			Path:         "system",
-			Repo:         "x/y",
-			Lang:         "typescript",
-		},
-		SystemTest: projectconfig.TierSpec{
-			Path:  "system-test",
-			Repo:  "x/y",
-			Lang:  "typescript",
-			Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "y"),
-		},
-	}
-	preWriteFreshSidecar(t, repoPath, cfg.PlaceholderMap())
-
-	gitFake := &fakeGit{
-		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
-	}
-	claudeFake := &fakeClaude{}
-
-	opts := newOpts()
-	opts.RepoPath = repoPath
-	opts.ProjectConfig = cfg
-	opts.PromptOverride = "Read ${references-root}/atdd/architecture/system.md."
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	if len(claudeFake.calls) != 1 {
-		t.Fatalf("expected 1 claude call, got %d", len(claudeFake.calls))
-	}
-	prompt := claudeFake.calls[0].Prompt
-	wantPrefix := filepath.Join(repoPath, ".gh-optivem", "references")
-	if !strings.Contains(prompt, wantPrefix) {
-		t.Errorf("expected ${references-root} resolved to %q in prompt; got: %q", wantPrefix, prompt)
-	}
-}
-
-// preWriteFreshSidecar writes a materialize sidecar that matches
-// `placeholders` so the next MaterializeProject call against repoPath
-// short-circuits via projectStale=false. Used to test the Dispatch →
-// materialize wiring without exercising the embedded-doc walk.
-func preWriteFreshSidecar(t *testing.T, repoPath string, placeholders map[string]string) {
-	t.Helper()
-	sidecarDir := filepath.Join(repoPath, ".gh-optivem")
-	if err := os.MkdirAll(sidecarDir, 0o755); err != nil {
-		t.Fatalf("mkdir sidecar dir: %v", err)
-	}
-	var b strings.Builder
-	b.WriteString("binary_version: \"\"\nplaceholders:\n")
-	for k, v := range placeholders {
-		b.WriteString("  ")
-		b.WriteString(k)
-		b.WriteString(": ")
-		b.WriteString(v)
-		b.WriteString("\n")
-	}
-	if err := os.WriteFile(filepath.Join(sidecarDir, ".materialized.yaml"), []byte(b.String()), 0o644); err != nil {
-		t.Fatalf("write sidecar: %v", err)
-	}
-}
-
-// TestDispatch_FallsBackToUserGlobalReferencesRootWhenProjectConfigNil covers
-// the legacy / scaffold-flow path: callers without a ProjectConfig get
-// ${references-root} resolved against assetsync.ReferencesRoot() and no
-// project-local materialization happens. Regression guard so a future
-// "always materialize" change doesn't break CLI utilities and tests that
-// legitimately have no project context.
-func TestDispatch_FallsBackToUserGlobalReferencesRootWhenProjectConfigNil(t *testing.T) {
-	repoPath := t.TempDir()
-	gitFake := &fakeGit{
-		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
-	}
-	claudeFake := &fakeClaude{}
-
-	opts := newOpts()
-	opts.RepoPath = repoPath
-	// ProjectConfig must be nil to exercise the legacy fallback path.
-	// newOpts() seeds it for the common scope_block case — clear here.
-	opts.ProjectConfig = nil
-	opts.PromptOverride = "Read ${references-root}/atdd/architecture/system.md."
-
-	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
-		t.Fatalf("Dispatch: %v", err)
-	}
-	prompt := claudeFake.calls[0].Prompt
-	// The user-global root never lives under the test's tempdir.
-	projectLocal := filepath.Join(repoPath, ".gh-optivem", "references")
-	if strings.Contains(prompt, projectLocal) {
-		t.Errorf("expected NOT to substitute project-local references root; got: %q", prompt)
-	}
-	// The sidecar must NOT exist — materialize should not have fired.
-	if _, err := os.Stat(filepath.Join(repoPath, ".gh-optivem", ".materialized.yaml")); err == nil {
-		t.Errorf("expected no sidecar when ProjectConfig is nil")
-	}
-}
-
 // TestRenderPrompt_LanguageSubstitutes covers the D10 placeholder that
-// lets prompt bodies select a per-language reference doc slice via
-// ${language}. The driver picks the value per phase from project config.
+// lets prompt bodies vary their per-language guidance via ${language}.
+// The driver picks the value per phase from project config.
 func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
 	opts := newOpts()
 	opts.Language = "go"
-	opts.PromptOverride = "Read ${references-root}/code/language-equivalents/${language}.md."
+	opts.PromptOverride = "Apply the ${language} conventions."
 
 	got, err := renderPrompt(opts)
 	if err != nil {
@@ -571,7 +407,7 @@ func TestRenderPrompt_LanguageSubstitutes(t *testing.T) {
 	if strings.Contains(got, "${language}") {
 		t.Errorf("expected ${language} substituted; got: %q", got)
 	}
-	if !strings.Contains(got, "language-equivalents/go.md") {
+	if !strings.Contains(got, "Apply the go conventions.") {
 		t.Errorf("expected ${language} resolved to 'go'; got: %q", got)
 	}
 }
@@ -659,7 +495,7 @@ func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
 	// Use a node_replacements-style PromptOverride that references
 	// ${language} without setting Language. Dispatch's
 	// findUnfilledPlaceholders catches the leftover.
-	opts.PromptOverride = "You are the Test Agent. Read ${references-root}/code/language-equivalents/${language}.md."
+	opts.PromptOverride = "You are the Test Agent. Apply the ${language} conventions."
 	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
 	if err == nil {
 		t.Fatalf("expected error for unset ${language}, got nil")
@@ -1786,23 +1622,14 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.Architecture = "monolith"
 	opts.ScopeRead = []string{"system-path"}
 	opts.ScopeWrite = []string{"system-path"}
-	opts.ProjectConfig = &projectconfig.Config{
-		System: projectconfig.System{
-			Architecture:    projectconfig.ArchMonolith,
-			Path:            "system/monolith/typescript",
-			Lang:            "typescript",
-			DbMigrationPath: projectconfig.DefaultDbMigrationPath,
-		},
-	}
 	opts.Checklist = "- [x] One done\n- [ ] Two pending"
 	opts.PromptLogPath = "/tmp/runs/001-system-implementer.prompt.md"
 	// implement-system's inlined phase-doc body now references the full
 	// CanonicalPathKeys set (driver-{port,adapter}, external-system-driver-
 	// {port,adapter}, at-test, dsl-{port,core}, ct-test) plus sut-namespace
 	// / system-test-path. The production dispatcher fills these from
-	// cfg.PlaceholderMap(); with no SystemTest.Paths in this test's
-	// ProjectConfig, supply them directly so renderPrompt has values to
-	// substitute.
+	// cfg.PlaceholderMap(); supply them directly here so renderPrompt has
+	// values to substitute.
 	opts.Placeholders = map[string]string{
 		"sut-namespace":                  "shop",
 		"system-path":                    "system/monolith/typescript",

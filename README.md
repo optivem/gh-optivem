@@ -432,11 +432,7 @@ gh optivem hooks install                       # install a pre-push hook that re
 
 ## Methodology assets
 
-`gh optivem` ships an embedded reference asset tree (architecture doctrine + per-language equivalents) that auto-syncs to `~/.gh-optivem/references/` on every invocation when the per-user stamp doesn't match the binary version. Auto-sync is disabled by `GH_OPTIVEM_NO_AUTO_SYNC`; the explicit form for users with that escape hatch set is:
-
-```bash
-gh optivem asset sync                          # force-sync embedded assets to ~/.gh-optivem/references/
-```
+`gh optivem` ships its ATDD methodology assets (the per-phase agent prompts and the shared preamble) embedded in the binary. They are fed to the `claude -p` subprocess via argv at dispatch time and are never written to disk in consumer repos — scaffolded projects hold zero ATDD assets locally, and updates propagate simply by upgrading the `gh-optivem` binary.
 
 ## Further reading
 

@@ -26,7 +26,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/approval"
-	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/configinit"
@@ -94,16 +93,6 @@ func main() {
 	// Show subcommands in registration order (workflow order), not alphabetical.
 	// e.g. `config` lists init → validate → preflight, the sequence a user runs.
 	cobra.EnableCommandSorting = false
-
-	// Sync the embedded references asset tree to per-user paths
-	// (~/.gh-optivem/references/) so reference docs are reachable on the
-	// user's filesystem. No-op after the first run when the stamp
-	// matches the binary version. Disabled by GH_OPTIVEM_NO_AUTO_SYNC.
-	if res, err := assetsync.EnsureSynced(version.Version); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to sync gh-optivem assets: %v\n", err)
-	} else if res.Synced {
-		fmt.Fprintln(os.Stderr, res.Notice)
-	}
 
 	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
@@ -201,7 +190,6 @@ func newRootCmd() *cobra.Command {
 		withGroup(newPrCmd(), groupOther),
 		withGroup(newHooksCmd(), groupOther),
 		withGroup(newCleanupCmd(), groupOther),
-		withGroup(newAssetCmd(), groupOther),
 		// `output` is the machine-facing ATDD agent output channel.
 		// Called by an agent from inside its dispatched subprocess; not
 		// useful to operators outside that context. Kept in groupOther
@@ -419,11 +407,10 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 	}
 
 	// ATDD assets no longer install per-repo — they live in gh-optivem's
-	// embedded asset tree and sync to ~/.gh-optivem/ on every gh-optivem
-	// invocation. Consumer repos hold zero ATDD assets on disk. The
-	// --no-atdd flag is retained for backward compatibility but is now a
-	// no-op at init time; the per-user sync escape hatch is the
-	// GH_OPTIVEM_NO_AUTO_SYNC env var.
+	// embedded asset tree (runtime/agents/ + runtime/shared/, fed to the
+	// agent subprocess via argv). Consumer repos hold zero ATDD assets on
+	// disk. The --no-atdd flag is retained for backward compatibility but
+	// is now a no-op at init time.
 
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",

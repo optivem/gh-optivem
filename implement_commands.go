@@ -30,7 +30,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/approval"
-	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
@@ -41,7 +40,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/runner"
-	"github.com/optivem/gh-optivem/internal/version"
 )
 
 // newImplementCmd implements `gh optivem implement --issue N|URL`. The
@@ -89,13 +87,6 @@ kill them.`,
   gh optivem implement --issue 42 --keep-runs 0   # never prune
   gh optivem --auto implement --issue 42 --headless   # auto-approve everything except commit/fix; run claude -p`,
 		Run: func(cmd *cobra.Command, args []string) {
-			// ATDD-consuming command: when the auto-sync escape hatch is
-			// set, the pipeline needs assets at ~/.gh-optivem/references/
-			// that the startup auto-sync would normally provide. Fail
-			// fast rather than dispatch agents whose prompts reference
-			// files that may be missing or out of date.
-			exitOnError(requireFreshAssetsWhenEscapeHatchSet())
-
 			if strings.TrimSpace(issueArg) == "" {
 				exitOnError(errors.New("--issue is required"))
 			}
@@ -196,25 +187,6 @@ func printRunEndBanner(w io.Writer, cfg *projectconfig.Config, ticketURL, ticket
 	}
 	fmt.Fprintln(w)
 	_ = runner.Status(w, sys, runner.StatusOptions{})
-}
-
-// requireFreshAssetsWhenEscapeHatchSet returns the documented staleness
-// error when GH_OPTIVEM_NO_AUTO_SYNC disables the startup auto-sync AND
-// the stamp on disk does not match the binary version. With the escape
-// hatch unset the startup hook has already synced (or attempted to), so
-// this check is a no-op.
-func requireFreshAssetsWhenEscapeHatchSet() error {
-	if !assetsync.IsEscapeHatchSet() {
-		return nil
-	}
-	stale, err := assetsync.Stale(version.Version)
-	if err != nil {
-		return err
-	}
-	if stale {
-		return errors.New(assetsync.EscapeHatchHint)
-	}
-	return nil
 }
 
 // validateKeepRuns surfaces the documented "negative values are rejected"

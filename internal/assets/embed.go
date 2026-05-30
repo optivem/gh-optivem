@@ -6,11 +6,6 @@
 //     disk in consumer repos. Per-phase agent definitions under runtime/agents/atdd/.
 //   - runtime/shared/     — argv-injected preamble + scope rule, prepended
 //     to every agent prompt.
-//   - runtime/references/ — synced to ~/.gh-optivem/references/ and
-//     materialized per-project to <repo>/.gh-optivem/references/ by
-//     internal/assets/sync. Holds the architecture doctrine
-//     (references/atdd/) and the per-language equivalents + testkit
-//     reference docs (references/code/).
 //
 // gh-optivem is the canonical owner of every file in this tree. Consumer
 // repos hold zero ATDD assets on disk; updates propagate when the

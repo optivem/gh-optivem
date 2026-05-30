@@ -50,7 +50,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/files"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/userstate"
-	"github.com/optivem/gh-optivem/internal/version"
 
 	"github.com/mattn/go-isatty"
 )
@@ -551,9 +550,8 @@ func seedScopeState(sCtx *statemachine.Context, cfg *projectconfig.Config) {
 }
 
 // primaryLanguage picks the language seeded into ctx.State["language"] for
-// every dispatch in this run. Prompts that reference per-language docs via
-// `${references-root}/code/language-equivalents/${language}.md` resolve to
-// the right slice on this value.
+// every dispatch in this run. Prompts that vary their guidance per language
+// (via the ${language} placeholder) resolve to the right slice on this value.
 //
 //   - Monolith → cfg.System.Lang.
 //   - Multitier → cfg.System.Backend.Lang. The current ATDD prompts that
@@ -1077,8 +1075,6 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			OutputKeysSpec:     outputKeysSpec,
 			ExpectedOutputs:    expectedOutputs,
 			RepoPath:           opts.RepoPath,
-			ProjectConfig:      cfg,
-			BinaryVersion:      version.Version,
 			Stdout:             opts.Stdout,
 			Stderr:             opts.Stderr,
 			Stdin:              opts.Stdin,

@@ -37,12 +37,10 @@ import (
 	"github.com/fatih/color"
 	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/assets"
-	assetsync "github.com/optivem/gh-optivem/internal/assets/sync"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/expand"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/userstate"
 )
 
@@ -389,24 +387,6 @@ type Options struct {
 	// directory git rev-parse / git log query). Empty → current cwd.
 	RepoPath string
 
-	// ProjectConfig, when non-nil, triggers per-project reference-doc
-	// materialization ahead of prompt rendering. Dispatch calls
-	// assetsync.MaterializeProject against ProjectConfig.PlaceholderMap()
-	// so the agent reads docs with concrete project paths instead of
-	// `${name}` placeholders, and ${references-root} in the rendered
-	// prompt resolves to <RepoPath>/.gh-optivem/references rather than
-	// the user-global ~/.gh-optivem/references. Required alongside
-	// RepoPath — when either is missing, Dispatch falls back to the
-	// user-global references root for backward compat with CLI
-	// utilities and scaffold flows that legitimately have no project
-	// context.
-	ProjectConfig *projectconfig.Config
-
-	// BinaryVersion is the gh-optivem binary version stamped into the
-	// per-project materialization sidecar so a tool upgrade triggers
-	// a re-materialize. Empty matches any sidecar value (used by tests).
-	BinaryVersion string
-
 	// Stdout / Stderr targets. Stdout is the back-compat fallback when Out
 	// is nil (driver populates Out via installLogFileMirror; callers that
 	// bypass that path keep Stdout-only behaviour). Stderr is unaffected
@@ -582,28 +562,10 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	deps = deps.withDefaults()
 	opts = opts.withDefaults()
 
-	// When a ProjectConfig is in hand and we have a project root to write
-	// into, materialize the embedded reference docs against the project's
-	// placeholder map so the agent reads docs with concrete paths. The
-	// returned root is forwarded to renderPrompt so ${references-root}
-	// resolves to the project-local copy. When either field is missing
-	// we leave projectReferencesRoot empty and the user-global references
-	// root applies — the fallback path covers CLI utilities, scaffold
-	// flows, and tests that legitimately have no project context.
-	var projectReferencesRoot string
-	if opts.ProjectConfig != nil && opts.RepoPath != "" {
-		var err error
-		projectReferencesRoot, err = assetsync.MaterializeProject(
-			opts.RepoPath, opts.BinaryVersion, opts.ProjectConfig.PlaceholderMap())
-		if err != nil {
-			return RunResult{}, fmt.Errorf("clauderun: materialize project references: %w", err)
-		}
-	}
-
 	prompt := opts.RawPrompt
 	if prompt == "" {
 		var err error
-		prompt, err = renderPromptWithReferencesRoot(opts, projectReferencesRoot)
+		prompt, err = renderPrompt(opts)
 		if err != nil {
 			return RunResult{}, fmt.Errorf("clauderun: render prompt: %w", err)
 		}
@@ -721,21 +683,8 @@ func writePromptLog(path, prompt string) error {
 // renderPrompt reads the embedded prompt for opts.Agent (or opts.PromptOverride
 // when non-empty), expands ${name} placeholders against the ticket context,
 // and appends opts.OverrideText (if any) as a trailing block. Public-ish for
-// the test file; not exported. ${references-root} resolves to the user-global
-// ~/.gh-optivem/references — callers wanting the project-local materialized
-// copy route through Dispatch (which calls renderPromptWithReferencesRoot
-// with a non-empty root).
+// the test file; not exported.
 func renderPrompt(opts Options) (string, error) {
-	return renderPromptWithReferencesRoot(opts, "")
-}
-
-// renderPromptWithReferencesRoot is the worker behind renderPrompt.
-// projectReferencesRoot, when non-empty, wins for the ${references-root}
-// substitution — Dispatch passes the result of MaterializeProject so the
-// agent reads the project-local references copy. Empty falls back to
-// assetsync.ReferencesRoot() (the user-global path), which is what tests
-// and CLI utilities use.
-func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) (string, error) {
 	var body string
 	if opts.PromptOverride != "" {
 		body = opts.PromptOverride
@@ -762,23 +711,14 @@ func renderPromptWithReferencesRoot(opts Options, projectReferencesRoot string) 
 	// Fixed-schema placeholders win on key collision with NodeParams so a
 	// node author can't accidentally shadow ticket context by reusing a
 	// reserved name in YAML.
-	referencesRoot := projectReferencesRoot
-	if referencesRoot == "" {
-		var err error
-		referencesRoot, err = assetsync.ReferencesRoot()
-		if err != nil {
-			return "", fmt.Errorf("clauderun: resolve references root: %w", err)
-		}
-	}
 	for k, v := range map[string]string{
-		"issue-num":        strconv.Itoa(opts.IssueNum),
-		"issue-title":      opts.IssueTitle,
-		"phase":            opts.NodeDescription,
-		"architecture":     opts.Architecture,
-		"subtype":          opts.Subtype,
-		"changed-files":    opts.ChangedFiles,
-		"references-root":  referencesRoot,
-		"re-entry-policy":  rendererReEntryPolicy,
+		"issue-num":       strconv.Itoa(opts.IssueNum),
+		"issue-title":     opts.IssueTitle,
+		"phase":           opts.NodeDescription,
+		"architecture":    opts.Architecture,
+		"subtype":         opts.Subtype,
+		"changed-files":   opts.ChangedFiles,
+		"re-entry-policy": rendererReEntryPolicy,
 	} {
 		params[k] = v
 	}
