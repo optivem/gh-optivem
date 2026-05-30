@@ -9,7 +9,7 @@ Every ticket and repo-state value you need is already substituted into this prom
 
 ## Scope-bound reads
 
-Read only files in the prompt's `scope:` frontmatter, plus files an explicit Step makes load-bearing. Targeted greps for prompt-named symbols are fine; open-ended exploration is a scope violation.
+Read only files in the prompt's `scope:` frontmatter, plus files an explicit Step makes load-bearing. Targeted greps for prompt-named symbols are fine; open-ended exploration is a scope violation. Do this discovery yourself — **do not dispatch a scouting subagent** (`Explore`, `Task`, `general-purpose`) to map files or structure. A delegated scout returns a summary you cannot trust against the real tree and routes around this rule.
 
 `${changed-files}` is already-substituted context, not a read. The `fix-*` tasks' `git diff` / `git show HEAD:<path>` carve-out applies only to those tasks.
 
