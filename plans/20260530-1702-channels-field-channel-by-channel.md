@@ -79,19 +79,51 @@ nothing the process can iterate to implement one channel at a time.
 - **D3 — `channels:` is the SSoT; scaffold generates `ChannelType.*` from it.**
   Collapses the three hand-maintained constant copies into one declared list.
   Backfill `optivem/shop`'s `gh-optivem.yaml` with `channels: [api, ui]`.
-- **D4 — iteration = static unroll, NO loopback edge.** Because `channels:` is a
-  small static list known at process-construction time, synthesize a sequential
-  per-channel chain rather than a runtime loop. This is deliberate: new loopback
-  edges in `process-flow.yaml` have previously deadlocked the statemachine tests
-  and consumed 20GB+ RAM — a static unroll keeps the process a terminating DAG.
-- **D5 — core done once; later channels are deltas.** The shared core
-  (DTO / entity / service / migration) is channel-agnostic. It is implemented in
-  the **first** channel's node; subsequent channel nodes add only that channel's
-  adapter/template wiring. Avoids re-paying core context and re-running the
-  migration.
-- **D6 — cumulative verify.** Channel node *K* verifies channels `0..K` all pass
-  (not just channel *K*), so greening a later channel cannot silently regress an
-  earlier one.
+- **D4 — iteration = static unroll in the CALLER, NO loopback edge.** Because
+  `channels:` is a small static list known at process-construction time,
+  synthesize a sequential per-channel chain rather than a runtime loop. The
+  unroll lives **one level up, in the caller** (`change-system-behavior`), which
+  invokes the *unchanged* static `implement-and-verify-system` chain **once per
+  channel** — rather than synthesizing N×5 nodes inside that inner process. This
+  is the **token-optimal** shape (see D7): the inner chain and its
+  `VERIFY`/`COMMIT` nodes + params are reused verbatim, so the only synthesized
+  surface is N single call-activity nodes — minimal fixture churn. It is also
+  deliberate on safety: new loopback edges in `process-flow.yaml` have previously
+  deadlocked the statemachine tests and consumed 20GB+ RAM — a static unroll keeps
+  the process a terminating DAG.
+- **D5 — common layer done once; later channels are deltas.** The
+  channel-agnostic **common** layer (DTO / entity / service / migration) is
+  implemented in the **first** channel's dispatch; subsequent channel dispatches
+  add only that channel's adapter/template wiring. Avoids re-paying the common
+  layer's context and re-running the migration. The distinction is carried by a
+  **`common` boolean param** the caller binds per channel — `common: true` on the
+  first channel (build the common layer + this channel's adapter), `common: false`
+  after (adapter delta only). **Named `common`, not `core`**, to avoid conflation
+  with the **DSL core** (`IMPLEMENT_AND_VERIFY_DSL` / `dsl-port-changed`).
+- **D6 — cumulative verify.** Channel dispatch *K* verifies channels `0..K` all
+  pass (not just channel *K*), so greening a later channel cannot silently regress
+  an earlier one.
+- **D7 — engine-loop in the caller (A2), chosen as the token-optimal model.**
+  The channel loop lives in the **process engine**, dispatching `system-implementer`
+  **once per channel** — *not* a single launch where the agent loops internally.
+  Rejected alternatives and why:
+  - **Single launch, agent loops internally (B):** cheapest to build (no engine
+    change) but fails every goal — the per-channel commit checkpoint is lost (the
+    lone `COMMIT_SYSTEM` fires once at the end), the blast radius is the same wide
+    dispatch, and a re-run re-pays the *entire* cross-channel context. It
+    relocates rehearsal-71's problem rather than solving it.
+  - **Unroll N×5 nodes inside `implement-and-verify-system` (A1):** meets the
+    goals but duplicates the `verify`/`commit` nodes per channel, bakes the
+    first-channel `common` asymmetry into the inner chain's *shape*, and balloons
+    the `transitions_test.go` / `phase_scopes_test.go` fixture surface.
+  - **Unroll in the caller, reuse the static inner chain (A2 — chosen):**
+    token-optimal on **both** axes. *Runtime:* each dispatch holds only its
+    channel (+ the common layer on the first), retries are incremental, the common
+    layer is built once (D5). *Maintenance:* the inner 5-node chain and its
+    `suite`/`test-names`/`commit` params are reused verbatim; only N single
+    call-activity nodes are synthesized, so fixture churn is minimal. `common` and
+    `channel` are passed as caller-bound params through the existing strict-mode
+    `ExpandParams` path (process-flow.yaml ~L1054).
 
 ## Open knob (the one thing to confirm during execution)
 
@@ -115,18 +147,27 @@ nothing the process can iterate to implement one channel at a time.
 3. **Generate `ChannelType.{cs,java,ts}` from `channels:`** in the scaffold
    templates (`internal/templates/`) — the SSoT codegen that retires the three
    hand-maintained copies. Resolve the D-open-knob constant-value casing here.
-4. **Static-unroll `implement-and-verify-system` per channel**
-   (`process-flow.yaml` + the engine/loader): read `channels:` at
-   process-construction time and synthesize, per channel,
-   `impl → build → start → verify(channel, cumulative) → commit`, with **no
-   loopback edge**. Add a `channel` param to the per-channel verify scope
-   (follow the existing `suite`/`test-names` param shape). Core-in-first-node
-   per D5.
+4. **Static-unroll the channel loop in the caller (A2 — per D7)**
+   (`process-flow.yaml` + the engine/loader): in `change-system-behavior`, read
+   `channels:` at process-construction time and synthesize **one call-activity
+   node per channel** invoking the *unchanged* static `implement-and-verify-system`
+   chain, with **no loopback edge**. Bind per channel: `channel` (the channel
+   token), `common` (true on the first channel only, per D5), and the cumulative
+   verify scope (channels `0..K`, per D6) — all through the existing strict-mode
+   `ExpandParams` path, following the established `suite`/`test-names` param shape.
+   Do **not** duplicate the inner `verify`/`commit` nodes (that is the rejected
+   A1 shape).
 5. **Make `system-implementer.md` channel-aware.** The dispatch is told which
-   channel to green (param) and the core-vs-channel guidance (core once, in the
-   first channel's dispatch; later dispatches add only the channel delta).
+   channel to green (`channel` param) and reads the `common` param for the
+   layer-vs-delta guidance: when `common: true`, implement the channel-agnostic
+   common layer (DTO / entity / service / migration) **and** this channel's
+   adapter; when `common: false`, implement only this channel's adapter delta.
+   Describe the layer as "the channel-agnostic **common** layer" — never "core"
+   (DSL-core collision).
 6. **Tests + fixture audit.** Update `statemachine/transitions_test.go` and
-   `phase_scopes_test.go`. **Audit the gate fixtures before running the
+   `phase_scopes_test.go` — under A2 the new node surface is confined to the N
+   per-channel call-activity nodes in the caller (the inner chain is unchanged),
+   so fixture churn is minimal. **Audit the gate fixtures before running the
    statemachine tests** and watch RAM — even though the static unroll has no
    loopback by design, the statemachine loop hazard warrants the check.
 
