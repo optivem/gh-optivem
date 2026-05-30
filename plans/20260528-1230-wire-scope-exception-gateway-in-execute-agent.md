@@ -1,23 +1,55 @@
-# ❓❓❓ NEEDS DISCUSSION ❓❓❓
-
-**Open question (2026-05-28):** Should a scope exception route to a new
-`STOP_SCOPE_VIOLATION` halt at all, or should it just fall through to `FIX`?
-
-VJ's position: a scope exception means the BPMN scope was authored
-incorrectly — abnormal behavior, not a legitimate runtime escape hatch.
-`FIX` is the right place because that's where the BPMN gets corrected.
-
-If that holds, this plan should be abandoned, and we likely also want to
-revisit whether the `scope_exception_requested` binding
-(`internal/atdd/runtime/gates/bindings.go:202`) and the envelope-emission
-wiring from plan `20260528-1150-scope-exception-envelope-on-all-prod-agent-mids.md`
-are dead code or should be kept as a diagnostic signal surfaced into FIX.
-
-**Do not execute until this is resolved.**
-
----
-
 # Wire `scope_exception_requested` gateway into `execute-agent`
+
+## Decision (resolved 2026-05-30): wire the gateway — do not fall through to FIX
+
+The 2026-05-28 open question was whether a scope exception should route to
+a new `STOP_SCOPE_VIOLATION` halt, or just fall through to `FIX`.
+
+**Resolved: wire the halt (this plan).** The "fall through to FIX" framing
+rested on the premise that *FIX is where the BPMN gets corrected* — but that
+is false against the code. `FIX` is `{from: FIX, to: RUN_AGENT}`
+(`process-flow.yaml:2166`): it dispatches a fixer agent and loops back to
+**re-run the same agent against the same `scope:`**. A fixer edits code/test
+artifacts, not the `read:`/`write:` scope declarations in `process-flow.yaml`.
+So falling through to FIX does not correct a too-narrow scope — it
+re-dispatches into the identical scope and loops. A scope exception being
+"abnormal — the BPMN was authored wrong, a human must widen the scope" is an
+argument *for* a loud halt, not against it.
+
+Why a dedicated halt over the alternatives:
+
+- **vs. fall-through-to-FIX:** the only loop-free, semantically honest
+  option; FIX cannot fix a mis-authored scope.
+- **vs. reusing `EXECUTE_AGENT_OUTPUT_REJECTED_END`:** that terminal's
+  doc-block (`process-flow.yaml:2141`) pins it to "operator rejected broken
+  output." "Agent refused on scope" is a distinct verdict; merging them
+  discards a distinction the codebase deliberately maintains.
+- **Dead-code closure:** the `scope-exception-requested` binding
+  (`internal/atdd/runtime/gates/bindings.go:209`) and the live envelope
+  emission across the writing-agent prompts (plan `20260528-1150`, committed)
+  are collected-and-ignored today. This plan is the only resolution that
+  gives them a consumer rather than leaving dead code.
+
+## Relationship to plan `20260530-1339-bound-verify-fix-loop` (landed 2026-05-30, `56fe4b9`)
+
+Plan 1339 has already been executed and committed. Confirmed against the
+merged tree:
+
+- It added a general `max-visits` / `on-max-visits` node mechanism and a
+  `FIX_LOOP_EXHAUSTED` error-end-event, but applied the cap **only** to the
+  verify-subprocess FIX nodes (`FIX_UNEXPECTED_FAILING_TESTS`,
+  `FIX_UNEXPECTED_PASSING_TESTS`).
+- It did **not** create `STOP_SCOPE_VIOLATION` and did **not** cap
+  `execute-agent`'s `FIX`. So this plan is still the sole producer of
+  `STOP_SCOPE_VIOLATION` (no node-creation conflict), and `execute-agent`'s
+  `FIX → RUN_AGENT` loop is still uncapped — the decision rationale above
+  holds unchanged.
+
+1339's `max-visits` / `on-max-visits` is now available as a complementary
+backstop, but it is orthogonal to this plan: the gateway fires up-front on
+the agent's explicit envelope, before any FIX attempt; the cap catches
+runaway loops after the fact. Applying a cap to `execute-agent`'s FIX is out
+of scope here.
 
 ## Background
 
