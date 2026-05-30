@@ -726,8 +726,10 @@ flowchart TD
     GATE_APPROVED_PRE{Approval Outcome?}
     GATE_FIX_ON_FAILURE{Fix on Failure Enabled?}
     GATE_OUTPUTS_AND_SCOPES_VALID{Outputs and Scopes Valid?}
+    GATE_SCOPE_EXCEPTION_REQUESTED{Scope Exception Requested?}
     RUN_AGENT["Run agent ${agent} (task: ${task-name})"]
     SNAPSHOT_WORKING_TREE[["Snapshot working tree (per-phase baseline)"]]
+    STOP_SCOPE_VIOLATION((⚡))
     VALIDATE_OUTPUTS_AND_SCOPES[["Validate outputs & scopes"]]
 
     APPROVE_PRE --> GATE_APPROVED_PRE
@@ -735,7 +737,9 @@ flowchart TD
     GATE_APPROVED_PRE -- Rejected --> EXECUTE_AGENT_REJECTED_END
     SNAPSHOT_WORKING_TREE --> RUN_AGENT
     RUN_AGENT --> VALIDATE_OUTPUTS_AND_SCOPES
-    VALIDATE_OUTPUTS_AND_SCOPES --> GATE_OUTPUTS_AND_SCOPES_VALID
+    VALIDATE_OUTPUTS_AND_SCOPES --> GATE_SCOPE_EXCEPTION_REQUESTED
+    GATE_SCOPE_EXCEPTION_REQUESTED -- Yes --> STOP_SCOPE_VIOLATION
+    GATE_SCOPE_EXCEPTION_REQUESTED -- No --> GATE_OUTPUTS_AND_SCOPES_VALID
     GATE_OUTPUTS_AND_SCOPES_VALID -- Yes --> APPROVE_POST
     GATE_OUTPUTS_AND_SCOPES_VALID -- No --> GATE_FIX_ON_FAILURE
     GATE_FIX_ON_FAILURE -- Yes --> FIX
@@ -752,7 +756,7 @@ flowchart TD
     class RUN_AGENT agentNode
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class EXECUTE_AGENT_OUTPUT_REJECTED_END errorEndNode
+    class EXECUTE_AGENT_OUTPUT_REJECTED_END,STOP_SCOPE_VIOLATION errorEndNode
 ```
 
 ## Execute Command
