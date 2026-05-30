@@ -448,6 +448,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    FIX_LOOP_EXHAUSTED((⚡))
     FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
     GATE_TESTS_OUTCOME{Test Outcome?}
     RUN_TESTS[Run Tests]
@@ -463,13 +464,14 @@ flowchart TD
     FIX_UNEXPECTED_FAILING_TESTS --> RUN_TESTS
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
+    class FIX_LOOP_EXHAUSTED,TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
 ```
 
 ## Verify Tests Fail
 
 ```mermaid
 flowchart TD
+    FIX_LOOP_EXHAUSTED((⚡))
     FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
     GATE_TESTS_OUTCOME{Test Outcome?}
     RUN_TESTS[Run Tests]
@@ -485,7 +487,7 @@ flowchart TD
     FIX_UNEXPECTED_PASSING_TESTS --> RUN_TESTS
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
+    class FIX_LOOP_EXHAUSTED,TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
 ```
 
 ## Write Acceptance Tests
