@@ -1,8 +1,6 @@
 # Project-declared `channels:` + channel-by-channel system implementation
 
-🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-30T16:51:17Z`
-
-**Status:** proposed
+**Status:** proposed — items 1–2 landed (config schema + validation + write-at-init); items 3–6 remain
 **Created:** 2026-05-30 17:02 CEDT
 
 ## Problem
@@ -127,28 +125,56 @@ nothing the process can iterate to implement one channel at a time.
     `channel` are passed as caller-bound params through the existing strict-mode
     `ExpandParams` path (process-flow.yaml ~L1054).
 
-## Open knob (the one thing to confirm during execution)
+## Resolved during execution (2026-05-30)
 
-- **`ChannelType` constant *value* casing.** Today the value is `"API"`/`"UI"`
-  (uppercase) and the AT `@Channel` parameterization compares against it. For a
-  clean end-to-end single token, regenerate the value as the canonical
-  `"api"`/`"ui"` too — but this **changes the channel string the existing tests
-  carry**. Acceptable in a teaching repo (no legacy-alias machinery; configs are
-  regenerated), but it is a real behaviour change. Confirm before flipping the
-  value; the constant *name* stays idiomatic uppercase (`API`) regardless.
+- **`ChannelType` constant *value* casing → KEEP UPPERCASE (`"API"`/`"UI"`).**
+  The channel value is testkit-internal: `tests.yaml` sets `-e CHANNEL=API`,
+  which `Channel.Type` carries and `ResolveMyShopChannel` /
+  `CreateMyShopDriverForChannelAsync` switch against `ChannelType.API`. The
+  gh-optivem runtime never touches the value — it integrates only through the
+  **lowercase suite id** `acceptance-${channel}` (`acceptance-api`). So
+  lowercasing the value buys nothing functionally and would force flipping
+  `-e CHANNEL=API` in 9 places across three operator-owned `tests.yaml` files
+  that item 3's codegen does **not** regenerate — reddening every acceptance
+  suite with `Unknown channel type: API`. Item 3 generates the value via an
+  **uppercase transform** of the lowercase `channels:` token (D1's transform);
+  `tests.yaml`'s `CHANNEL=` literals are left untouched. The lowercase selector
+  vs uppercase value are two *roles*, not a fold/drift bug.
+- **`channels:` is a CLOSED ENUM, not a free-form slug.** Each token must name a
+  channel the testkit physically has — a driver (`MyShopApiDriver` /
+  `MyShopUiDriver`), a `ChannelType` constant, an `acceptance-<token>` suite.
+  Today that set is exactly `{api, ui}`. `channels:` therefore *selects a subset*
+  (`[api]` for API-only, or reorders) — it does **not** declare arbitrary new
+  channels. This **supersedes the Problem/D1 framing** of `API+CLI+gRPC` as a
+  config-only act: adding a genuinely new channel means building its driver +
+  testkit and extending the `canonicalChannels` enum (`internal/projectconfig/
+  channels.go`), the same way the lang enum grows. Validation (Rule 23) rejects
+  unknown tokens against the supported set and gives a did-you-mean only when the
+  lowercased form is a real channel.
 
 ## Items
 
-1. **Add `channels:` to the config schema + validation.** In
-   `internal/projectconfig/`: parse the `channels:` list, add the Rule-22a-style
-   `Validate` rule (lowercase-canon, hard-error + did-you-mean), with
-   interactive/flag validation parity.
-2. **Write `channels:` at `init`** via `BuildOptivemYAML` (scaffold-authoritative,
-   alongside `DefaultPaths`) — the authoritative initial value matching the
-   scaffolded testkit. Do **not** add a migrate-time or validate-time back-fill.
+> Items 1–2 landed 2026-05-30 (config schema + closed-enum validation in
+> `internal/projectconfig/{config,channels}.go` + `channels_test.go`;
+> write-at-init in `internal/steps/optivem_yaml.go::BuildOptivemYAML` via
+> `DefaultChannels()`). Item numbers below are unchanged so the Cross-repo note
+> and D-references still resolve. **Items 4, 5, 6 are a coupled unit** — item 5's
+> prompt references `${channel}`/`${common}` params that only item 4's caller
+> binds, and rendering hard-fails on unfilled placeholders
+> (`clauderun.go:574`), so item 5 must not land before item 4.
+
 3. **Generate `ChannelType.{cs,java,ts}` from `channels:`** in the scaffold
-   templates (`internal/templates/`) — the SSoT codegen that retires the three
-   hand-maintained copies. Resolve the D-open-knob constant-value casing here.
+   templates — the SSoT codegen that retires the three hand-maintained copies.
+   Casing resolved (see "Resolved during execution"): emit the constant *value*
+   via an **uppercase transform** of the lowercase token (`api` → `"API"`); the
+   constant *name* is idiomatic uppercase; do **not** touch `tests.yaml`'s
+   `-e CHANNEL=API` literals. **Scope note:** there is no existing codegen for
+   these files — today `ChannelType.*` is copied verbatim from the shop template
+   by `apply_template.go` / `replacements.go` with name substitution only. This
+   item is a *new generation step* across three languages, not a small edit, and
+   carries its own cross-repo backfill (see Cross-repo note). Reuse
+   `projectconfig.DefaultChannels()` / the `canonicalChannels` enum as the token
+   source where the codegen runs server-side.
 4. **Static-unroll the channel loop in the caller (A2 — per D7)**
    (`process-flow.yaml` + the engine/loader): in `change-system-behavior`, read
    `channels:` at process-construction time and synthesize **one call-activity
@@ -176,8 +202,12 @@ nothing the process can iterate to implement one channel at a time.
 ## Cross-repo note
 
 - Item 3's backfill (`channels: [api, ui]`) lands in the **`optivem/shop`**
-  repo's `gh-optivem.yaml`, not in `gh-optivem`. Treat as a separate, gated
-  commit in that repo.
+  repo, not in `gh-optivem`. Note: shop has **no single `gh-optivem.yaml`** — it
+  carries **12 per-flavor config files** (`gh-optivem-{monolith,multitier}-{dotnet,
+  java,typescript}{,-legacy}.yaml`). The backfill must add `channels: [api, ui]`
+  to all of them (validation accepts absence, so this is documentation of the
+  SSoT, not a correctness fix) and re-run shop's `validate-all-gh-optivem-config.sh`.
+  Treat as a separate, gated commit in that repo.
 
 ## Do NOT
 
