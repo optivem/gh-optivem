@@ -103,15 +103,6 @@ outside scope, here's the envelope."
 
 ## Items
 
-- [ ] **Item 5: Smoke-check the auto-generated process diagram.**
-  After regeneration the diagram should show `STOP_SCOPE_VIOLATION` as
-  an error-end terminator off the new gateway, with the existing
-  `outputs-and-scopes-valid` fan-out unchanged. Do **not** edit
-  `docs/process-diagram.md` or the SVG by hand — they regenerate from
-  the YAML in CI ([[feedback_never_edit_generated_diagrams]]). Inspect
-  the next CI regeneration as the verification step; if the layout
-  looks wrong, fix the YAML, not the rendered diagram.
-
 - [ ] **Item 6: Live rehearsal check (deferred, no code).**
   ⏳ Deferred until the next prod-agent ATDD dispatch that legitimately
   needs the envelope. Verify in the wild:
