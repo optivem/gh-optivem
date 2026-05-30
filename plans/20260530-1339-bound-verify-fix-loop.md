@@ -118,11 +118,37 @@ naming the process + node `name:`) — the **same mechanism** the two
 subprocesses already use for `TESTS_INFRA_HALT` / `UNKNOWN_TESTS_OUTCOME`.
 No new halt machinery, no new node kind.
 
-Escalation context (which fixer, attempt count, last verify tail) rides
-`ctx.State` — already recorded by the trace and already populated for the
-fix prompt — surfaced through the `error-end-event`'s `name:` /
-diagnostic. (Confirm during execution that the verify tail is still in
-`ctx.State` at the halt and isn't `Unset` on the prior lap.)
+Escalation context rides `ctx.State`, surfaced through the
+`error-end-event`'s `name:` / diagnostic — but **which** context is
+available is **asymmetric between the two subprocesses** (resolved from
+the code, not deferred to execution):
+
+- **`verify-tests-pass`** — the FIX path is reached via a **failing**
+  test run (`test-outcome == fail`), and `runCommand` stamps
+  `verify_results_text` on exactly that branch (`bindings.go:837`). So
+  every lap that routes toward the fixer *just refreshed* the tail; at
+  `FIX_LOOP_EXHAUSTED` it is **guaranteed present**. The halt diagnostic
+  here can quote the last verify tail.
+- **`verify-tests-fail`** — the FIX path is reached via an
+  unexpectedly **passing** run (`test-outcome == pass`,
+  `process-flow.yaml:1296`). A passing run means `succeeded == true`, so
+  `runCommand`'s success branch **`Unset`s `verify_results_text`**
+  (`bindings.go:822`) and the failure-stamp never fires. There is **no
+  verify tail on this path by construction** (the tests passed; there is
+  no failure output to capture). The `FIX_LOOP_EXHAUSTED` diagnostic for
+  this subprocess must therefore describe the halt from the
+  engine-tracked **attempt count** + **fixer identity** + **changed-files**
+  ("must-fail tests still green after 2 fix attempts"), **not** a verify
+  tail. The "stash the tail under a halt key" fallback does not apply —
+  there is nothing to stash.
+
+> Tangential (out of scope, note only): because `verify_results_text` is
+> `Unset` on the passing path, `fix-unexpected-passing-tests` *already*
+> dispatches today with `${verify-results}` empty on its only reachable
+> path (it is registered only when non-empty, so it surfaces via
+> `findUnfilledPlaceholders`). That is a pre-existing condition in the
+> existing fixer, not introduced by this plan — flagged for a future
+> pass, not fixed here ([[feedback_parse_full_refine_narrow]]).
 
 ### D4 — Test-suite safety → **backstop-protected fixture, asserts the semantic cap**
 
@@ -158,13 +184,17 @@ climb per [[feedback_statemachine_test_loop_hazard]].
   regenerate-diagram workflow owns `docs/process-diagram.md` +
   `docs/images/*.svg` on push to main ([[feedback_plans_no_diagram_regen]]).
 
-- [ ] **Item 3: Confirm escalation context survives to the halt.**
-  Verify the last verify tail + attempt count are present in `ctx.State`
-  at `FIX_LOOP_EXHAUSTED` (not `Unset` on the success/clear path of the
-  prior lap), and that the `error-end-event` diagnostic surfaces fixer
-  identity. If the tail is cleared too early, stash it under a
-  halt-dedicated key rather than widening the fixer's output contract
-  ([[feedback_parse_full_refine_narrow]]).
+- [ ] **Item 3: Author each halt diagnostic for the context actually
+  available (asymmetric — see D3).**
+  For `verify-tests-pass`'s `FIX_LOOP_EXHAUSTED`, the verify tail is
+  guaranteed fresh in `ctx.State` (`verify_results_text`, stamped on the
+  failing lap that routes to FIX) — the `name:` / diagnostic may quote
+  it. For `verify-tests-fail`'s `FIX_LOOP_EXHAUSTED`, there is **no**
+  verify tail on the FIX path (it is `Unset` on the passing run that
+  routes to FIX) — author that diagnostic from attempt count + fixer
+  identity + changed-files instead, and do **not** add a tail-stashing
+  step (there is nothing to stash). No widening of the fixer's output
+  contract either way ([[feedback_parse_full_refine_narrow]]).
 
 - [ ] **Item 4: Statemachine fixture that proves the cap.**
   A fixture whose `FIX_*` node would re-dispatch forever under today's
