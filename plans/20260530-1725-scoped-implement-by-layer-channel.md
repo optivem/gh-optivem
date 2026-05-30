@@ -1,6 +1,8 @@
 # Scoped `implement`: layer/channel slices as the team-handoff seam
 
-**Status:** decisions resolved — execution blocked on 1702 (Items 3–6) landing
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-30T21:15:48Z`
+
+**Status:** 1702 landed (unblocked); mechanism + red-gate resolved against the code — see Item 2 / D-red-gate
 **Created:** 2026-05-30 17:25 CEDT
 
 > **Depends on `plans/20260530-1702-channels-field-channel-by-channel.md` — land
@@ -144,14 +146,30 @@ same decomposition, two drivers.
   the first channel landed common" is a **natural, correct** ATDD ordering, not a
   bug — and it is made **safe and explicit** by the git-state resume gate (a UI
   `system` run detects common DONE before entering). See Resume mechanism.
-- **D-red-gate — RESOLVED: expected-red gate = the resume DONE predicate.**
-  `--target test` and `--target driver-adapter <ch>` succeed when they
-  **compile + their write-scope files are present + the acceptance tests fail for
-  the *right* reason** (assertion/runtime failure, not a compile error). This is
-  **the same predicate the resume detector uses to classify an upstream slice
-  DONE** (see "Resume mechanism") — build it once, evaluate on *this* slice (the
-  success gate) and on *upstream* slices (resume detection). The no-arg full run
-  and `--target system <ch>` keep the normal end-green gate (channel green).
+- **D-red-gate — RESOLVED: two-tier expected-red gate = the resume DONE
+  predicate.** The driver adapter (`MyShopApiDriver` / `MyShopUiDriver`) is
+  **inherently channel-specific** — there is no channel-agnostic adapter the mob
+  could build (confirmed against the cascade: the existing RED slice builds
+  adapters *inside* RED precisely so the AT can run-and-fail for an assertion
+  reason). The shared `--target test` slice stops at the driver **port**, so it
+  **cannot reach assertion-red** on its own — per channel the AT is not yet
+  runnable (no adapter). The gate is therefore **two-tier**, NOT one criterion:
+  - **`--target test` — "port-deep, adapter-pending" red.** Succeeds when it
+    **compiles through the driver port + its write-scope files are present + the
+    per-channel ATs are *pending* (present, wired to the port, not yet runnable
+    because no adapter)**. This is a *weaker, well-defined* red than assertion-red
+    — deliberately, because the mob owns only the channel-agnostic contract.
+  - **`--target driver-adapter <ch>` — assertion-red.** Advances that channel to
+    the strong red: **compiles + adapter write-scope present + that channel's ATs
+    fail for the *right* reason** (assertion/runtime, not compile/wiring).
+
+  This is **the same predicate the resume detector uses to classify an upstream
+  slice DONE** (see "Resume mechanism") — build it once (two-tier), evaluate on
+  *this* slice (the success gate) and on *upstream* slices (resume detection). The
+  no-arg full run and `--target system <ch>` keep the normal end-green gate
+  (channel green). *Chosen over folding adapters into `--target test`: that would
+  make the mob touch per-channel adapter code, breaking the "shared, channel-
+  agnostic contract" ownership story the whole plan exists to express.*
 - **D-external — RESOLVED: external-system rides in `--target test`.** The
   external-system driver ports/adapters (clock/erp/tax) + contract tests are
   channel-agnostic shared contract — conceptually identical to DSL/driver-port,
@@ -242,14 +260,33 @@ reusing the same channel→path-segment derivation as the 1702 codegen. *Confirm
 the physical per-channel layout against the scaffolded testkit tree* — the one
 genuinely-open detail.
 
-**Driver change required (net-new — confirmed absent today).** `RunProcess`
-always enters at `.Start`. Resume needs: (a) an `Options.StartPhase` (resume
-entry) field; (b) `RunProcess` able to enter at an arbitrary node; (c) **state
-re-seed** — the skipped upstream phases never set their in-run `Context`
-state/params (`channel`, `common`, the cumulative-verify scope, any gateway flag
-the entry phase reads), so those must be seeded from config + the tree-detection
-result instead of from a prior phase's execution. (c) is the fiddly part and the
-main implementation risk.
+**Mechanism (resolved against the code — supersedes the earlier "enter at an
+arbitrary node" sketch).** An earlier draft proposed `Options.StartPhase` + an
+arbitrary-node `RunProcess` + a state re-seed for skipped phases, and called the
+re-seed "the main implementation risk." Reading the engine showed a simpler,
+lower-risk path that the sketch missed:
+
+- `RunProcess(name, ctx)` **already enters any process by name** — the pipeline
+  is a *tree of named sub-processes*, not one flat node graph. `Context.State` is
+  shared across the whole run; `Context.Params` are merged on call-activity entry
+  and restored on exit (`statemachine/run.go` `wrapCallActivity`). The top-level
+  `main` is a thin bootstrap (`START → IMPLEMENT_TICKET → END`) with no phase
+  picker; the phase ladder lives inside `write-and-verify-acceptance-tests`.
+- So a `--target` slice is **composed by name**: extract the plan's slices as
+  named sub-processes at the seams the plan wants (a small `process-flow.yaml`
+  refactor — see Item 2a), then call `RunProcess` on the selected one. No
+  start-node knob, **no stop-node knob** (the old sketch's arbitrary-node entry
+  would have *also* needed a stop-node to truncate `--target test` before the
+  adapter gates — it never scoped one).
+- **The re-seed risk evaporates.** Entering a slice by name never traverses the
+  upstream gates, so the `*-changed` gateway flags those gates read are simply
+  not in play — nothing to reconstruct. A slice's only inputs are config-derived
+  (`channel`, `common`, scope) + the issue, all seeded today by `seedScopeState`
+  / `preResolveIssue` / call-activity params.
+
+The remaining genuinely-net-new work is the **YAML seam-extraction** plus the
+**tree-state resume detector + entry resolver** — both additive, neither touching
+the single-linear-walk internals the old sketch would have rewritten.
 
 **Payoff — the ordering constraints become *checked*, not positional.** Today
 "system can't start until DSL + driver-port exist" and "UI can't start until API
@@ -272,15 +309,32 @@ blocker is **1702 fully landing** (Items 3–6 of that plan). Execute in order:
    pipeline): `test` → tests + DSL port/core + driver port + external (D-external);
    `driver-adapter` → that channel's adapter MID; `system` → system MID (+ common
    on the first channel). Encode the channel-agnostic vs channel-split split.
-2. **Scoped entry + git-state resume (D-resume).** Build the four-part mechanism
-   in the "Resume mechanism" section: (a) the per-phase write-scope→footprint
-   detector (reuse `Engine.Scope` / `process scope`, no new artifact map); (b)
-   the ABSENT/DIRTY/DONE classifier + first-non-DONE entry resolver; (c) the
-   driver `Options.StartPhase` entry + arbitrary-node `RunProcess`; (d) the
-   upstream-state re-seed for skipped phases (`channel`, `common`,
-   cumulative-verify scope, gateway flags) from config + detection result.
-   Inspect committed tree state only — never the machine-local
-   `.gh-optivem/runs/` journal.
+2. **Scoped entry via compose-by-name + git-state resume (D-resume).**
+   **Mechanism resolved against the code (supersedes the earlier "arbitrary-node
+   entry" sketch — see "Mechanism" below).** The pipeline is already a tree of
+   named sub-processes that `RunProcess(name, ctx)` enters cleanly (`State`
+   shared across the run, `Params` scoped/restored per call-activity in
+   `wrapCallActivity`). So a `--target` slice is **selected by name**, not by
+   starting a single linear walk partway through. Build:
+   (a) a **small YAML seam-extraction** in `process-flow.yaml` exposing the
+   plan's slices as named sub-processes at the seams the plan wants — a
+   `shared-contract` slice (test → DSL core → driver port + external, the
+   `write-and-verify-acceptance-tests` cascade truncated *before* the adapter
+   gates), and the already-per-channel `driver-adapter-<ch>` / system slices
+   (the 1702 unroll already splits the system step per channel);
+   (b) a thin **`--target` → sub-process selector** that calls `RunProcess` on
+   the chosen slice (no `Options.StartPhase`, no arbitrary-node entry);
+   (c) the per-phase write-scope→footprint detector (reuse `Engine.Scope` /
+   `process scope`, no new artifact map);
+   (d) the ABSENT/DIRTY/DONE classifier + first-non-DONE entry resolver that
+   refuses a slice whose upstream slice is not DONE.
+   The brittle "re-seed skipped phases' gateway flags" step from the old sketch
+   is **gone**: entering a slice by name does not traverse the upstream gates, so
+   there is nothing to fake. The only state a slice needs is config-derived
+   (`channel`, `common`, scope) + the issue, all already seeded by
+   `seedScopeState` / `preResolveIssue` / the call-activity params. Inspect
+   committed tree state only — never the machine-local `.gh-optivem/runs/`
+   journal.
 3. **Per-slice success gate (D-red-gate).** Add the "expected-red" success
    criterion for `--target test` and `--target driver-adapter <ch>`; keep
    end-green for the no-arg full run and for `--target system <ch>` (channel
