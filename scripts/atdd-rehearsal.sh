@@ -43,7 +43,7 @@ set -euo pipefail
 #      systems.yaml, so switching configs across sessions can leave the
 #      other stack's state behind. Fatal: failure aborts the rehearsal
 #      before worktree creation.
-#   3. Resolve <id> = <issue>-<slug>-<ts>, where <ts> = date +%Y%m%d-%H%M%S,
+#   3. Resolve <id> = <ts>-<issue>-<slug>, where <ts> = date +%Y%m%d-%H%M%S,
 #      <issue> is the numeric issue id (extracted from the URL if needed),
 #      and <slug> is the explicit [label] arg or, if absent, the issue
 #      title fetched via `gh issue view` from the consumer repo, lowercased
@@ -212,11 +212,14 @@ if [[ ! -d "$CONSUMER_ROOT/.git" ]]; then
   exit 2
 fi
 
-# Build the rehearsal id: <issue>-<slug>-<ts>. The issue number anchors
-# the branch on GitHub to a specific ticket so reviewers can navigate
-# from a `rehearsal/61-...` branch to issue #61 at a glance. <slug> is
-# the explicit [label] arg or the slugified issue title for human
-# context. <ts> keeps the id unique across same-ticket reruns.
+# Build the rehearsal id: <ts>-<issue>-<slug>. Leading with the timestamp
+# makes `rehearsal-*` dirs and `rehearsal/*` branches sort
+# chronologically, so the newest run is always last and "latest
+# rehearsal" is trivial to spot. <issue> still anchors the id to a
+# specific ticket — grep `rehearsal-*-61-*` to find every run for issue
+# #61 — and <slug> (the explicit [label] arg or the slugified issue
+# title) carries human context. <ts> also keeps the id unique across
+# same-ticket reruns.
 TS="$(date +%Y%m%d-%H%M%S)"
 
 # Extract numeric issue id from $ISSUE — accepts plain "61", "#61", or
@@ -266,7 +269,7 @@ else
   fi
 fi
 
-ID="${ISSUE_NUM}-${SLUG}-${TS}"
+ID="${TS}-${ISSUE_NUM}-${SLUG}"
 # Worktree lives under <academy>/worktrees/ — sibling of the consumer
 # repo and the gh-optivem checkout. Safe inside the academy because the
 # workspace resolver (internal/workspace.resolveFrom) walks up for a
