@@ -96,9 +96,20 @@ same decomposition, two drivers.
 - **The phases the slices map onto already exist as distinct writing-agent
   MIDs.** `acceptance-test-writer`/`contract-test-writer` (tests + DSL stubs),
   `dsl-implementer` (writes `dsl-core`, `driver-port`,
-  `external-system-driver-port`), `system-driver-adapter-implementer` (per
-  channel), `system-implementer` (system code). A slice is a contiguous run of
-  these, not a new pipeline.
+  `external-system-driver-port`), `system-driver-adapter-implementer`,
+  `system-implementer` (system code). A slice is a contiguous run of these, not a
+  new pipeline.
+  - **CORRECTION (verified against the code 2026-05-30).** An earlier draft of
+    this bullet claimed `system-driver-adapter-implementer` is already "per
+    channel". **It is not.** `process-flow.yaml:1535`
+    (`implement-system-driver-adapters`) is a **single, channel-agnostic
+    dispatch** (`read:[driver-port,driver-adapter] write:[driver-adapter]`, no
+    `channel` param), and it lives **inside the RED `write-and-verify-acceptance-
+    tests` cascade** (gated on `system-driver-port-changed`). 1702's
+    `UnrollSystemChannels` (`channels.go:54`) unrolls **only** the GREEN
+    `IMPLEMENT_AND_VERIFY_SYSTEM` step per channel — it does **not** touch the
+    adapter step. So `--target driver-adapter --channel <ch>` is **net-new
+    decomposition**, not reuse — see D-adapter-ownership.
 - **`channels:` SSoT** (the 1702 plan) supplies the `<ch>` token vocabulary and
   its lowercase canon + validation. The `<ch>` arg here MUST reuse it, not
   hardcode `api`/`ui` per flag.
@@ -186,6 +197,32 @@ same decomposition, two drivers.
   `MyShopUiDriver`, per `channels.go`), not a `/api` `/ui` subdirectory, so
   channel-narrowing keys on filename within the layer's write-scope dir. Confirm
   against the `shop` testkit tree at execution time.
+- **D-adapter-ownership — RESOLVED (2026-05-30): option A, channel team owns its
+  driver adapter.** The mob owns only the **channel-agnostic** contract (tests +
+  DSL core + driver **ports** + external ports); each channel team owns its own
+  driver **adapter** *and* system. Chosen over option C (mob owns all adapters as
+  test-harness; channel teams own only `system`) to keep the ownership boundary
+  strict — a channel team owns *everything* channel-shaped, test-side adapter
+  included — matching the Problem statement ("the API team then implements the
+  API channel (driver adapter, then system)").
+  - **Consequence — net-new adapter decomposition is in scope (the plan's biggest
+    single piece).** Because the adapter step is today a single channel-agnostic
+    node inside the RED cascade (see CORRECTION under "What already exists"),
+    option A requires a 1702-style decomposition of the adapter step:
+    1. **Make `implement-system-driver-adapters` channel-aware** — add a
+       `channel` param and make the `system-driver-adapter-implementer` agent
+       prompt write only that channel's adapter (mirrors how 1702 made
+       `system-implementer` channel-aware).
+    2. **Per-channel unroll for the adapter step** — extend/parallel
+       `UnrollSystemChannels` so each channel gets its own adapter dispatch
+       (linear, no loopback, same DAG discipline).
+    3. **Move the adapter step out of the mob's RED `test` cascade** — so
+       `--target test` stops at the driver **port** (ends port-deep / adapter-
+       pending red per D-red-gate), and the per-channel adapter runs in the
+       channel team's slice ahead of that channel's system.
+  - This is acknowledged to be substantially larger than the original "small YAML
+    seam-extraction" framing; the decomposition is sequenced **first** (it is the
+    structural foundation the `--target` selector and resume detector build on).
 
 ## Resume mechanism (git-state-derived) — resolves D-resume
 
@@ -301,14 +338,25 @@ to check — only the shared upstream one.)
 
 ## Items
 
-All six design decisions are resolved (see "Decisions resolved"); the remaining
-blocker is **1702 fully landing** (Items 3–6 of that plan). Execute in order:
+1702 has landed (unblocked). All design decisions are resolved, including
+**D-adapter-ownership = option A** (channel team owns its driver adapter), which
+makes Item 1 substantially larger than first framed. Execute in order:
 
-1. **`--target` → phase-range mapping.** Define, per `--target` value, the
-   contiguous set of writing-agent MIDs it runs (reuse existing MIDs; no new
-   pipeline): `test` → tests + DSL port/core + driver port + external (D-external);
-   `driver-adapter` → that channel's adapter MID; `system` → system MID (+ common
-   on the first channel). Encode the channel-agnostic vs channel-split split.
+0. **Adapter decomposition (D-adapter-ownership option A) — FOUNDATION, do
+   first.** The structural prerequisite for everything below. Per D-adapter-
+   ownership: (0a) add a `channel` param to `implement-system-driver-adapters` and
+   make the `system-driver-adapter-implementer` agent prompt write only that
+   channel's adapter; (0b) per-channel unroll of the adapter step
+   (extend/parallel `UnrollSystemChannels`, linear DAG, no loopback); (0c) move
+   the adapter step out of the RED `write-and-verify-acceptance-tests` cascade so
+   `--target test` stops at the driver port. Audit statemachine fixtures + watch
+   RAM (loop hazard) since `channels.go` + `process-flow.yaml` both change.
+1. **`--target` → slice mapping.** Define, per `--target` value, the named
+   sub-process(es) it runs: `test` → the shared-contract slice (tests + DSL
+   port/core + driver port + external, D-external; adapter step now removed per
+   item 0c); `driver-adapter` → that channel's (now per-channel) adapter slice;
+   `system` → that channel's system slice (+ common on the first channel).
+   Encode the channel-agnostic vs channel-split split.
 2. **Scoped entry via compose-by-name + git-state resume (D-resume).**
    **Mechanism resolved against the code (supersedes the earlier "arbitrary-node
    entry" sketch — see "Mechanism" below).** The pipeline is already a tree of
