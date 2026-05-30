@@ -140,6 +140,24 @@ type Config struct {
 	// cloud-run is reserved for the in-development path.
 	Deploy string `yaml:"deploy,omitempty"`
 
+	// Channels declares the project's delivery channels — the subset of the
+	// supported channel set (api, ui) this project exposes and its
+	// acceptance suite drives. shop is [api, ui]; an API-only project is
+	// [api]. It is the single source of truth for the channel set: the
+	// scaffold generates the per-language ChannelType constants from it, and
+	// the runtime drives channel-by-channel system implementation off it.
+	//
+	// Tokens are lowercase canonical and drawn from the closed enum in
+	// channels.go (Validate rejects unknown tokens, and casing slips on a
+	// real channel get a did-you-mean) because the tokens are identity for
+	// the selectors derived from them — acceptance-${channel} →
+	// acceptance-api / acceptance-ui. List order is implementation order.
+	// Scaffold-authoritative: `gh optivem init` writes the value matching
+	// the scaffolded testkit; operator-owned afterwards. Optional/absent is
+	// accepted (a pre-this-field config keeps working; no migrate or
+	// validate-time back-fill).
+	Channels []string `yaml:"channels,omitempty"`
+
 	// ProcessFlow is the repo-relative path to a process-flow YAML override.
 	// When empty, the driver falls back to the canonical embedded document.
 	// Validated as repo-relative (no `..`); file existence is verified at
@@ -792,6 +810,14 @@ func (c *Config) Validate() error {
 	}
 	if len(c.System.Frontend.Paths) > 0 {
 		return fmt.Errorf("config: system.frontend.paths is not a supported field (paths: is system-test-only; use system-test.paths)")
+	}
+
+	// Rule 23: channels: tokens are lowercase canonical members of the
+	// supported channel enum (single canon, no fold layer — see
+	// channels.go). Independent of architecture: the field is optional, but
+	// any value present must be well-formed.
+	if err := validateChannels(c.Channels); err != nil {
+		return err
 	}
 
 	return nil

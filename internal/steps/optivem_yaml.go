@@ -202,6 +202,13 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	// call into a "default at validate-time" or "default at migrate-time"
 	// helper — see `internal/projectconfig/path-keys.md` for the doctrine.
 	pc.SystemTest.Paths = projectconfig.DefaultPaths(cfg.TestLang, cfg.SystemTestPath, sutNamespace)
+	// `init` writes channels: as the scaffold-authoritative initial value
+	// matching the api+ui testkit copySystemTests just produced — the SSoT
+	// the ChannelType codegen and the channel-by-channel runtime read.
+	// Operator-owned afterwards (narrow to [api] for an API-only project);
+	// no migrate-time or validate-time back-fill, same doctrine as the
+	// DefaultPaths call above.
+	pc.Channels = projectconfig.DefaultChannels()
 	return pc
 }
 
