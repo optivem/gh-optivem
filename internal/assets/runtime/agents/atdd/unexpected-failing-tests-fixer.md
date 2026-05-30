@@ -32,7 +32,7 @@ The calling CYCLE is **behaviour-preserving by definition**. Red here is a hard 
 
 3. **Present the diagnosis and pick the side.** One paragraph per distinct root cause (compile failures often share one root; multiple test failures sometimes do too). State the failure, the line in `${changed-files}` that explains it, and which side you are fixing (SUT regression vs. test tracking the reshaped surface). When both readings are plausible, pick the more likely one and surface the reasoning so the caller's verify can catch a wrong pick.
 
-4. **Apply the smallest fix within `${scope-block}`.** Edit the SUT for regressions; update the test for surface-tracking changes. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop.
+4. **Apply the smallest fix within `${scope-block}`.** Edit the SUT for regressions; update the test for surface-tracking changes. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and exit.
 
 ## Additional Notes
 

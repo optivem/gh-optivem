@@ -47,7 +47,7 @@ ${scope-block}
 
 3. **Present the diagnosis.** One paragraph per distinct root cause (most command failures collapse to one). State the failing command, the line in `${command-stderr-tail}` that identifies the root cause, and — if applicable — the file in `${changed-files}` that explains it.
 
-4. **Apply the smallest fix within `${scope-block}`.** For env/config bugs, edit the config file in place; for SUT regressions, restore the previously-working behaviour. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop instead of widening silently.
+4. **Apply the smallest fix within `${scope-block}`.** For env/config bugs, edit the config file in place; for SUT regressions, restore the previously-working behaviour. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and exit.
 
 ## Additional Notes
 

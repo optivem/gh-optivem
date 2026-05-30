@@ -42,7 +42,7 @@ Your own dispatch IS the re-run of `${failing-task-name}` — redo its work here
 
 3. **Present the diagnosis.** One paragraph: state the failing agent (`${failing-task-name}`), the missing keys (`${missing-outputs}`), and what your inspection of `${changed-files}` suggests about whether the work was done at all, done partially, or done and the emission was the only slip. End with: "Re-running the task's work and emitting the required keys."
 
-4. **Redo the failing agent's work and emit the missing outputs.** Follow `${failing-task-name}`'s prompt as if the dispatch were fresh — produce the in-scope edits the prompt specifies, then call `gh optivem output write KEY=VAL` for every key in `${missing-outputs}`. Idempotency carries the day here: if the edits already landed correctly, re-applying produces no diff; if they were partial, you finish them; if they didn't land at all, you do them now. If completing the work would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop.
+4. **Redo the failing agent's work and emit the missing outputs.** Follow `${failing-task-name}`'s prompt as if the dispatch were fresh — produce the in-scope edits the prompt specifies, then call `gh optivem output write KEY=VAL` for every key in `${missing-outputs}`. Idempotency carries the day here: if the edits already landed correctly, re-applying produces no diff; if they were partial, you finish them; if they didn't land at all, you do them now. If completing the work would require editing a path outside `${scope-block}`, emit the scope-exception envelope and exit.
 
 ## Additional Notes
 

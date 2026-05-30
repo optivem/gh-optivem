@@ -34,7 +34,7 @@ The calling CYCLE's WRITE step *just authored* this test, then verify observed i
 
 3. **Present the diagnosis and pick the side.** The calling CYCLE's WRITE step *just authored* this test, so a green-on-arrival result is strong evidence the test isn't asserting what its author thought — the assertion may not be reached, the input may not traverse the SUT path it names, or an exception may be swallowed. **Default to suspecting the test first.** Pick the SUT side only when the assertion demonstrably executes and the input demonstrably reaches the target path. State (a) what the test asserted, (b) why the SUT accepted the input, (c) whether the fix belongs in the test (the case is already allowed by contract, or the test mis-targets the path) or in the SUT (the guard genuinely needs tightening). Surface the reasoning so the caller's verify can catch a wrong pick.
 
-4. **Apply the smallest fix within `${scope-block}`.** Tighten the SUT guard for an SUT-side fix; correct or delete the test for a test-side fix. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and stop.
+4. **Apply the smallest fix within `${scope-block}`.** Tighten the SUT guard for an SUT-side fix; correct or delete the test for a test-side fix. If the fix would require editing a path outside `${scope-block}`, emit the scope-exception envelope and exit.
 
 ## Additional Notes
 
