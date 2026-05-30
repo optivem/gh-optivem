@@ -71,6 +71,14 @@ cd ../shop
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 71 --config gh-optivem-monolith-java.yaml --auto --headless
 ```
 
+**Issue [#72 — Charge shipping based on product weight from ERP](https://github.com/optivem/shop/issues/72)** (write flow adding a new field to the external-system ERP DSL):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 72 --config gh-optivem-monolith-java.yaml --auto --headless
+```
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
