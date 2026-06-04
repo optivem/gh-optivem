@@ -445,6 +445,11 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		// can't sneak through).
 		"system-test/java/src/main/java/testkit/driver/port/page-turner",
 		"system-test/java/src/main/java/testkit/driver/adapter/page-turner",
+		// system-test.system-driver-adapter-channels.* — the per-channel
+		// (api, ui) adapter subfolders the scaffolder emits and preflight
+		// now stats (per-channel adapter folders feature).
+		"system-test/java/src/main/java/testkit/driver/adapter/page-turner/api",
+		"system-test/java/src/main/java/testkit/driver/adapter/page-turner/ui",
 		"system-test/java/src/main/java/testkit/external/port/page-turner",
 		"system-test/java/src/main/java/testkit/external/adapter/page-turner",
 		"system-test/java/src/main/java/testkit/dsl/port/page-turner",

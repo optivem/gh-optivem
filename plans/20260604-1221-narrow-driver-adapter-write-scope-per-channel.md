@@ -1,5 +1,7 @@
 # Narrow `implement-system-driver-adapters` write-scope to the per-channel member
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-04T10:53:23Z`
+
 **Created:** 2026-06-04 12:21 CEST
 **Status:** Ready to execute — **decision locked to Option A** (implicit
 narrowing in the resolver). The executor may override to B/C, but A is the
