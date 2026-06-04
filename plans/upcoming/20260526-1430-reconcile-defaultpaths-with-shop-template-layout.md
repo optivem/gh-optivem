@@ -3,6 +3,10 @@
 **Filed:** 2026-05-26 (deferred from the optivem/shop yaml-correction round)
 **Revised:** 2026-06-04 — the original framing (wrong SUT-namespace *leaf* casing, `shop` vs `myShop`) is obsolete. The per-channel driver-adapter decomposition (gh-optivem commit `c1ba55b`, "implement(scoped): per-channel driver-adapter decomposition") removed the SUT-namespace leaf from the template entirely. The mismatch is now *structural*, not a casing fix. Problem statement, options, and open questions rewritten against the current on-disk template.
 
+> **At-a-glance (2026-06-04 review):** `gh optivem init` clones the shop template but `DefaultPaths` computes the `paths:` block from scratch (repo slug + per-language stems) without reading the cloned tree — so six (TS/.NET) / eight (Java) keys point at directories that don't exist, and the scope checker rejects the first real edit. After the per-channel decomposition the divergence is now *structural* (spurious `/shop` leaf, wrong `external/*` nesting, missing Java `com/<org>/<sut>/` package prefix, spurious `.NET Testkit.` prefix), not a casing nit. Options narrowed to two: **C** — `init` reads the template's own yaml as SSoT, `DefaultPaths` demoted to fallback (recommended); **A′** — rewrite `pathStems` to mirror the template's structural shape statically.
+>
+> **Verdict: KEEP — still live.** Verified `paths_defaults.go` still appends `sutNamespace` and hard-codes the `testkit/`/`Testkit.` prefixes; unresolved in code. **Caveat:** answer the plan's own open question first — *is `gh optivem init` even invoked anymore, or has the template's checked-in yaml made it dead code?* If init is effectively dead, this drops to near-zero priority.
+
 ## Cross-references
 
 - **`internal/projectconfig/path-keys.md`** ("Ownership: scaffold-authoritative at `init`, operator-owned afterwards", lines 76–101 + the worked TS example lines 119–126) — the doctrine this plan stress-tests. The example still shows the obsolete `…/driver/adapter/shop` leaf.

@@ -1,5 +1,9 @@
 # Rebuild `onboard-external-system` (later)
 
+> **At-a-glance (2026-06-04 review):** "Stash and revisit" doc. The `onboard-external-system` subprocess (four agent-less `human` placeholder steps) was removed from the BPMN as an unfinished brainstorm shape; this captures the exact YAML + all call-site wiring for a clean redesign later, plus five open design questions.
+>
+> **Verdict: KEEP.** Confirmed removed from `process-flow.yaml` (zero matches). Intentional archive for a future redesign — the file *is* the reinsertion spec. Don't delete.
+
 Spinoff from `plans/20260526-1730-bpmn-process-review.md` item 5. The current `onboard-external-system` subprocess is being removed from the BPMN because its four steps are agent-less placeholders that haven't been thought through properly. This plan captures the **exact** current definition + all its references so it can be redesigned and re-added cleanly later.
 
 **Do not pick this up until the rebuild design is ready.** This is a "stash and revisit" document, not an execution plan.

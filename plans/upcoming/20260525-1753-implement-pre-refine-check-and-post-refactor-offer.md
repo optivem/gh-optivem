@@ -1,5 +1,9 @@
 ## `gh optivem implement` — pre-flight refinement check + post-run refactor offer
 
+> **At-a-glance (2026-06-04 review):** Unrefined idea in two parts for `gh optivem implement`: (a) a pre-flight check that fast-exits if the ticket hasn't been through `backlog_refinement`, naming the `refine` command instead of proceeding; (b) a post-run informational block surfacing a `gh optivem refactor` follow-up command. Both carry open design questions (what's the refinement-state signal? what does `refactor` actually do?).
+>
+> **Verdict: KEEP.** Genuine UX improvement, nothing built yet, not superseded. Still an idea — run `/refine-plan` before `/execute-plan`.
+
 **Date:** 2026-05-25
 **Status:** idea — not yet refined. Run `/refine-plan` against this file before `/execute-plan`.
 **Trigger:** observation while walking ATDD plans — `gh optivem implement --issue <n>` currently jumps straight into the WRITE/RED/GREEN cycle without checking whether the ticket has been through `backlog_refinement` first, and exits without prompting whether the user wants to follow up with a refactor pass. Both gaps cause friction: implementing un-refined tickets produces noisier cycles, and refactor opportunities surfaced during implementation are forgotten once the command exits.

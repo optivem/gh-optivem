@@ -1,5 +1,9 @@
 # CODEOWNERS: channel → team enforcement (DEFERRED)
 
+> **At-a-glance (2026-06-04 review):** Generate a `CODEOWNERS` file enforcing channel→team review routing (api→backend, ui→frontend, shared→both). Explicitly deferred — operator wants an informal ownership agreement first, no permission enforcement yet. Depends on a channel→team mapping SSoT.
+>
+> **Verdict: KEEP.** Intentionally deferred by operator decision. Recent work (`5e90d99` project-declared channel set) moves its dependency closer to existing, so it's becoming *more* actionable, not obsolete. Hold until the operator signals enforcement is wanted.
+
 **Status:** deferred — do not pick up yet
 **Created:** 2026-05-30 17:21 CEDT
 

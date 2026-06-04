@@ -1,5 +1,9 @@
 # Reintroduce checklist progress-tracking in BPMN
 
+> **At-a-glance (2026-06-04 review):** Deliberate "stash / reintroduction spec." The checklist resume-gate + post-cycle auto-tick machinery was *removed* on 2026-05-26 (agents work atomically, so partial-progress tracking didn't earn its keep). This file is the verbatim capture for re-adding it *if atomicity ever breaks* (a cycle that commits per-item).
+>
+> **Verdict: KEEP.** Confirmed the machinery is gone from the codebase (only plan files reference it now). Intentional archive, not pending work — valuable precisely as the line-by-line reinsertion record. Low urgency; don't delete.
+
 Spinoff from `plans/20260526-1730-bpmn-process-review.md` item 8. The checklist progress-tracking machinery (pre-CYCLE resume gate + post-CYCLE auto-tick) was **removed** on 2026-05-26 because the agent works atomically — a CYCLE either completes the whole ticket or it doesn't, so tracking partial checklist progress at runtime didn't earn its keep.
 
 The **spec/input** role of the checklist still works: the agent still reads the `Checklist` section from the ticket body as the list of sub-items to do. Only the BPMN gating + post-step ticking was cut.

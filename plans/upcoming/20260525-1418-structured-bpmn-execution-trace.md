@@ -3,6 +3,10 @@
 
 # Structured BPMN execution trace — design discussion
 
+> **At-a-glance (2026-06-04 review):** Discussion-mode doc weighing three directions for structured BPMN trace output. **Decisions are already locked:** A (JSONL `--trace-events` emit) → ship, B (plain Go invariant helpers, no DSL) → ship, C (spy state-capture) → reject. Carries forward concrete notes for a fresh actionable plan.
+>
+> **Verdict: KEEP for now — closest to retire-able.** The thinking is done; per this file's own footer the next step is to write a fresh `plans/…` plan for A+B and then archive/delete this. Deleting now would lose the only record of the A/B decisions and carry-forwards. **Recommendation: convert A+B into a fresh actionable plan, then delete this.** It shouldn't keep sitting in `upcoming/` as a thinking doc.
+
 ## Why this conversation exists
 
 We already have two trace channels for BPMN execution:

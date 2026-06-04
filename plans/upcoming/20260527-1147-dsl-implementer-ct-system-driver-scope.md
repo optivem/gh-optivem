@@ -1,5 +1,12 @@
 # dsl-implementer on the CT path — System Driver scope concern
 
+> **Verdict (2026-06-04 review): KEEP — live deferred concern.** Verified the CT-side HIGH process still exists in `process-flow.yaml` and is still the documented orphan, so the misbehaviour can't manifest yet — confirming the "defer until the CT call site lands" recommendation. The concern remains unaddressed in code; revisit when the CT call site lands and apply Option A+D.
+
+## TL;DR
+
+**Why:** An emergency fix stripped the `${touches-system-driver}` parameter from `dsl-implementer.md` to stop a placeholder leak, but that leaves the agent with no signal of which call path it's on. On the CT (contract-test) path it could now wrongly add System Driver prototype methods, emit `system-driver-port-changed: true`, and trigger a downstream adapter cycle the CT-path BPMN never contemplates.
+**End result:** A decision (and, when warranted, an implementation) that prevents CT-path `dsl-implementer` from touching the System Driver port — the recommendation being to defer until the CT-side call site lands, then apply Option A+D (prompt guidance + a runtime output-flag invariant check) as the lowest-friction backstop.
+
 ## Context
 
 Earlier today (2026-05-27 ~11:43) an ATDD rehearsal dispatch of
