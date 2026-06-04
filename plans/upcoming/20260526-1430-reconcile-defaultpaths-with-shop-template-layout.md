@@ -1,86 +1,97 @@
 # Reconcile `DefaultPaths` emission with shop-template disk layout
 
 **Filed:** 2026-05-26 (deferred from the optivem/shop yaml-correction round)
+**Revised:** 2026-06-04 — the original framing (wrong SUT-namespace *leaf* casing, `shop` vs `myShop`) is obsolete. The per-channel driver-adapter decomposition (gh-optivem commit `c1ba55b`, "implement(scoped): per-channel driver-adapter decomposition") removed the SUT-namespace leaf from the template entirely. The mismatch is now *structural*, not a casing fix. Problem statement, options, and open questions rewritten against the current on-disk template.
 
 ## Cross-references
 
-- **`optivem/shop` commit `84a6e2c6`** (2026-05-26) — corrected all 12 `gh-optivem-*.yaml` files in the shop template to point at the actual on-disk layout (`myShop` for TS / `myshop` for Java / `MyShop` for .NET). That commit is template-side only; the doctrine and `DefaultPaths` were explicitly de-scoped from that round.
-- **`optivem/shop/plans/20260526-1400-dsl-port-layout-inconsistency.md`** — the `dsl-port` exception (the one path key with no SUT-namespace leaf on disk) is captured in the shop repo. Resolving Option A in *that* plan would also force a change here.
-- **`internal/projectconfig/path-keys.md`** ("Ownership: scaffold-authoritative at `init`, operator-owned afterwards") — the doctrine this plan stress-tests.
-- **`internal/projectconfig/paths_defaults.go::DefaultPaths`** — the emission point.
-- **`internal/steps/optivem_yaml.go::BuildOptivemYAML`** (lines 191–204) — the only caller in the binary. Derives `sutNamespace := lastSlashSegment(systemRepoSlug(cfg))` and passes it to `DefaultPaths`.
+- **`internal/projectconfig/path-keys.md`** ("Ownership: scaffold-authoritative at `init`, operator-owned afterwards", lines 76–101 + the worked TS example lines 119–126) — the doctrine this plan stress-tests. The example still shows the obsolete `…/driver/adapter/shop` leaf.
+- **`internal/projectconfig/paths_defaults.go::DefaultPaths` / `pathStems`** — the emission point. Still appends `sutNamespace` as a trailing directory segment to the six testkit keys, and still hard-codes a `testkit/` prefix (Java) and `Testkit.` project prefix (.NET).
+- **`internal/projectconfig/paths_defaults_test.go`** — pins the buggy shape today (`…/driver/adapter/shop` etc., lines 12–19 / 30–37 / 48–55). Must be rewritten alongside the body.
+- **`internal/steps/optivem_yaml.go::BuildOptivemYAML`** (lines 191–204) — the only caller in the binary. Derives `sutNamespace := lastSlashSegment(systemRepoSlug(cfg))` (line 191) and passes it to `DefaultPaths` (line 204). *Verified accurate as of this revision.*
+- **`plans/20260530-1725-scoped-implement-by-layer-channel.md`** — the per-channel `--target driver-adapter --channel <ch>` work. Confirms `driver-adapter` stays a **single** Family-B path key; the channel (`api`/`ui`) is a runtime sub-dimension scoped *under* that path, not a new key. So the reconciled `driver-adapter` value must point at the channel-agnostic parent dir (`…/driver/adapter`), with the per-channel children (`api`, `ui`, `external`, `shared`) sitting beneath it.
 
 ## Problem
 
 The "scaffold-authoritative" doctrine in `path-keys.md` claims: *"the scaffolder owns both the YAML and the directory tree the YAML points at, so the values are authoritative initial values matching the just-created tree."*
 
-This is false in practice. `gh optivem init` does not materialise the testkit directory tree from scratch — it clones the `optivem/shop` template. The shop template's tree is:
+This is false in practice. `gh optivem init` does not materialise the testkit tree from scratch — it clones the `optivem/shop` template (via `copySystemTests`). `DefaultPaths` then computes the `paths:` block *from scratch* (repo slug + per-language stems), without reading the tree it just cloned. The two have diverged, and the divergence is now **structural**, not a casing nit.
 
-- TS:    `system-test/typescript/src/testkit/driver/adapter/myShop/...`
-- Java:  `system-test/java/src/main/java/com/mycompany/myshop/testkit/driver/adapter/myshop/...`
-- .NET:  `system-test/dotnet/Driver.Adapter/MyShop/...`
+### Current template tree (verified on disk, 2026-06-04)
 
-But `DefaultPaths` produces `system-test/typescript/src/testkit/driver/adapter/shop` (and parallel shapes for Java, .NET) by interpolating `${sutNamespace}` from the **repo slug's last segment** (`shop` from `optivem/shop`). It also hard-codes a `testkit/` prefix for Java that ignores the actual `com/mycompany/myshop/testkit/` package nesting, and a `Testkit.` project-name prefix for .NET that doesn't exist in the template's solution.
+The template decomposes the driver layers **by channel/concern** (`api` / `ui` / `external` / `shared`) and carries **no SUT-namespace leaf** anywhere:
 
-Net effect: for any user who runs `gh optivem init` against a fresh repo backed by the shop template,
+- **TS** — `system-test/typescript/src/testkit/driver/adapter/{api,external,shared,ui}`, `…/driver/port/{dtos,external}`, `…/dsl/{core,port}/…`; tests at `tests/latest/{acceptance,contract}`.
+- **Java** — `system-test/java/src/main/java/com/mycompany/myshop/testkit/driver/adapter/{api,external,shared,ui}` (note `com/mycompany/myshop/` is a **package** segment, *not* a trailing leaf; `testkit/` lives **under** the package, not directly under `src/main/java/`); tests at `src/test/java/com/mycompany/myshop/systemtest/latest/{acceptance,contract}` (note the `systemtest` segment).
+- **.NET** — `system-test/dotnet/Driver.Adapter/{Api,External,Shared,Ui}`, `Driver.Port/{Dtos,External}`, `Dsl.Core/…`, `Dsl.Port/…` (**no `Testkit.` prefix**, no `MyShop` leaf, **no top-level `External.*` project** — externals nest under `Driver.Adapter/External` and `Driver.Port/External`); tests at `SystemTests/Latest/{AcceptanceTests,ExternalSystemContractTests}`.
 
-- their generated `gh-optivem-*.yaml` will name paths that don't exist on disk,
-- the runtime scope checker (`validate-outputs-and-scopes` → `resolveLayerPaths` → `pathInScope`) will fail with `path(s) outside scope` on the first phase that tries to edit a real file,
-- `${driver-adapter}` etc. placeholders in phase prompts will point at empty/nonexistent paths.
+### What `DefaultPaths` emits today, per key
 
-The shop-side commit (`84a6e2c6`) fixed the **template yamls** so they match the **template disk layout**. But once those yamls are regenerated by `gh optivem init` on a fresh init, `DefaultPaths` will silently overwrite them with the old `shop`-leaf values again, because the binary doesn't read the template's existing yaml — it computes from scratch.
+For `sutNamespace = "shop"` (derived from `optivem/shop`), measured against the tree above:
 
-## How it was discovered
+| Key | DefaultPaths emits (TS) | Template actual (TS) | Status |
+|---|---|---|---|
+| `driver-port` | `…/src/testkit/driver/port/shop` | `…/src/testkit/driver/port` | ✗ spurious `/shop` leaf |
+| `driver-adapter` | `…/src/testkit/driver/adapter/shop` | `…/src/testkit/driver/adapter` | ✗ spurious `/shop` leaf |
+| `external-system-driver-port` | `…/src/testkit/external/port/shop` | `…/src/testkit/driver/port/external` | ✗ wrong nesting **and** leaf |
+| `external-system-driver-adapter` | `…/src/testkit/external/adapter/shop` | `…/src/testkit/driver/adapter/external` | ✗ wrong nesting **and** leaf |
+| `at-test` | `…/tests/latest/acceptance` | `…/tests/latest/acceptance` | ✓ correct |
+| `dsl-port` | `…/src/testkit/dsl/port/shop` | `…/src/testkit/dsl/port` | ✗ spurious `/shop` leaf |
+| `dsl-core` | `…/src/testkit/dsl/core/shop` | `…/src/testkit/dsl/core` | ✓ shape, ✗ `/shop` leaf |
+| `ct-test` | `…/tests/latest/contract` | `…/tests/latest/contract` | ✓ correct |
 
-A 2026-05-26 rehearsal of `implement-system-driver-adapters` edited the correct file (`.../driver/adapter/myShop/ui/client/pages/NewOrderPage.ts`), then the scope checker rejected it because the yaml's `driver-adapter` value was `.../driver/adapter/shop`. Sweep across all 12 template yamls showed every path key had the same shape of mismatch — none of `DefaultPaths`'s emitted values pointed at any real directory in any language.
+The `external-system-driver-*` rows expose a second, independent stem bug the original plan missed: `DefaultPaths` models externals as a sibling `external/{port,adapter}` dir, but every language nests them **under** the driver layer (`driver/port/external`, `driver/adapter/external`). In .NET there is no `External.*` project to point at at all.
+
+Language-specific extra drift:
+
+- **Java** — emits `src/main/java/testkit/driver/adapter/shop`; template is `src/main/java/com/mycompany/myshop/testkit/driver/adapter` (missing the `com/<org>/<sut>/` package prefix, spurious `/shop` leaf). `at-test`/`ct-test` emit `src/test/java/shop/latest/…`; template is `src/test/java/com/mycompany/myshop/systemtest/latest/…` (missing package prefix + the `systemtest` segment).
+- **.NET** — emits `Testkit.Driver.Adapter/shop`; template is `Driver.Adapter` (spurious `Testkit.` prefix + `/shop` leaf). `at-test`/`ct-test` (`SystemTests/Latest/AcceptanceTests`, `…/ExternalSystemContractTests`) are correct.
+
+### Net effect
+
+For any user who runs `gh optivem init` against a fresh repo backed by the shop template,
+
+- their generated `gh-optivem-*.yaml` names six (TS/.NET) or eight (Java) `paths:` keys that don't exist on disk,
+- the runtime scope checker (`validate-outputs-and-scopes` → `resolveLayerPaths` → `pathInScope`) fails with `path(s) outside scope` on the first phase that edits a real file,
+- the per-channel `--target driver-adapter --channel <ch>` flow (plan 1725) resolves `driver-adapter` to a nonexistent `…/adapter/shop`, so the channel subdir (`…/adapter/shop/api`?) is doubly wrong.
+
+`at-test`/`ct-test` for TS and .NET are the only keys that happen to land correctly, because `DefaultPaths` already skips the SUT-leaf append for those two keys.
+
+## How it was discovered (historical, pre-decomposition)
+
+A 2026-05-26 rehearsal of `implement-system-driver-adapters` edited a real file under the driver-adapter UI subtree, then the scope checker rejected it because the yaml's `driver-adapter` value carried a leaf the tree didn't have. At that time the template still had a `myShop` SUT-namespace leaf (`…/driver/adapter/myShop/ui/client/pages/NewOrderPage.ts`); the per-channel decomposition has since removed it, so the same file now lives at `…/driver/adapter/ui/client/pages/NewOrderPage.ts`. The class of bug (DefaultPaths emits a path the tree doesn't have) is unchanged; only the specific shape moved.
 
 ## Decision needed
 
-Reconcile `DefaultPaths`'s output with the shop template's actual layout. Pick one:
+Reconcile `DefaultPaths`'s output with the shop template's actual layout. The original four options (A/B/C/D) were all keyed to a SUT-namespace *leaf* and are obsolete — there is no leaf to emit, configure, or rename. The live choice is now between two:
 
-### Option A — case-aware per-language leaves hard-coded
+### Option C — derive from the template (recommended)
 
-`DefaultPaths` emits `myShop` for TS, `myshop` for Java, `MyShop` for .NET, *unconditionally*. Drop the `sutNamespace` parameter (the leaf is no longer derived from the repo slug). Add the Java `com/${org}/${sut}/` package prefix and remove the .NET `Testkit.` prefix to match the template's project-name shape.
+`gh optivem init`, after cloning the template, **reads** the template's checked-in `gh-optivem-*.yaml` `paths:` block (or, failing that, derives from the cloned tree) and uses it as the source of truth. `DefaultPaths` becomes a fallback for partial configs only (e.g. legacy migrations).
 
-- **Pro:** removes the divergence cleanly. `DefaultPaths` becomes a static per-language mapping that mirrors the template.
-- **Con:** hard-codes the "myShop" identity into `gh-optivem`. Any future template with a different SUT name would need its own `DefaultPaths` branch.
+- **Pro:** the template controls layout truth completely — including per-channel nesting, the Java package prefix, the asymmetric external nesting, and any future restructuring — without a `gh-optivem` code change each time. Aligns the "scaffold-authoritative" doctrine with reality (the scaffolder copies a tree it does not author the *shape* of).
+- **Con:** more I/O at init time; requires the template to ship a correct, parseable yaml. (The shop template's yamls were corrected template-side in the 2026-05-26 round, so this precondition now holds.)
 
-### Option B — re-introduce explicit `system.sut-namespace`
+### Option A′ — static per-language stems mirroring the template
 
-Restore the pre-SSoT `system.sut-namespace:` config field. Operator picks it at `init` time. `DefaultPaths` reads it. For the shop template, operators would set `sut-namespace: MyShop` (or per-language equivalents).
+Rewrite `pathStems` to emit the channel-agnostic parent paths directly, **dropping the `sutNamespace` trailing append for all testkit keys**, fixing the external nesting (`driver/{port,adapter}/external`), adding the Java `com/<org>/<sut>/` package prefix (+ the `systemtest/latest/…` test path), and removing the `.NET Testkit.` prefix.
 
-- **Pro:** decouples `gh-optivem` from any particular template's SUT naming.
-- **Con:** undoes part of the SSoT work (plan `20260518-1530`, item 3) that explicitly retired this field. Reintroduces the per-language casing question (one field for three different casings?).
-
-### Option C — derive from the template
-
-`gh optivem init`, after cloning the template, *reads* the template's checked-in `gh-optivem-*.yaml` and uses its `paths:` block as the source of truth. `DefaultPaths` becomes a fallback for partial configs only (e.g. legacy migrations).
-
-- **Pro:** the template controls the layout truth completely, including the `dsl-port` no-SUT-leaf exception.
-- **Con:** more I/O at init time. Requires the template to ship a usable yaml (which commit `84a6e2c6` now does, but it wasn't true before).
-
-### Option D — change the template to match `DefaultPaths`
-
-Rename the on-disk folders in `optivem/shop` to use `shop`/`Shop` instead of `myShop`/`MyShop`. Rewrite all class names, imports, Java packages, and .NET projects accordingly.
-
-- **Pro:** no `gh-optivem` change. Doctrine stays as-is.
-- **Con:** massive refactor in the shop template touching hundreds of files. Loses the pedagogical distinction between *the repo* (`shop`) and *the SUT inside the repo* (`MyShop` — "the user's shop application").
+- **Pro:** no init-time I/O; the derivation stays a pure function.
+- **Con:** hard-codes the template's structural shape (channel decomposition, `com/mycompany/myshop` package, `Driver.Adapter` project names) into `gh-optivem`. Any future template restructuring needs a matching `pathStems` edit — exactly the drift this plan is cleaning up, re-armed. The Java package prefix still needs `org`/`sut` inputs, partially re-opening the question Option B was retired to close.
 
 ## Recommendation
 
-**Option C** seems the cleanest fit for the existing "scaffold-authoritative" doctrine: the template *is* the source of truth for layout. Option A hard-codes one template's identity into `gh-optivem`. Option B undoes a recently-completed SSoT consolidation. Option D is the largest refactor of the four. But this is a real architectural call — pick at pickup time.
+**Option C.** The structural complexity the decomposition introduced (per-channel children, language-specific package/project prefixes, asymmetric external nesting) is precisely what a from-scratch derivation keeps getting wrong. Letting the template own its own layout truth — and reducing `DefaultPaths` to a partial-config fallback — is the only option that doesn't re-arm the drift on the next template change. This is still a real architectural call; confirm at pickup.
 
 ## Work this plan would do (sketch — pickup-time)
 
-Specifics depend on the chosen Option. Common to all four:
-
-1. **Rewrite `paths_defaults.go`** — body change. `paths_defaults_test.go` must also be updated; today it asserts the `shop`-leaf shape, which is the bug.
-2. **Update `internal/projectconfig/path-keys.md`** — restate (B, C) or remove (A) the "scaffolder owns both the YAML and the directory tree" claim. Option D leaves the doctrine intact.
-3. **Smoke-test against the post-fix shop template** — `gh optivem init` against a fresh empty workspace, confirm the emitted yaml matches `optivem/shop/gh-optivem-*.yaml` byte-for-byte (or close enough that the scope checker accepts both).
-4. **Cross-language verification** — repeat for Java + .NET + monolith/multitier permutations.
+1. **Rewrite `paths_defaults.go` + `paths_defaults_test.go`** — under Option C, demote `DefaultPaths` to a fallback and add the template-yaml read at `init`; under Option A′, rewrite `pathStems` per the corrected per-key shapes above. Either way the test must stop asserting the `…/adapter/shop` shape (lines 12–19 / 30–37 / 48–55).
+2. **Update `internal/projectconfig/path-keys.md`** — restate (C) or remove (A′) the "scaffolder owns both the YAML and the directory tree" claim, and replace the worked TS example (lines 119–126) — it still shows the obsolete `/shop` leaf.
+3. **Smoke-test against the shop template** — `gh optivem init` against a fresh empty workspace; confirm the emitted yaml's `paths:` block matches the template's `gh-optivem-*.yaml` and that every value resolves to a real directory in the cloned tree.
+4. **Cross-language + channel verification** — repeat for Java + .NET, and confirm `--target driver-adapter --channel api|ui` (plan 1725) resolves to real channel subdirs under the reconciled `driver-adapter` value.
 
 ## Open questions to resolve at pickup
 
-- Does any other repo besides `optivem/shop` get scaffolded by `gh optivem init`? If so, the per-template-leaf assumption (Option A) becomes harder to justify.
+- Does any repo besides `optivem/shop` get scaffolded by `gh optivem init`? If so, Option A′'s hard-coded structural assumptions become harder to justify — pushing further toward C.
 - Is `gh optivem init` invoked by anyone today, or has the shop template's checked-in yamls made it dead code in practice? If dead, downgrade priority.
-- Does the `dsl-port` Option A/B decision (in the shop-side plan) get made first, or in parallel?
+- Under Option C, what is the fallback contract when the cloned template ships no `paths:` block (partial/legacy)? `DefaultPaths`-derived-from-tree, or hard error?
