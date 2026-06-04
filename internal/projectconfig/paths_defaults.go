@@ -17,7 +17,7 @@ import (
 const DefaultDbMigrationPath = "system/db/migrations"
 
 // DefaultPaths returns the canonical Family B `paths:` entries for the
-// given system-test language, root, and sut-namespace. The eight keys
+// given system-test language, root, and Java source package. The eight keys
 // match the doctrine referenced by the inline `read:` / `write:` scope
 // on writing-agent MID nodes in
 // `internal/atdd/runtime/statemachine/process-flow.yaml`: system-driver-port,
@@ -28,33 +28,31 @@ const DefaultDbMigrationPath = "system/db/migrations"
 // the scaffolder leaves `paths:` absent for partial configs (no
 // architecture chosen yet) and `Validate` accepts that shape.
 //
-// Per-SSoT (plan 20260518-1530 item 3), the returned values are fully
-// resolved: testkit keys (system-driver-*, external-system-driver-*, dsl-*) take
-// `sutNamespace` as a trailing directory segment. at-test and ct-test
-// are sut-namespace-free at the DefaultPaths trailing-append layer —
-// Java's stems already incorporate sutNamespace as a middle (package)
-// segment per plan 20260518-1742 items 3a/3b; TypeScript and dotnet
-// stems don't structure tests by namespace. A non-empty `sutNamespace`
-// is the SSoT shape; `sutNamespace == ""` reproduces the pre-SSoT
-// shape (no suffix, Java tests with the package segment collapsed) and
-// is what `runConfigMigrate`'s gap-fill back-fill uses for pre-SSoT
-// configs until the SSoT join step (plan 1530 item 6) runs.
+// The values reproduce the shop template's checked-in
+// `gh-optivem-<arch>-<lang>.yaml` `paths:` block exactly — the structural
+// SSoT verified on disk (plan 20260526-1430). There is NO sut-namespace
+// trailing segment: TypeScript and dotnet carry no namespace anywhere, and
+// Java carries its source package (`com/<org>/<sut>`) as a MIDDLE segment, not
+// a trailing leaf. The `javaPackage` argument (e.g. `com/mycompany/myshop`,
+// resolved at the call site from the owner + system-name casings) is consumed
+// only by the Java branch; TypeScript and dotnet ignore it. An empty
+// `javaPackage` collapses the Java package segment (partial/legacy shape).
+//
+// Externals nest UNDER the driver layer (`driver/{port,adapter}/external`,
+// `Driver.{Port,Adapter}/External`), not as a sibling `external/*` dir.
 //
 // Per-language path stems mirror the post-scaffold tree (the
-// `system-test/{lang}/` subdir is flattened by `copySystemTests`) and
-// are pinned against the shop template's `latest/` form, per plan
-// 20260518-1742 items 3a/3b. `latest` / `Latest` is doctrine literal,
+// `system-test/{lang}/` subdir is flattened by `copySystemTests`) and are
+// pinned against the shop template. `latest` / `Latest` is doctrine literal,
 // not project-customizable:
 //
-//   - typescript: <root>/src/testkit/{driver|external|dsl}/{port|adapter|core}[/sutNamespace],
-//     <root>/tests/latest/acceptance,
-//     <root>/tests/latest/contract
-//   - java:       <root>/src/main/java/testkit/{driver|external|dsl}/{port|adapter|core}[/sutNamespace],
-//     <root>/src/test/java/<sutNamespace>/latest/acceptance,
-//     <root>/src/test/java/<sutNamespace>/latest/contract
-//   - dotnet:     <root>/Testkit.{Driver|External|Dsl}.{Port|Adapter|Core}[/sutNamespace],
-//     <root>/SystemTests/Latest/AcceptanceTests,
-//     <root>/SystemTests/Latest/ExternalSystemContractTests
+//   - typescript: <root>/src/testkit/{driver|dsl}/{port|adapter|core}
+//     [+ driver/{port,adapter}/external], <root>/tests/latest/{acceptance,contract}
+//   - java:       <root>/src/main/java/<javaPackage>/testkit/{driver|dsl}/…
+//     [+ driver/{port,adapter}/external],
+//     <root>/src/test/java/<javaPackage>/systemtest/latest/{acceptance,contract}
+//   - dotnet:     <root>/{Driver|Dsl}.{Port|Adapter|Core} [+ Driver.{Port,Adapter}/External],
+//     <root>/SystemTests/Latest/{AcceptanceTests,ExternalSystemContractTests}
 //
 // The dotnet contract-test stem (`ExternalSystemContractTests`) is
 // asymmetric vs the acceptance/etc. `<TestType>Tests` naming. It is
@@ -70,28 +68,18 @@ const DefaultDbMigrationPath = "system/db/migrations"
 // canonical-key vocabulary doc consumed by `gh-optivem.yaml paths:` and
 // by the inline per-phase scope on writing-agent MID nodes in
 // `internal/atdd/runtime/statemachine/process-flow.yaml`.
-func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]string {
+func DefaultPaths(testLang, systemTestRoot, javaPackage string) map[string]string {
 	if systemTestRoot == "" {
 		return nil
 	}
 	keys := CanonicalPathKeys()
-	stems, ok := pathStems(testLang, sutNamespace)
+	stems, ok := pathStems(testLang, javaPackage)
 	if !ok {
 		return nil
 	}
 	out := make(map[string]string, len(keys))
 	for i, key := range keys {
-		stem := stems[i]
-		// Testkit keys (driver/external/dsl) get sutNamespace as a trailing
-		// directory segment when present. at-test and ct-test are
-		// sut-namespace-free at this layer — Java's stems already
-		// incorporate sutNamespace as a middle (package) segment via
-		// pathStems; TS and dotnet stems don't structure tests by
-		// namespace.
-		if key != "at-test" && key != "ct-test" && sutNamespace != "" {
-			stem = path.Join(stem, sutNamespace)
-		}
-		out[key] = path.Join(systemTestRoot, stem)
+		out[key] = path.Join(systemTestRoot, stems[i])
 	}
 	return out
 }
@@ -113,11 +101,11 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 // Returns nil for an unsupported language, an empty systemTestRoot (no adapter
 // root to anchor on), or an empty channel set — mirroring DefaultPaths /
 // DefaultChannels, the scaffolder omits the block for partial configs.
-func DefaultSystemDriverAdapterChannels(testLang, systemTestRoot, sutNamespace string, channels []string) map[string]string {
+func DefaultSystemDriverAdapterChannels(testLang, systemTestRoot, javaPackage string, channels []string) map[string]string {
 	if len(channels) == 0 {
 		return nil
 	}
-	adapter := DefaultPaths(testLang, systemTestRoot, sutNamespace)["system-driver-adapter"]
+	adapter := DefaultPaths(testLang, systemTestRoot, javaPackage)["system-driver-adapter"]
 	if adapter == "" {
 		return nil
 	}
@@ -185,47 +173,48 @@ func CanonicalPathKeys() []string {
 // for unsupported languages so the caller can omit `paths:` rather than
 // write a partial map.
 //
-// The sutNamespace parameter is consumed by the Java branch to
-// interpolate the `<sutNamespace>` package segment in at-test and
-// ct-test stems (per plan 20260518-1742 items 3a/3b — Java structures
-// tests by package, TS and dotnet don't). The TS and dotnet branches
-// ignore it; DefaultPaths handles the testkit-key trailing-segment
-// append uniformly for all three languages.
-func pathStems(testLang, sutNamespace string) ([]string, bool) {
+// The stems reproduce the shop template's checked-in `paths:` block (verified
+// on disk, plan 20260526-1430). Externals nest under the driver layer
+// (`driver/{port,adapter}/external`). The javaPackage argument is interpolated
+// as a middle segment in every Java stem — under `src/main/java/` for testkit
+// keys and under `src/test/java/.../systemtest/` for at-test / ct-test; an
+// empty javaPackage collapses that segment (partial/legacy shape). TS and
+// dotnet structure nothing by namespace and ignore javaPackage.
+func pathStems(testLang, javaPackage string) ([]string, bool) {
 	switch testLang {
 	case LangTypescript:
 		return []string{
 			"src/testkit/driver/port",
 			"src/testkit/driver/adapter",
-			"src/testkit/external/port",
-			"src/testkit/external/adapter",
+			"src/testkit/driver/port/external",
+			"src/testkit/driver/adapter/external",
 			"tests/latest/acceptance",
 			"src/testkit/dsl/port",
 			"src/testkit/dsl/core",
 			"tests/latest/contract",
 		}, true
 	case LangJava:
-		atTest := path.Join("src/test/java", sutNamespace, "latest/acceptance")
-		ctTest := path.Join("src/test/java", sutNamespace, "latest/contract")
+		main := path.Join("src/main/java", javaPackage, "testkit")
+		test := path.Join("src/test/java", javaPackage, "systemtest")
 		return []string{
-			"src/main/java/testkit/driver/port",
-			"src/main/java/testkit/driver/adapter",
-			"src/main/java/testkit/external/port",
-			"src/main/java/testkit/external/adapter",
-			atTest,
-			"src/main/java/testkit/dsl/port",
-			"src/main/java/testkit/dsl/core",
-			ctTest,
+			path.Join(main, "driver/port"),
+			path.Join(main, "driver/adapter"),
+			path.Join(main, "driver/port/external"),
+			path.Join(main, "driver/adapter/external"),
+			path.Join(test, "latest/acceptance"),
+			path.Join(main, "dsl/port"),
+			path.Join(main, "dsl/core"),
+			path.Join(test, "latest/contract"),
 		}, true
 	case LangDotnet:
 		return []string{
-			"Testkit.Driver.Port",
-			"Testkit.Driver.Adapter",
-			"Testkit.External.Port",
-			"Testkit.External.Adapter",
+			"Driver.Port",
+			"Driver.Adapter",
+			"Driver.Port/External",
+			"Driver.Adapter/External",
 			"SystemTests/Latest/AcceptanceTests",
-			"Testkit.Dsl.Port",
-			"Testkit.Dsl.Core",
+			"Dsl.Port",
+			"Dsl.Core",
 			"SystemTests/Latest/ExternalSystemContractTests",
 		}, true
 	default:

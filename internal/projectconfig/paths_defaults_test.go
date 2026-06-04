@@ -6,17 +6,25 @@ import (
 	"testing"
 )
 
+// The three *FlatScaffold tests reproduce the shop template's checked-in
+// `gh-optivem-monolith-<lang>.yaml` `paths:` block exactly (verified on disk,
+// plan 20260526-1430), modulo the `system-test/<lang>/` root which the scaffold
+// flattens to `system-test/`. Java carries its source package as a MIDDLE
+// segment (`com/mycompany/myshop` here — resolved from owner+system casings at
+// the real call site); TS/dotnet ignore the package arg and carry no namespace.
+// Externals nest under the driver layer (`driver/{port,adapter}/external`).
+
 func TestDefaultPaths_TypescriptFlatScaffold(t *testing.T) {
 	t.Parallel()
-	got := DefaultPaths(LangTypescript, "system-test", "shop")
+	got := DefaultPaths(LangTypescript, "system-test", "ignored")
 	want := map[string]string{
-		"system-driver-port":                    "system-test/src/testkit/driver/port/shop",
-		"system-driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
-		"external-system-driver-port":    "system-test/src/testkit/external/port/shop",
-		"external-system-driver-adapter": "system-test/src/testkit/external/adapter/shop",
+		"system-driver-port":             "system-test/src/testkit/driver/port",
+		"system-driver-adapter":          "system-test/src/testkit/driver/adapter",
+		"external-system-driver-port":    "system-test/src/testkit/driver/port/external",
+		"external-system-driver-adapter": "system-test/src/testkit/driver/adapter/external",
 		"at-test":                        "system-test/tests/latest/acceptance",
-		"dsl-port":                       "system-test/src/testkit/dsl/port/shop",
-		"dsl-core":                       "system-test/src/testkit/dsl/core/shop",
+		"dsl-port":                       "system-test/src/testkit/dsl/port",
+		"dsl-core":                       "system-test/src/testkit/dsl/core",
 		"ct-test":                        "system-test/tests/latest/contract",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -26,16 +34,16 @@ func TestDefaultPaths_TypescriptFlatScaffold(t *testing.T) {
 
 func TestDefaultPaths_JavaFlatScaffold(t *testing.T) {
 	t.Parallel()
-	got := DefaultPaths(LangJava, "system-test", "shop")
+	got := DefaultPaths(LangJava, "system-test", "com/mycompany/myshop")
 	want := map[string]string{
-		"system-driver-port":                    "system-test/src/main/java/testkit/driver/port/shop",
-		"system-driver-adapter":                 "system-test/src/main/java/testkit/driver/adapter/shop",
-		"external-system-driver-port":    "system-test/src/main/java/testkit/external/port/shop",
-		"external-system-driver-adapter": "system-test/src/main/java/testkit/external/adapter/shop",
-		"at-test":                        "system-test/src/test/java/shop/latest/acceptance",
-		"dsl-port":                       "system-test/src/main/java/testkit/dsl/port/shop",
-		"dsl-core":                       "system-test/src/main/java/testkit/dsl/core/shop",
-		"ct-test":                        "system-test/src/test/java/shop/latest/contract",
+		"system-driver-port":             "system-test/src/main/java/com/mycompany/myshop/testkit/driver/port",
+		"system-driver-adapter":          "system-test/src/main/java/com/mycompany/myshop/testkit/driver/adapter",
+		"external-system-driver-port":    "system-test/src/main/java/com/mycompany/myshop/testkit/driver/port/external",
+		"external-system-driver-adapter": "system-test/src/main/java/com/mycompany/myshop/testkit/driver/adapter/external",
+		"at-test":                        "system-test/src/test/java/com/mycompany/myshop/systemtest/latest/acceptance",
+		"dsl-port":                       "system-test/src/main/java/com/mycompany/myshop/testkit/dsl/port",
+		"dsl-core":                       "system-test/src/main/java/com/mycompany/myshop/testkit/dsl/core",
+		"ct-test":                        "system-test/src/test/java/com/mycompany/myshop/systemtest/latest/contract",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("java: got %v, want %v", got, want)
@@ -44,15 +52,15 @@ func TestDefaultPaths_JavaFlatScaffold(t *testing.T) {
 
 func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 	t.Parallel()
-	got := DefaultPaths(LangDotnet, "system-test", "shop")
+	got := DefaultPaths(LangDotnet, "system-test", "ignored")
 	want := map[string]string{
-		"system-driver-port":                    "system-test/Testkit.Driver.Port/shop",
-		"system-driver-adapter":                 "system-test/Testkit.Driver.Adapter/shop",
-		"external-system-driver-port":    "system-test/Testkit.External.Port/shop",
-		"external-system-driver-adapter": "system-test/Testkit.External.Adapter/shop",
+		"system-driver-port":             "system-test/Driver.Port",
+		"system-driver-adapter":          "system-test/Driver.Adapter",
+		"external-system-driver-port":    "system-test/Driver.Port/External",
+		"external-system-driver-adapter": "system-test/Driver.Adapter/External",
 		"at-test":                        "system-test/SystemTests/Latest/AcceptanceTests",
-		"dsl-port":                       "system-test/Testkit.Dsl.Port/shop",
-		"dsl-core":                       "system-test/Testkit.Dsl.Core/shop",
+		"dsl-port":                       "system-test/Dsl.Port",
+		"dsl-core":                       "system-test/Dsl.Core",
 		"ct-test":                        "system-test/SystemTests/Latest/ExternalSystemContractTests",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -64,7 +72,7 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 // each member is the system-driver-adapter root with the channel appended as a
 // subfolder, cased per language (TS/Java lowercase, .NET PascalCase). The
 // members derive from the same DefaultPaths adapter value so they track the
-// root (incl. the reconcile-defaultpaths-era Testkit/shop segments).
+// root.
 func TestDefaultSystemDriverAdapterChannels(t *testing.T) {
 	t.Parallel()
 	channels := []string{"api", "ui"}
@@ -73,20 +81,24 @@ func TestDefaultSystemDriverAdapterChannels(t *testing.T) {
 		want map[string]string
 	}{
 		{LangTypescript, map[string]string{
-			"api": "system-test/src/testkit/driver/adapter/shop/api",
-			"ui":  "system-test/src/testkit/driver/adapter/shop/ui",
+			"api": "system-test/src/testkit/driver/adapter/api",
+			"ui":  "system-test/src/testkit/driver/adapter/ui",
 		}},
 		{LangJava, map[string]string{
-			"api": "system-test/src/main/java/testkit/driver/adapter/shop/api",
-			"ui":  "system-test/src/main/java/testkit/driver/adapter/shop/ui",
+			"api": "system-test/src/main/java/com/mycompany/myshop/testkit/driver/adapter/api",
+			"ui":  "system-test/src/main/java/com/mycompany/myshop/testkit/driver/adapter/ui",
 		}},
 		{LangDotnet, map[string]string{
-			"api": "system-test/Testkit.Driver.Adapter/shop/Api",
-			"ui":  "system-test/Testkit.Driver.Adapter/shop/Ui",
+			"api": "system-test/Driver.Adapter/Api",
+			"ui":  "system-test/Driver.Adapter/Ui",
 		}},
 	}
 	for _, tc := range cases {
-		got := DefaultSystemDriverAdapterChannels(tc.lang, "system-test", "shop", channels)
+		pkg := "ignored"
+		if tc.lang == LangJava {
+			pkg = "com/mycompany/myshop"
+		}
+		got := DefaultSystemDriverAdapterChannels(tc.lang, "system-test", pkg, channels)
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s: got %v, want %v", tc.lang, got, tc.want)
 		}
@@ -97,8 +109,8 @@ func TestDefaultSystemDriverAdapterChannels(t *testing.T) {
 // gets exactly one member; the subset is honoured.
 func TestDefaultSystemDriverAdapterChannels_NarrowChannelSet(t *testing.T) {
 	t.Parallel()
-	got := DefaultSystemDriverAdapterChannels(LangTypescript, "system-test", "shop", []string{"api"})
-	want := map[string]string{"api": "system-test/src/testkit/driver/adapter/shop/api"}
+	got := DefaultSystemDriverAdapterChannels(LangTypescript, "system-test", "ignored", []string{"api"})
+	want := map[string]string{"api": "system-test/src/testkit/driver/adapter/api"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("api-only: got %v, want %v", got, want)
 	}
@@ -135,33 +147,34 @@ func TestDefaultSystemDriverAdapterChannels_MembersUnderAdapterRoot(t *testing.T
 	}
 }
 
-// TestDefaultPaths_EmptySutNamespace — the pre-SSoT shape (no suffix) is
-// what `runConfigMigrate`'s gap-fill back-fill uses for legacy configs
-// until the SSoT join step (plan 20260518-1530 item 6) runs. Tests both
-// a testkit key (sut-namespace-free trailing append) and at-test (Java
-// stem with the package segment collapsed) plus ct-test.
-func TestDefaultPaths_EmptySutNamespace(t *testing.T) {
+// TestDefaultPaths_EmptyJavaPackage — an empty javaPackage collapses the Java
+// package middle segment so partial/legacy configs still get a valid path. TS
+// ignores the arg entirely (no namespace anywhere), so empty is a no-op there.
+func TestDefaultPaths_EmptyJavaPackage(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangTypescript, "system-test", "")
 	if got["system-driver-port"] != "system-test/src/testkit/driver/port" {
-		t.Errorf("ts system-driver-port with empty sutNamespace: got %q, want pre-SSoT shape", got["system-driver-port"])
+		t.Errorf("ts system-driver-port with empty javaPackage: got %q", got["system-driver-port"])
 	}
 	if got["at-test"] != "system-test/tests/latest/acceptance" {
-		t.Errorf("ts at-test with empty sutNamespace: got %q", got["at-test"])
+		t.Errorf("ts at-test with empty javaPackage: got %q", got["at-test"])
 	}
 	if got["ct-test"] != "system-test/tests/latest/contract" {
-		t.Errorf("ts ct-test with empty sutNamespace: got %q", got["ct-test"])
+		t.Errorf("ts ct-test with empty javaPackage: got %q", got["ct-test"])
 	}
 
-	// Java with empty sutNamespace collapses the package segment so the
-	// pre-SSoT shape stays a valid path. SSoT-aware callers pass the
-	// real sutNamespace; this test pins the gap-fill fallback shape.
+	// Java with an empty package collapses just the package segment; the
+	// `testkit` / `systemtest` structural segments stay. SSoT-aware callers
+	// pass the real `com/<org>/<sut>` package.
 	gotJava := DefaultPaths(LangJava, "system-test", "")
-	if gotJava["at-test"] != "system-test/src/test/java/latest/acceptance" {
-		t.Errorf("java at-test with empty sutNamespace: got %q (want collapsed-package shape)", gotJava["at-test"])
+	if gotJava["system-driver-port"] != "system-test/src/main/java/testkit/driver/port" {
+		t.Errorf("java system-driver-port with empty javaPackage: got %q (want collapsed-package shape)", gotJava["system-driver-port"])
 	}
-	if gotJava["ct-test"] != "system-test/src/test/java/latest/contract" {
-		t.Errorf("java ct-test with empty sutNamespace: got %q", gotJava["ct-test"])
+	if gotJava["at-test"] != "system-test/src/test/java/systemtest/latest/acceptance" {
+		t.Errorf("java at-test with empty javaPackage: got %q (want collapsed-package shape)", gotJava["at-test"])
+	}
+	if gotJava["ct-test"] != "system-test/src/test/java/systemtest/latest/contract" {
+		t.Errorf("java ct-test with empty javaPackage: got %q", gotJava["ct-test"])
 	}
 }
 
@@ -169,8 +182,8 @@ func TestDefaultPaths_EmptySutNamespace(t *testing.T) {
 // --system-test-path get paths rooted under their chosen directory.
 func TestDefaultPaths_CustomSystemTestRoot(t *testing.T) {
 	t.Parallel()
-	got := DefaultPaths(LangTypescript, "tests", "shop")
-	if got["system-driver-port"] != "tests/src/testkit/driver/port/shop" {
+	got := DefaultPaths(LangTypescript, "tests", "ignored")
+	if got["system-driver-port"] != "tests/src/testkit/driver/port" {
 		t.Errorf("system-driver-port: got %q, want under custom root", got["system-driver-port"])
 	}
 	if got["at-test"] != "tests/tests/latest/acceptance" {

@@ -87,11 +87,11 @@ carried by a **sibling** block under `system-test:`:
 system-test:
   channels: [api, ui]
   paths:
-    system-driver-adapter: system-test/typescript/src/testkit/driver/adapter/shop
+    system-driver-adapter: system-test/typescript/src/testkit/driver/adapter
     # …other Family B keys…
   system-driver-adapter-channels:        # sibling of paths:, not a key inside it
-    api: system-test/typescript/src/testkit/driver/adapter/shop/api
-    ui:  system-test/typescript/src/testkit/driver/adapter/shop/ui
+    api: system-test/typescript/src/testkit/driver/adapter/api
+    ui:  system-test/typescript/src/testkit/driver/adapter/ui
 ```
 
 Each member is a `channel → fully-resolved adapter path` entry, read
@@ -116,16 +116,18 @@ taught about them explicitly — none picks them up for free:
 
 **Why explicit, not derived.** Per-language folder *casing* makes a single
 `<root>/<channel>` join non-derivable: TS/Java use a lowercase subfolder
-(`.../adapter/shop/api`), .NET PascalCases it (`.../Adapter/shop/Api`), and a
+(`.../adapter/api`), .NET PascalCases it (`.../Adapter/Api`), and a
 team may restructure. Only scaffold-time resolution can carry that shape —
 the same resolve-fully-at-`init`, read-verbatim doctrine the other path keys
 follow. `shared` adapter code is the residual under the root, not a member —
 no phase scopes to "shared only", so it earns no schema slot.
 
-> **`external` is out of scope here.** The external-system adapter's
-> layout (`external/adapter` sibling vs. nested under `driver/adapter`) is
-> owned by `plans/backlog/20260526-1430-reconcile-defaultpaths-with-shop-template-layout.md`;
-> the channel members track only the System Driver adapter root.
+> **`external` nests under the driver layer.** The external-system driver
+> keys resolve to `driver/port/external` and `driver/adapter/external`
+> (`.NET`: `Driver.Port/External`, `Driver.Adapter/External`) — nested under
+> the driver layer, not a sibling `external/*` dir — matching the shop
+> template (reconciled per plan 20260526-1430). The channel members track
+> only the System Driver adapter root and do not split externals by channel.
 
 ### Ownership: scaffold-authoritative at `init`, operator-owned afterwards
 
@@ -163,11 +165,12 @@ edits afterwards.
 ## Default values (TypeScript example)
 
 The scaffolder writes a fully-resolved `paths:` block nested under
-`system-test:`, based on the project's `system-test.path`,
-`system-test.lang`, and `sut-namespace` (derived from `system.repo`'s
-last segment). For a TypeScript project with
-`system-test.path: system-test/typescript` and `sut-namespace: shop`,
-the emitted YAML is:
+`system-test:`, based on the project's `system-test.path` and
+`system-test.lang`. The values reproduce the shop template's checked-in
+`paths:` block exactly (reconciled per plan 20260526-1430): TypeScript and
+dotnet carry no namespace segment; Java carries its source package
+(`com/<owner>/<system>`) as a middle segment. For a TypeScript project with
+`system-test.path: system-test/typescript`, the emitted YAML is:
 
 ```yaml
 system-test:
@@ -176,27 +179,31 @@ system-test:
   lang: typescript
   sonar-project: optivem_shop-system-test
   paths:
-    system-driver-port: system-test/typescript/src/testkit/driver/port/shop
-    system-driver-adapter: system-test/typescript/src/testkit/driver/adapter/shop
-    external-system-driver-port: system-test/typescript/src/testkit/external/port/shop
-    external-system-driver-adapter: system-test/typescript/src/testkit/external/adapter/shop
+    system-driver-port: system-test/typescript/src/testkit/driver/port
+    system-driver-adapter: system-test/typescript/src/testkit/driver/adapter
+    external-system-driver-port: system-test/typescript/src/testkit/driver/port/external
+    external-system-driver-adapter: system-test/typescript/src/testkit/driver/adapter/external
     at-test: system-test/typescript/tests/latest/acceptance
-    dsl-port: system-test/typescript/src/testkit/dsl/port/shop
-    dsl-core: system-test/typescript/src/testkit/dsl/core/shop
+    dsl-port: system-test/typescript/src/testkit/dsl/port
+    dsl-core: system-test/typescript/src/testkit/dsl/core
     ct-test: system-test/typescript/tests/latest/contract
   channels: [api, ui]
   system-driver-adapter-channels:
-    api: system-test/typescript/src/testkit/driver/adapter/shop/api
-    ui: system-test/typescript/src/testkit/driver/adapter/shop/ui
+    api: system-test/typescript/src/testkit/driver/adapter/api
+    ui: system-test/typescript/src/testkit/driver/adapter/ui
 ```
 
-Java and dotnet defaults differ in stem shape (Java structures tests
-by package: `src/test/java/<sut-namespace>/latest/acceptance`; dotnet
-uses literal subdirs: `SystemTests/Latest/AcceptanceTests`). See
-`pathStems()` in `internal/projectconfig/paths_defaults.go` for the
-authoritative per-language stems pinned against the shop template's
-`latest/` form. `latest` / `Latest` is doctrine literal — always
-present, not project-customizable.
+Java and dotnet defaults differ in stem shape. Java nests everything under its
+source package and structures tests by package
+(`src/main/java/com/<owner>/<system>/testkit/…`,
+`src/test/java/com/<owner>/<system>/systemtest/latest/acceptance`); dotnet uses
+literal project subdirs (`Driver.Adapter`, `SystemTests/Latest/AcceptanceTests`).
+The Java package is resolved at `init` from the same owner + system-name the
+scaffold's namespace-rename passes use, so the `paths:` block matches the
+just-renamed on-disk tree. See `pathStems()` in
+`internal/projectconfig/paths_defaults.go` for the authoritative per-language
+stems pinned against the shop template's `latest/` form. `latest` / `Latest` is
+doctrine literal — always present, not project-customizable.
 
 ## Validation rules
 

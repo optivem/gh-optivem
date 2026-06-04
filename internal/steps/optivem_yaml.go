@@ -189,6 +189,17 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	// values so the resulting gh-optivem.yaml carries fully-resolved
 	// paths and the `system.sut-namespace` field is no longer persisted.
 	sutNamespace := lastSlashSegment(systemRepoSlug(cfg))
+	// javaPackage is the resolved `com/<org>/<sut>` source package the Java
+	// testkit/test trees live under. Derived from the SAME owner + system-name
+	// the ReplaceNamespaces / ReplaceSystemName passes use (the `mycompany`→owner,
+	// `myshop`→system-name lowercase forms), so the emitted `paths:` block matches
+	// the just-renamed on-disk tree by construction. Derived from cfg.Owner /
+	// cfg.SystemName directly (not the pre-computed *Casings fields) so it is
+	// robust on call paths that populate the primitives but not the casings.
+	// DefaultPaths consumes it only for Java (plan 20260526-1430).
+	javaPackage := path.Join("com",
+		config.OwnerCasings(cfg.Owner).Lower,
+		config.SystemCasings(cfg.SystemName).Lower)
 	pc.System = buildSystem(cfg, derived, sutNamespace)
 	pc.SystemTest = buildSystemTest(cfg, derived)
 	pc.ExternalSystems = buildExternals(cfg)
@@ -201,7 +212,7 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	// longer back-fills defaults. Do not generalise this `DefaultPaths`
 	// call into a "default at validate-time" or "default at migrate-time"
 	// helper — see `internal/projectconfig/path-keys.md` for the doctrine.
-	pc.SystemTest.Paths = projectconfig.DefaultPaths(cfg.TestLang, cfg.SystemTestPath, sutNamespace)
+	pc.SystemTest.Paths = projectconfig.DefaultPaths(cfg.TestLang, cfg.SystemTestPath, javaPackage)
 	// `init` writes channels: as the scaffold-authoritative initial value
 	// matching the api+ui testkit copySystemTests just produced — the SSoT
 	// the ChannelType codegen and the channel-by-channel runtime read.
@@ -215,7 +226,7 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	// (TS/Java `.../api`, .NET `.../Api`). Scaffold-authoritative; operator-owned
 	// afterwards, no migrate-time or validate-time back-fill (same doctrine as
 	// the DefaultPaths / DefaultChannels calls above).
-	pc.SystemTest.SystemDriverAdapterChannels = projectconfig.DefaultSystemDriverAdapterChannels(cfg.TestLang, cfg.SystemTestPath, sutNamespace, pc.Channels)
+	pc.SystemTest.SystemDriverAdapterChannels = projectconfig.DefaultSystemDriverAdapterChannels(cfg.TestLang, cfg.SystemTestPath, javaPackage, pc.Channels)
 	return pc
 }
 

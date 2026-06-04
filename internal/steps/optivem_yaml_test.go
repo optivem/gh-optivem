@@ -215,18 +215,23 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 		wantPath      string
 		wantAPIMember string // per-language system-driver-adapter-channels.api
 	}{
-		// SSoT: system-driver-port (testkit key) gets sutNamespace appended.
-		// FullRepo="x/y" → sutNamespace="y". The api member is the adapter root
-		// + channel, cased per language (TS/Java lowercase, .NET PascalCase).
-		{"typescript", projectconfig.LangTypescript, "system-driver-port", "system-test/src/testkit/driver/port/y", "system-test/src/testkit/driver/adapter/y/api"},
-		{"java", projectconfig.LangJava, "system-driver-port", "system-test/src/main/java/testkit/driver/port/y", "system-test/src/main/java/testkit/driver/adapter/y/api"},
-		{"dotnet", projectconfig.LangDotnet, "system-driver-port", "system-test/Testkit.Driver.Port/y", "system-test/Testkit.Driver.Adapter/y/Api"},
+		// The emitted paths reproduce the shop template's checked-in `paths:`
+		// block (plan 20260526-1430). TS/.NET carry no namespace; Java carries
+		// the resolved source package `com/<owner>/<system>` as a middle segment
+		// — here Owner="acme", SystemName="My Shop" → `com/acme/myshop`. The api
+		// member is the adapter root + channel, cased per language (TS/Java
+		// lowercase, .NET PascalCase).
+		{"typescript", projectconfig.LangTypescript, "system-driver-port", "system-test/src/testkit/driver/port", "system-test/src/testkit/driver/adapter/api"},
+		{"java", projectconfig.LangJava, "system-driver-port", "system-test/src/main/java/com/acme/myshop/testkit/driver/port", "system-test/src/main/java/com/acme/myshop/testkit/driver/adapter/api"},
+		{"dotnet", projectconfig.LangDotnet, "system-driver-port", "system-test/Driver.Port", "system-test/Driver.Adapter/Api"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{
 				Arch:           "monolith",
 				RepoStrategy:   "monorepo",
-				FullRepo:       "x/y",
+				Owner:          "acme",
+				SystemName:     "My Shop",
+				FullRepo:       "acme/my-shop",
 				Lang:           tc.testLang,
 				TestLang:       tc.testLang,
 				SystemPath:     "system",
