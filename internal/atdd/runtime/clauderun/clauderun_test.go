@@ -274,8 +274,8 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 		"system-path":                    "system/monolith/java",
 		"system-db-migration-path":       projectconfig.DefaultDbMigrationPath,
 		"system-test-path":               "system-test/java",
-		"driver-port":                    "system-test/src/testkit/driver/port/shop",
-		"driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+		"system-driver-port":                    "system-test/src/testkit/driver/port/shop",
+		"system-driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
 		"external-system-driver-port":    "system-test/src/testkit/external/port/shop",
 		"external-system-driver-adapter": "system-test/src/testkit/external/adapter/shop",
 		"at-test":                        "system-test/src/test/java/shop/latest/acceptance",
@@ -377,8 +377,8 @@ func TestRenderPrompt_RefactorSystemAgent_RendersScopeBlock(t *testing.T) {
 		"sut-namespace":    "shop",
 		"system-path":      "system",
 		"system-test-path": "system-test",
-		"driver-port":      "system-test/src/testkit/driver/port/shop",
-		"driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
+		"system-driver-port":      "system-test/src/testkit/driver/port/shop",
+		"system-driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
 	}
 
 	got, err := renderPrompt(opts)
@@ -1692,8 +1692,8 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 		"system-path":                    "system/monolith/typescript",
 		"system-db-migration-path":       projectconfig.DefaultDbMigrationPath,
 		"system-test-path":               "system-test/typescript",
-		"driver-port":                    "system-test/src/testkit/driver/port/shop",
-		"driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+		"system-driver-port":                    "system-test/src/testkit/driver/port/shop",
+		"system-driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
 		"external-system-driver-port":    "system-test/src/testkit/external/port/shop",
 		"external-system-driver-adapter": "system-test/src/testkit/external/adapter/shop",
 		"at-test":                        "system-test/tests/latest/acceptance",

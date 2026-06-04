@@ -1505,8 +1505,8 @@ processes:
         # signature to a port (interfaces hold signatures only).
         # implement-{system,external-system}-driver-adapters then replaces
         # those stubs with real impls in the downstream cascade.
-        read:  [dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
-        write: [dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
+        read:  [dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter]
+        write: [dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter]
 
       - id: IMPL_DSL_END
         type: end-event
@@ -1544,7 +1544,7 @@ processes:
           agent: system-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path, system-db-migration-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path, system-db-migration-path]
         write: [system-path, system-db-migration-path]
 
       - id: IMPL_SYS_END
@@ -1557,12 +1557,12 @@ processes:
   # Reshape variant of implement-system (plan 20260526-1448 Item 10 verb
   # split). Dispatched by redesign-system-structure CYCLE via the
   # parameterised implement-and-verify-system HIGH with
-  # `action: update-system`. Reads driver-port (must see what must not
-  # change) and driver-adapter (the absorbing layer) on top of system-path;
-  # writes system-path + driver-adapter + system-db-migration-path —
+  # `action: update-system`. Reads system-driver-port (must see what must not
+  # change) and system-driver-adapter (the absorbing layer) on top of system-path;
+  # writes system-path + system-driver-adapter + system-db-migration-path —
   # reshapes that need a schema change (e.g. extracting a column into a
   # join table) carry the migration alongside the code change in the same
-  # dispatch (driver-port writes still require a scope_exception). See
+  # dispatch (system-driver-port writes still require a scope_exception). See
   # `implement-system` above for the rationale on
   # `system-db-migration-path` being a shared, arch/lang-agnostic layer.
   update-system:
@@ -1578,8 +1578,8 @@ processes:
           agent: system-updater
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [system-path, driver-adapter, driver-port, system-db-migration-path]
-        write: [system-path, driver-adapter, system-db-migration-path]
+        read:  [system-path, system-driver-adapter, system-driver-port, system-db-migration-path]
+        write: [system-path, system-driver-adapter, system-db-migration-path]
 
       - id: UPDATE_SYS_END
         type: end-event
@@ -1588,8 +1588,8 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: UPDATE_SYS_END}
 
-  # Asymmetric: the agent reads driver-port to see what to implement but
-  # cannot write to it from this task — driver-port edits require a
+  # Asymmetric: the agent reads system-driver-port to see what to implement but
+  # cannot write to it from this task — system-driver-port edits require a
   # scope_exception. The inline "Driver-port guardrail" prose in the prompt
   # body collapses into scope (plan 20260526-1448 Item 3 + Item 11 Case B).
   implement-system-driver-adapters:
@@ -1605,8 +1605,8 @@ processes:
           agent: system-driver-adapter-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [driver-port, driver-adapter]
-        write: [driver-adapter]
+        read:  [system-driver-port, system-driver-adapter]
+        write: [system-driver-adapter]
 
       - id: IMPL_SYS_DA_END
         type: end-event
@@ -1617,8 +1617,8 @@ processes:
 
   # Reshape variant of implement-system-driver-adapters (plan 20260526-1448
   # Item 10 verb split). Dispatched by redesign-system-structure CYCLE.
-  # Same asymmetric scope as the implement variant — driver-port is
-  # read-only here; reshape writes land in driver-adapter.
+  # Same asymmetric scope as the implement variant — system-driver-port is
+  # read-only here; reshape writes land in system-driver-adapter.
   update-system-driver-adapters:
     name: "Update System Driver Adapters"
     start: EXECUTE_AGENT
@@ -1632,8 +1632,8 @@ processes:
           agent: system-driver-adapter-updater
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [driver-port, driver-adapter]
-        write: [driver-adapter]
+        read:  [system-driver-port, system-driver-adapter]
+        write: [system-driver-adapter]
 
       - id: UPDATE_SYS_DA_END
         type: end-event
@@ -1733,8 +1733,8 @@ processes:
           agent: unexpected-passing-tests-fixer
           # human tier: fix-flow dispatch — signals upstream defect, never bypassable.
           category: human
-        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
-        write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
       - id: FIX_PASS_END
         type: end-event
@@ -1758,8 +1758,8 @@ processes:
           agent: unexpected-failing-tests-fixer
           # human tier: fix-flow dispatch — signals upstream defect, never bypassable.
           category: human
-        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
-        write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
 
       - id: FIX_FAIL_END
         type: end-event
@@ -1782,8 +1782,8 @@ processes:
           agent: test-refactorer
           # test-agent tier: edits the test contract.
           category: test-agent
-        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
-        write: [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter]
+        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter]
 
       - id: REFACTOR_TESTS_END
         type: end-event

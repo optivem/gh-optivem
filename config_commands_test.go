@@ -735,8 +735,8 @@ system-test:
   lang: java
   sonar-project: optivem_shop-system-test
   paths:
-    driver-port: system-test/src/main/java/testkit/driver/port/shop-tests
-    driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
+    system-driver-port: system-test/src/main/java/testkit/driver/port/shop-tests
+    system-driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
     external-system-driver-port: system-test/src/main/java/testkit/external/port/shop-tests
     external-system-driver-adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
     at-test: system-test/src/test/java/shop-tests/latest/acceptance
@@ -778,8 +778,8 @@ system-test:
   lang: java
   sonar-project: optivem_shop-system-test
   paths:
-    driver-port: system-test/src/main/java/testkit/driver/port/shop-tests
-    driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
+    system-driver-port: system-test/src/main/java/testkit/driver/port/shop-tests
+    system-driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-tests
     external-system-driver-port: system-test/src/main/java/testkit/external/port/shop-tests
     external-system-driver-adapter: system-test/src/main/java/testkit/external/adapter/shop-tests
     at-test: system-test/src/test/java/shop-tests/latest/acceptance
@@ -888,8 +888,8 @@ func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
 	// ends with the system-test: tier (no trailing repos: / paths:), so we
 	// can extend it with indented entries directly.
 	body := monoRepoMonolithBody + `  paths:
-    driver-port: system-test/java/src/main/java/testkit/driver/port
-    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
+    system-driver-port: system-test/java/src/main/java/testkit/driver/port
+    system-driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
     external-system-driver-port: system-test/java/src/main/java/testkit/external/port
     external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter
     at-test: system-test/java/src/test/java/latest/acceptance
@@ -1022,8 +1022,8 @@ repos:
 // fail on the unrelated Rule 22a (paths: required). Tests append/replace
 // the db-migration-path line on this body.
 const dbMigrationPathTestBody = monoRepoMonolithBody + `  paths:
-    driver-port: system-test/java/src/main/java/testkit/driver/port
-    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
+    system-driver-port: system-test/java/src/main/java/testkit/driver/port
+    system-driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
     external-system-driver-port: system-test/java/src/main/java/testkit/external/port
     external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter
     at-test: system-test/java/src/test/java/latest/acceptance

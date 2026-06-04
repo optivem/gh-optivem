@@ -49,8 +49,8 @@ system-test:
   lang: java
   sonar-project: optivem_shop-system-test
   paths:
-    driver-port: system-test/java/src/main/java/testkit/driver/port/shop
-    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    system-driver-port: system-test/java/src/main/java/testkit/driver/port/shop
+    system-driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
     external-system-driver-port: system-test/java/src/main/java/testkit/external/port/shop
     external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter/shop
     at-test: system-test/java/src/test/java/shop/latest/acceptance
@@ -96,8 +96,8 @@ system-test:
   lang: java
   sonar-project: optivem_shop-system-test
   paths:
-    driver-port: system-test/java/src/main/java/testkit/driver/port/shop
-    driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
+    system-driver-port: system-test/java/src/main/java/testkit/driver/port/shop
+    system-driver-adapter: system-test/java/src/main/java/testkit/driver/adapter/shop
     external-system-driver-port: system-test/java/src/main/java/testkit/external/port/shop
     external-system-driver-adapter: system-test/java/src/main/java/testkit/external/adapter/shop
     at-test: system-test/java/src/test/java/shop/latest/acceptance
@@ -137,8 +137,8 @@ system-test:
   lang: java
   sonar-project: optivem_shop-system-test
   paths:
-    driver-port: system-test/src/main/java/testkit/driver/port/shop
-    driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop
+    system-driver-port: system-test/src/main/java/testkit/driver/port/shop
+    system-driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop
     external-system-driver-port: system-test/src/main/java/testkit/external/port/shop
     external-system-driver-adapter: system-test/src/main/java/testkit/external/adapter/shop
     at-test: system-test/src/test/java/shop/latest/acceptance
@@ -184,8 +184,8 @@ system-test:
   lang: java
   sonar-project: optivem_shop-system-test
   paths:
-    driver-port: system-test/src/main/java/testkit/driver/port/shop-backend
-    driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-backend
+    system-driver-port: system-test/src/main/java/testkit/driver/port/shop-backend
+    system-driver-adapter: system-test/src/main/java/testkit/driver/adapter/shop-backend
     external-system-driver-port: system-test/src/main/java/testkit/external/port/shop-backend
     external-system-driver-adapter: system-test/src/main/java/testkit/external/adapter/shop-backend
     at-test: system-test/src/test/java/shop-backend/latest/acceptance
@@ -832,7 +832,7 @@ func TestValidate_RejectsMissingPathsBlockWhenArchitectureSet(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for missing paths block, got nil")
 	}
-	for _, want := range []string{"system-test.paths.driver-port", "system-test.paths.driver-adapter", "system-test.paths.at-test", "system-test.paths.ct-test"} {
+	for _, want := range []string{"system-test.paths.system-driver-port", "system-test.paths.system-driver-adapter", "system-test.paths.at-test", "system-test.paths.ct-test"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should name %s, got: %v", want, err)
 		}
@@ -842,7 +842,7 @@ func TestValidate_RejectsMissingPathsBlockWhenArchitectureSet(t *testing.T) {
 func TestValidate_RejectsMissingCanonicalKey(t *testing.T) {
 	t.Parallel()
 	full := DefaultPaths(LangJava, "system-test", "shop")
-	delete(full, "driver-adapter")
+	delete(full, "system-driver-adapter")
 	cfg := &Config{
 		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
 		RepoStrategy: RepoStrategyMonoRepo,
@@ -860,12 +860,12 @@ func TestValidate_RejectsMissingCanonicalKey(t *testing.T) {
 	}
 	err := cfg.Validate()
 	if err == nil {
-		t.Fatal("expected error for missing driver-adapter, got nil")
+		t.Fatal("expected error for missing system-driver-adapter, got nil")
 	}
-	if !strings.Contains(err.Error(), "system-test.paths.driver-adapter") {
+	if !strings.Contains(err.Error(), "system-test.paths.system-driver-adapter") {
 		t.Errorf("error should name the missing key, got: %v", err)
 	}
-	if strings.Contains(err.Error(), "system-test.paths.driver-port") {
+	if strings.Contains(err.Error(), "system-test.paths.system-driver-port") {
 		t.Errorf("error should not name keys that ARE present, got: %v", err)
 	}
 }

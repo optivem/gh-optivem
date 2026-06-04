@@ -367,8 +367,8 @@ func TestRun_ExternalSystemsOmittedDoesNotFail(t *testing.T) {
 // SystemTestPaths tests below.
 func canonicalTSPaths() map[string]string {
 	return map[string]string{
-		"driver-port":                    "system-test/typescript/src/testkit/driver/port",
-		"driver-adapter":                 "system-test/typescript/src/testkit/driver/adapter",
+		"system-driver-port":                    "system-test/typescript/src/testkit/driver/port",
+		"system-driver-adapter":                 "system-test/typescript/src/testkit/driver/adapter",
 		"external-system-driver-port":    "system-test/typescript/src/testkit/external/port",
 		"external-system-driver-adapter": "system-test/typescript/src/testkit/external/adapter",
 		"at-test":                        "system-test/typescript/tests/latest/acceptance",
@@ -416,11 +416,11 @@ func TestRun_SystemTestPathsMissingEntries(t *testing.T) {
 	makeDir(t, filepath.Join(root, "system", "monolith", "typescript"))
 	// Materialise only the four `external` / `tests/latest/*` entries that
 	// match the shop template's actual TS layout. Leave the four
-	// `myShop`-suffixed entries (driver-port, driver-adapter, dsl-port,
+	// `myShop`-suffixed entries (system-driver-port, system-driver-adapter, dsl-port,
 	// dsl-core) phantom.
 	paths := map[string]string{
-		"driver-port":                    "system-test/typescript/src/testkit/driver/port/myShop",
-		"driver-adapter":                 "system-test/typescript/src/testkit/driver/adapter/myShop",
+		"system-driver-port":                    "system-test/typescript/src/testkit/driver/port/myShop",
+		"system-driver-adapter":                 "system-test/typescript/src/testkit/driver/adapter/myShop",
 		"external-system-driver-port":    "system-test/typescript/src/testkit/driver/port/external",
 		"external-system-driver-adapter": "system-test/typescript/src/testkit/driver/adapter/external",
 		"at-test":                        "system-test/typescript/tests/latest/acceptance",
@@ -449,7 +449,7 @@ func TestRun_SystemTestPathsMissingEntries(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error — four myShop-suffixed paths are missing")
 	}
-	for _, key := range []string{"driver-port", "driver-adapter", "dsl-port", "dsl-core"} {
+	for _, key := range []string{"system-driver-port", "system-driver-adapter", "dsl-port", "dsl-core"} {
 		want := "system-test.paths." + key
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should mention %s, got: %v", want, err)

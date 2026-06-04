@@ -61,8 +61,8 @@ key from `CanonicalPathKeys()` in
 
 | Key | Layer it names |
 |---|---|
-| `driver-port` | system-test driver port (interface) |
-| `driver-adapter` | system-test driver adapter (implementation) |
+| `system-driver-port` | system-test driver port (interface) |
+| `system-driver-adapter` | system-test driver adapter (implementation) |
 | `external-system-driver-port` | external-system driver port (interface) |
 | `external-system-driver-adapter` | external-system driver adapter (implementation) |
 | `at-test` | acceptance test files |
@@ -116,8 +116,8 @@ system-test:
   lang: typescript
   sonar-project: optivem_shop-system-test
   paths:
-    driver-port: system-test/typescript/src/testkit/driver/port/shop
-    driver-adapter: system-test/typescript/src/testkit/driver/adapter/shop
+    system-driver-port: system-test/typescript/src/testkit/driver/port/shop
+    system-driver-adapter: system-test/typescript/src/testkit/driver/adapter/shop
     external-system-driver-port: system-test/typescript/src/testkit/external/port/shop
     external-system-driver-adapter: system-test/typescript/src/testkit/external/adapter/shop
     at-test: system-test/typescript/tests/latest/acceptance
@@ -195,7 +195,7 @@ keys all describe the system-test tier's layered layout, so the block
 was relocated under `system-test:` alongside `path`, `repo`, `lang`,
 `config`, and `sonar-project` — every other field that describes the
 system-test tier. The key set, validation rules, and `PlaceholderMap`
-output (still flat — `driver-port`, `at-test`, etc. emit at the top of
+output (still flat — `system-driver-port`, `at-test`, etc. emit at the top of
 the placeholder namespace) are unchanged; only the YAML location moved.
 The migrate command continues to operate on the post-move location:
 the external-driver key-rename and SSoT-join passes both walk

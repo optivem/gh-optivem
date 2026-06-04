@@ -257,7 +257,7 @@ type Options struct {
 
 	// Placeholders carries the project-wide ${name} substitutions the
 	// dispatcher pulls from ProjectConfig.PlaceholderMap() — Family B
-	// path keys (driver-port, driver-adapter, at-test, …) plus the
+	// path keys (system-driver-port, system-driver-adapter, at-test, …) plus the
 	// derived Family A keys (sut-namespace, system-path, system-test-path,
 	// architecture, language). Inlined phase-doc placeholders that used
 	// to be resolved at materialization time now live in the prompt body
@@ -950,7 +950,7 @@ func renderExpectedOutputs(specs []statemachine.OutputSpec) string {
 //
 // Layer keys are resolved against the supplied paths map — same source
 // the inline ${key} placeholders resolve through (opts.Placeholders, fed
-// by cfg.PlaceholderMap()). Family B path keys (driver-port, dsl-core,
+// by cfg.PlaceholderMap()). Family B path keys (system-driver-port, dsl-core,
 // …) plus the Family A `system-path` are all in scope. Unresolved keys
 // (nil paths, or key not in the map) emit as `<key>: (unresolved)`
 // rather than disappearing silently — the build-time canonical-keys

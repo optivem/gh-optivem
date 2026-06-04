@@ -281,7 +281,7 @@ type System struct {
 //
 // Paths is the user-owned map of named-location placeholders consumed by
 // phase-doc substitution at sync time — the canonical Family B keys
-// (driver-port, driver-adapter, at-test, …) describing the system-test
+// (system-driver-port, system-driver-adapter, at-test, …) describing the system-test
 // tier's layered layout. Each key is a named location; each value is a
 // repo-relative path. The scaffolder writes a default block matching
 // glossary.md doctrine into every new project. Reserved keys that would
@@ -736,7 +736,7 @@ func (c *Config) Validate() error {
 	// these at `gh optivem init` and the operator owns subsequent edits;
 	// runtime never falls back to derived values. A missing key here
 	// would otherwise reach the ATDD dispatcher as an unfilled
-	// ${driver-adapter} (etc.) placeholder, failing deep inside a
+	// ${system-driver-adapter} (etc.) placeholder, failing deep inside a
 	// per-ticket agent dispatch instead of at config load.
 	//
 	// Gating on architecture matches the scaffolder/migrate: partial

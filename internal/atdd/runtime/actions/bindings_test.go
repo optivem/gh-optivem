@@ -216,8 +216,8 @@ system-test:
     at-test: system-test/typescript/tests/latest/acceptance
     dsl-port: dsl/typescript/src/port
     dsl-core: dsl/typescript/src/core
-    driver-port: driver/typescript/src/port
-    driver-adapter: driver/typescript/src/adapter
+    system-driver-port: driver/typescript/src/port
+    system-driver-adapter: driver/typescript/src/adapter
     ct-test: system-test/typescript/tests/latest/contract
     external-system-driver-port: driver/typescript/src/external-port
     external-system-driver-adapter: driver/typescript/src/external-adapter
@@ -286,7 +286,7 @@ func TestCheckPhaseScope_ViolationPopulatesContext(t *testing.T) {
 	cfg := writePhaseScopeTestConfig(t, repoPath)
 	git := newFakeRunner(t, "git")
 	// write-acceptance-tests scope: at-test, dsl-port, dsl-core. The
-	// driver-port edit is outside scope. HEAD-equivalent fallback (no
+	// system-driver-port edit is outside scope. HEAD-equivalent fallback (no
 	// snapshot pre-seeded), so checkPhaseScope enumerates the full dirty
 	// tree via `git status`.
 	git.on([]string{"-C", repoPath, "status", "--porcelain"},
@@ -325,7 +325,7 @@ func TestCheckPhaseScope_RenameTracksBothEndpoints(t *testing.T) {
 		[]byte("R  dsl/typescript/src/core/Old.ts -> somewhere/else/New.ts\n"), nil)
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	// implement-dsl scope: dsl-core, driver-port, external-system-driver-port.
+	// implement-dsl scope: dsl-core, system-driver-port, external-system-driver-port.
 	ctx.Params["phase-id"] = "implement-dsl"
 	out := a.checkPhaseScope(ctx)
 	if out.Err != nil {
@@ -1042,7 +1042,7 @@ func TestValidateOutputsAndScopes_ScopeDiff_FlagsAndKind(t *testing.T) {
 	var stderr bytes.Buffer
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &stderr, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
-	// implement-dsl scope (write list) covers dsl-core, driver-port,
+	// implement-dsl scope (write list) covers dsl-core, system-driver-port,
 	// external-system-driver-port — but not "somewhere/else".
 	ctx.Params["task-name"] = "implement-dsl"
 	// Required outputs must be present for the scope check to fire (the

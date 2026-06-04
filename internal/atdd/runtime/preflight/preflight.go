@@ -338,8 +338,8 @@ type tierCheck struct {
 
 // collectTiers returns every populated tier in cfg, in a deterministic
 // order suitable for stable error output. The trailing `system-test.paths.*`
-// entries are the eight canonical Family B testkit locations (driver-port,
-// driver-adapter, …) consumed by the runtime scope checker
+// entries are the eight canonical Family B testkit locations (system-driver-port,
+// system-driver-adapter, …) consumed by the runtime scope checker
 // (validate-outputs-and-scopes → resolveLayerPaths → pathInScope); checking
 // them here is what surfaces a stale or wrong-leaf paths: block at
 // `gh optivem config preflight` time instead of mid-`implement` agent run.

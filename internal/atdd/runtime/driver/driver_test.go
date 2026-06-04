@@ -143,7 +143,7 @@ processes:
           task-name: implement-system
           agent: system-implementer
           category: prod-agent
-        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
       - id: END
         type: end-event
@@ -195,7 +195,7 @@ processes:
           task-name: implement-system
           agent: system-implementer
           category: prod-agent
-        read:  [at-test, ct-test, dsl-port, dsl-core, driver-port, driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
       - id: END
         type: end-event
@@ -554,7 +554,7 @@ func TestClaudeRunDispatch_ExpandsTemplatedNodeFields(t *testing.T) {
 	}
 	claudeFake := &fakeClaude{}
 	// implement-system's prompt now inlines phase-doc
-	// placeholders (${sut-namespace}, ${driver-adapter}, ${driver-port},
+	// placeholders (${sut-namespace}, ${system-driver-adapter}, ${system-driver-port},
 	// ${system-test-path}); a cfg with populated Paths is required so
 	// the dispatcher's PlaceholderMap fills them.
 	cfg := &projectconfig.Config{
@@ -770,7 +770,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 			Lang: projectconfig.LangTypescript,
 			// Family B paths feed the dispatcher's PlaceholderMap so inlined
 			// phase-doc references in implement-system's body
-			// (${driver-port}, ${driver-adapter}, …) resolve at render time.
+			// (${system-driver-port}, ${system-driver-adapter}, …) resolve at render time.
 			Paths: projectconfig.DefaultPaths(projectconfig.LangTypescript, "system-test", "shop"),
 		},
 		ExternalSystems: projectconfig.ExternalSystems{

@@ -9,8 +9,8 @@ func TestDefaultPaths_TypescriptFlatScaffold(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangTypescript, "system-test", "shop")
 	want := map[string]string{
-		"driver-port":                    "system-test/src/testkit/driver/port/shop",
-		"driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+		"system-driver-port":                    "system-test/src/testkit/driver/port/shop",
+		"system-driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
 		"external-system-driver-port":    "system-test/src/testkit/external/port/shop",
 		"external-system-driver-adapter": "system-test/src/testkit/external/adapter/shop",
 		"at-test":                        "system-test/tests/latest/acceptance",
@@ -27,8 +27,8 @@ func TestDefaultPaths_JavaFlatScaffold(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangJava, "system-test", "shop")
 	want := map[string]string{
-		"driver-port":                    "system-test/src/main/java/testkit/driver/port/shop",
-		"driver-adapter":                 "system-test/src/main/java/testkit/driver/adapter/shop",
+		"system-driver-port":                    "system-test/src/main/java/testkit/driver/port/shop",
+		"system-driver-adapter":                 "system-test/src/main/java/testkit/driver/adapter/shop",
 		"external-system-driver-port":    "system-test/src/main/java/testkit/external/port/shop",
 		"external-system-driver-adapter": "system-test/src/main/java/testkit/external/adapter/shop",
 		"at-test":                        "system-test/src/test/java/shop/latest/acceptance",
@@ -45,8 +45,8 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangDotnet, "system-test", "shop")
 	want := map[string]string{
-		"driver-port":                    "system-test/Testkit.Driver.Port/shop",
-		"driver-adapter":                 "system-test/Testkit.Driver.Adapter/shop",
+		"system-driver-port":                    "system-test/Testkit.Driver.Port/shop",
+		"system-driver-adapter":                 "system-test/Testkit.Driver.Adapter/shop",
 		"external-system-driver-port":    "system-test/Testkit.External.Port/shop",
 		"external-system-driver-adapter": "system-test/Testkit.External.Adapter/shop",
 		"at-test":                        "system-test/SystemTests/Latest/AcceptanceTests",
@@ -67,8 +67,8 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 func TestDefaultPaths_EmptySutNamespace(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangTypescript, "system-test", "")
-	if got["driver-port"] != "system-test/src/testkit/driver/port" {
-		t.Errorf("ts driver-port with empty sutNamespace: got %q, want pre-SSoT shape", got["driver-port"])
+	if got["system-driver-port"] != "system-test/src/testkit/driver/port" {
+		t.Errorf("ts system-driver-port with empty sutNamespace: got %q, want pre-SSoT shape", got["system-driver-port"])
 	}
 	if got["at-test"] != "system-test/tests/latest/acceptance" {
 		t.Errorf("ts at-test with empty sutNamespace: got %q", got["at-test"])
@@ -94,8 +94,8 @@ func TestDefaultPaths_EmptySutNamespace(t *testing.T) {
 func TestDefaultPaths_CustomSystemTestRoot(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangTypescript, "tests", "shop")
-	if got["driver-port"] != "tests/src/testkit/driver/port/shop" {
-		t.Errorf("driver-port: got %q, want under custom root", got["driver-port"])
+	if got["system-driver-port"] != "tests/src/testkit/driver/port/shop" {
+		t.Errorf("system-driver-port: got %q, want under custom root", got["system-driver-port"])
 	}
 	if got["at-test"] != "tests/tests/latest/acceptance" {
 		t.Errorf("at-test: got %q, want under custom root", got["at-test"])
@@ -137,8 +137,8 @@ func TestDefaultPaths_KeysMatchPlaceholderDoctrine(t *testing.T) {
 	t.Parallel()
 	got := DefaultPaths(LangTypescript, "system-test", "shop")
 	want := []string{
-		"driver-port",
-		"driver-adapter",
+		"system-driver-port",
+		"system-driver-adapter",
 		"external-system-driver-port",
 		"external-system-driver-adapter",
 		"at-test",

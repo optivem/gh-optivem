@@ -17,8 +17,8 @@ const DefaultDbMigrationPath = "system/db/migrations"
 // given system-test language, root, and sut-namespace. The eight keys
 // match the doctrine referenced by the inline `read:` / `write:` scope
 // on writing-agent MID nodes in
-// `internal/atdd/runtime/statemachine/process-flow.yaml`: driver-port,
-// driver-adapter, external-system-driver-port,
+// `internal/atdd/runtime/statemachine/process-flow.yaml`: system-driver-port,
+// system-driver-adapter, external-system-driver-port,
 // external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
@@ -26,7 +26,7 @@ const DefaultDbMigrationPath = "system/db/migrations"
 // architecture chosen yet) and `Validate` accepts that shape.
 //
 // Per-SSoT (plan 20260518-1530 item 3), the returned values are fully
-// resolved: testkit keys (driver-*, external-system-driver-*, dsl-*) take
+// resolved: testkit keys (system-driver-*, external-system-driver-*, dsl-*) take
 // `sutNamespace` as a trailing directory segment. at-test and ct-test
 // are sut-namespace-free at the DefaultPaths trailing-append layer —
 // Java's stems already incorporate sutNamespace as a middle (package)
@@ -104,8 +104,8 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 // scope assignment that consumes these keys.
 func CanonicalPathKeys() []string {
 	return []string{
-		"driver-port",
-		"driver-adapter",
+		"system-driver-port",
+		"system-driver-adapter",
 		"external-system-driver-port",
 		"external-system-driver-adapter",
 		"at-test",

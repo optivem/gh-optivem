@@ -203,8 +203,8 @@ func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 // TestBuildOptivemYAML_PathsBlockSeededPerLanguage — the scaffolder emits
 // a non-empty `paths:` Family B block whose keys match the placeholder
 // doctrine. Without this block a freshly-scaffolded project would fail
-// on first dispatch (any phase doc referencing ${driver-port} /
-// ${driver-adapter} / ${external-system-driver-*} would surface as an
+// on first dispatch (any phase doc referencing ${system-driver-port} /
+// ${system-driver-adapter} / ${external-system-driver-*} would surface as an
 // unfilled placeholder).
 func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 	t.Parallel()
@@ -214,11 +214,11 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 		wantKey  string
 		wantPath string
 	}{
-		// SSoT: driver-port (testkit key) gets sutNamespace appended.
+		// SSoT: system-driver-port (testkit key) gets sutNamespace appended.
 		// FullRepo="x/y" → sutNamespace="y".
-		{"typescript", projectconfig.LangTypescript, "driver-port", "system-test/src/testkit/driver/port/y"},
-		{"java", projectconfig.LangJava, "driver-port", "system-test/src/main/java/testkit/driver/port/y"},
-		{"dotnet", projectconfig.LangDotnet, "driver-port", "system-test/Testkit.Driver.Port/y"},
+		{"typescript", projectconfig.LangTypescript, "system-driver-port", "system-test/src/testkit/driver/port/y"},
+		{"java", projectconfig.LangJava, "system-driver-port", "system-test/src/main/java/testkit/driver/port/y"},
+		{"dotnet", projectconfig.LangDotnet, "system-driver-port", "system-test/Testkit.Driver.Port/y"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{
@@ -236,7 +236,7 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 			if len(got.SystemTest.Paths) == 0 {
 				t.Fatal("system-test.paths: block should be seeded by the scaffolder")
 			}
-			for _, k := range []string{"driver-port", "driver-adapter", "external-system-driver-port", "external-system-driver-adapter"} {
+			for _, k := range []string{"system-driver-port", "system-driver-adapter", "external-system-driver-port", "external-system-driver-adapter"} {
 				if _, ok := got.SystemTest.Paths[k]; !ok {
 					t.Errorf("system-test.paths.%s missing", k)
 				}
@@ -272,7 +272,7 @@ func TestBuildOptivemYAML_PathsBlockMaterializeOK(t *testing.T) {
 		t.Fatalf("scaffolded config fails Validate: %v", err)
 	}
 	pm := pc.PlaceholderMap()
-	for _, key := range []string{"driver-port", "driver-adapter", "external-system-driver-port", "external-system-driver-adapter"} {
+	for _, key := range []string{"system-driver-port", "system-driver-adapter", "external-system-driver-port", "external-system-driver-adapter"} {
 		if pm[key] == "" {
 			t.Errorf("placeholder map missing %q after scaffold", key)
 		}

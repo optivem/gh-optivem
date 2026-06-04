@@ -224,7 +224,7 @@ func requireDone(repoPath, label string, paths []string, remedy string) error {
 // sharedContractFootprint is the irreducible artifact of the `--target test`
 // slice: the acceptance tests. Every story/bug ticket writes them, so their
 // committed presence is the robust "shared contract ran" signal. (The slice's
-// DSL / driver-port / external writes are conditional on port-change gateways,
+// DSL / system-driver-port / external writes are conditional on port-change gateways,
 // so they are deliberately NOT in the detection footprint — an unchanged port
 // would read as falsely-ABSENT.)
 func sharedContractFootprint(cfg *projectconfig.Config) []string {
@@ -233,14 +233,14 @@ func sharedContractFootprint(cfg *projectconfig.Config) []string {
 
 // driverAdapterFootprint narrows the System Driver adapter layer to one
 // channel's subtree. Per the 2026-06-04 operator clarification the adapters
-// split by subdirectory (`<driver-adapter>/{api,ui,external,shared}`), so a
-// channel's adapter is `<driver-adapter>/<channel>` — distinct from the
+// split by subdirectory (`<system-driver-adapter>/{api,ui,external,shared}`), so a
+// channel's adapter is `<system-driver-adapter>/<channel>` — distinct from the
 // `shared` stubs the test slice writes, which is what keeps the two slices'
 // footprints from colliding. (Making these folders configurable rather than a
 // path-join convention is plans/20260604-0955-configurable-per-channel-adapter-
 // folders.md.)
 func driverAdapterFootprint(cfg *projectconfig.Config, channel string) []string {
-	base := layerPath(cfg, "driver-adapter")
+	base := layerPath(cfg, "system-driver-adapter")
 	if base == "" {
 		return nil
 	}
