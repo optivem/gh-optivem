@@ -1,7 +1,5 @@
 # Scoped `implement`: layer/channel slices as the team-handoff seam
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-04T08:16:36Z`
-
 ## TL;DR
 
 **Why:** `gh optivem implement` walks the whole four-layer pipeline in one pass, so separate backend/frontend teams cannot split a ticket along the architecture's own seams (mob the shared contract, then each channel team owns its channel).
