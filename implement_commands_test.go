@@ -216,17 +216,19 @@ func TestTaskPromptOverridesFromConfig_MissingPathErrors(t *testing.T) {
 }
 
 // TestNewImplementCmd_HasExpectedFlagsAndUse: thin wiring check — the
-// `implement` command must declare every flag callers rely on (issue,
-// headless, autonomous [deprecated alias], manual-agents, workspace, log-file,
-// keep-runs, show-prompt) and its Use line must be the bare verb so the
-// noun-first surface keeps `gh optivem implement` as a top-level command.
+// `implement` command must declare every flag callers rely on (issue, target,
+// channel, headless, autonomous [deprecated alias], manual-agents, workspace,
+// log-file, keep-runs, show-prompt). Its Use line leads with the bare verb
+// (now `implement [issue]` since the issue is also positional per D-positional)
+// so the noun-first surface keeps `gh optivem implement` as a top-level
+// command, and it accepts at most one positional arg (the issue).
 func TestNewImplementCmd_HasExpectedFlagsAndUse(t *testing.T) {
 	t.Parallel()
 	cmd := newImplementCmd()
-	if cmd.Use != "implement" {
-		t.Errorf("Use: got %q, want %q", cmd.Use, "implement")
+	if cmd.Use != "implement [issue]" {
+		t.Errorf("Use: got %q, want %q", cmd.Use, "implement [issue]")
 	}
-	wantFlags := []string{"issue", "headless", "autonomous", "manual-agents", "workspace", "log-file", "keep-runs", "show-prompt"}
+	wantFlags := []string{"issue", "target", "channel", "headless", "autonomous", "manual-agents", "workspace", "log-file", "keep-runs", "show-prompt"}
 	for _, name := range wantFlags {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Errorf("missing flag --%s", name)
@@ -240,6 +242,59 @@ func TestNewImplementCmd_HasExpectedFlagsAndUse(t *testing.T) {
 	// so `--help` callers see the alias signal without reading the plan.
 	if f := cmd.Flags().Lookup("autonomous"); f != nil && !strings.Contains(strings.ToLower(f.Usage), "deprecated") {
 		t.Errorf("--autonomous Usage should mark it deprecated, got %q", f.Usage)
+	}
+	// The positional issue is additive (D-positional): at most one arg, and
+	// the Args validator must accept zero (the --issue-flag form) and one.
+	if cmd.Args == nil {
+		t.Fatal("expected an Args validator (MaximumNArgs(1)), got nil")
+	}
+	if err := cmd.Args(cmd, []string{"42"}); err != nil {
+		t.Errorf("Args should accept one positional issue, got %v", err)
+	}
+	if err := cmd.Args(cmd, []string{"1", "2"}); err == nil {
+		t.Error("Args should reject two positional arguments")
+	}
+}
+
+// TestResolveIssueSource exercises the D-positional reconciliation: the issue
+// may come from a positional arg or --issue, exactly one of them. Both-set is a
+// conflict; neither is the missing-issue error.
+func TestResolveIssueSource(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name    string
+		flag    string
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{"positional only", "", []string{"42"}, "42", false},
+		{"flag only", "42", nil, "42", false},
+		{"flag with url", "https://github.com/myorg/myrepo/issues/7", nil, "https://github.com/myorg/myrepo/issues/7", false},
+		{"positional trims whitespace", "", []string{"  42  "}, "42", false},
+		{"flag trims whitespace", "  42  ", nil, "42", false},
+		{"both set conflicts", "42", []string{"43"}, "", true},
+		{"both set conflicts even if equal", "42", []string{"42"}, "", true},
+		{"neither set errors", "", nil, "", true},
+		{"empty positional treated as absent", "42", []string{"   "}, "42", false},
+		{"blank flag + blank positional errors", "  ", []string{"  "}, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveIssueSource(tc.flag, tc.args)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("resolveIssueSource(%q, %v): want error, got %q", tc.flag, tc.args, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveIssueSource(%q, %v): unexpected error %v", tc.flag, tc.args, err)
+			}
+			if got != tc.want {
+				t.Fatalf("resolveIssueSource(%q, %v): got %q, want %q", tc.flag, tc.args, got, tc.want)
+			}
+		})
 	}
 }
 

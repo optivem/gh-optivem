@@ -1,13 +1,19 @@
 # Scoped `implement`: layer/channel slices as the team-handoff seam
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-04T07:46:52Z`
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-04T08:16:36Z`
 
 ## TL;DR
 
 **Why:** `gh optivem implement` walks the whole four-layer pipeline in one pass, so separate backend/frontend teams cannot split a ticket along the architecture's own seams (mob the shared contract, then each channel team owns its channel).
 **End result:** `implement` gains a `--target test|driver-adapter|system` (+ `--channel`) refinement that runs one slice and hands off via commit; resume is derived from the committed tree (no status file); the no-arg form still walks the full pipeline unchanged.
 
-**Status:** 1702 landed (unblocked); mechanism + red-gate resolved against the code — see Item 2 / D-red-gate. **Item 0, Item 1, Item 2a LANDED (commit 5e5b40d); Items 2b–2d + 3 LANDED (this session — `driver/scoped.go` selector + git-state resume guard + `expected-test-result` gate)** — next: Items 4 (flag surface), 5 (common wiring), 6 (`--help`), 7 (broader tests).
+**Status:** ALL ITEMS LANDED. 1702 landed (unblocked); mechanism + red-gate
+resolved against the code. **Items 0, 1, 2a (commit 5e5b40d); Items 2b–2d + 3
+(`driver/scoped.go` selector + git-state resume guard + `expected-test-result`
+gate, commit 1222228); Items 4 (flag surface), 5 (common wiring — landed with
+2b–2d in `scoped.go`), 6 (`--help`), 7 (command-layer flag tests) this
+session.** Only the operator `## Verification` checks remain (manual, require a
+live channels: project + real agent runs).
 **Created:** 2026-05-30 17:25 CEDT
 
 > **Depends on `plans/20260530-1702-channels-field-channel-by-channel.md` — land
@@ -444,21 +450,12 @@ makes Item 1 substantially larger than first framed. Execute in order:
    **same predicate** the resume guard reads: a slice only reaches a commit by
    passing its own verify nodes, and that commit is what the downstream run
    classifies DONE — implemented once.
-4. **Flag surface (D-flags, D-positional).** Wire `--target
-   test|driver-adapter|system` + `--channel <ch>` into `implement_commands.go`:
-   `--channel` required for `driver-adapter`/`system`, rejected for `test`,
-   validated against `channels:` (parity with flag/interactive validation per the
-   1702 plan's D2). Accept a positional issue arg (additive; `--issue` still
-   works). Preserve the no-arg full-walk default.
-5. **Common-layer ownership wiring (D-common option b).** First channel's
-   `--target system` carries `common: true`, later channels `common: false` —
-   reusing the 1702 plan's `common` param verbatim, consistent with its D5/D7.
-6. **`--help` + Example refresh.** Update the `implement` `Long`/`Example`
-   strings to show the team workflow and the unchanged no-arg default. Use
-   `myorg/myrepo` placeholders, never `shop`-specific repos.
-7. **Tests.** Slice→phase mapping, git-state resume detection, expected-red
-   gate, `<ch>` validation. Audit gate/statemachine fixtures before running the
-   statemachine tests and watch RAM (statemachine loop hazard).
+_All items 0–7 are landed (see Status). The selector + resume guard
+(`internal/atdd/runtime/driver/{target,scoped}.go`) and the flag surface
+(`implement_commands.go`: `--target` / `--channel` + positional issue) are in
+place; Item 5's `common`/`suite` seeding landed inside `scoped.go`'s
+`resolveScopedEntry` (matching `UnrollSystemChannels` verbatim), so it needed no
+separate work. What remains below is operator-only acceptance, not agent work._
 
 ## Do NOT
 

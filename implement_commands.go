@@ -49,6 +49,8 @@ import (
 func newImplementCmd() *cobra.Command {
 	var (
 		issueArg              string
+		targetArg             string
+		channelArg            string
 		headless              bool
 		autonomousDeprecated  bool
 		manualAgents          bool
@@ -60,7 +62,7 @@ func newImplementCmd() *cobra.Command {
 		showPrompt            bool
 	)
 	cmd := &cobra.Command{
-		Use:   "implement",
+		Use:   "implement [issue]",
 		Short: "Run the configured implementation pipeline on an issue",
 		Long: `Run the implementation pipeline against a GitHub issue.
 
@@ -69,29 +71,69 @@ task_prompts:, node_extras:, node_replacements:). Today the bundled flow
 is ATDD; future flows (TDD, DDD, or compositions) plug into the same
 command.
 
---issue is required; the pipeline targets that specific issue.
+Identify the issue with a positional argument or --issue (either a bare
+number or a full issue URL); supply exactly one. With no --target the
+command walks the WHOLE pipeline for that issue, start to end — the
+fullstack-developer default.
+
+Team handoff (--target): a ticket can instead be produced in slices that
+different teams own, handed off via commit. --target names a contiguous
+slice of the pipeline:
+
+  test               shared, channel-agnostic contract (acceptance tests +
+                     DSL + driver ports + external system) the whole team
+                     mobs. Ends RED by design. --channel is rejected.
+  driver-adapter     one channel's test-side System Driver adapter.
+  system             one channel's system (the first channel also builds
+                     the channel-agnostic common layer).
+
+--channel <ch> selects which channel for the two channel-split slices
+(required there, rejected for test); the token is validated against the
+project's channels: list. There is no resume status file — a slice reads
+how far the ticket got from the committed tree, so it refuses to start
+until its upstream slice is committed.
 
 Recovery from crashed runs: if a run is force-cancelled mid-dispatch
 (Ctrl+C in the parent terminal, terminal closed, kernel kill, panic in a
 child), orphan headless claude subprocesses may survive the parent's
 exit. Run 'gh optivem doctor --orphans' to list them and interactively
 kill them.`,
-		Example: `  gh optivem implement --issue 42
+		Example: `  gh optivem implement 42                              # full pipeline (positional issue)
+  gh optivem implement --issue 42                      # full pipeline (flag form)
   gh optivem implement --issue https://github.com/myorg/myrepo/issues/42
-  gh optivem -c ./optivem-multitier.yaml implement --issue 42
-  gh optivem implement --issue 42 --workspace /abs/path/to/workspace
-  gh optivem implement --issue 42 --log-file run.log
-  gh optivem implement --issue 42 --verbose                # stream full firehose to terminal
-  gh optivem implement --issue 42 --log-file run.log --log-level phase  # quiet log
-  gh optivem implement --issue 42 --show-prompt
-  gh optivem implement --issue 42 --keep-runs 0   # never prune
-  gh optivem --auto implement --issue 42 --headless   # auto-approve everything except commit/fix; run claude -p`,
+  gh optivem -c ./optivem-multitier.yaml implement 42
+
+  # Team handoff — mob the shared contract, then each channel team owns its channel:
+  gh optivem implement 42 --target test                          # whole team: shared RED contract
+  gh optivem implement 42 --target driver-adapter --channel api  # API team: its driver adapter
+  gh optivem implement 42 --target system --channel api          # API team: its system (channel green)
+  gh optivem implement 42 --target driver-adapter --channel ui   # UI team: its driver adapter
+  gh optivem implement 42 --target system --channel ui           # UI team: its system
+
+  gh optivem implement 42 --workspace /abs/path/to/workspace
+  gh optivem implement 42 --log-file run.log
+  gh optivem implement 42 --verbose                    # stream full firehose to terminal
+  gh optivem implement 42 --log-file run.log --log-level phase  # quiet log
+  gh optivem implement 42 --show-prompt
+  gh optivem implement 42 --keep-runs 0   # never prune
+  gh optivem --auto implement 42 --headless   # auto-approve everything except commit/fix; run claude -p`,
+		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			if strings.TrimSpace(issueArg) == "" {
-				exitOnError(errors.New("--issue is required"))
-			}
-			issue, err := parseIssueArg(issueArg)
+			issueSource, err := resolveIssueSource(issueArg, args)
 			exitOnError(err)
+			issue, err := parseIssueArg(issueSource)
+			exitOnError(err)
+			// --target enum validation lives in ParseTarget (the SSoT shared with
+			// the driver); the --channel rule (required/rejected per slice,
+			// membership against channels:) is enforced once in the driver's
+			// resolveScopedEntry, so the flag layer stays a thin parse wrapper.
+			// The one check only the flag layer can make is coherence: a
+			// --channel with no --target would otherwise be silently dropped.
+			target, err := driver.ParseTarget(targetArg)
+			exitOnError(err)
+			if target == driver.TargetUnset && strings.TrimSpace(channelArg) != "" {
+				exitOnError(errors.New("--channel requires --target (channel applies to a scoped slice)"))
+			}
 			exitOnError(validateKeepRuns(keepRuns))
 
 			// --autonomous is a deprecated alias for --auto --headless.
@@ -128,6 +170,8 @@ kill them.`,
 			var resolved tracker.Issue
 			runErr := driver.Run(context.Background(), driver.Options{
 				IssueNum:            issue,
+				Target:              target,
+				Channel:             strings.TrimSpace(channelArg),
 				ResolvedIssue:       &resolved,
 				Headless:            headless,
 				ManualAgents:        manualAgents,
@@ -148,7 +192,9 @@ kill them.`,
 			exitOnError(runErr)
 		},
 	}
-	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (required)")
+	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (or pass it positionally)")
+	cmd.Flags().StringVar(&targetArg, "target", "", "Scope the run to one pipeline slice: test | driver-adapter | system (default: walk the whole pipeline)")
+	cmd.Flags().StringVar(&channelArg, "channel", "", "Channel for a channel-split --target (driver-adapter / system); validated against the project's channels:. Rejected for --target test")
 	cmd.Flags().BoolVar(&headless, "headless", false, "Run the claude subprocess in headless `claude -p` mode (no interactive UI; structured JSON envelope captured for the exit banner)")
 	cmd.Flags().BoolVar(&autonomousDeprecated, "autonomous", false, "[Deprecated] Equivalent to --auto --headless. Will be removed in a future release.")
 	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
@@ -317,6 +363,29 @@ func taskPromptOverridesFromConfig(cfg *projectconfig.Config) (map[string]string
 		out[name] = string(data)
 	}
 	return out, nil
+}
+
+// resolveIssueSource reconciles the two ways to name an issue (D-positional):
+// a positional argument (args[0]) or the --issue flag. Exactly one must be
+// supplied. Both set is a conflict (the operator would not know which wins);
+// neither is the "no issue" error. The Args constraint (MaximumNArgs(1))
+// guarantees len(args) <= 1, so a non-empty args[0] is the positional form.
+func resolveIssueSource(issueFlag string, args []string) (string, error) {
+	flag := strings.TrimSpace(issueFlag)
+	var positional string
+	if len(args) == 1 {
+		positional = strings.TrimSpace(args[0])
+	}
+	switch {
+	case flag != "" && positional != "":
+		return "", errors.New("specify the issue once: as a positional argument OR --issue, not both")
+	case flag != "":
+		return flag, nil
+	case positional != "":
+		return positional, nil
+	default:
+		return "", errors.New("provide an issue: a positional argument or --issue (a number or issue URL)")
+	}
 }
 
 // parseIssueArg accepts either a bare issue number ("42") or a GitHub issue
