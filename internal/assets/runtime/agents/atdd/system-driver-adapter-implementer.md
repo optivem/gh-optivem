@@ -16,8 +16,8 @@ ${scope-block}
 ### Parameters
 
 - `architecture` — the target architecture for the System Driver adapter (`${system-driver-adapter}`).
-- `channel` — the delivery channel whose driver adapter this dispatch must implement (e.g. `api`, `ui`). Each channel has its own adapter class (e.g. `MyShop${channel}Driver`); implement only the `${channel}` one and leave the other channels' adapters untouched.
+- `channel` — the delivery channel whose driver adapter this dispatch must implement. The adapter class for this channel is `MyShop${channel}Driver`; implement only that adapter and modify no adapter class other than `${channel}`'s.
 
 ## Steps
 
-1. Implement the `${channel}` System Driver adapter (the `${channel}` adapter under `${system-driver-adapter}`) for real — replace each `TODO: System Driver` prototype in that channel's adapter with actual logic, leaving the other channels' adapter stubs as they are. ${re-entry-policy} The "broken/missing piece" for this agent is typically a forgotten `${channel}` Driver stub under `${system-driver-adapter}`.
+1. Implement the `${channel}` System Driver adapter (the `${channel}` adapter under `${system-driver-adapter}`) for real — replace each `TODO: System Driver` prototype in that channel's adapter with actual logic, and touch no adapter other than the `${channel}` one. ${re-entry-policy} The "broken/missing piece" for this agent is typically a forgotten `${channel}` Driver stub under `${system-driver-adapter}`.
