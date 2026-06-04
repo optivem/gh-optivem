@@ -139,12 +139,49 @@ all three Sonar surfaces, with local and CI achieving equal resilience, and the
       25/25 core + 45/45 wrapper green.
 - [x] Re-synced vendored copies into gh-optivem via `sync-shared.sh` (retry-core
       blob `b746f07`, retry blob `40dd2a5`).
-- [ ] **Release:** push `optivem/actions` to `main`; the `update-v1` workflow
-      auto-retargets the floating `v1` tag, so shop CI (`uses:
-      optivem/actions/retry@v1`) picks up the fix on its next run. No manual tag
-      move needed. Until pushed, shop still runs the old behaviour.
-- [ ] Re-run the two failed jobs once `v1` is updated (or immediately as a
-      transient re-run): `gh run rerun 26937916287 --repo optivem/shop --failed`.
+- [x] **Released:** pushed `optivem/actions` `055d586` to `main`; `update-v1`
+      run `26940130663` retargeted the floating `v1` tag to `055d586`. shop CI
+      (`uses: optivem/actions/retry@v1`) now resolves to the fix.
+- [x] Re-ran the two downstream commit-stage runs on the fixed `v1` (the meta
+      run `26937916287` itself is a concluded scheduled orchestrator and cannot
+      be retried). `multitier-backend-java` (`26937963251`) → **green** — the
+      previously-broken Gradle path. `multitier-frontend-react` (`26937963918`)
+      → green on a fresh re-run after one more sustained-403 exhaustion (see
+      Item 1c).
+
+### Item 1c — Eliminate the `/analysis/jres` flake at its source (skip JRE provisioning)
+> Surfaced while verifying Item 1b: retry is necessary but not sufficient.
+> `multitier-frontend-react` failed its rerun even with a *correctly working*
+> 4-attempt retry — the SonarCloud JRE-provisioning endpoint
+> `api.sonarcloud.io/analysis/jres` 403s in **sustained** bursts that outlast
+> the 5s+15s+45s (~65s) window. Root cause is concurrency: the meta-prerelease
+> fans out all 7 language pipelines simultaneously, and they hammer
+> `/analysis/jres` at once, so it rate-limits/403s. Retrying around a saturated
+> endpoint is a band-aid; the durable fix is to **stop calling it**.
+
+The scanner only hits `/analysis/jres` to download a JRE to run the analyzer.
+The runner already has a JDK/JRE (Setup Java / Setup Node steps). Skipping
+provisioning and pointing the scanner at the installed JRE removes the flaky
+call entirely.
+
+- [ ] **Gradle (java backend):** set `sonar.scanner.skipJreProvisioning=true`
+      (+ ensure `JAVA_HOME` / a usable JRE) so `./gradlew sonar` uses the
+      runner's JDK instead of querying `/analysis/jres`.
+- [ ] **JS bootstrapper (react/typescript):** set
+      `SONAR_SCANNER_SKIP_JRE_PROVISIONING=true` (env) /
+      `sonar.scanner.skipJreProvisioning=true` so the npm scanner uses the
+      installed Node/JRE instead of provisioning one.
+- [ ] **dotnet:** verify whether `dotnet sonarscanner` provisions a JRE the
+      same way; apply the equivalent skip if so. (It passed throughout these
+      runs, so it may already bundle/skip — confirm before changing.)
+- [ ] Apply at the scaffolder/shop-template source of truth (the `run-sonar.sh`
+      + commit-stage scanner invocations), not in generated output, so all three
+      surfaces get it. Keep the Item 1b retry as the backstop for the *other*
+      transient 403s (binary-download CDN, genuine 5xx).
+- [ ] **Optional, complementary:** stagger the meta-prerelease fan-out (or cap
+      Sonar concurrency) so the pipelines don't all hit SonarCloud at the same
+      instant. Lower priority than skip-provisioning, which fixes it regardless
+      of concurrency.
 
 ### Item 2 — Local parity: retry in `run-sonar.sh` (the gap with zero coverage)
 - [ ] Get `sonar-retry.sh` + `retry-core.sh` into scaffolded repos (per D4) —
