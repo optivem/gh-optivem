@@ -209,16 +209,18 @@ func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		name     string
-		testLang string
-		wantKey  string
-		wantPath string
+		name          string
+		testLang      string
+		wantKey       string
+		wantPath      string
+		wantAPIMember string // per-language system-driver-adapter-channels.api
 	}{
 		// SSoT: system-driver-port (testkit key) gets sutNamespace appended.
-		// FullRepo="x/y" → sutNamespace="y".
-		{"typescript", projectconfig.LangTypescript, "system-driver-port", "system-test/src/testkit/driver/port/y"},
-		{"java", projectconfig.LangJava, "system-driver-port", "system-test/src/main/java/testkit/driver/port/y"},
-		{"dotnet", projectconfig.LangDotnet, "system-driver-port", "system-test/Testkit.Driver.Port/y"},
+		// FullRepo="x/y" → sutNamespace="y". The api member is the adapter root
+		// + channel, cased per language (TS/Java lowercase, .NET PascalCase).
+		{"typescript", projectconfig.LangTypescript, "system-driver-port", "system-test/src/testkit/driver/port/y", "system-test/src/testkit/driver/adapter/y/api"},
+		{"java", projectconfig.LangJava, "system-driver-port", "system-test/src/main/java/testkit/driver/port/y", "system-test/src/main/java/testkit/driver/adapter/y/api"},
+		{"dotnet", projectconfig.LangDotnet, "system-driver-port", "system-test/Testkit.Driver.Port/y", "system-test/Testkit.Driver.Adapter/y/Api"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{
@@ -243,6 +245,16 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 			}
 			if got.SystemTest.Paths[tc.wantKey] != tc.wantPath {
 				t.Errorf("system-test.paths.%s: got %q, want %q", tc.wantKey, got.SystemTest.Paths[tc.wantKey], tc.wantPath)
+			}
+			// Per-channel adapter members seeded 1:1 with the default channel set.
+			members := got.SystemTest.SystemDriverAdapterChannels
+			for _, ch := range projectconfig.DefaultChannels() {
+				if _, ok := members[ch]; !ok {
+					t.Errorf("system-driver-adapter-channels.%s missing", ch)
+				}
+			}
+			if members["api"] != tc.wantAPIMember {
+				t.Errorf("system-driver-adapter-channels.api: got %q, want %q", members["api"], tc.wantAPIMember)
 			}
 		})
 	}

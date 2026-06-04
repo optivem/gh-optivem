@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
-	"path"
 	"slices"
 	"strings"
 
@@ -231,20 +230,17 @@ func sharedContractFootprint(cfg *projectconfig.Config) []string {
 	return nonEmptyPaths(layerPath(cfg, "at-test"))
 }
 
-// driverAdapterFootprint narrows the System Driver adapter layer to one
-// channel's subtree. Per the 2026-06-04 operator clarification the adapters
-// split by subdirectory (`<system-driver-adapter>/{api,ui,external,shared}`), so a
-// channel's adapter is `<system-driver-adapter>/<channel>` — distinct from the
-// `shared` stubs the test slice writes, which is what keeps the two slices'
-// footprints from colliding. (Making these folders configurable rather than a
-// path-join convention is plans/20260604-0955-configurable-per-channel-adapter-
-// folders.md.)
+// driverAdapterFootprint resolves one channel's System Driver adapter member —
+// the configured system-test.system-driver-adapter-channels.<channel> path,
+// read verbatim. The adapters split by subdirectory per channel
+// (`.../adapter/{api,ui,shared}`), each owned by that channel's team; the
+// configured member carries the correctly-cased per-language folder so the
+// resume footprint is distinct from the `shared` stubs the test slice writes,
+// which keeps the two slices' footprints from colliding. A channel with no
+// configured member yields nil — requireDone reports that as "write-scope path
+// not set in gh-optivem.yaml".
 func driverAdapterFootprint(cfg *projectconfig.Config, channel string) []string {
-	base := layerPath(cfg, "system-driver-adapter")
-	if base == "" {
-		return nil
-	}
-	return []string{path.Join(base, channel)}
+	return nonEmptyPaths(cfg.SystemTest.SystemDriverAdapterChannels[channel])
 }
 
 // commonFootprint is the channel-agnostic common layer's irreducible artifact:

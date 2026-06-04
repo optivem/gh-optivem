@@ -393,6 +393,28 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 				path:  val,
 			})
 		}
+		// system-test.system-driver-adapter-channels.* — the per-channel adapter
+		// members live OUTSIDE the flat Paths map / CanonicalPathKeys, so the
+		// loop above never reaches them; stat each one explicitly. Sorted by
+		// channel for stable error output. Validate's Rule 24 already requires a
+		// member per declared channel when architecture is set, so a present
+		// member is one the operator is committed to having on disk.
+		channels := make([]string, 0, len(cfg.SystemTest.SystemDriverAdapterChannels))
+		for ch := range cfg.SystemTest.SystemDriverAdapterChannels {
+			channels = append(channels, ch)
+		}
+		sort.Strings(channels)
+		for _, ch := range channels {
+			val := cfg.SystemTest.SystemDriverAdapterChannels[ch]
+			if val == "" {
+				continue
+			}
+			out = append(out, tierCheck{
+				field: "system-test.system-driver-adapter-channels." + ch,
+				repo:  cfg.SystemTest.Repo,
+				path:  val,
+			})
+		}
 	}
 	// External systems — stubs first (cycle 2), simulators second (cycle 3).
 	if !cfg.ExternalSystems.Stubs.IsEmpty() {

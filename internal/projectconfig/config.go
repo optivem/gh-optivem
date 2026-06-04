@@ -296,6 +296,31 @@ type TierSpec struct {
 	Config       string            `yaml:"config,omitempty"`
 	SonarProject string            `yaml:"sonar-project,omitempty"`
 	Paths        map[string]string `yaml:"paths,omitempty"`
+
+	// SystemDriverAdapterChannels splits the whole-layer system-driver-adapter
+	// path into per-channel members (channel token → fully-resolved adapter
+	// path), one per delivery channel in Config.Channels. It is the narrow
+	// write-scope + resume footprint for the per-channel `--target
+	// driver-adapter --channel <ch>` slice (plan 20260530-1725), and the
+	// per-team ownership boundary — each channel's adapter folder is owned by
+	// that channel's team. `shared` adapter code is the residual under the
+	// whole-layer root, not a member.
+	//
+	// It is a sibling of Paths rather than a key inside it: Paths is a
+	// homogeneous name→path map, and a channel→path sub-map cannot live inside
+	// it without a custom (un)marshaler. The members therefore live OUTSIDE the
+	// flat Paths map / CanonicalPathKeys, so every consumer that resolves them
+	// (PlaceholderMap, the validator's channels-tie rule, preflight existence,
+	// scoped.go's resume footprint) is taught about them explicitly — none
+	// picks them up for free.
+	//
+	// Scaffold-authoritative: `gh optivem init` writes one member per
+	// DefaultChannels() at the per-language casing the testkit uses (TS/Java
+	// lowercase subfolder `.../api`, .NET PascalCase `.../Api`);
+	// operator-owned afterwards, and `migrate` does not back-fill. Validate ties
+	// the members 1:1 to channels:. system-test-only — rejected on
+	// backend/frontend tiers (mirroring Paths).
+	SystemDriverAdapterChannels map[string]string `yaml:"system-driver-adapter-channels,omitempty"`
 }
 
 // ExternalSystems declares vendored stand-ins for third-party dependencies
@@ -405,9 +430,15 @@ func (c *Config) PlaceholderMap() map[string]string {
 	if c == nil {
 		return map[string]string{}
 	}
-	out := make(map[string]string, len(c.SystemTest.Paths)+6)
+	out := make(map[string]string, len(c.SystemTest.Paths)+len(c.SystemTest.SystemDriverAdapterChannels)+6)
 	// Family B first; Family A overwrites on collision.
 	maps.Copy(out, c.SystemTest.Paths)
+	// Per-channel adapter members emit as dotted Family B keys
+	// (system-driver-adapter-channels.<ch>) — they live outside the flat Paths
+	// map, so a layer reference must name the member explicitly to resolve it.
+	for ch, p := range c.SystemTest.SystemDriverAdapterChannels {
+		out["system-driver-adapter-channels."+ch] = p
+	}
 	out["architecture"] = c.System.Architecture
 	out["system-path"] = c.System.Path
 	out["system-db-migration-path"] = c.System.DbMigrationPath
@@ -812,6 +843,16 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: system.frontend.paths is not a supported field (paths: is system-test-only; use system-test.paths)")
 	}
 
+	// Rule 22d: system-driver-adapter-channels is system-test-only, same as
+	// paths: (Rule 22c) — reject it on backend/frontend so a misplaced block
+	// can't parse as a silent no-op.
+	if len(c.System.Backend.SystemDriverAdapterChannels) > 0 {
+		return fmt.Errorf("config: system.backend.system-driver-adapter-channels is not a supported field (system-test-only; use system-test.system-driver-adapter-channels)")
+	}
+	if len(c.System.Frontend.SystemDriverAdapterChannels) > 0 {
+		return fmt.Errorf("config: system.frontend.system-driver-adapter-channels is not a supported field (system-test-only; use system-test.system-driver-adapter-channels)")
+	}
+
 	// Rule 23: channels: tokens are lowercase canonical members of the
 	// supported channel enum (single canon, no fold layer — see
 	// channels.go). Independent of architecture: the field is optional, but
@@ -820,6 +861,63 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	// Rule 24: system-driver-adapter-channels members are tied 1:1 to
+	// channels:. Runs after Rule 23 so channels: is already known well-formed.
+	if err := c.validateSystemDriverAdapterChannels(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateSystemDriverAdapterChannels enforces Rule 24: the per-channel adapter
+// members and channels: are a 1:1 join. Three checks:
+//
+//   - Every member names a declared channel. A member for an undeclared channel
+//     has no acceptance suite / driver class to back it; a casing slip on a
+//     real channel (`Api`) gets a did-you-mean, mirroring validateChannels.
+//   - Every member value is fully resolved (no ${...} marker) and repo-relative,
+//     the same contract Rule 22 enforces on Paths entries.
+//   - Once system.architecture is set, every declared channel has a member.
+//     Derive is rejected, so an unbacked channel would have no resolvable
+//     adapter path; gating on architecture matches Rule 22a (partial configs
+//     legitimately carry neither channels: nor members).
+//
+// The channels:↔members join is a two-place drift source; this rule is the
+// single point that keeps them consistent.
+func (c *Config) validateSystemDriverAdapterChannels() error {
+	members := c.SystemTest.SystemDriverAdapterChannels
+	declared := map[string]struct{}{}
+	for _, ch := range c.Channels {
+		declared[ch] = struct{}{}
+	}
+	for _, ch := range sortedKeys(members) {
+		if _, ok := declared[ch]; !ok {
+			if lower := strings.ToLower(ch); lower != ch && isCanonicalChannel(lower) {
+				return fmt.Errorf("config: system-test.system-driver-adapter-channels: member %q must be lowercase; did you mean %q?", ch, lower)
+			}
+			return fmt.Errorf("config: system-test.system-driver-adapter-channels: member %q is not a declared channel (channels: %v)", ch, c.Channels)
+		}
+		val := members[ch]
+		if strings.Contains(val, "${") {
+			return fmt.Errorf("config: system-test.system-driver-adapter-channels.%s %q contains a ${...} marker; under SSoT, paths must be fully resolved (substitution is scaffold-time-only)", ch, val)
+		}
+		if err := validatePath("system-test.system-driver-adapter-channels."+ch, val); err != nil {
+			return err
+		}
+	}
+	if c.System.Architecture != "" {
+		var missing []string
+		for _, ch := range c.Channels {
+			if members[ch] == "" {
+				missing = append(missing, ch)
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			return fmt.Errorf("config: system.architecture is set; system-test.system-driver-adapter-channels is missing a member for declared channel(s) %v (each channel needs an explicit adapter path — derive is rejected)", missing)
+		}
+	}
 	return nil
 }
 

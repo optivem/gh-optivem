@@ -586,6 +586,113 @@ func TestValidate_RejectsConfigOnBackendOrFrontend(t *testing.T) {
 	}
 }
 
+// TestValidate_SystemDriverAdapterChannels_MemberShape covers the member-level
+// checks of Rule 24, which run independent of architecture: a member must name
+// a declared channel (casing slip → did-you-mean), and its value must be
+// fully-resolved and repo-relative.
+func TestValidate_SystemDriverAdapterChannels_MemberShape(t *testing.T) {
+	t.Parallel()
+	mk := func(channels []string, members map[string]string) *Config {
+		return &Config{
+			Project:    Project{Provider: ProviderGitHub},
+			Channels:   channels,
+			SystemTest: TierSpec{SystemDriverAdapterChannels: members},
+		}
+	}
+	cases := []struct {
+		name     string
+		cfg      *Config
+		wantHint string // "" → expect success
+	}{
+		{"valid 1:1", mk([]string{"api", "ui"}, map[string]string{
+			"api": "system-test/driver/adapter/api", "ui": "system-test/driver/adapter/ui"}), ""},
+		{"undeclared channel", mk([]string{"api"}, map[string]string{
+			"api": "x", "ui": "y"}), "not a declared channel"},
+		{"casing slip", mk([]string{"api"}, map[string]string{
+			"Api": "x"}), "did you mean"},
+		{"substitution marker", mk([]string{"api"}, map[string]string{
+			"api": "system-test/${sut-namespace}/api"}), "${...} marker"},
+		{"absolute path", mk([]string{"api"}, map[string]string{
+			"api": "/abs/api"}), "repo-relative"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			err := c.cfg.Validate()
+			if c.wantHint == "" {
+				if err != nil {
+					t.Fatalf("want valid, got: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), c.wantHint) {
+				t.Fatalf("want error hinting %q, got: %v", c.wantHint, err)
+			}
+		})
+	}
+}
+
+// TestValidate_SystemDriverAdapterChannels_RequiredWhenArchitectureSet — the
+// 1:1 tie's "every declared channel has a member" half gates on architecture
+// (matching Rule 22a): a declared channel with no member is rejected, and
+// supplying the members makes it valid.
+func TestValidate_SystemDriverAdapterChannels_RequiredWhenArchitectureSet(t *testing.T) {
+	t.Parallel()
+
+	missing := validMonolithBase()
+	missing.Channels = []string{"api", "ui"}
+	err := missing.Validate()
+	if err == nil || !strings.Contains(err.Error(), "missing a member") {
+		t.Fatalf("want missing-member error, got: %v", err)
+	}
+
+	ok := validMonolithBase()
+	ok.Channels = []string{"api", "ui"}
+	ok.SystemTest.SystemDriverAdapterChannels = map[string]string{
+		"api": "system-test/driver/adapter/api",
+		"ui":  "system-test/driver/adapter/ui",
+	}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("want valid once members supplied, got: %v", err)
+	}
+}
+
+// TestValidate_RejectsSystemDriverAdapterChannelsOnBackendOrFrontend — the
+// field is system-test-only (Rule 22d), same as paths:.
+func TestValidate_RejectsSystemDriverAdapterChannelsOnBackendOrFrontend(t *testing.T) {
+	t.Parallel()
+	for _, tier := range []string{"backend", "frontend"} {
+		cfg := &Config{Project: Project{Provider: ProviderGitHub}}
+		ts := TierSpec{SystemDriverAdapterChannels: map[string]string{"api": "x"}}
+		if tier == "backend" {
+			cfg.System.Backend = ts
+		} else {
+			cfg.System.Frontend = ts
+		}
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), "system."+tier+".system-driver-adapter-channels") {
+			t.Errorf("%s: want system-test-only rejection, got: %v", tier, err)
+		}
+	}
+}
+
+// TestPlaceholderMap_EmitsAdapterChannelMembers — the per-channel members
+// surface as dotted Family B keys so a layer reference can name one.
+func TestPlaceholderMap_EmitsAdapterChannelMembers(t *testing.T) {
+	t.Parallel()
+	cfg := &Config{SystemTest: TierSpec{SystemDriverAdapterChannels: map[string]string{
+		"api": "system-test/driver/adapter/api",
+		"ui":  "system-test/driver/adapter/ui",
+	}}}
+	pm := cfg.PlaceholderMap()
+	if got := pm["system-driver-adapter-channels.api"]; got != "system-test/driver/adapter/api" {
+		t.Errorf("api member: got %q", got)
+	}
+	if got := pm["system-driver-adapter-channels.ui"]; got != "system-test/driver/adapter/ui" {
+		t.Errorf("ui member: got %q", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Validation rules
 // ---------------------------------------------------------------------------

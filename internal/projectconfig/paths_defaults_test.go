@@ -2,6 +2,7 @@ package projectconfig
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -56,6 +57,81 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("dotnet: got %v, want %v", got, want)
+	}
+}
+
+// TestDefaultSystemDriverAdapterChannels pins the per-language member shape:
+// each member is the system-driver-adapter root with the channel appended as a
+// subfolder, cased per language (TS/Java lowercase, .NET PascalCase). The
+// members derive from the same DefaultPaths adapter value so they track the
+// root (incl. the reconcile-defaultpaths-era Testkit/shop segments).
+func TestDefaultSystemDriverAdapterChannels(t *testing.T) {
+	t.Parallel()
+	channels := []string{"api", "ui"}
+	cases := []struct {
+		lang string
+		want map[string]string
+	}{
+		{LangTypescript, map[string]string{
+			"api": "system-test/src/testkit/driver/adapter/shop/api",
+			"ui":  "system-test/src/testkit/driver/adapter/shop/ui",
+		}},
+		{LangJava, map[string]string{
+			"api": "system-test/src/main/java/testkit/driver/adapter/shop/api",
+			"ui":  "system-test/src/main/java/testkit/driver/adapter/shop/ui",
+		}},
+		{LangDotnet, map[string]string{
+			"api": "system-test/Testkit.Driver.Adapter/shop/Api",
+			"ui":  "system-test/Testkit.Driver.Adapter/shop/Ui",
+		}},
+	}
+	for _, tc := range cases {
+		got := DefaultSystemDriverAdapterChannels(tc.lang, "system-test", "shop", channels)
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: got %v, want %v", tc.lang, got, tc.want)
+		}
+	}
+}
+
+// TestDefaultSystemDriverAdapterChannels_NarrowChannelSet — an API-only project
+// gets exactly one member; the subset is honoured.
+func TestDefaultSystemDriverAdapterChannels_NarrowChannelSet(t *testing.T) {
+	t.Parallel()
+	got := DefaultSystemDriverAdapterChannels(LangTypescript, "system-test", "shop", []string{"api"})
+	want := map[string]string{"api": "system-test/src/testkit/driver/adapter/shop/api"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("api-only: got %v, want %v", got, want)
+	}
+}
+
+// TestDefaultSystemDriverAdapterChannels_EmptyCases — partial configs (no lang,
+// no root) and an empty channel set yield nil, mirroring DefaultPaths.
+func TestDefaultSystemDriverAdapterChannels_EmptyCases(t *testing.T) {
+	t.Parallel()
+	if got := DefaultSystemDriverAdapterChannels("", "system-test", "shop", []string{"api"}); got != nil {
+		t.Errorf("unknown lang: got %v, want nil", got)
+	}
+	if got := DefaultSystemDriverAdapterChannels(LangTypescript, "", "shop", []string{"api"}); got != nil {
+		t.Errorf("empty root: got %v, want nil", got)
+	}
+	if got := DefaultSystemDriverAdapterChannels(LangTypescript, "system-test", "shop", nil); got != nil {
+		t.Errorf("no channels: got %v, want nil", got)
+	}
+}
+
+// TestDefaultSystemDriverAdapterChannels_MembersUnderAdapterRoot pins the
+// invariant that every member sits under the configured system-driver-adapter
+// root — so a future reconcile of the root carries the members with it.
+func TestDefaultSystemDriverAdapterChannels_MembersUnderAdapterRoot(t *testing.T) {
+	t.Parallel()
+	for _, lang := range []string{LangTypescript, LangJava, LangDotnet} {
+		root := DefaultPaths(lang, "system-test", "shop")["system-driver-adapter"]
+		members := DefaultSystemDriverAdapterChannels(lang, "system-test", "shop", []string{"api", "ui"})
+		for ch, m := range members {
+			if !strings.HasPrefix(m, root+"/") {
+				t.Errorf("%s member %q = %q is not under adapter root %q", lang, ch, m, root)
+			}
+		}
 	}
 }
 

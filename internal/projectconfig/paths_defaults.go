@@ -1,6 +1,9 @@
 package projectconfig
 
-import "path"
+import (
+	"path"
+	"strings"
+)
 
 // DefaultDbMigrationPath is the doctrinal value for `system.db-migration-path`
 // — the Family A path-shaped key naming the shared canonical Flyway-style
@@ -91,6 +94,68 @@ func DefaultPaths(testLang, systemTestRoot, sutNamespace string) map[string]stri
 		out[key] = path.Join(systemTestRoot, stem)
 	}
 	return out
+}
+
+// DefaultSystemDriverAdapterChannels returns the scaffold-authoritative
+// per-channel members for system-test.system-driver-adapter-channels: — one
+// entry per channel, each the whole-layer system-driver-adapter path with the
+// channel appended as a subfolder cased per language (TS/Java lowercase
+// `.../api`, .NET PascalCase `.../Api`), matching the shop template's adapter
+// channel split (driver/adapter/api, Driver.Adapter/Api).
+//
+// The members are DERIVED from the system-driver-adapter value (not pinned as
+// independent literals) so they stay consistent with whatever that root
+// resolves to: a future reconcile of the adapter root
+// (reconcile-defaultpaths) moves the members with it rather than leaving them
+// stranded. Only the per-language *casing* — the part that genuinely cannot be
+// a single lowercase join — is language-specific here.
+//
+// Returns nil for an unsupported language, an empty systemTestRoot (no adapter
+// root to anchor on), or an empty channel set — mirroring DefaultPaths /
+// DefaultChannels, the scaffolder omits the block for partial configs.
+func DefaultSystemDriverAdapterChannels(testLang, systemTestRoot, sutNamespace string, channels []string) map[string]string {
+	if len(channels) == 0 {
+		return nil
+	}
+	adapter := DefaultPaths(testLang, systemTestRoot, sutNamespace)["system-driver-adapter"]
+	if adapter == "" {
+		return nil
+	}
+	out := make(map[string]string, len(channels))
+	for _, ch := range channels {
+		seg, ok := channelPathSegment(testLang, ch)
+		if !ok {
+			return nil
+		}
+		out[ch] = path.Join(adapter, seg)
+	}
+	return out
+}
+
+// channelPathSegment returns the per-language directory segment for a channel
+// under the system-driver-adapter root. TS and Java use the lowercase channel
+// token verbatim (driver/adapter/api); .NET PascalCases it to match the
+// project's subfolder casing (Driver.Adapter/Api). Returns ok=false for an
+// unsupported language, mirroring pathStems.
+func channelPathSegment(testLang, channel string) (string, bool) {
+	switch testLang {
+	case LangTypescript, LangJava:
+		return channel, true
+	case LangDotnet:
+		return titleFirst(channel), true
+	default:
+		return "", false
+	}
+}
+
+// titleFirst upper-cases the first byte of s and lower-cases the rest
+// ("api" → "Api", "ui" → "Ui"). The channel tokens are lowercase canonical
+// (validateChannels enforces it), so this yields the .NET subfolder casing.
+func titleFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
 }
 
 // CanonicalPathKeys is the Family B key set in fixed order so DefaultPaths,

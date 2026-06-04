@@ -209,6 +209,13 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	// no migrate-time or validate-time back-fill, same doctrine as the
 	// DefaultPaths call above.
 	pc.Channels = projectconfig.DefaultChannels()
+	// Per-channel System Driver adapter members — the narrow write-scope +
+	// resume footprint each channel team owns. Written for the same channel set
+	// as channels: above, at the per-language casing the testkit just produced
+	// (TS/Java `.../api`, .NET `.../Api`). Scaffold-authoritative; operator-owned
+	// afterwards, no migrate-time or validate-time back-fill (same doctrine as
+	// the DefaultPaths / DefaultChannels calls above).
+	pc.SystemTest.SystemDriverAdapterChannels = projectconfig.DefaultSystemDriverAdapterChannels(cfg.TestLang, cfg.SystemTestPath, sutNamespace, pc.Channels)
 	return pc
 }
 

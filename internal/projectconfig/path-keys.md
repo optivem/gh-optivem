@@ -73,6 +73,60 @@ key from `CanonicalPathKeys()` in
 Values are **fully-resolved physical paths** set at scaffold time
 (per plan 20260518-1530 item 3). No runtime `${...}` substitution.
 
+### Per-channel System Driver adapter members
+
+The System Driver test adapters split physically by **channel folder** —
+`driver/adapter/api`, `driver/adapter/ui`, … — each owned by a different
+channel team, with shared/common adapter code as the residual directly
+under the layer root. The whole-layer `system-driver-adapter` key above
+names that root (where broad writers — the DSL stub-writer, `implement-system`,
+`update-system` — scope, and where `shared` lives). The per-channel split is
+carried by a **sibling** block under `system-test:`:
+
+```yaml
+system-test:
+  channels: [api, ui]
+  paths:
+    system-driver-adapter: system-test/typescript/src/testkit/driver/adapter/shop
+    # …other Family B keys…
+  system-driver-adapter-channels:        # sibling of paths:, not a key inside it
+    api: system-test/typescript/src/testkit/driver/adapter/shop/api
+    ui:  system-test/typescript/src/testkit/driver/adapter/shop/ui
+```
+
+Each member is a `channel → fully-resolved adapter path` entry, read
+**verbatim** (no runtime path construction). They are the narrow write-scope
+and resume footprint for the per-channel `--target driver-adapter --channel
+<ch>` slice (plan 20260530-1725) and the per-team ownership boundary.
+
+**Why a sibling, not a key inside `paths:`.** `paths:` is a homogeneous
+name→path map; a `channel → path` sub-map cannot live inside it without a
+custom (un)marshaler. The members therefore live **outside** the flat
+`paths:` map / `CanonicalPathKeys()`. Every consumer that resolves them is
+taught about them explicitly — none picks them up for free:
+
+- `PlaceholderMap` emits each as a dotted Family B key
+  `system-driver-adapter-channels.<ch>`, so a layer reference can name one.
+- `Validate` (Rule 24) ties the members 1:1 to `channels:` (below).
+- Preflight (`collectTiers` in `internal/atdd/runtime/preflight`) `os.Stat`s
+  each member like every other `paths:` entry, under the field name
+  `system-test.system-driver-adapter-channels.<ch>`.
+- `driverAdapterFootprint` (`internal/atdd/runtime/driver/scoped.go`) reads
+  the member directly as the channel's resume footprint.
+
+**Why explicit, not derived.** Per-language folder *casing* makes a single
+`<root>/<channel>` join non-derivable: TS/Java use a lowercase subfolder
+(`.../adapter/shop/api`), .NET PascalCases it (`.../Adapter/shop/Api`), and a
+team may restructure. Only scaffold-time resolution can carry that shape —
+the same resolve-fully-at-`init`, read-verbatim doctrine the other path keys
+follow. `shared` adapter code is the residual under the root, not a member —
+no phase scopes to "shared only", so it earns no schema slot.
+
+> **`external` is out of scope here.** The external-system adapter's
+> layout (`external/adapter` sibling vs. nested under `driver/adapter`) is
+> owned by `plans/backlog/20260526-1430-reconcile-defaultpaths-with-shop-template-layout.md`;
+> the channel members track only the System Driver adapter root.
+
 ### Ownership: scaffold-authoritative at `init`, operator-owned afterwards
 
 `gh optivem init` writes the `system-test.paths:` block as the
@@ -100,6 +154,12 @@ and should be rejected. The single derivation lives in
 `projectconfig.DefaultPaths` and is called from exactly one place:
 `internal/steps/optivem_yaml.go::BuildOptivemYAML`.
 
+The `system-driver-adapter-channels:` block follows the identical
+doctrine: `init` writes one member per `channels:` entry (via
+`projectconfig.DefaultSystemDriverAdapterChannels`, called from the same
+`BuildOptivemYAML`); `migrate` does **not** back-fill; the operator owns
+edits afterwards.
+
 ## Default values (TypeScript example)
 
 The scaffolder writes a fully-resolved `paths:` block nested under
@@ -124,6 +184,10 @@ system-test:
     dsl-port: system-test/typescript/src/testkit/dsl/port/shop
     dsl-core: system-test/typescript/src/testkit/dsl/core/shop
     ct-test: system-test/typescript/tests/latest/contract
+  channels: [api, ui]
+  system-driver-adapter-channels:
+    api: system-test/typescript/src/testkit/driver/adapter/shop/api
+    ui: system-test/typescript/src/testkit/driver/adapter/shop/ui
 ```
 
 Java and dotnet defaults differ in stem shape (Java structures tests
@@ -152,6 +216,14 @@ present, not project-customizable.
   meaningful only on `system-test`, mirroring how `TierSpec.Config` is
   also system-test-only. A typo'd `system.backend.paths:` would parse
   as a no-op without this rule.
+- **`system-driver-adapter-channels:` members are tied 1:1 to
+  `channels:`** (Rule 24). Every member must name a declared channel (a
+  casing slip like `Api` gets a did-you-mean); every member value is
+  fully-resolved and repo-relative (same as a `paths:` entry); and once
+  `system.architecture` is set, every declared channel must have a member
+  (derive is rejected, so an unbacked channel has no resolvable adapter
+  path). The block is also system-test-only — rejected on
+  backend/frontend, same as `paths:`.
 
 See `internal/atdd/phase_scopes.go` (`CanonicalPathKeys` consumer +
 `FamilyAPathKeysInScope`) and the `Validate()` method in

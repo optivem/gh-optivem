@@ -54,13 +54,20 @@ func withFakeGit(t *testing.T, done, dirty map[string]bool, fn func()) {
 }
 
 // testCfg builds a minimal project config whose PlaceholderMap resolves the
-// three footprint keys the resume guard reads (at-test, system-driver-adapter,
-// system-db-migration-path) and declares two channels in api,ui order.
+// footprint keys the resume guard reads (at-test, system-db-migration-path) and
+// whose per-channel adapter members back the driver-adapter footprint. Declares
+// two channels in api,ui order.
 func testCfg() *projectconfig.Config {
 	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
 	cfg.SystemTest.Paths = map[string]string{
-		"at-test":        "system-test/at",
+		"at-test":               "system-test/at",
 		"system-driver-adapter": "system-test/driver/adapter",
+	}
+	// Per-channel adapter members — driverAdapterFootprint reads these verbatim
+	// (no longer a path.Join(root, channel) convention).
+	cfg.SystemTest.SystemDriverAdapterChannels = map[string]string{
+		"api": "system-test/driver/adapter/api",
+		"ui":  "system-test/driver/adapter/ui",
 	}
 	cfg.System.DbMigrationPath = "system/db/migrations"
 	return cfg
