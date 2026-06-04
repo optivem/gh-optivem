@@ -655,15 +655,26 @@ processes:
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS, to: WAV_AT_PASS_END}
 
-  # Writes the test code (inner primitive) then cascades into DSL +
-  # driver-adapter impl whenever ports changed. Reads `dsl-port-changed`
-  # from the inner call, then `system-driver-port-changed` /
-  # `external-driver-port-changed` from the DSL impl (Q6 port-change
-  # wiring table). Note that the GATE bindings are bound to Go gate
-  # functions that promote the relevant ctx.Params value into ctx.State
-  # for the predicate evaluator to read.
-  write-and-verify-acceptance-tests:
-    name: "Write and Verify Acceptance Tests"
+  # The shared, channel-AGNOSTIC contract slice (plan 20260530-1725 Item 2a).
+  # This is the cascade up to — but NOT including — the per-channel System
+  # Driver adapter gate: write the test code (inner primitive), then cascade
+  # into DSL + external-system driver adapters whenever those ports changed.
+  # Reads `dsl-port-changed` from the inner call, then
+  # `external-driver-port-changed` from the DSL impl (Q6 port-change wiring
+  # table). The GATE bindings are bound to Go gate functions that promote the
+  # relevant ctx.Params value into ctx.State for the predicate evaluator.
+  #
+  # Why this is its own named sub-process: it is the `--target test` slice the
+  # whole team mobs (tests + DSL core + driver port + external) — the contract
+  # every channel team builds on. It ends RED-by-design (no system, no
+  # per-channel adapter yet). The `--target` selector enters it by name via
+  # RunProcess; `write-and-verify-acceptance-tests` (below) composes it and
+  # then runs the per-channel adapter tail it deliberately excludes
+  # (D-external keeps the external adapter HERE, but the System Driver adapter
+  # is channel-shaped and owned by each channel team — D-adapter-ownership
+  # option A).
+  shared-contract:
+    name: "Shared Contract"
     start: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
     nodes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
@@ -710,6 +721,59 @@ processes:
           expected-test-result: ${expected-test-result}
           tests: acceptance
 
+      - id: SHARED_CONTRACT_END
+        type: end-event
+        name: "Shared Contract Verified"
+
+    sequence-flows:
+      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: GATE_DSL_PORT_CHANGED}
+      - {from: GATE_DSL_PORT_CHANGED, to: IMPLEMENT_AND_VERIFY_DSL, when: "dsl-port-changed == true"}
+      - {from: GATE_DSL_PORT_CHANGED, to: SHARED_CONTRACT_END,      when: "dsl-port-changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED}
+      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, when: "external-driver-port-changed == true"}
+      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: SHARED_CONTRACT_END,                           when: "external-driver-port-changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, to: SHARED_CONTRACT_END}
+
+  # The full RED acceptance cascade = shared contract + the per-channel System
+  # Driver adapter tail. Composes `shared-contract` (above) and then, IFF the
+  # acceptance tests touched a system driver port, runs the (channel-unrolled)
+  # adapter step. Two callers — write-and-verify-acceptance-tests-fail /
+  # -pass — forward `expected-test-result`; the no-arg full run walks this
+  # process exactly as it did before the Item 2a seam-extraction.
+  #
+  # Behaviour-preservation note (the re-gate): the System Driver adapter gate
+  # is STRICT — `system-driver-port-changed` is only written to State by the
+  # DSL implementer, so it is unset whenever the DSL impl was skipped. The
+  # shared-contract slice already short-circuits to its end when
+  # `dsl-port-changed == false`; this parent therefore RE-READS
+  # `dsl-port-changed` (a shared-State flag, idempotent pure read) before the
+  # adapter gate. dsl == false → straight to WAV_AT_END (the adapter gate is
+  # never reached on an unset key, matching pre-seam behaviour); dsl == true →
+  # the DSL impl ran, so `system-driver-port-changed` IS set and the adapter
+  # gate routes normally. The adapter anchor + its gate are kept verbatim so
+  # the UnrollSystemDriverAdapterChannels rewrite (channels.go) still finds
+  # them (gate → anchor TRUE-branch, gate → WAV_AT_END skip-branch, anchor →
+  # WAV_AT_END).
+  write-and-verify-acceptance-tests:
+    name: "Write and Verify Acceptance Tests"
+    start: SHARED_CONTRACT
+    nodes:
+      - id: SHARED_CONTRACT
+        type: call-activity
+        process: shared-contract
+        name: "Shared Contract"
+        params:
+          expected-test-result: ${expected-test-result}
+
+      # Re-gate on the flag shared-contract's inner test-code writer set in
+      # State: skip the adapter tail entirely when no DSL port changed (the
+      # strict adapter gate below would otherwise read an unset key). See the
+      # behaviour-preservation note above.
+      - id: GATE_DSL_PORT_CHANGED
+        type: gateway
+        binding: dsl-port-changed
+        name: "DSL Port Changed?"
+
       - id: GATE_SYSTEM_DRIVER_PORTS_CHANGED
         type: gateway
         binding: system-driver-port-changed
@@ -729,13 +793,9 @@ processes:
         name: "Acceptance Tests Verified"
 
     sequence-flows:
-      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: GATE_DSL_PORT_CHANGED}
-      - {from: GATE_DSL_PORT_CHANGED, to: IMPLEMENT_AND_VERIFY_DSL, when: "dsl-port-changed == true"}
-      - {from: GATE_DSL_PORT_CHANGED, to: WAV_AT_END,               when: "dsl-port-changed == false"}
-      - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED}
-      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, when: "external-driver-port-changed == true"}
-      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED,              when: "external-driver-port-changed == false"}
-      - {from: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED}
+      - {from: SHARED_CONTRACT, to: GATE_DSL_PORT_CHANGED}
+      - {from: GATE_DSL_PORT_CHANGED, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED, when: "dsl-port-changed == true"}
+      - {from: GATE_DSL_PORT_CHANGED, to: WAV_AT_END,                       when: "dsl-port-changed == false"}
       - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, when: "system-driver-port-changed == true"}
       - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: WAV_AT_END,                                  when: "system-driver-port-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, to: WAV_AT_END}

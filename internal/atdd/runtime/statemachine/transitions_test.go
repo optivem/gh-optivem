@@ -51,6 +51,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"write-and-verify-acceptance-tests-fail",
 		"write-and-verify-acceptance-tests-pass",
 		"write-and-verify-acceptance-tests",
+		"shared-contract",
 		"write-and-verify-acceptance-test-code",
 		"implement-and-verify-dsl",
 		"implement-and-verify-system-driver-adapters",
