@@ -133,5 +133,5 @@ These are the questions the original placeholder shape didn't answer — resolve
 ## Cross-references
 
 - Triggered by: `plans/20260526-1730-bpmn-process-review.md` item 5.
-- Related: archived `plans/archived/20260525-1057-bpmn-refactor-design.md` (earlier reasoning that shaped the placeholder).
+- Related: `docs/bpmn-process-design.md` (distilled design rationale that shaped the placeholder; was `plans/archived/20260525-1057-bpmn-refactor-design.md`).
 - Related: `plans/deferred/20260516-1754-per-node-implementer-human-or-agent.md` (the broader question of which steps are human vs agent — overlaps with Q1 above).

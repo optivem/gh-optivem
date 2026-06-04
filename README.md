@@ -438,4 +438,5 @@ gh optivem hooks install                       # install a pre-push hook that re
 
 - [Trunk Based Development (TBD)](docs/tbd.md) — how to work with `main` in this repo (and the repos it scaffolds), the role of `pull --rebase`, when to use short-lived PRs, and why the version-bump bot is just another committer.
 - [Process diagram](docs/process-diagram.md) — committed Mermaid diagram of the configured implementation process flow (regenerate with `gh optivem process show`).
+- [BPMN process design](docs/bpmn-process-design.md) — the *why* behind the five-level process model (TOP / CYCLE / HIGH / MID / LOW): primitives, doctrine decisions, and the ticket-to-cycle mapping.
 
