@@ -3,7 +3,7 @@ This is a one-shot dispatch. Read the context substituted into this prompt, do t
 Ticket: #${issue-num} "${issue-title}"
 Phase: ${phase}
 
-## Trust the orchestrator's context — do not rediscover it
+## Trust the substituted context — do not rediscover it
 
 Every ticket and repo-state value you need is already substituted into this prompt. **Do not run** `gh issue view`, `git status`, `git log`, `git branch`, `git rev-parse`, or `git show <sha>` — the ticket body is in the AC / Checklist blocks below and the working-tree state is in `${changed-files}` (when populated).
 
@@ -17,12 +17,12 @@ If the work needs a path outside scope, emit the scope-exception envelope (see `
 
 ## Don't commit, don't summarise, don't ask
 
-When the work is done, exit cleanly. The orchestrator drives test
-runs, disabling, and commits — never run `git commit`, `git add`,
+When the work is done, exit cleanly. Test runs, disabling, and commits
+are handled downstream, not by you — never run `git commit`, `git add`,
 `gh issue close`, or test commands yourself.
 
-Do not stop mid-dispatch to present a plan or ask for approval — the
-orchestrator gates approvals between phases. If genuinely blocked (an
+Do not stop mid-dispatch to present a plan or ask for approval —
+approvals are gated downstream, between phases. If genuinely blocked (an
 ambiguous AC, a required out-of-scope edit), emit the scope-exception
 envelope (per `scope.md`) and exit.
 
