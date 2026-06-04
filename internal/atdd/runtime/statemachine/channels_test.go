@@ -109,6 +109,143 @@ func TestUnrollSystemChannels_BindsEndToEnd(t *testing.T) {
 	}
 }
 
+// --- System Driver adapter unroll (plan 20260530-1725 Item 0) ----------------
+//
+// Same transform as the system unroll, but on the RED
+// write-and-verify-acceptance-tests cascade's adapter step, whose predecessor
+// is the GATE_SYSTEM_DRIVER_PORTS_CHANGED gateway. These assert the per-channel
+// shape, the channel-only param override (no common / suite), and — the new
+// wrinkle — that the gateway's TRUE-branch `when:` predicate is preserved on the
+// edge into the first channel so the per-channel block stays gated.
+
+const (
+	sysDriverAdapterAnchorAPI = "IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS_API"
+	sysDriverAdapterAnchorUI  = "IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS_UI"
+	sysDriverPortChangedGate  = "GATE_SYSTEM_DRIVER_PORTS_CHANGED"
+)
+
+func TestUnrollSystemDriverAdapterChannels_TwoChannels(t *testing.T) {
+	eng := loadSnapshot(t)
+	if err := eng.UnrollSystemDriverAdapterChannels([]string{"api", "ui"}); err != nil {
+		t.Fatalf("UnrollSystemDriverAdapterChannels: %v", err)
+	}
+	proc := eng.Processes[writeAndVerifyAcceptanceTestsProcess]
+	if proc == nil {
+		t.Fatalf("process %q missing", writeAndVerifyAcceptanceTestsProcess)
+	}
+	if _, ok := proc.Nodes[implementSystemDriverAdaptersAnchor]; ok {
+		t.Errorf("template anchor %q should be gone after unroll", implementSystemDriverAdaptersAnchor)
+	}
+
+	api := requireNode(t, proc, sysDriverAdapterAnchorAPI)
+	ui := requireNode(t, proc, sysDriverAdapterAnchorUI)
+
+	if api.Kind != CallActivity {
+		t.Errorf("API node kind = %v, want CallActivity", api.Kind)
+	}
+	if api.Raw.Process != implementAndVerifySystemDriverAdaptersProcess {
+		t.Errorf("API node calls %q, want %q", api.Raw.Process, implementAndVerifySystemDriverAdaptersProcess)
+	}
+	if api.Raw.Name != "Implement System Driver Adapters (API)" {
+		t.Errorf("API node name = %q, want %q", api.Raw.Name, "Implement System Driver Adapters (API)")
+	}
+
+	// Only `channel` is overridden — the driver adapter is channel-shaped by
+	// nature, so unlike the system step there is no common / suite override.
+	checkParam(t, api, "channel", "api")
+	checkParam(t, ui, "channel", "ui")
+	if _, ok := api.Raw.Params["common"]; ok {
+		t.Errorf("adapter node should not carry a common param, got %q", api.Raw.Params["common"])
+	}
+
+	// Params inherited verbatim from the template anchor (including the
+	// unexpanded ${expected-test-result} placeholder — expansion is at dispatch).
+	for _, n := range []Node{api, ui} {
+		checkParam(t, n, "task-name", "implement-system-driver-adapters")
+		checkParam(t, n, "tests", "acceptance")
+		checkParam(t, n, "expected-test-result", "${expected-test-result}")
+	}
+
+	// The gateway TRUE-branch predicate is preserved on the edge into the
+	// first channel, so the per-channel adapter block still runs only when the
+	// system driver port changed (no-arg full-run behaviour intact).
+	entry := findEdge(t, proc, sysDriverPortChangedGate, sysDriverAdapterAnchorAPI)
+	if entry.Predicate != "system-driver-port-changed == true" {
+		t.Errorf("gate → first-channel edge predicate = %q, want %q", entry.Predicate, "system-driver-port-changed == true")
+	}
+	// The gateway FALSE branch (skip the whole block) survives untouched.
+	skip := findEdge(t, proc, sysDriverPortChangedGate, "WAV_AT_END")
+	if skip.Predicate != "system-driver-port-changed == false" {
+		t.Errorf("gate skip edge predicate = %q, want %q", skip.Predicate, "system-driver-port-changed == false")
+	}
+
+	// Linear chain api → ui → WAV_AT_END, no loopback; intermediate edge
+	// unconditional.
+	chain := findEdge(t, proc, sysDriverAdapterAnchorAPI, sysDriverAdapterAnchorUI)
+	if chain.Predicate != "" {
+		t.Errorf("intermediate api→ui edge should be unconditional, got predicate %q", chain.Predicate)
+	}
+	assertSingleEdge(t, proc, sysDriverAdapterAnchorAPI, sysDriverAdapterAnchorUI)
+	assertSingleEdge(t, proc, sysDriverAdapterAnchorUI, "WAV_AT_END")
+}
+
+func TestUnrollSystemDriverAdapterChannels_SingleChannel(t *testing.T) {
+	eng := loadSnapshot(t)
+	if err := eng.UnrollSystemDriverAdapterChannels([]string{"api"}); err != nil {
+		t.Fatalf("UnrollSystemDriverAdapterChannels: %v", err)
+	}
+	proc := eng.Processes[writeAndVerifyAcceptanceTestsProcess]
+	if _, ok := proc.Nodes[sysDriverAdapterAnchorUI]; ok {
+		t.Error("no UI node expected for a single-channel [api] project")
+	}
+	api := requireNode(t, proc, sysDriverAdapterAnchorAPI)
+	checkParam(t, api, "channel", "api")
+
+	// Sole channel: gate TRUE → the one adapter node (predicate preserved),
+	// then straight to WAV_AT_END.
+	entry := findEdge(t, proc, sysDriverPortChangedGate, sysDriverAdapterAnchorAPI)
+	if entry.Predicate != "system-driver-port-changed == true" {
+		t.Errorf("gate → adapter edge predicate = %q, want %q", entry.Predicate, "system-driver-port-changed == true")
+	}
+	assertSingleEdge(t, proc, sysDriverAdapterAnchorAPI, "WAV_AT_END")
+}
+
+func TestUnrollSystemDriverAdapterChannels_Guards(t *testing.T) {
+	t.Run("empty channel list", func(t *testing.T) {
+		eng := loadSnapshot(t)
+		if err := eng.UnrollSystemDriverAdapterChannels(nil); err == nil {
+			t.Error("want error for an empty channel list")
+		}
+	})
+
+	t.Run("double unroll", func(t *testing.T) {
+		eng := loadSnapshot(t)
+		if err := eng.UnrollSystemDriverAdapterChannels([]string{"api"}); err != nil {
+			t.Fatalf("first unroll: %v", err)
+		}
+		if err := eng.UnrollSystemDriverAdapterChannels([]string{"api"}); err == nil {
+			t.Error("second unroll should error — the template anchor is consumed by the first")
+		}
+	})
+}
+
+// TestUnrollBothChannels_BindsEndToEnd proves the two unrolls compose — the
+// driver runs both per run — and the combined graph still binds.
+func TestUnrollBothChannels_BindsEndToEnd(t *testing.T) {
+	eng := loadSnapshot(t)
+	if err := eng.UnrollSystemChannels([]string{"api", "ui"}); err != nil {
+		t.Fatalf("UnrollSystemChannels: %v", err)
+	}
+	if err := eng.UnrollSystemDriverAdapterChannels([]string{"api", "ui"}); err != nil {
+		t.Fatalf("UnrollSystemDriverAdapterChannels: %v", err)
+	}
+	stub := func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.ActionFn, eng.AgentFn, eng.GateFn = stub, stub, stub
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind after both unrolls: %v — synthesized per-channel nodes should resolve", err)
+	}
+}
+
 func requireNode(t *testing.T, proc *Process, id string) Node {
 	t.Helper()
 	n, ok := proc.Nodes[id]
@@ -134,4 +271,18 @@ func assertSingleEdge(t *testing.T, proc *Process, from, to string) {
 	if edges[0].To != to {
 		t.Errorf("node %q edge → %q, want → %q", from, edges[0].To, to)
 	}
+}
+
+// findEdge returns the from→to edge, failing if absent. Unlike assertSingleEdge
+// it tolerates a source with several outgoing edges (e.g. a gateway), so the
+// caller can inspect a specific branch's predicate.
+func findEdge(t *testing.T, proc *Process, from, to string) Edge {
+	t.Helper()
+	for _, ed := range proc.OutgoingByNode[from] {
+		if ed.To == to {
+			return ed
+		}
+	}
+	t.Fatalf("expected edge %q → %q in %q", from, to, proc.ID)
+	return Edge{}
 }

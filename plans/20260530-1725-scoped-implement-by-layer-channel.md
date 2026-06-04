@@ -340,19 +340,36 @@ to check — only the shared upstream one.)
 **D-adapter-ownership = option A** (channel team owns its driver adapter), which
 makes Item 1 substantially larger than first framed. Execute in order:
 
-0. **Adapter decomposition (D-adapter-ownership option A) — FOUNDATION, do
-   first.** The structural prerequisite for everything below. Per D-adapter-
-   ownership: (0a) add a `channel` param to `implement-system-driver-adapters` and
-   make the `system-driver-adapter-implementer` agent prompt write only that
-   channel's adapter; (0b) per-channel unroll of the adapter step
-   (extend/parallel `UnrollSystemChannels`, linear DAG, no loopback); (0c) move
-   the adapter step out of the RED `write-and-verify-acceptance-tests` cascade so
-   `--target test` stops at the driver port. Audit statemachine fixtures + watch
-   RAM (loop hazard) since `channels.go` + `process-flow.yaml` both change.
+0. **Adapter decomposition (D-adapter-ownership option A) — 0a + 0b LANDED;
+   0c folded into Item 2a.** Done (committed): (0a) `system-driver-adapter-
+   implementer.md` is channel-aware via a `${channel}` param and writes only
+   that channel's adapter; (0b) `UnrollSystemDriverAdapterChannels`
+   (`channels.go`, generalised from `UnrollSystemChannels` via a shared
+   `unrollChannelAnchor`) unrolls the adapter step into one
+   `IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS_<CH>` node per channel, linear,
+   no loopback, wired in `driver.go` behind the same `channels:` guard. The
+   adapter is **kept in the RED `write-and-verify-acceptance-tests` cascade**,
+   gated by `GATE_SYSTEM_DRIVER_PORTS_CHANGED` (the gateway's TRUE-branch
+   predicate is preserved on the entry edge), so the no-arg full run is
+   unchanged for a single-channel project. No `process-flow.yaml` edit was
+   needed — the unroll is a runtime transform, so the loopback/RAM fixture
+   hazard never came into play.
+   - **0c reinterpreted (decided 2026-06-04, with operator):** the adapter is
+     **not** physically relocated. It is already the last step in RED, so
+     `--target test` "stops at the driver port" is achieved by drawing the
+     **slice boundary *before* the adapter gate** (Item 2a) — a node move is
+     unnecessary. A physical move into GREEN would require gateway-reconvergence
+     synthesis to preserve the mandatory port-changed gate (an unconditional
+     adapter dispatch on a no-port-change ticket produces no commit, which the
+     HEAD-diff success detector reads as a run failure), and Item 2's slice
+     extraction would rework it anyway. So 0c's *intent* lives on as Item 2a's
+     boundary; there is no separate relocation step left.
 1. **`--target` → slice mapping.** Define, per `--target` value, the named
    sub-process(es) it runs: `test` → the shared-contract slice (tests + DSL
-   port/core + driver port + external, D-external; adapter step now removed per
-   item 0c); `driver-adapter` → that channel's (now per-channel) adapter slice;
+   port/core + driver port + external, D-external; adapter step excluded by
+   ending the slice *before* the RED adapter gate, per Item 0 / 2a — the adapter
+   node is not removed, it stays in RED, gated); `driver-adapter` → that
+   channel's (now per-channel, built in Item 0) adapter slice;
    `system` → that channel's system slice (+ common on the first channel).
    Encode the channel-agnostic vs channel-split split.
 2. **Scoped entry via compose-by-name + git-state resume (D-resume).**
@@ -365,9 +382,11 @@ makes Item 1 substantially larger than first framed. Execute in order:
    (a) a **small YAML seam-extraction** in `process-flow.yaml` exposing the
    plan's slices as named sub-processes at the seams the plan wants — a
    `shared-contract` slice (test → DSL core → driver port + external, the
-   `write-and-verify-acceptance-tests` cascade truncated *before* the adapter
-   gates), and the already-per-channel `driver-adapter-<ch>` / system slices
-   (the 1702 unroll already splits the system step per channel);
+   `write-and-verify-acceptance-tests` cascade truncated *before* the
+   `GATE_SYSTEM_DRIVER_PORTS_CHANGED` adapter gate), and the per-channel
+   `driver-adapter-<ch>` / system slices — the per-channel
+   `IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS_<CH>` nodes already exist
+   (Item 0) and the 1702 unroll already splits the system step per channel;
    (b) a thin **`--target` → sub-process selector** that calls `RunProcess` on
    the chosen slice (no `Options.StartPhase`, no arbitrary-node entry);
    (c) the per-phase write-scope→footprint detector (reuse `Engine.Scope` /

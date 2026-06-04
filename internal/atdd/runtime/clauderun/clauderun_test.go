@@ -600,6 +600,12 @@ func TestRenderPrompt_ReEntryPolicySubstitutes(t *testing.T) {
 		t.Run(agent, func(t *testing.T) {
 			opts := newOpts()
 			opts.Agent = agent
+			// system-driver-adapter-implementer is channel-aware (plan
+			// 20260530-1725 Item 0): its body references ${channel}, bound per
+			// channel by the adapter unroll. Supply it directly for the render.
+			if agent == "system-driver-adapter-implementer" {
+				opts.NodeParams = map[string]string{"channel": "api"}
+			}
 
 			got, err := renderPrompt(opts)
 			if err != nil {

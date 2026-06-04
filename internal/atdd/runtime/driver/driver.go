@@ -292,6 +292,15 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		if err := eng.UnrollSystemChannels(cfg.Channels); err != nil {
 			return fmt.Errorf("driver: unroll system channels: %w", err)
 		}
+		// Same per-channel decomposition for the RED System Driver adapter step
+		// (plan 20260530-1725 Item 0, D-adapter-ownership option A). The driver
+		// adapter is channel-specific (MyShopApiDriver / MyShopUiDriver), so it
+		// unrolls into one dispatch per channel just like the system step. Kept
+		// inside the RED cascade, gated by GATE_SYSTEM_DRIVER_PORTS_CHANGED; the
+		// no-arg full run is unchanged for a single-channel project.
+		if err := eng.UnrollSystemDriverAdapterChannels(cfg.Channels); err != nil {
+			return fmt.Errorf("driver: unroll system driver adapter channels: %w", err)
+		}
 	}
 
 	if err := eng.Bind(); err != nil {
