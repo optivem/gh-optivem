@@ -52,6 +52,17 @@ action as the outlier to converge — not a maintained baseline to protect.
   Correct for a scanner→SonarCloud auth 403 (bad token), but it would *also*
   refuse to retry the transient CDN/binary-download 403 that caused this run.
   These two 403s are semantically opposite and currently conflated.
+- **A *third* transient 403 exists, and it manifests differently per tool.**
+  Acceptance run `26937916287` (2026-06-04) failed `multitier-backend-java` and
+  `multitier-frontend-react` on a **JRE-provisioning 403** from
+  `api.sonarcloud.io/analysis/jres` (distinct from the binary-download CDN 403
+  above). The decisive twist: the **Gradle Sonar plugin** prints it as the
+  literal `failed with HTTP 403 Forbidden`, which matches the unified hard-fail
+  list (`HTTP 4[0-9][0-9]` + `Forbidden`) and fails fast with **zero retries**;
+  the **JS bootstrapper** prints the *same* failure as `Bootstrapper: An error
+  occurred ... status code 403` (no `HTTP 4xx` token, no `Forbidden` word),
+  which already lands in transient and retried 4×. So D1's download-step scoping
+  would not have caught the Gradle case — see Item 1b (done).
 
 ### Governance (do not violate)
 
@@ -106,6 +117,34 @@ all three Sonar surfaces, with local and CI achieving equal resilience, and the
 - [ ] Bump the source SHA; re-sync into gh-optivem (and any other consumer) via
       `bash optivem/actions/scripts/sync-shared.sh`. Verify the regenerated
       `.github/scripts/sonar-retry.sh` header SHA updates and content matches.
+
+### Item 1b — Upstream: JRE-provisioning 403 force-retry override (DONE)
+> Done 2026-06-04, triggered by acceptance run `26937916287`. Lands in
+> `optivem/actions` (canonical), re-synced to gh-optivem. Independent of D1 —
+> this is the `analysis/jres` 403, not the `binaries.sonarsource.com` 403.
+- [x] Add a **force-retry override** tier to `retry-core.sh`, checked *before*
+      hard-fail (an optional `_RETRY_CORE_FORCE_RETRY` regex). When matched, the
+      failure is routed to the retry path even if it also matches the hard-fail
+      list. Backward-compatible: empty by default, function signature unchanged,
+      all pre-existing tests pass.
+- [x] Define the override in `retry.sh` as
+      `_RETRY_FORCE_RETRY='Failed to query JRE metadata|/analysis/jres'` and
+      wire it via `_RETRY_CORE_FORCE_RETRY` in `retry_run`. Narrow by design:
+      scoped to the JRE-provisioning endpoint, so a genuine auth 403 on the
+      analysis submission still fails fast. Worst case for a truly-bad token is
+      exhausting ~65s of retries before the same non-zero exit.
+- [x] Tests: `_test-retry-core.sh` (override wins over hard-fail / unset still
+      hard-fails / override exhausts) and `_test-retry.sh` (real Gradle
+      JRE-metadata 403 retries; a non-JRE `HTTP 403 Forbidden` still hard-fails).
+      25/25 core + 45/45 wrapper green.
+- [x] Re-synced vendored copies into gh-optivem via `sync-shared.sh` (retry-core
+      blob `b746f07`, retry blob `40dd2a5`).
+- [ ] **Release:** push `optivem/actions` to `main`; the `update-v1` workflow
+      auto-retargets the floating `v1` tag, so shop CI (`uses:
+      optivem/actions/retry@v1`) picks up the fix on its next run. No manual tag
+      move needed. Until pushed, shop still runs the old behaviour.
+- [ ] Re-run the two failed jobs once `v1` is updated (or immediately as a
+      transient re-run): `gh run rerun 26937916287 --repo optivem/shop --failed`.
 
 ### Item 2 — Local parity: retry in `run-sonar.sh` (the gap with zero coverage)
 - [ ] Get `sonar-retry.sh` + `retry-core.sh` into scaffolded repos (per D4) —
