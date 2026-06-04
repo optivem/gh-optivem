@@ -38,6 +38,11 @@ covered by `--verbose` and `--log-file` as escape hatches.
 
 # Suppress subprocess stderr at non-verbose (or don't)
 
+## TL;DR
+
+**Why:** At non-verbose, `gh optivem implement` wires subprocess **stderr** straight to `os.Stderr` (bypassing the level-filtered sink), so docker-compose progress, gradle/npm banners and other chatty-on-stderr child output bury the clean BPMN trace view that the default is supposed to give the operator. An open design question blocks the fix: filter by stream (POSIX convention) or by meaning.
+**End result:** A decision is recorded and applied. Option 1 — keep stderr always visible — is a no-op that just closes the plan. Option 2 — route stderr through `Out.Detail` — hides both subprocess streams at non-verbose (visible only with `-v`/`--log-file`) and relies on the HALT banner's existing `command-stderr-tail` to surface stderr on failure, so the trace becomes the primary clean operator UI.
+
 ## Background
 
 The level-tagged sink architecture (`internal/atdd/runtime/outlog`)
