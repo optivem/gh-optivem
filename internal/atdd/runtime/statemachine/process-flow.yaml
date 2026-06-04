@@ -1606,6 +1606,12 @@ processes:
           # prod-agent tier: production-code writing agent.
           category: prod-agent
         read:  [system-driver-port, system-driver-adapter]
+        # This node is shared: UnrollSystemDriverAdapterChannels clones it
+        # once per channel (binding a `channel` param). The scope checker
+        # (validate-outputs-and-scopes) narrows this whole-layer write down
+        # to that channel's configured member when a `channel` param is
+        # present, so a per-channel dispatch can only write its own folder.
+        # A no-`channels:` full run carries no param and keeps the whole layer.
         write: [system-driver-adapter]
 
       - id: IMPL_SYS_DA_END

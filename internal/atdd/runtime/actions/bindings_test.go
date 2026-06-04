@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -181,6 +182,65 @@ func TestResolveLayerPaths_FamilyAKeysAllHaveAccessor(t *testing.T) {
 			t.Errorf("ResolveLayerPaths(%q): got %v, want a single non-empty path", key, got)
 		}
 	}
+}
+
+// TestNarrowAdapterScopeByChannel covers the per-channel write-scope
+// narrowing the shared implement-system-driver-adapters node relies on:
+// (a) a channel param replaces the whole-layer system-driver-adapter
+// entry with that channel's configured member; (b) no channel param
+// leaves the resolved scope untouched; (c) a channel with no configured
+// member is a hard error, never a silent widen to the whole layer.
+// Fixture shape mirrors scoped_test.go (SystemDriverAdapterChannels
+// populated per channel).
+func TestNarrowAdapterScopeByChannel(t *testing.T) {
+	cfg := &projectconfig.Config{}
+	cfg.SystemTest.SystemDriverAdapterChannels = map[string]string{
+		"api": "system-test/driver/adapter/api",
+		"ui":  "system-test/driver/adapter/ui",
+	}
+	// write and allowed are index-aligned, exactly as ResolveLayerPaths
+	// produces them — system-driver-port read-only sits alongside the
+	// system-driver-adapter write entry the narrowing targets.
+	write := []string{"system-driver-port", "system-driver-adapter"}
+	whole := []string{"driver/port", "driver/adapter"}
+
+	t.Run("channel param narrows adapter entry to the member", func(t *testing.T) {
+		got, err := narrowAdapterScopeByChannel(write, whole, "api", cfg)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		want := []string{"driver/port", "system-test/driver/adapter/api"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+		// The caller's resolved slice must not be mutated in place.
+		if whole[1] != "driver/adapter" {
+			t.Errorf("input allowed mutated: %v", whole)
+		}
+	})
+
+	t.Run("no channel param leaves the whole layer unchanged", func(t *testing.T) {
+		got, err := narrowAdapterScopeByChannel(write, whole, "", cfg)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if !reflect.DeepEqual(got, whole) {
+			t.Errorf("got %v, want whole layer %v", got, whole)
+		}
+	})
+
+	t.Run("channel set but member missing errors, no silent widen", func(t *testing.T) {
+		got, err := narrowAdapterScopeByChannel(write, whole, "grpc", cfg)
+		if err == nil {
+			t.Fatalf("expected error for channel with no configured member, got %v", got)
+		}
+		if got != nil {
+			t.Errorf("on error the scope must be nil (no whole-layer widen), got %v", got)
+		}
+		if !strings.Contains(err.Error(), "grpc") {
+			t.Errorf("error should name the offending channel: %v", err)
+		}
+	})
 }
 
 // writePhaseScopeTestConfig writes a minimal gh-optivem.yaml containing

@@ -474,6 +474,10 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
 	}
+	allowed, err = narrowAdapterScopeByChannel(write, allowed, ctx.Params["channel"], cfg)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
+	}
 
 	var modified []string
 	if snapshot, ok := ctx.State[CtxKeyPreAgentFingerprint].(WorkingTreeFingerprint); ok {
@@ -542,6 +546,43 @@ func ResolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, er
 			return nil, fmt.Errorf("layer %q not present in gh-optivem.yaml system-test.paths:", layer)
 		}
 		out = append(out, v)
+	}
+	return out, nil
+}
+
+// narrowAdapterScopeByChannel tightens a resolved write-scope so a
+// channel-split dispatch can only write its own System Driver adapter
+// folder. The phase node `implement-system-driver-adapters` is shared:
+// the UnrollSystemDriverAdapterChannels clone runs it once per channel
+// (ctx.Params["channel"] set), and the no-`channels:` full run reuses
+// the same node with no channel param. The single static
+// `write: [system-driver-adapter]` resolves to the whole adapter layer;
+// when a channel is present we replace that entry with the channel's
+// configured member (read verbatim from
+// cfg.SystemTest.SystemDriverAdapterChannels[channel], the same member
+// the resume guard keys on). No channel → whole layer, unchanged.
+//
+// write and allowed are index-aligned (ResolveLayerPaths builds allowed
+// in layer order), so the substitution targets exactly the
+// system-driver-adapter entries. A channel param on a task whose scope
+// does not include system-driver-adapter is a no-op. A channel with no
+// configured member is a hard error rather than a silent widen to the
+// whole layer — the permissive fallback is the very gap this closes.
+func narrowAdapterScopeByChannel(write, allowed []string, channel string, cfg *projectconfig.Config) ([]string, error) {
+	if channel == "" {
+		return allowed, nil
+	}
+	out := make([]string, len(allowed))
+	copy(out, allowed)
+	for i, layer := range write {
+		if layer != "system-driver-adapter" {
+			continue
+		}
+		member := cfg.SystemTest.SystemDriverAdapterChannels[channel]
+		if member == "" {
+			return nil, fmt.Errorf("channel %q has no system-driver-adapter member in gh-optivem.yaml system-test.system-driver-adapter-channels: — cannot narrow write-scope to the channel folder", channel)
+		}
+		out[i] = member
 	}
 	return out, nil
 }
@@ -1047,6 +1088,10 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
 	allowed, err := ResolveLayerPaths(write, cfg)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
+	}
+	allowed, err = narrowAdapterScopeByChannel(write, allowed, ctx.Params["channel"], cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
