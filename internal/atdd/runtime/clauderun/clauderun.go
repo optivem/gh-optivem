@@ -603,6 +603,22 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	stderrCapture.cap = 64 * 1024
 	runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
 
+	// Stdout routing differs by mode. Headless: the `claude -p` stream-json
+	// is a captured byte stream — route it to Detail so it's teed to the
+	// audit logs and filtered off the default (Phase-level) terminal.
+	// Interactive: the Claude Code TUI must render to a real TTY and the
+	// operator must see it, so hand the child the raw terminal stdout
+	// (opts.Stdout, which installLogFileMirror never rewraps). opts.Out.Detail
+	// is wrong for interactive on two counts: at the default terminal level
+	// it collapses to io.Discard (nothing renders — the original bug), and
+	// under --log-file it becomes an io.MultiWriter, i.e. a pipe rather than
+	// a TTY. Stderr stays on runStderr in both modes so rate-limit / auth
+	// classification keeps working; the TUI keys interactivity off stdout.
+	runnerStdout := opts.Out.Detail
+	if !opts.Headless {
+		runnerStdout = opts.Stdout
+	}
+
 	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
 		Prompt:   prompt,
 		Headless: opts.Headless,
@@ -610,10 +626,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		Effort:   opts.Effort,
 		Dir:      opts.RepoPath,
 		Stdin:    opts.Stdin,
-		// Interactive subprocess stdout is Detail — it's the agent's
-		// raw TUI rendering. Operator-facing summary lines are emitted
-		// at Phase by Dispatch / runHeadless via opts.Out.Phase.
-		Stdout:         opts.Out.Detail,
+		Stdout:         runnerStdout,
 		Stderr:         runStderr,
 		Out:            opts.Out,
 		OutputFilePath:    opts.OutputFilePath,
@@ -1384,16 +1397,19 @@ func writeEnterBanner(opts Options) {
 	// who has no TTY to interject through — knows where to tail for
 	// the rendered prompt, the claude event stream, and the agent's
 	// declared-outputs JSONL. Each line is gated on a non-empty path:
-	// interactive mode skips Events (no audit log), MIDs with no
-	// declared outputs skip Outputs, and test paths that don't set
-	// any of them simply emit none.
+	// MIDs with no declared outputs skip Outputs, and test paths that
+	// don't set any of them simply emit none. The Events lines are
+	// additionally gated on Headless: only runHeadless tees the
+	// stream-json audit logs, so advertising those paths for an
+	// interactive dispatch (where runInteractive never writes them)
+	// would point the operator at files that never appear.
 	if opts.PromptLogPath != "" {
 		fmt.Fprintln(w, cyan.Sprintf("         Prompt log:  %s", opts.PromptLogPath))
 	}
-	if opts.EventsLogPath != "" {
+	if opts.Headless && opts.EventsLogPath != "" {
 		fmt.Fprintln(w, cyan.Sprintf("         Events log:  %s", opts.EventsLogPath))
 	}
-	if opts.EventsTextLogPath != "" {
+	if opts.Headless && opts.EventsTextLogPath != "" {
 		fmt.Fprintln(w, cyan.Sprintf("         Events text: %s", opts.EventsTextLogPath))
 	}
 	if opts.OutputFilePath != "" {

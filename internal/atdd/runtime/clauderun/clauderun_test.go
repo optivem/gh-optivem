@@ -790,13 +790,17 @@ func TestDispatch_BannerSaysNoChangesOnCleanExit(t *testing.T) {
 // no-outputs MID, an interactive dispatch with no event stream, or a
 // test path that sets none must produce no log lines at all.
 func TestDispatch_EnterBannerListsLogPaths(t *testing.T) {
-	t.Run("all four paths set → all four lines shown", func(t *testing.T) {
+	t.Run("all four paths set (headless) → all four lines shown", func(t *testing.T) {
 		var buf bytes.Buffer
 		gitFake := &fakeGit{
 			out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
 		}
 		opts := newOpts()
 		opts.Stdout = &buf
+		// Events logs are a headless-only artefact (only runHeadless tees
+		// the stream-json), so the banner advertises them only in headless
+		// mode — this case must set Headless to see those two lines.
+		opts.Headless = true
 		opts.PromptLogPath = "/tmp/run-1/prompt.md"
 		opts.EventsLogPath = "/tmp/run-1/events.ndjson"
 		opts.EventsTextLogPath = "/tmp/run-1/events.log"
