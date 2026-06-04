@@ -1,7 +1,7 @@
 ---
-# Designs tests and wires DSL stub prototypes — both fit in Sonnet.
+# Designs tests and wires DSL stub prototypes — both fit in Sonnet. Medium effort: the keystone artifact, plus grep-discovery of the DSL surface and directory-keyed *-port-changed flags need more than low.
 model: sonnet
-effort: low
+effort: medium
 ---
 The Acceptance Criteria below were parsed from the ticket body during intake — write tests for them directly.
 
