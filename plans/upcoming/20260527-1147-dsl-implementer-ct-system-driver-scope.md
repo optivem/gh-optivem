@@ -1,6 +1,8 @@
 # dsl-implementer on the CT path — System Driver scope concern
 
 > **Verdict (2026-06-04 review): KEEP — live deferred concern.** Verified the CT-side HIGH process still exists in `process-flow.yaml` and is still the documented orphan, so the misbehaviour can't manifest yet — confirming the "defer until the CT call site lands" recommendation. The concern remains unaddressed in code; revisit when the CT call site lands and apply Option A+D.
+>
+> **Does the current process involve CT? No — the CT path is defined but not wired into the live call graph.** The CT-side HIGH `implement-and-verify-external-system-driver-adapters-contract-tests` exists (process-flow.yaml:965, full contract-real / contract-stub verify split at 1007–1076) but its header comment (952–964) still declares it an intentional orphan — *"No other process calls this HIGH today."* The live cascade is AT-only: `change-system-behavior` → `write-and-verify-acceptance-tests` → `implement-and-verify-external-system-driver-adapters` (the AT variant, no `-contract-tests` suffix). The intended CT wiring (Q31.a, Option A nested) is unresolved and deferred to Phase D. So the bug's precondition — a live CT call site reaching `dsl-implementer` — does not exist today.
 
 ## TL;DR
 
