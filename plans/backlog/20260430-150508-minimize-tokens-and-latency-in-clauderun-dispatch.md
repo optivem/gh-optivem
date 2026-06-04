@@ -1,6 +1,11 @@
 # Minimize tokens and latency in clauderun agent dispatch
 
-> 📋 **Deferred-plan review (2026-06-04): KEEP — pending work.** Phase 1 (Items 1, 2, 6) shipped. **Item 4 is still genuinely pending**: the resolved issue body/labels/projectItems are not yet passed into subagent prompts (`clauderun.Options` has `IssueTitle` but no `IssueBody`; `preResolveIssue`/`writeResolvedIssue` seed only num/url/title/handle/id), so each subagent still re-runs `gh issue view`. Item 3's old blocker has cleared — a `--no-update-check` flag now exists (used in `preflight/tools.go`). Items 5/7 are shop-side. Trim the shipped Phase 1 items if revisited.
+> 📋 **Deferred-plan review (2026-06-04, re-verified against code): KEEP — two items actionable.** Phase 1 (Items 1, 2, 6) shipped.
+> - **Item 3 is no longer deferred.** The old blocker has cleared: `--no-update-check` now exists and is already used in `preflight/tools.go:25`. The dispatch path (`claudeTuningArgs`, `clauderun.go:1669`) does NOT yet pass it. → ~1-line pickup, see Item 3 below.
+> - **Item 4 is still genuinely pending, untouched.** Verified: `tracker.Issue` (`tracker.go:43`) carries only ID/Title/URL/Handle — no Body/Labels/projectItems field; `writeResolvedIssue` (`driver.go:787`) seeds only num/url/title/handle/id; `clauderun.Options`/`RunOpts` carry `IssueTitle` but no `IssueBody`; the shared preamble (`preamble.md:3`) interpolates only `${issue-num}` + `${issue-title}`. So each subagent still re-fetches the body itself.
+> - Items 5/7 are shop-side. Trim the shipped Phase 1 items if revisited.
+>
+> Note: the orthogonal prose-trimming work (`runtime-prompts-audit` / `token-usage-audit`) shrinks static prompt bodies — a different axis. It does not touch this plan's two mechanisms (host pre-dispatch investigation; redundant per-subagent `gh issue view`), so the two stack rather than supersede.
 
 ## Motivation
 
@@ -25,11 +30,18 @@ The dispatch design intent — "host is a thin shim, subagent does the work" —
 
 ## Items
 
-Ordered by ROI. Item 3 is deferred (no current CLI flag). Items 4–7 require coordination with shop.
+Ordered by ROI. Items 4–7 require coordination with shop.
 
-### 3. Disable update check on every dispatch — ⏳ Deferred
+### 3. Disable update check on every dispatch — ✅ Actionable (blocker cleared)
 
-**Reason:** the `claude` CLI does not expose an `--no-update-check` flag (or any equivalent) as of the version probed 2026-04-30 — `claude --help` lists `update|upgrade` as a subcommand but no flag to suppress the per-invocation check. Recent commit `aeeff82` already removed an earlier attempt at this flag from `execClaude.Run` for the same reason. Re-pick up only if/when an upstream flag or env-var lands.
+**History:** originally deferred because the `claude` CLI exposed no `--no-update-check` flag as of 2026-04-30 (commit `aeeff82` had removed an earlier attempt for that reason). That blocker is now gone — the flag exists and is already used in `preflight/tools.go:25` (`claude --no-update-check --version`).
+
+**Files:**
+- `internal/atdd/runtime/clauderun/clauderun.go` → `claudeTuningArgs` (`clauderun.go:1669`)
+
+**Fix:** prepend `"--no-update-check"` to the args slice in `claudeTuningArgs`. That function is the single chokepoint feeding both the interactive path (`execClaude.Run`) and the headless path (`runHeadless`), so one edit covers every dispatch. Each dispatch then skips the per-invocation update probe — a small but unconditional latency saving on the hot path.
+
+**Estimated effort:** minutes; verify with one dispatch that the flag is accepted by the pinned `claude` version.
 
 ### 4. Pass the resolved issue body into the subagent prompt (eliminates per-subagent `gh issue view`)
 
@@ -83,7 +95,8 @@ The aggressive items (1, 2, 4) all narrow the host's discretion. If a real ATDD 
 
 ## Phased rollout
 
-- **Phase 1** ✅ shipped: items 1, 2, 6 — pure gh-optivem changes. Item 3 deferred (no upstream flag).
+- **Phase 1** ✅ shipped: items 1, 2, 6 — pure gh-optivem changes.
+- **Phase 1b** (pure gh-optivem, now unblocked): item 3 (`--no-update-check` on dispatch). ~1-line change in `claudeTuningArgs`; can land independently of everything below.
 - **Phase 2** (sister plan in shop): item 5 (model retiering) + item 7 (background commands). Tracked separately because it's shop-side.
 - **Phase 3** (coordinated): item 4 (issue-body pass-through). gh-optivem side ships additively first; shop-agent updates follow agent-by-agent.
 
