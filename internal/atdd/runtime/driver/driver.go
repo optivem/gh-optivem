@@ -1180,6 +1180,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// fix-loop debugging and the summary is most useful there.
 		record := dispatchRecord{
 			agent:   agentName,
+			channel: nodeParams["channel"],
 			model:   tuning.Model,
 			effort:  tuning.Effort,
 			elapsed: elapsed,
@@ -1490,6 +1491,7 @@ type runState struct {
 // row as failed.
 type dispatchRecord struct {
 	agent   string
+	channel string
 	model   string
 	effort  string
 	elapsed time.Duration
@@ -1660,11 +1662,15 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 	// participate in the width calc so a short-name run still has
 	// readable column headings.
 	agentW := len("agent")
+	channelW := len("channel")
 	modelW := len("model")
 	effortW := len("effort")
 	for _, r := range records {
 		if w := len(r.agent) + 2; w > agentW { // +2 for "✗ " marker on failed rows
 			agentW = w
+		}
+		if w := len(r.channel); w > channelW {
+			channelW = w
 		}
 		if w := len(r.model); w > modelW {
 			modelW = w
@@ -1684,8 +1690,9 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "=== Agent summary ===")
-	fmt.Fprintf(w, "  #  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+	fmt.Fprintf(w, "  #  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
 		agentW, "agent",
+		channelW, "channel",
 		modelW, "model",
 		effortW, "effort",
 		"elapsed", "in", "out", "cost")
@@ -1711,9 +1718,10 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 			}
 		}
 		totalElapsed += r.elapsed
-		fmt.Fprintf(w, "%3d  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+		fmt.Fprintf(w, "%3d  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
 			i+1,
 			agentW, name,
+			channelW, r.channel,
 			modelW, r.model,
 			effortW, r.effort,
 			elapsed, in, out, cost)
@@ -1726,8 +1734,8 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 		totalOutStr = formatSummaryTokens(totalOut)
 		totalCostStr = fmt.Sprintf("$%.2f", totalCost)
 	}
-	fmt.Fprintf(w, "%3s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
-		"", agentW, "", modelW, "", effortW, "totals",
+	fmt.Fprintf(w, "%3s  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+		"", agentW, "", channelW, "", modelW, "", effortW, "totals",
 		totalElapsed.Round(time.Second).String(),
 		totalInStr, totalOutStr, totalCostStr)
 

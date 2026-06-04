@@ -46,6 +46,7 @@ import (
 // success.
 type dispatchRecordJSON struct {
 	Agent     string     `json:"agent"`
+	Channel   string     `json:"channel,omitempty"`
 	Model     string     `json:"model"`
 	Effort    string     `json:"effort"`
 	ElapsedNS int64      `json:"elapsed_ns"`
@@ -70,6 +71,7 @@ type usageJSON struct {
 func recordToJSON(r dispatchRecord) dispatchRecordJSON {
 	out := dispatchRecordJSON{
 		Agent:     r.agent,
+		Channel:   r.channel,
 		Model:     r.model,
 		Effort:    r.effort,
 		ElapsedNS: r.elapsed.Nanoseconds(),
@@ -92,6 +94,7 @@ func recordToJSON(r dispatchRecord) dispatchRecordJSON {
 func recordFromJSON(j dispatchRecordJSON) dispatchRecord {
 	out := dispatchRecord{
 		agent:   j.Agent,
+		channel: j.Channel,
 		model:   j.Model,
 		effort:  j.Effort,
 		elapsed: time.Duration(j.ElapsedNS),

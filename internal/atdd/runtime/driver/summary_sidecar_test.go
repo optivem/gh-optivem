@@ -56,6 +56,15 @@ func TestSummarySidecar_RoundTrip(t *testing.T) {
 			},
 			err: errors.New("rate limit"),
 		},
+		{
+			// Channel-unrolled dispatch: the channel must survive the
+			// round trip so the replayed table can label which channel ran.
+			agent:   "system-driver-adapter-implementer",
+			channel: "api",
+			model:   "opus",
+			effort:  "medium",
+			elapsed: 12 * time.Second,
+		},
 	}
 
 	for _, r := range in {
@@ -74,7 +83,7 @@ func TestSummarySidecar_RoundTrip(t *testing.T) {
 
 	for i, want := range in {
 		g := got[i]
-		if g.agent != want.agent || g.model != want.model || g.effort != want.effort {
+		if g.agent != want.agent || g.channel != want.channel || g.model != want.model || g.effort != want.effort {
 			t.Errorf("row %d identity mismatch: got %+v, want %+v", i, g, want)
 		}
 		if g.elapsed != want.elapsed {
@@ -292,6 +301,38 @@ func TestPrintSummaryFile_MatchesRenderAgentSummary(t *testing.T) {
 	if inMem.String() != fromDisk.String() {
 		t.Errorf("live banner and historical replay diverged.\nLIVE:\n%s\nDISK:\n%s",
 			inMem.String(), fromDisk.String())
+	}
+}
+
+// TestRenderAgentSummary_ChannelColumn asserts the channel-unrolled
+// dispatches surface their channel in the table while channel-agnostic
+// agents leave the cell blank — the whole point of the column is to tell
+// the two otherwise-identical per-channel rows apart.
+func TestRenderAgentSummary_ChannelColumn(t *testing.T) {
+	records := []dispatchRecord{
+		{agent: "acceptance-test-writer", model: "sonnet", effort: "medium", elapsed: time.Minute},
+		{agent: "system-driver-adapter-implementer", channel: "api", model: "opus", effort: "medium", elapsed: 12 * time.Second},
+		{agent: "system-driver-adapter-implementer", channel: "ui", model: "opus", effort: "medium", elapsed: 23 * time.Second},
+	}
+
+	var buf bytes.Buffer
+	renderAgentSummary(&buf, records)
+	got := buf.String()
+
+	for _, want := range []string{"channel", "api", "ui"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("table missing %q; got:\n%s", want, got)
+		}
+	}
+
+	// The channel-agnostic row must not borrow a neighbour's channel: its
+	// line carries the agent name but neither "api" nor "ui".
+	for line := range strings.SplitSeq(got, "\n") {
+		if strings.Contains(line, "acceptance-test-writer") {
+			if strings.Contains(line, "api") || strings.Contains(line, "ui") {
+				t.Errorf("channel-agnostic row leaked a channel cell: %q", line)
+			}
+		}
 	}
 }
 
