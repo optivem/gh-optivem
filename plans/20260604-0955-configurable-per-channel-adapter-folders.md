@@ -1,7 +1,5 @@
 # Configurable per-channel System Driver adapter folders
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-04T09:33:35Z`
-
 **Created:** 2026-06-04 09:55 CEST
 **Status:** Design locked 2026-06-04 (refine pass) — **explicit nested
 per-channel block** (`system-driver-adapter-channels`), scaffolder-written
