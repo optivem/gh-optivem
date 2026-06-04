@@ -1,7 +1,9 @@
 # Sonar retry: local/CI parity on one canonical mechanism
 
-**Status:** Draft — decisions D1–D4 open, awaiting lock before execution
+**Status:** In progress — immediate flakes fixed (Items 1b, 3 done); parity work
+(Items 1, 1c, 2, 4) still open. D2/D3 resolved-by-execution; D1/D4 still open.
 **Created:** 2026-06-04 09:06 CEDT
+**Updated:** 2026-06-04 — Items 1b + 3 landed; status reconciled against `main`.
 
 > Triggered by acceptance run `26935724762` (2026-06-04): the gh-optivem Commit
 > Stage failed with `Action failed: Unexpected HTTP response: 403` while the
@@ -20,7 +22,7 @@ forms, with retry on only one of them:
 |---|---|---|
 | **shop CI** (`*-commit-stage.yml`) | CLI scanner (`dotnet sonarscanner`, `./gradlew sonar`) | ✅ `optivem/actions/retry@v1` (canonical GHA action) |
 | **shop local** (`system*/**/run-sonar.sh`) | **same** CLI scanner commands | ❌ none |
-| **gh-optivem CI** (this repo, `gh-commit-stage.yml`) | `SonarSource/sonarqube-scan-action@v7` composite action | ❌ none — the failing surface |
+| **gh-optivem CI** (this repo, `gh-commit-stage.yml`) | ~~composite action~~ → `sonar-scanner-cli` docker | ✅ `optivem/actions/retry@v1` (converged, Item 3) |
 
 Two gaps:
 
@@ -79,7 +81,16 @@ One canonical retry pattern — **CLI scanner wrapped in canonical retry** — a
 all three Sonar surfaces, with local and CI achieving equal resilience, and the
 403 classification correctly distinguishing transient-download from auth.
 
-## Decisions to lock (open)
+## Decisions
+
+- **D2 — Scope of this plan. RESOLVED → (b)** by execution. gh-optivem CI was
+  converted (Item 3); shop CI left as-is (already canonical). Local parity
+  (Item 2) remains the open tail of this scope.
+- **D3 — gh-optivem CI mechanism. RESOLVED → (a)** by execution. `gh-commit-stage.yml`
+  now wraps the `sonar-scanner-cli` docker command in `optivem/actions/retry@v1`
+  (commit `0976ceb`), matching shop CI.
+
+### Still to lock (open)
 
 - **D1 — 403 reclassification.** Split the binary-download / CDN 403 (transient,
   retryable) from the auth 403 (hard-fail). Options: (a) match on context
@@ -88,7 +99,11 @@ all three Sonar surfaces, with local and CI achieving equal resilience, and the
   *scan* command; (c) leave classification alone and rely on the action/CLI's own
   download retry. **Recommend (b)** — scope the leniency to the download step so
   an auth 403 on the scan still fails fast. Needs decision because it changes
-  upstream `optivem/actions` policy shared by every consumer.
+  upstream `optivem/actions` policy shared by every consumer. **Note:** now moot
+  for gh-optivem CI — Item 3 wraps the *entire* `docker run` (image pull +
+  analysis) in `retry@v1`, so a download/pull 403 retries the whole command
+  without touching the hard-fail list. D1 remains relevant only for the shop CLI
+  surface, where bash `sonar-retry.sh` still hard-fails all 403 (`sonar-retry.sh:43`).
 - **D2 — Scope of this plan.** (a) Local-only (`run-sonar.sh`) parity; (b) local
   + gh-optivem CI conversion; (c) all three incl. harmonizing shop CI `run:` so
   local and CI are byte-identical. **Recommend (b)** — fixes the failing surface
@@ -106,9 +121,11 @@ all three Sonar surfaces, with local and CI achieving equal resilience, and the
 
 ## Items
 
-### Item 0 — Unblock main (immediate, independent of the rest)
-- [ ] Re-run the failed jobs: `gh run rerun 26935724762 --failed`. Proven
-      transient; re-run is the correct response, not a workaround. Confirm green.
+### Item 0 — Unblock main (immediate, independent of the rest) — DONE
+- [x] Re-run the failed jobs: `gh run rerun 26935724762 --failed`. Proven
+      transient; re-run is the correct response, not a workaround. Subsequently
+      made permanently moot by Item 3, which converted this surface off the
+      composite action that 403'd.
 
 ### Item 1 — Upstream: 403 reclassification (per D1)
 - [ ] In `optivem/actions`, adjust `sonar-retry.sh` (and/or `retry-core` policy)
@@ -196,17 +213,19 @@ call entirely.
 - [ ] Make the edits at the scaffolder/template source of truth, then regenerate
       shop. Do not hand-edit generated `run-sonar.sh` in the shop repo.
 
-### Item 3 — gh-optivem CI: converge to CLI + canonical retry (per D2/D3)
-- [ ] Replace the `Run Code Analysis` step in `.github/workflows/gh-commit-stage.yml`
-      (`SonarSource/sonarqube-scan-action@v7`) with a CLI `sonar-scanner`
-      invocation wrapped per D3, preserving the existing args
-      (`projectKey=optivem_gh-optivem`, `organization=optivem`, sources/tests
-      inclusions/exclusions). This also fixes the 403 surface, because the retry
-      wrapper re-runs the whole command including the scanner download.
-- [ ] Keep the `if: github.ref == 'refs/heads/main' && env.SONAR_TOKEN != ''`
-      guard and `SONAR_TOKEN` env wiring.
-- [ ] Trigger an acceptance run (or push to main) and confirm the Sonar step
-      passes and that an induced transient retries (manual check / log inspection).
+### Item 3 — gh-optivem CI: converge to CLI + canonical retry (per D2/D3) — DONE
+> Done 2026-06-04, commit `0976ceb`. Resolved D2→(b) and D3→(a).
+- [x] Replaced the `Run Code Analysis` step in `.github/workflows/gh-commit-stage.yml`
+      (`SonarSource/sonarqube-scan-action@v7`) with a `sonarsource/sonar-scanner-cli`
+      `docker run` wrapped in `optivem/actions/retry@v1`, preserving the existing
+      args (`projectKey=optivem_gh-optivem`, `organization=optivem`, sources/tests
+      inclusions/exclusions). The whole `docker run` (image pull + analysis) sits
+      inside the retry envelope, so a transient pull/download 403 retries the
+      entire command — this is also why D1 is now moot for this surface.
+- [x] Kept the `if: github.ref == 'refs/heads/main' && env.SONAR_TOKEN != ''`
+      guard and `SONAR_TOKEN` env wiring (`gh-commit-stage.yml:45`).
+- [ ] Still to verify: confirm on a real run that the Sonar step passes and that
+      an induced transient actually retries (log inspection).
 
 ### Item 4 — Verify parity + document
 - [ ] Confirm all three surfaces now run the CLI scanner through a canonical
