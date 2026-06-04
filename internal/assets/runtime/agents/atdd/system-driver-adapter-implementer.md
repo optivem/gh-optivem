@@ -16,7 +16,7 @@ ${scope-block}
 ### Parameters
 
 - `architecture` — the target architecture for the System Driver adapter (`${system-driver-adapter}`).
-- `channel` — the delivery channel whose driver adapter this dispatch must implement. The adapter class for this channel is `MyShop${channel}Driver`; implement only that adapter and modify no adapter class other than `${channel}`'s.
+- `channel` — the delivery channel whose driver adapter this dispatch must implement. Implement only the `${channel}` channel's adapter (under `${system-driver-adapter}`) and modify no other channel's adapter.
 
 ## Steps
 

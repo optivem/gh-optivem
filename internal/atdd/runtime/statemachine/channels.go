@@ -71,7 +71,8 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 // adapter step in the RED write-and-verify-acceptance-tests cascade into one
 // dispatch per channel (plan 20260530-1725 Item 0, D-adapter-ownership option
 // A). The test-side driver adapter is inherently channel-specific (each
-// channel has its own driver class, e.g. MyShopApiDriver / MyShopUiDriver), so
+// channel owns its own adapter folder under system-driver-adapter, configured
+// per channel via system-test.system-driver-adapter-channels.<ch>), so
 // like the system step (1702) it must become one node per channel for the
 // channel team to own its slice.
 //
