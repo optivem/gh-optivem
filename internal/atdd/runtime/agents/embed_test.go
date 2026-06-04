@@ -78,8 +78,8 @@ func TestLoadTuning_AcceptanceTestWriter(t *testing.T) {
 	if got.Model != "sonnet" {
 		t.Errorf("Model = %q, want %q", got.Model, "sonnet")
 	}
-	if got.Effort != "low" {
-		t.Errorf("Effort = %q, want %q", got.Effort, "low")
+	if got.Effort != "medium" {
+		t.Errorf("Effort = %q, want %q", got.Effort, "medium")
 	}
 }
 
