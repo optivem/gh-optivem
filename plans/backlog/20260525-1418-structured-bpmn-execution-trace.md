@@ -148,7 +148,7 @@ No carry-forward — C does not appear in the fresh plan.
 | B — Invariant checks | **Ship** | Plain Go helpers over `[]DispatchEvent`; no fluent DSL; reusable from A's JSONL captures |
 | C — Spy state capture | **Reject** | Load-bearing split; use action-level tests + A's JSONL instead |
 
-Next: write a fresh `plans/YYYYMMDD-HHMM-<slug>.md` that turns A and B into actionable items (per `feedback_new_plan_not_extend`). This file gets archived to `plans/deferred/` once the fresh plan is drafted.
+Next: write a fresh `plans/YYYYMMDD-HHMM-<slug>.md` that turns A and B into actionable items (per `feedback_new_plan_not_extend`). This file gets archived to `plans/backlog/` once the fresh plan is drafted.
 
 ## Decision criteria (working list)
 
@@ -160,4 +160,4 @@ When this discussion converts into an actionable plan, the chosen direction shou
 
 ## When this file is superseded
 
-When direction is locked, archive this file under `plans/deferred/` (or delete) and write a fresh `plans/YYYYMMDD-HHMM-<slug>.md` with the actionable steps. Do **not** edit this file into an executable plan — the warning at the top is load-bearing and removing it mid-flight is exactly the failure mode `feedback_new_plan_not_extend` exists to prevent.
+When direction is locked, archive this file under `plans/backlog/` (or delete) and write a fresh `plans/YYYYMMDD-HHMM-<slug>.md` with the actionable steps. Do **not** edit this file into an executable plan — the warning at the top is load-bearing and removing it mid-flight is exactly the failure mode `feedback_new_plan_not_extend` exists to prevent.

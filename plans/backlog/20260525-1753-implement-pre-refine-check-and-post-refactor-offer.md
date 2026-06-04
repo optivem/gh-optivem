@@ -57,7 +57,7 @@ When `gh optivem implement --issue <n>` exits successfully (cycle reached the te
 
 ## Items
 
-1. - [ ] **Refine this plan.** Run `/refine-plan plans/upcoming/20260525-1753-implement-pre-refine-check-and-post-refactor-offer.md` to resolve the open questions above (refinement-state source-of-truth; what `gh optivem refactor` does; whether Idea 2 needs to be its own plan).
+1. - [ ] **Refine this plan.** Run `/refine-plan plans/backlog/20260525-1753-implement-pre-refine-check-and-post-refactor-offer.md` to resolve the open questions above (refinement-state source-of-truth; what `gh optivem refactor` does; whether Idea 2 needs to be its own plan).
 
 2. - [ ] **Design + land Idea 1** (pre-flight refinement check). Wire the check into the `implement` command entrypoint. Add tests for: refined-ticket path (proceeds), un-refined-ticket path (exits with command-naming message), missing-ticket path (existing error). Update `--help` Long text via the [help-text-updater agent](.claude/agents/...).
 
