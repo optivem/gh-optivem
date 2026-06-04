@@ -70,6 +70,21 @@ type Options struct {
 	// ProcessName is the entry process. Empty → DefaultProcessName.
 	ProcessName string
 
+	// Target scopes the run to one pipeline slice (plan 20260530-1725). Zero
+	// value (TargetUnset) is the no-arg full pipeline — Run walks ProcessName
+	// exactly as today. A scoped value routes Run into the slice's named
+	// sub-process via resolveScopedEntry instead (after a git-state resume
+	// guard). Set by the flag layer (Item 4) from --target; SliceProcess and
+	// ParseTarget in target.go are the SSoT for the mapping + validation.
+	Target Target
+
+	// Channel narrows a channel-split Target to one channel token (api / ui).
+	// Required for TargetDriverAdapter / TargetSystem and rejected for
+	// TargetTest — resolveScopedEntry enforces the rule and validates the token
+	// against the project channels: SSoT. Empty for the no-arg full run and the
+	// agnostic test slice.
+	Channel string
+
 	// IssueNum is the issue to implement. The driver pre-resolves the
 	// project item for this issue before walking the main process.
 	IssueNum int
@@ -413,7 +428,29 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		}
 	}
 
-	return eng.RunProcess(opts.ProcessName, sCtx)
+	// Scoped slice entry (plan 20260530-1725 Items 2b–2d, 3). A --target slice
+	// lives deep inside change-system-behavior, so a direct RunProcess skips the
+	// intake phases (PARSE_TICKET) that seed ticket State the slice's agents
+	// read (acceptance-criteria, checklist, …). Run parse-ticket here so the
+	// slice sees the same ticket context the full walk gives it, then route into
+	// the resolved slice (which may refuse on a not-DONE upstream slice).
+	entryProcess := opts.ProcessName
+	if opts.Target != TargetUnset {
+		if opts.IssueNum > 0 {
+			if fn := actionReg.Lookup("parse-ticket"); fn != nil {
+				if out := fn(sCtx); out.Err != nil {
+					return fmt.Errorf("driver: scoped --target %s: parse ticket: %w", opts.Target, out.Err)
+				}
+			}
+		}
+		proc, err := resolveScopedEntry(opts.Target, opts.Channel, cfg, repoPath, sCtx)
+		if err != nil {
+			return fmt.Errorf("driver: %w", err)
+		}
+		entryProcess = proc
+	}
+
+	return eng.RunProcess(entryProcess, sCtx)
 }
 
 // resolveRepoPath returns the absolute path the driver treats as the

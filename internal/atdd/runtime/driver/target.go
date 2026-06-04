@@ -55,6 +55,23 @@ type sliceSpec struct {
 	//   false → channel-agnostic → --channel REJECTED (rejected if present)
 	// The flag layer (Item 4) branches on this single boolean for both checks.
 	requiresChannel bool
+
+	// expectedTestResult is the per-slice expected-red / expected-green gate
+	// (plan Item 3, D-red-gate), expressed as the `expected-test-result`
+	// call-activity param the slice is entered with. It is NOT a new gate: the
+	// slice's existing verify nodes (GATE_EXPECTED_TEST_RESULT → verify-tests-
+	// fail / verify-tests-pass) already enforce it via the `test-outcome`
+	// classification, so seeding the right value here IS the success gate.
+	//   - "failure" → expected-RED: `test` (port-deep, no system/adapter yet)
+	//     and `driver-adapter <ch>` (compiles, ATs fail for the assertion
+	//     reason, not compile) both end red by design.
+	//   - "success" → channel-green: `system <ch>` drives its channel's
+	//     acceptance suite to pass.
+	// The no-arg full run pins this through its own wrappers (write-and-verify-
+	// acceptance-tests-fail / change-system-behavior), so the field is consulted
+	// only on scoped entry. ParseTarget / the selector read it via
+	// Target.ExpectedTestResult.
+	expectedTestResult string
 }
 
 // targetSlices is the Target → slice mapping. TargetUnset is intentionally
@@ -63,9 +80,9 @@ type sliceSpec struct {
 // reuse the existing per-channel-unrolled sub-processes (system driver adapter
 // and system).
 var targetSlices = map[Target]sliceSpec{
-	TargetTest:          {process: "shared-contract", requiresChannel: false},
-	TargetDriverAdapter: {process: "implement-and-verify-system-driver-adapters", requiresChannel: true},
-	TargetSystem:        {process: "implement-and-verify-system", requiresChannel: true},
+	TargetTest:          {process: "shared-contract", requiresChannel: false, expectedTestResult: "failure"},
+	TargetDriverAdapter: {process: "implement-and-verify-system-driver-adapters", requiresChannel: true, expectedTestResult: "failure"},
+	TargetSystem:        {process: "implement-and-verify-system", requiresChannel: true, expectedTestResult: "success"},
 }
 
 // ScopedTargets lists the non-default --target values in CLI / help order, for
@@ -92,6 +109,16 @@ func ParseTarget(raw string) (Target, error) {
 func (t Target) SliceProcess() (process string, requiresChannel bool, ok bool) {
 	spec, ok := targetSlices[t]
 	return spec.process, spec.requiresChannel, ok
+}
+
+// ExpectedTestResult returns the `expected-test-result` param the slice is
+// entered with (plan Item 3 / D-red-gate) — "failure" for the expected-red
+// slices, "success" for the channel-green system slice. ok is false for
+// TargetUnset and any unrecognised value (the no-arg full run pins the param
+// through its own wrappers, not through this accessor). See sliceSpec.
+func (t Target) ExpectedTestResult() (string, bool) {
+	spec, ok := targetSlices[t]
+	return spec.expectedTestResult, ok
 }
 
 // scopedTargetNames renders ScopedTargets as their raw string values, for the

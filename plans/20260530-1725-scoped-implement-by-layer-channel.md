@@ -1,6 +1,13 @@
 # Scoped `implement`: layer/channel slices as the team-handoff seam
 
-**Status:** 1702 landed (unblocked); mechanism + red-gate resolved against the code — see Item 2 / D-red-gate
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-04T07:46:52Z`
+
+## TL;DR
+
+**Why:** `gh optivem implement` walks the whole four-layer pipeline in one pass, so separate backend/frontend teams cannot split a ticket along the architecture's own seams (mob the shared contract, then each channel team owns its channel).
+**End result:** `implement` gains a `--target test|driver-adapter|system` (+ `--channel`) refinement that runs one slice and hands off via commit; resume is derived from the committed tree (no status file); the no-arg form still walks the full pipeline unchanged.
+
+**Status:** 1702 landed (unblocked); mechanism + red-gate resolved against the code — see Item 2 / D-red-gate. **Item 0, Item 1, Item 2a LANDED (commit 5e5b40d); Items 2b–2d + 3 LANDED (this session — `driver/scoped.go` selector + git-state resume guard + `expected-test-result` gate)** — next: Items 4 (flag surface), 5 (common wiring), 6 (`--help`), 7 (broader tests).
 **Created:** 2026-05-30 17:25 CEDT
 
 > **Depends on `plans/20260530-1702-channels-field-channel-by-channel.md` — land
@@ -190,11 +197,17 @@ same decomposition, two drivers.
   `driver.Run`→`RunProcess` always enters at the process `.Start` node (no
   start-at-node option), builds a fresh empty `Context` per run, and the
   `.gh-optivem/runs/<ts>/summary.jsonl` journal is *written but never read back*
-  (forensic, machine-local). **Per-channel layout knob resolved:** channels are
-  distinguished by **file/class naming** (e.g. `MyShopApiDriver` /
-  `MyShopUiDriver`, per `channels.go`), not a `/api` `/ui` subdirectory, so
-  channel-narrowing keys on filename within the layer's write-scope dir. Confirm
-  against the `shop` testkit tree at execution time.
+  (forensic, machine-local). **Per-channel layout knob resolved (2026-06-04,
+  with operator): channels are distinguished by SUBDIRECTORY**, not class name —
+  the System Driver adapters split into per-team folders
+  `driver/adapter/{api,ui,external,shared}` under the `driver-adapter` root
+  (`shared` is common to all channels). Channel-narrowing therefore keys on the
+  `<driver-adapter>/<ch>` subtree, which also cleanly separates a channel's
+  adapter from the `shared` stubs the `--target test` slice writes (no
+  stub-vs-filled ambiguity). This supersedes the earlier `channels.go`
+  "file/class naming (`MyShopApiDriver`)" note, which is stale — see
+  `plans/20260604-0955-configurable-per-channel-adapter-folders.md` for making
+  these folders configurable / rule-derived rather than a code convention.
 - **D-adapter-ownership — RESOLVED (2026-05-30): option A, channel team owns its
   driver adapter.** The mob owns only the **channel-agnostic** contract (tests +
   DSL core + driver **ports** + external ports); each channel team owns its own
@@ -341,7 +354,7 @@ to check — only the shared upstream one.)
 makes Item 1 substantially larger than first framed. Execute in order:
 
 0. **Adapter decomposition (D-adapter-ownership option A) — 0a + 0b LANDED;
-   0c folded into Item 2a.** Done (committed): (0a) `system-driver-adapter-
+   0c realised by Item 2a (LANDED, commit 5e5b40d).** Done (committed): (0a) `system-driver-adapter-
    implementer.md` is channel-aware via a `${channel}` param and writes only
    that channel's adapter; (0b) `UnrollSystemDriverAdapterChannels`
    (`channels.go`, generalised from `UnrollSystemChannels` via a shared
@@ -362,16 +375,19 @@ makes Item 1 substantially larger than first framed. Execute in order:
      synthesis to preserve the mandatory port-changed gate (an unconditional
      adapter dispatch on a no-port-change ticket produces no commit, which the
      HEAD-diff success detector reads as a run failure), and Item 2's slice
-     extraction would rework it anyway. So 0c's *intent* lives on as Item 2a's
-     boundary; there is no separate relocation step left.
-1. **`--target` → slice mapping.** Define, per `--target` value, the named
-   sub-process(es) it runs: `test` → the shared-contract slice (tests + DSL
-   port/core + driver port + external, D-external; adapter step excluded by
-   ending the slice *before* the RED adapter gate, per Item 0 / 2a — the adapter
-   node is not removed, it stays in RED, gated); `driver-adapter` → that
-   channel's (now per-channel, built in Item 0) adapter slice;
-   `system` → that channel's system slice (+ common on the first channel).
-   Encode the channel-agnostic vs channel-split split.
+     extraction would rework it anyway. 0c's intent is now realised: Item 2a
+     (LANDED, commit 5e5b40d) draws the slice boundary before the adapter gate
+     via the `shared-contract` sub-process; there is no separate relocation step.
+1. **`--target` → slice mapping — LANDED (commit 5e5b40d).**
+   `internal/atdd/runtime/driver/target.go`: a `Target` enum (`test` /
+   `driver-adapter` / `system`, plus `TargetUnset` for the no-arg full run) and
+   the `targetSlices` map — `test` → `shared-contract`; `driver-adapter` →
+   `implement-and-verify-system-driver-adapters`; `system` →
+   `implement-and-verify-system` — with the `requiresChannel` rule
+   (channel-split vs agnostic) encoded per slice, plus `ParseTarget` and
+   `Target.SliceProcess`. `target_test.go` cross-validates every mapped process
+   exists in the embedded YAML so the mapping and the seam-extraction (2a)
+   cannot silently drift.
 2. **Scoped entry via compose-by-name + git-state resume (D-resume).**
    **Mechanism resolved against the code (supersedes the earlier "arbitrary-node
    entry" sketch — see "Mechanism" below).** The pipeline is already a tree of
@@ -379,33 +395,55 @@ makes Item 1 substantially larger than first framed. Execute in order:
    shared across the run, `Params` scoped/restored per call-activity in
    `wrapCallActivity`). So a `--target` slice is **selected by name**, not by
    starting a single linear walk partway through. Build:
-   (a) a **small YAML seam-extraction** in `process-flow.yaml` exposing the
-   plan's slices as named sub-processes at the seams the plan wants — a
-   `shared-contract` slice (test → DSL core → driver port + external, the
+   (a) **LANDED (commit 5e5b40d): YAML seam-extraction.** `process-flow.yaml`
+   now defines a `shared-contract` slice (test-code → DSL → external, the
    `write-and-verify-acceptance-tests` cascade truncated *before* the
-   `GATE_SYSTEM_DRIVER_PORTS_CHANGED` adapter gate), and the per-channel
-   `driver-adapter-<ch>` / system slices — the per-channel
-   `IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS_<CH>` nodes already exist
-   (Item 0) and the 1702 unroll already splits the system step per channel;
-   (b) a thin **`--target` → sub-process selector** that calls `RunProcess` on
-   the chosen slice (no `Options.StartPhase`, no arbitrary-node entry);
-   (c) the per-phase write-scope→footprint detector (reuse `Engine.Scope` /
-   `process scope`, no new artifact map);
-   (d) the ABSENT/DIRTY/DONE classifier + first-non-DONE entry resolver that
-   refuses a slice whose upstream slice is not DONE.
+   `GATE_SYSTEM_DRIVER_PORTS_CHANGED` adapter gate); the parent
+   `write-and-verify-acceptance-tests` recomposes it and **re-gates on
+   `dsl-port-changed`** before the (channel-unrolled, verbatim) adapter tail,
+   so the no-arg full run is behaviour-preserved and `channels.go` is untouched.
+   The channel-split `driver-adapter` / `system` slices reuse the existing
+   `IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS_<CH>` nodes (Item 0) and the
+   1702 per-channel system split — no further YAML needed.
+   (b)(c)(d) **LANDED (this session).** All three are in
+   `internal/atdd/runtime/driver/scoped.go` + the `driver.Run` wiring +
+   `scoped_test.go`:
+   - **(b) selector.** `Options.Target` / `Options.Channel`; when `Target` is
+     set, `Run` routes through `resolveScopedEntry`, which validates the
+     `--channel` rule + channel-membership (parity with the Item-4 flag layer),
+     seeds the slice's call-activity params onto `Context.Params`, and returns
+     the named slice sub-process for `RunProcess` — no `StartPhase`, no
+     arbitrary-node entry. **One gap the "config-derived + issue" framing
+     missed:** a slice lives deep inside `change-system-behavior`, so a direct
+     `RunProcess` skips the intake `PARSE_TICKET` that seeds `acceptance-criteria`
+     / `checklist` into State; the selector therefore runs the `parse-ticket`
+     action before entering the slice.
+   - **(c) footprint detector.** `layerPath` resolves a write-scope key to its
+     physical path via `cfg.PlaceholderMap()` (the same flat Family A+B map
+     phase-doc substitution uses — no parallel artifact table). Channel-split
+     layers narrow to the `<driver-adapter>/<ch>` subtree (subdirectory layout,
+     per the 2026-06-04 operator clarification).
+   - **(d) classifier + resume guard.** `classifyFootprint` → ABSENT / DIRTY /
+     DONE via `git status --porcelain` + `git ls-files` on resolved paths
+     (content-addressed, never commit-message parsing; DIRTY ≠ DONE because the
+     cross-clone handoff is the commit). `checkUpstreamDone` refuses a slice
+     whose upstream slice is not DONE: `driver-adapter <ch>` needs the shared
+     contract; `system <ch>` needs the shared contract + that channel's adapter
+     + (non-first channel) the common layer.
    The brittle "re-seed skipped phases' gateway flags" step from the old sketch
    is **gone**: entering a slice by name does not traverse the upstream gates, so
-   there is nothing to fake. The only state a slice needs is config-derived
-   (`channel`, `common`, scope) + the issue, all already seeded by
-   `seedScopeState` / `preResolveIssue` / the call-activity params. Inspect
-   committed tree state only — never the machine-local `.gh-optivem/runs/`
-   journal.
-3. **Per-slice success gate (D-red-gate).** Add the "expected-red" success
-   criterion for `--target test` and `--target driver-adapter <ch>`; keep
-   end-green for the no-arg full run and for `--target system <ch>` (channel
-   green). **This is the same predicate Item 2's detector uses to classify a
-   phase DONE** — implement once, evaluate on this slice (gate) and on upstream
-   slices (resume).
+   there is nothing to fake. Inspect committed tree state only — never the
+   machine-local `.gh-optivem/runs/` journal.
+3. **Per-slice success gate (D-red-gate) — LANDED (this session).** Realised
+   not as a new gate but as the `expected-test-result` param the selector seeds
+   per slice (`Target.ExpectedTestResult` in `target.go`): `failure` for
+   `--target test` and `--target driver-adapter <ch>` (expected-red), `success`
+   for `--target system <ch>` (channel-green); the no-arg full run keeps pinning
+   it through its own wrappers. The slice's existing `GATE_EXPECTED_TEST_RESULT`
+   → `verify-tests-fail` / `verify-tests-pass` nodes enforce it, so it is the
+   **same predicate** the resume guard reads: a slice only reaches a commit by
+   passing its own verify nodes, and that commit is what the downstream run
+   classifies DONE — implemented once.
 4. **Flag surface (D-flags, D-positional).** Wire `--target
    test|driver-adapter|system` + `--channel <ch>` into `implement_commands.go`:
    `--channel` required for `driver-adapter`/`system`, rejected for `test`,
@@ -427,8 +465,8 @@ makes Item 1 substantially larger than first framed. Execute in order:
 - **Do not change the no-arg `implement <issue>` behaviour.** The `--target`
   flag is a refinement; omitting it must walk the full pipeline exactly as today.
 - **Do not add CODEOWNERS / permission enforcement here.** The ownership split
-  is the *informal agreement* (who runs which scoped command). Enforcement is
-  the separately-deferred `plans/20260530-1721-codeowners-channel-team-ownership.md`.
+  is the *informal agreement* (who runs which scoped command), not permission
+  enforcement.
 - **Do not hardcode `api`/`ui`.** The `--channel` token comes from the
   `channels:` SSoT (1702 plan), validated in one place.
 - **Do not add a diagram-regeneration step** if `process-flow.yaml` is touched
@@ -453,8 +491,14 @@ makes Item 1 substantially larger than first framed. Execute in order:
   `common` param.** `--target system --channel <ch>` is the manual per-team
   counterpart of that plan's caller-side auto-unroll; the two agree on
   common-layer ownership (both use option (b): common on the first channel).
-- `plans/20260530-1721-codeowners-channel-team-ownership.md` — deferred
-  enforcement variant of the same team split.
+- `plans/20260604-0955-configurable-per-channel-adapter-folders.md` — idea
+  (spun off during Item 2c/2d execution): the System Driver test adapters are
+  physically split by per-team folder (`driver/adapter/{api,ui,external,shared}`),
+  but config models the layer as a single `driver-adapter` key. Make the
+  per-channel folders configurable / rule-derived so per-channel scope, the
+  resume detector's channel narrowing, and per-team ownership all key on a real
+  configured path. **Supersedes the stale `channels.go` "distinguished by class
+  name (MyShopApiDriver/MyShopUiDriver)" note — the real split is by folder.**
 
 ## Verification (operator)
 
