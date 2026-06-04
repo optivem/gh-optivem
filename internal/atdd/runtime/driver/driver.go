@@ -366,6 +366,15 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		// here so it fires before printAgentSummary / logClose (LIFO) but
 		// after the digest tail; flow.txt is its own file, independent of
 		// the --log-file logClose.
+		//
+		// After the footer lands, echo the flow.txt path to the operator's
+		// Phase sink so the closing pointer cluster (right after `Run digest:`,
+		// which fires first via its later-registered defer) surfaces the
+		// readable execution tree — the mainstream "stream live, then point at
+		// the artifact" convention. The live colored stream already showed the
+		// content; this line just tells the operator where the clean nested
+		// copy lives. Mirrored into --log-file too (logClose fires last).
+		flowPath := filepath.Join(runDir, "flow.txt")
 		defer func() {
 			flowTree.WriteFooter(trace.TreeFooter{
 				Result:     runErr,
@@ -376,6 +385,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 				LogFile:    opts.LogFile,
 			})
 			f.Close()
+			fmt.Fprintf(opts.Out.Phase, "Execution flow: %s\n", flowPath)
 		}()
 	}
 
