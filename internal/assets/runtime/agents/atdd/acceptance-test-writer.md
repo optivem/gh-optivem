@@ -17,7 +17,7 @@ ${acceptance-criteria}
 
 ## Steps
 
-1. For every Acceptance Criterion, write a corresponding Acceptance Test (`${at-test}`). This should be a mechanical 1:1 translation. Add the permanent WIP gate to every Acceptance Test method you add, *alongside* its existing channel-parameterization annotations/wrapper — the gate is additive, not a replacement for the test's declaration. Follow the language-specific shape exactly:
+1. For every Acceptance Criterion, write a corresponding Acceptance Test (`${at-test}`). This should be a mechanical 1:1 translation — translate every AC item, and do not classify items as acceptance-vs-contract or reason about what other cycles (contract tests, adapters) do; that is out of your lane. Add the permanent WIP gate to every Acceptance Test method you add, *alongside* its existing channel-parameterization annotations/wrapper — the gate is additive, not a replacement for the test's declaration. Follow the language-specific shape exactly:
 
    ${gate-marker-example}
 

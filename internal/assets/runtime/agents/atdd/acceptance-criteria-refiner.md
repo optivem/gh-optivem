@@ -50,3 +50,8 @@ the "what new ACs should I add?" decision.
 - Cover **idempotency** / repeat-call behavior when the operation mutates
   state.
 - Every scenario in Gherkin GIVEN-WHEN-THEN form.
+
+ACs describe end-to-end, user-observable behavior of the system. Do **not**
+add scenarios that assert an external system's own behavior (e.g. "ERP
+returns product weight") — those are external-system contract tests, written
+separately and driven by port changes, not by ACs.
