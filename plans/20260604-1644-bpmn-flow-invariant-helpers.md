@@ -1,5 +1,10 @@
 # BPMN flow invariant helpers
 
+## TL;DR
+
+**Why:** Cross-process invariants in the statemachine graph are asserted ad hoc, one named site at a time — so adding a new `commit` / `FIX` / halt site that breaks the rule slips through, because the tests enumerate *known* sites rather than quantifying over *all* of them.
+**End result:** A small set of plain Go invariant helpers (`invariants.go`) over the loaded `*Engine` graph, each quantifying over every matching node, plus a test (`invariants_test.go`) that runs them against the embedded snapshot — so a new rule-violating site fails the suite with no test edit.
+
 **Status:** Draft — decisions locked (this conversation), awaiting execution
 **Created:** 2026-06-04 16:44 CEDT
 
@@ -126,11 +131,18 @@ over the types that already exist (`Engine`, `Process`, `Node`, `Edge`,
    generalization of `TestFixDispatch_LoopsBackToOriginatingStep` from a 4-row table
    to a quantifier over all fix sites.
 3. **Deliberate-halt terminals are `ErrorEndEvent`.** Every terminal whose id marks
-   an intentional halt (`*_EXHAUSTED`, `*_INFRA_HALT`, `*_REJECTED_END`, `STOP_*`)
-   has `Kind == ErrorEndEvent`, never `EndEvent` — generalizing the per-process
+   an intentional halt (`*_EXHAUSTED`, `*_INFRA_HALT`, `STOP_*`) has
+   `Kind == ErrorEndEvent`, never `EndEvent` — generalizing the per-process
    checks scattered across `TestFixDispatch_LoopsAreBounded`,
    `TestVerifyTests_InfraOutcomeRoutesToHalt`, and
    `TestExecuteAgent_ScopeExceptionRoutesToStopViolation`.
+   > **Resolved during execution:** `*_REJECTED_END` was dropped from the halt
+   > markers. Rejection is bimodal in the snapshot — `EXECUTE_AGENT_REJECTED_END`
+   > / `EXECUTE_COMMAND_REJECTED_END` are *deliberately* soft PRE-rejection skips
+   > (no artifact produced), while `FIX_REJECTED_END` is a hard halt — so the
+   > suffix is not a reliable halt signal and the literal pattern would have made
+   > the test red against a correct snapshot. `FIX_REJECTED_END`'s error-end kind
+   > stays covered by `TestFixDispatch_LoopsAreBounded`.
 
 ## Concurrency note
 
@@ -147,33 +159,7 @@ one place that edits a contended file — keep it deferred / coordinate, and re-
 
 ## Items
 
-### Item 1 — Invariant helper substrate (D1, D3, D4)
-- [ ] Add `internal/atdd/runtime/statemachine/invariants.go` with a small
-      `Violation` struct (process id, node id, rule name, human message) and a
-      top-level `CheckInvariants(eng *Engine) []Violation` that runs the registered
-      rules and aggregates violations. No `testing` import — pure over the graph.
-- [ ] Add reusable graph primitives the rules share (kept un-exported unless a rule
-      outside the package needs them): predecessor walk over `OutgoingByNode`
-      (reverse-reachability within a process, stopping at dispatching nodes), and a
-      node-kind/process-target predicate (`isCallTo(node, "commit")`).
-
-### Item 2 — The three seed rules (D6)
-- [ ] **Rule `commit-is-verified`** — for every `CallActivity` with
-      `Raw.Process == "commit"`, assert every inbound path traces back to a
-      `verify-tests-pass` / `verify-tests-fail` call-activity in the same process;
-      emit a `Violation` per unverified commit site.
-- [ ] **Rule `fix-loops-back`** — for every `FIX` / `FIX_UNEXPECTED_*` node, assert
-      an outgoing edge returns to its originating step; emit a `Violation` for any
-      fix node that only routes forward to a terminal.
-- [ ] **Rule `halt-terminals-are-error-end`** — for every node whose id matches the
-      deliberate-halt patterns, assert `Kind == ErrorEndEvent`; emit a `Violation`
-      for any that is a soft `EndEvent`.
-- [ ] `invariants_test.go`: one test that calls `CheckInvariants(loadSnapshot(t))`
-      and fails with the formatted violation list if non-empty. Reuse the existing
-      `loadSnapshot` helper shape from `transitions_test.go` (embedded snapshot, no
-      `Bind()` — rules read the static graph only).
-
-### Item 3 — Reconcile with the ad-hoc assertions (optional; contended file)
+### Item 3 — Reconcile with the ad-hoc assertions — ⏳ Deferred: optional + contended file (`transitions_test.go`), needs coordination with plan 1147 and a per-assertion keep/delete review gate
 - [ ] Once the rules are green against the snapshot, the per-site assertions they
       subsume (`TestFixDispatch_LoopsBackToOriginatingStep`, the
       `ErrorEndEvent`-kind checks inside `TestFixDispatch_LoopsAreBounded` /
