@@ -287,7 +287,7 @@ flowchart TD
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
     GATE_EXTERNAL_DRIVER_PORTS_CHANGED{External Driver Ports Changed?}
     IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
-    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[Implement and Verify External-System Driver Adapters]
+    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[Implement and Verify External-System Driver Adapters Contract Tests]
     SHARED_CONTRACT_END(( ))
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE[Write and Verify Acceptance Test Code]
 
@@ -346,16 +346,6 @@ flowchart TD
     IMPL_SYS_DRIVER_END(( ))
 
     IMPLEMENT_TEST_LAYER --> IMPL_SYS_DRIVER_END
-```
-
-## Implement and Verify External-System Driver Adapters
-
-```mermaid
-flowchart TD
-    IMPLEMENT_TEST_LAYER[Implement External-System Driver Adapter Layer — see § implement-test-layer]
-    IMPL_EXT_DRIVER_END(( ))
-
-    IMPLEMENT_TEST_LAYER --> IMPL_EXT_DRIVER_END
 ```
 
 ## Implement and Verify External-System Driver Adapters Contract Tests
