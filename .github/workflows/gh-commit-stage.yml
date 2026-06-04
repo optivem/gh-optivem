@@ -34,13 +34,23 @@ jobs:
       - name: Unit tests
         run: go test ./... -v
 
+      # CLI scanner (official sonar-scanner-cli image) wrapped in the canonical
+      # retry action. The whole `docker run` — image pull and analysis — sits
+      # inside the retry envelope, so a transient pull or analysis failure
+      # retries the entire command (4 attempts, 5s/15s/45s backoff). This
+      # replaces the bare SonarSource/sonarqube-scan-action@v7 composite, whose
+      # internal scanner-CLI download from binaries.sonarsource.com 403'd
+      # outside any retry layer. SONAR_TOKEN comes from the job-level env.
       - name: Run Code Analysis
         if: github.ref == 'refs/heads/main' && env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@v7
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        uses: optivem/actions/retry@v1
         with:
-          args: >
+          command: >
+            docker run --rm
+            -e SONAR_TOKEN
+            -e SONAR_HOST_URL=https://sonarcloud.io
+            -v "${{ github.workspace }}:/usr/src"
+            sonarsource/sonar-scanner-cli
             -Dsonar.projectKey=optivem_gh-optivem
             -Dsonar.projectName=gh-optivem
             -Dsonar.organization=optivem
