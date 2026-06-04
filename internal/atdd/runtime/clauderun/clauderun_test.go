@@ -222,10 +222,14 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 		//   - ${touches-system-driver} — dsl-implementer
 		opts.Checklist = "- [ ] placeholder checklist item"
 		//   - ${channel} / ${common} — channel-aware implement-system
+		//   - ${tests} — dsl-implementer's test-layer banner (acceptance/
+		//     contract); production fills it from the inherited call-activity
+		//     param scope (process-flow.yaml `tests: acceptance|contract`).
 		opts.NodeParams = map[string]string{
 			"touches-system-driver": "false",
 			"channel":               "api",
 			"common":                "true",
+			"tests":                 "acceptance",
 		}
 
 		got, err := renderPrompt(opts)
@@ -605,6 +609,12 @@ func TestRenderPrompt_ReEntryPolicySubstitutes(t *testing.T) {
 			// channel by the adapter unroll. Supply it directly for the render.
 			if agent == "system-driver-adapter-implementer" {
 				opts.NodeParams = map[string]string{"channel": "api"}
+			}
+			// dsl-implementer's body names the test layer via ${tests}
+			// (acceptance/contract); production fills it from the inherited
+			// call-activity param scope. Supply it directly for the render.
+			if agent == "dsl-implementer" {
+				opts.NodeParams = map[string]string{"tests": "contract"}
 			}
 
 			got, err := renderPrompt(opts)
