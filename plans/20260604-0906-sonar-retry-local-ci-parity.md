@@ -1,5 +1,7 @@
 # Sonar retry: local/CI parity on one canonical mechanism
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-04T14:12:37Z`
+
 **Status:** In progress — immediate flakes fixed (Items 1b, 3 done); parity work
 (Items 1, 1c, 2, 4) still open. D2/D3 resolved-by-execution; D1/D4 still open.
 **Created:** 2026-06-04 09:06 CEDT
@@ -20,9 +22,9 @@ forms, with retry on only one of them:
 
 | Surface | Invocation | Retry today |
 |---|---|---|
-| **shop CI** (`*-commit-stage.yml`) | CLI scanner (`dotnet sonarscanner`, `./gradlew sonar`) | ✅ `optivem/actions/retry@v1` (canonical GHA action) |
-| **shop local** (`system*/**/run-sonar.sh`) | **same** CLI scanner commands | ❌ none |
-| **gh-optivem CI** (this repo, `gh-commit-stage.yml`) | ~~composite action~~ → `sonar-scanner-cli` docker | ✅ `optivem/actions/retry@v1` (converged, Item 3) |
+| **shop CI** (`*-commit-stage.yml`) | CLI scanner (`dotnet sonarscanner`, `./gradlew sonar`) | YES — `optivem/actions/retry@v1` (canonical GHA action) |
+| **shop local** (`system*/**/run-sonar.sh`) | **same** CLI scanner commands | NONE |
+| **gh-optivem CI** (this repo, `gh-commit-stage.yml`) | ~~composite action~~ → `sonar-scanner-cli` docker | YES — `optivem/actions/retry@v1` (converged, Item 3) |
 
 Two gaps:
 
