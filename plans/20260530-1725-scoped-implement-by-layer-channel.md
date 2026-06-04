@@ -1,7 +1,5 @@
 # Scoped `implement`: layer/channel slices as the team-handoff seam
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-05-30T21:15:48Z`
-
 **Status:** 1702 landed (unblocked); mechanism + red-gate resolved against the code — see Item 2 / D-red-gate
 **Created:** 2026-05-30 17:25 CEDT
 
