@@ -68,6 +68,16 @@ type Deps struct {
 	// os.Stdout TTY — the convenience for ad-hoc callers and the no-log-file
 	// rehearsal path.
 	Colorize bool
+
+	// Tree, when non-nil, receives a decolored, indented execution tree
+	// written live as each node completes — the readable per-run sibling of
+	// the colored Out stream (D3/D5). Both render from the same per-dispatch
+	// Event record (D2), so they cannot drift. driver.Run opens
+	// <run-ts>/flow.txt and passes a *TreeWriter here; tests and ad-hoc
+	// callers leave it nil, in which case no tree is emitted and the live
+	// stream behaves exactly as before. The pointer is shared across every
+	// wrapped node so the run-scoped depth counter brackets sub-processes.
+	Tree *TreeWriter
 }
 
 func (d Deps) withDefaults() Deps {
@@ -116,26 +126,139 @@ func WrapAll(eng *statemachine.Engine, deps Deps) {
 	}
 }
 
-// wrap returns a NodeFn that logs entry/exit around inner. The closure
-// captures the original Node (kind + raw) so it has the metadata it needs
-// to render the entry banner without re-querying the engine. For
-// user-task nodes the wrapper also snapshots the working tree (via
-// `git status --porcelain`) on each side of the dispatch so the exit
-// banner can list what the agent changed.
+// Event is the per-dispatch record both the live colored stream and the
+// flow.txt tree renderer consume (D2). wrap() populates it once per node
+// fire: the enter-time fields (node metadata, the expanded selector, the
+// ctx.Params snapshot, the tree depth/occurrence) before inner() runs, and
+// the exit-time fields (outcome, elapsed, state + working-tree deltas)
+// after. Neither renderer re-derives any of this from the live Context —
+// the record is the single source of truth, so the two views cannot drift.
+type Event struct {
+	// Node carries kind + Raw metadata for both the enter selector and the
+	// exit verdict/name fallbacks.
+	Node statemachine.Node
+
+	// Enter-time fields — known before inner() fires.
+
+	// Params is a snapshot of ctx.Params at entry: what this node *receives*
+	// from the enclosing call-activity scope. Captured for all node kinds so
+	// the tree's `in` line is populated for service-/user-tasks too, not just
+	// call-activities (D2). Distinct from the call-activity's `params=` chip
+	// (CallParams below), which is what it *pushes* to its sub-process.
+	Params map[string]string
+	// AgentExpanded is node.Raw.Agent with ${…} resolved against the live
+	// scope (user-tasks only; empty otherwise). On strict-mode expansion
+	// error the raw template is kept — the dispatcher surfaces the error
+	// authoritatively, trace must not block on it.
+	AgentExpanded string
+	// CallParams is node.Raw.Params template-expanded against the live scope
+	// (call-activities only): the values pushed onto the sub-process, shown
+	// as the `params=` chip on the enter line.
+	CallParams map[string]string
+	// Depth is the sub-process nesting level for tree indentation (0 at the
+	// run root). Occurrence is the 1-based fire count of this node id within
+	// its enclosing scope-instance; >1 marks a loop-back re-dispatch the tree
+	// annotates as `↻ retry N`. Both are zero unless a TreeWriter is wired.
+	Depth      int
+	Occurrence int
+
+	// Exit-time fields — filled after inner() returns.
+
+	Outcome   statemachine.Outcome
+	Elapsed   time.Duration
+	PreState  map[string]string
+	PostState map[string]string
+	PreDirty  map[string]bool
+	PostDirty map[string]bool
+}
+
+// wrap returns a NodeFn that records an Event around inner and renders it to
+// both the live colored stream and (when wired) the flow.txt tree. The
+// closure captures the original Node (kind + raw) so it has the metadata it
+// needs to render without re-querying the engine. For user-task nodes the
+// wrapper also snapshots the working tree (via `git status --porcelain`) on
+// each side of the dispatch so the exit record can list what the agent
+// changed.
+//
+// For call-activity nodes the wrapper brackets inner() with TreeWriter
+// push/pop so the sub-process's children — which run synchronously inside
+// the call-activity NodeFn (statemachine.wrapCallActivity calls runProcess
+// inline) — record one greater depth and nest under this node in the tree.
 func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 	inner := node.Fn
 	return func(ctx *statemachine.Context) statemachine.Outcome {
-		writeEnter(deps, node, ctx)
-		preState := snapshotState(ctx.State)
-		preDirty := snapshotDirty(deps, node.Kind)
+		ev := &Event{
+			Node:          node,
+			Params:        snapshotParams(ctx.Params),
+			AgentExpanded: expandedAgent(node, ctx),
+			CallParams:    callParams(node, ctx),
+		}
+		if deps.Tree != nil {
+			ev.Depth, ev.Occurrence = deps.Tree.enter(node.ID)
+		}
+		writeEnter(deps, ev)
+		if deps.Tree != nil {
+			deps.Tree.writeEnter(ev)
+		}
+		ev.PreState = snapshotState(ctx.State)
+		ev.PreDirty = snapshotDirty(deps, node.Kind)
+		if node.Kind == statemachine.CallActivity && deps.Tree != nil {
+			deps.Tree.push()
+		}
 		started := nowFn()
 		out := inner(ctx)
-		elapsed := nowFn().Sub(started).Round(time.Millisecond)
-		postState := snapshotState(ctx.State)
-		postDirty := snapshotDirty(deps, node.Kind)
-		writeExit(deps, node, out, elapsed, preState, postState, preDirty, postDirty)
+		ev.Elapsed = nowFn().Sub(started).Round(time.Millisecond)
+		if node.Kind == statemachine.CallActivity && deps.Tree != nil {
+			deps.Tree.pop()
+		}
+		ev.PostState = snapshotState(ctx.State)
+		ev.PostDirty = snapshotDirty(deps, node.Kind)
+		ev.Outcome = out
+		writeExit(deps, ev)
+		if deps.Tree != nil {
+			deps.Tree.writeExit(ev)
+		}
 		return out
 	}
+}
+
+// snapshotParams copies ctx.Params so the `in` line stays stable even after
+// a call-activity push mutates the live map. Returns nil for an empty scope
+// so the renderers can cheaply test "no params".
+func snapshotParams(params map[string]string) map[string]string {
+	if len(params) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(params))
+	for k, v := range params {
+		out[k] = v
+	}
+	return out
+}
+
+// expandedAgent returns node.Raw.Agent with ${…} resolved against the live
+// scope for user-task nodes, the empty string otherwise. On strict-mode
+// expansion error the raw template is kept (same contract as the dispatcher's
+// own about-to-fire expansion, which surfaces the error authoritatively).
+func expandedAgent(node statemachine.Node, ctx *statemachine.Context) string {
+	if node.Kind != statemachine.UserTask || node.Raw.Agent == "" {
+		return ""
+	}
+	expanded, err := statemachine.ExpandParams(node.Raw.Agent, ctx.Params, ctx.State)
+	if err != nil {
+		return node.Raw.Agent
+	}
+	return expanded
+}
+
+// callParams returns node.Raw.Params expanded against the live scope for
+// call-activity nodes (nil otherwise) — the values pushed onto the
+// sub-process, rendered as the `params=` chip.
+func callParams(node statemachine.Node, ctx *statemachine.Context) map[string]string {
+	if node.Kind != statemachine.CallActivity || len(node.Raw.Params) == 0 {
+		return nil
+	}
+	return expandParamValues(node.Raw.Params, ctx)
 }
 
 // writeEnter prints the per-node entry banner. The format is:
@@ -150,10 +273,26 @@ func wrap(node statemachine.Node, deps Deps) statemachine.NodeFn {
 // On a TTY: `[trace …]` faint, `>` cyan, node ID bold (cyan-bold for
 // call-activity so process boundaries stand out as the "phase" markers above
 // their service-task / gateway / user-task children).
-func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
-	parts := []string{
-		fmt.Sprintf("kind=%s", kindLabel(node.Kind)),
-	}
+//
+// Renders from the Event's enter-time fields (D2): the expanded agent name
+// (ev.AgentExpanded) and the pushed call-activity params (ev.CallParams) are
+// pre-resolved by wrap() against the live scope, so this stays a pure
+// formatter.
+func writeEnter(deps Deps, ev *Event) {
+	node := ev.Node
+	fmt.Fprintf(deps.Out, "%s %s %s  %s\n",
+		deps.tracePrefix(),
+		deps.paint(">", color.FgCyan),
+		deps.nodeIDPaint(node),
+		strings.Join(enterParts(ev), " "))
+}
+
+// enterParts builds the `kind=… <selector>=…` field list shared by the live
+// banner and the tree's enter line. Pure function of the Event so both views
+// agree on the selector vocabulary.
+func enterParts(ev *Event) []string {
+	node := ev.Node
+	parts := []string{fmt.Sprintf("kind=%s", kindLabel(node.Kind))}
 	switch node.Kind {
 	case statemachine.ServiceTask:
 		if node.Raw.Action != "" {
@@ -161,14 +300,7 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 		}
 	case statemachine.UserTask:
 		if node.Raw.Agent != "" {
-			// On strict-mode expansion error the raw template is logged —
-			// the about-to-fire dispatcher will surface the same error
-			// authoritatively. Trace must not block on diagnostic output.
-			expanded, err := statemachine.ExpandParams(node.Raw.Agent, ctx.Params, ctx.State)
-			if err != nil {
-				expanded = node.Raw.Agent
-			}
-			parts = append(parts, fmt.Sprintf("agent=%s", expanded))
+			parts = append(parts, fmt.Sprintf("agent=%s", ev.AgentExpanded))
 		}
 	case statemachine.Gateway:
 		if node.Raw.Binding != "" {
@@ -178,15 +310,11 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 		if node.Raw.Process != "" {
 			parts = append(parts, fmt.Sprintf("process=%s", node.Raw.Process))
 		}
-		if len(node.Raw.Params) > 0 {
-			parts = append(parts, fmt.Sprintf("params=%s", formatParams(expandParamValues(node.Raw.Params, ctx))))
+		if len(ev.CallParams) > 0 {
+			parts = append(parts, fmt.Sprintf("params=%s", formatParams(ev.CallParams)))
 		}
 	}
-	fmt.Fprintf(deps.Out, "%s %s %s  %s\n",
-		deps.tracePrefix(),
-		deps.paint(">", color.FgCyan),
-		deps.nodeIDPaint(node),
-		strings.Join(parts, " "))
+	return parts
 }
 
 // writeExit prints the per-node exit banner and any follow-on detail
@@ -225,50 +353,81 @@ func writeEnter(deps Deps, node statemachine.Node, ctx *statemachine.Context) {
 //	[trace HH:MM:SS] FAIL NODE_ID -> <error>  (<elapsed>)
 //
 // and no follow-on lines are emitted (the engine halts the run anyway).
-func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elapsed time.Duration, pre, post map[string]string, preDirty, postDirty map[string]bool) {
+func writeExit(deps Deps, ev *Event) {
 	w := deps.Out
-	if out.Err != nil {
+	node := ev.Node
+	if ev.Outcome.Err != nil {
 		fmt.Fprintf(w, "%s %s %s -> %v  (%s)\n",
 			deps.tracePrefix(),
 			deps.paint("FAIL", color.FgRed),
 			deps.nodeIDPaint(node),
-			out.Err, elapsed)
+			ev.Outcome.Err, ev.Elapsed)
 		return
 	}
 	if node.ID == "TESTS_INFRA_HALT" {
-		writeInfraHaltBanner(deps, node, post, elapsed)
+		writeInfraHaltBanner(deps, node, ev.PostState, ev.Elapsed)
 		return
 	}
-	label, attr := outcomeStatusLabel(out)
-	detail := formatOutcome(out)
-	delta := stateDelta(pre, post)
-	hoistedDelta := detail == "(no result)" && delta != ""
-	if hoistedDelta {
+	label, attr, detail, delta, hoisted := outcomeDetail(ev)
+	if detail != "" {
+		fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
+			deps.tracePrefix(),
+			deps.paint(label, attr),
+			deps.nodeIDPaint(node),
+			detail, ev.Elapsed)
+	} else {
+		fmt.Fprintf(w, "%s %s %s  (%s)\n",
+			deps.tracePrefix(),
+			deps.paint(label, attr),
+			deps.nodeIDPaint(node),
+			ev.Elapsed)
+	}
+	if delta != "" && !hoisted {
+		fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("state:", color.Faint), delta)
+	}
+	if node.Kind == statemachine.UserTask {
+		if files := dirtyDelta(ev.PreDirty, ev.PostDirty); len(files) > 0 {
+			fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("files:", color.Faint), strings.Join(files, ", "))
+		}
+	}
+}
+
+// outcomeDetail computes the semantic exit detail for an Event — the `-> X`
+// payload — applying the hoist / gateway-bool / end-event-name /
+// call-activity-verdict rules in one place so the live banner (writeExit)
+// and the flow.txt tree agree on what an exit *means* even though they lay
+// it out differently (D2). Returns the status label + colour, the detail
+// string, the raw state delta, and whether that delta was folded into the
+// detail (so the caller can suppress a separate `state:` line).
+//
+//   - detail "" means the status word alone conveys the outcome (verify
+//     classes ok/red/infra — see formatOutcome); the caller drops the
+//     `-> …` suffix.
+//   - A gateway whose Bool:false left no delta to hoist renders `bool=false`
+//     explicitly, because gateways are contractually bool-valued
+//     (wrapGateway) and `(no result)` would be misleading.
+//   - end-/error-end-events surface their YAML `name:` in place of the
+//     content-free `(no result)` placeholder.
+//   - call-activities lead with a derived `verdict=` chip (the cycle's
+//     test-outcome × expected-test-result classification), prepended ahead
+//     of any hoisted delta so intent reads before mechanics.
+func outcomeDetail(ev *Event) (label string, attr color.Attribute, detail, delta string, hoisted bool) {
+	node := ev.Node
+	label, attr = outcomeStatusLabel(ev.Outcome)
+	detail = formatOutcome(ev.Outcome)
+	delta = stateDelta(ev.PreState, ev.PostState)
+	hoisted = detail == "(no result)" && delta != ""
+	if hoisted {
 		detail = delta
 	}
-	// Gateway re-affirming an existing binding value: no state delta to hoist,
-	// but `(no result)` is misleading because gateways are contractually
-	// bool-valued (see wrapGateway). The only way detail is still "(no result)"
-	// here is that the gateway returned Bool:false; render it explicitly so
-	// the line is symmetric with the bool=true case above.
-	if !hoistedDelta && detail == "(no result)" && node.Kind == statemachine.Gateway {
+	if !hoisted && detail == "(no result)" && node.Kind == statemachine.Gateway {
 		detail = "bool=false"
 	}
-	// End-events have no Outcome to format and no state to hoist; their YAML
-	// `name:` IS the meaningful exit signal — surface it instead of the
-	// misleading `(no result)` placeholder. Applies to both `end-event` and
-	// `error-end-event` so e.g. UNKNOWN_TICKET_KIND prints its label too.
 	if detail == "(no result)" && (node.Kind == statemachine.EndEvent || node.Kind == statemachine.ErrorEndEvent) && node.Raw.Name != "" {
 		detail = fmt.Sprintf("%q", node.Raw.Name)
 	}
-	// Call-activity exit lines lead with a verdict= chip derived from the
-	// sub-process's final (test-outcome × expected-test-result) state. Gives
-	// the operator the "did the cycle reach its expected state" signal that
-	// command-succeeded (= exit==0) does not convey. Omitted on non-test
-	// call-activities (neither field set) to avoid blanket `verdict=n/a`
-	// noise on every refine/refactor/commit sub-process.
 	if node.Kind == statemachine.CallActivity {
-		if v := callActivityVerdict(post); v != "" {
+		if v := callActivityVerdict(ev.PostState); v != "" {
 			if detail == "(no result)" {
 				detail = "verdict=" + v
 			} else {
@@ -276,27 +435,7 @@ func writeExit(deps Deps, node statemachine.Node, out statemachine.Outcome, elap
 			}
 		}
 	}
-	if detail != "" {
-		fmt.Fprintf(w, "%s %s %s -> %s  (%s)\n",
-			deps.tracePrefix(),
-			deps.paint(label, attr),
-			deps.nodeIDPaint(node),
-			detail, elapsed)
-	} else {
-		fmt.Fprintf(w, "%s %s %s  (%s)\n",
-			deps.tracePrefix(),
-			deps.paint(label, attr),
-			deps.nodeIDPaint(node),
-			elapsed)
-	}
-	if delta != "" && !hoistedDelta {
-		fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("state:", color.Faint), delta)
-	}
-	if node.Kind == statemachine.UserTask {
-		if files := dirtyDelta(preDirty, postDirty); len(files) > 0 {
-			fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("files:", color.Faint), strings.Join(files, ", "))
-		}
-	}
+	return label, attr, detail, delta, hoisted
 }
 
 // writeInfraHaltBanner replaces the generic exit line for the

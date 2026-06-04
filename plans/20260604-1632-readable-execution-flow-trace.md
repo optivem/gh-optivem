@@ -1,5 +1,10 @@
 # Readable execution-flow trace
 
+## TL;DR
+
+**Why:** No artifact shows what the BPMN engine actually executed in one run, nested by sub-process, with each step's input/output and the agent/command behind it — operators must eyeball a flat colored stream or open N per-agent transcripts to answer "where did this run halt / what did each step receive and return".
+**End result:** Each run writes a live, human-readable `flow.txt` execution tree under its run dir — every step in dispatch order, nested by call-activity, showing `in`/`out` params, `↻ retry N` on loop-backs, and pointers to the agent prompt-log or classified command. It renders from the same per-dispatch `Event` record that drives the existing live colored stream, so the two cannot drift.
+
 **Status:** Draft — decisions locked (this conversation), awaiting execution
 **Created:** 2026-06-04 16:32 CEDT
 
@@ -84,60 +89,12 @@ Item 2, and re-check `git log` before committing (per
 
 ## Items
 
-### Item 1 — Extract the shared per-dispatch `Event` record (D2)
-- [ ] In `internal/atdd/runtime/trace/`, introduce an `Event` struct holding what
-      `wrap()` already gathers: node ID, kind, the selector (action / agent /
-      binding / process), **input params** (`ctx.Params` snapshot — new for
-      service-/user-tasks; today only call-activity prints `params=`), outcome
-      (value/bool/err), state delta (`pre`→`post`), elapsed, user-task files
-      delta, and the call-activity verdict.
-- [ ] Refactor `writeEnter`/`writeExit` so the **live stream renders from
-      `Event`** rather than reading node/outcome directly — proving the record is
-      sufficient for the existing output (no visible change to the live stream).
-- [ ] Snapshot `ctx.Params` in `wrap()` for **all** node kinds so the `in` line
-      can be populated for service-/user-tasks, not just call-activities.
-
-### Item 2 — Thread sub-process depth into the record (D2; engine seam)
-- [ ] Establish a run-scoped **depth** signal so the tree renderer can indent a
-      call-activity's children under it. Preferred: a depth counter the
-      call-activity wrapper increments before `inner()` and decrements after —
-      **verify first** that the engine runs a sub-process synchronously inside the
-      call-activity `NodeFn` (so children dispatch during the parent's `inner()`
-      and the bracketing is correct). If sub-process execution is not synchronous
-      within the node, fall back to having the engine expose current depth on
-      `statemachine.Context`.
-- [ ] Record `depth` (and the enclosing scope/process-instance id) on each
-      `Event` so the renderer can both indent and detect loop-back
-      re-dispatches.
-
-### Item 3 — Tree renderer + live writer (D3, D4, D5)
-- [ ] Add a tree renderer in the `trace` package that formats an `Event` into the
-      indented tree line(s): `<glyph> NODE_ID  kind  selector` + `in` / `out` /
-      `agent` / `cmd` / `files` sub-lines, indented by `depth`.
-- [ ] Annotate **loop-back re-dispatches** (`↻ retry N`) by counting prior
-      occurrences of the same node id within the same scope/process-instance.
-- [ ] Surface the **command line** on every service-task `out`/`cmd` line — it's
-      already in `ctx.State` as `command-line` (today only shown on infra-halt);
-      classify the result (`PASS`/`RED`/`INFRA`) from the existing outcome/state.
-- [ ] Wire a live writer: open `<run-ts>/flow.txt` at driver startup, write each
-      `Event` as it completes (flush per step so a halt leaves a usable partial
-      file). Plain text, **no ANSI** (this file is the decolored, readable
-      sibling of the colored `--log-file` stream).
-- [ ] Emit the header (run metadata) at start and the footer (result, wall-clock,
-      commit SHA, counts, pointers to `*.prompt.md` + `--log-file`) at end. Derive
-      footer counts from the recorded `Event`s; reconcile with the existing
-      `printAgentSummary` / `summary_sidecar.go` so counts agree (do not invent a
-      second, divergent tally).
-
-### Item 4 — Driver wiring + run-dir plumbing (D3, D5)
-- [ ] Resolve `<run-ts>/flow.txt` from the existing `runState` run directory
-      (`rs.runTimestamp`, `.gh-optivem/runs/<run-ts>/`) and pass the writer into
-      `trace.WrapAll` via `trace.Deps`.
-- [ ] Ensure the file rides the existing `--keep-runs` pruning (it lives under the
-      pruned run dir, so it's covered for free — confirm, don't add new pruning).
-- [ ] Fail-soft: if the file can't be opened, warn to stderr and continue (same
-      policy as `openEventsLog` / PID markers) — the trace is informational, never
-      load-bearing for the run.
+_All items landed (commit pending) — see git history for the implementation.
+The `Event` record (D2), sub-process depth threading (D2), tree renderer +
+live writer (D3/D4/D5), and driver wiring (D3/D5) are all in
+`internal/atdd/runtime/trace/{trace.go,tree.go}` and
+`internal/atdd/runtime/driver/driver.go`. Only the operator verification below
+remains._
 
 ## Verification (operator, after the items land)
 - Run `gh optivem implement` on a slice that exercises a loop-back (a contract

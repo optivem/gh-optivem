@@ -339,6 +339,46 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// the summary lands in the --log-file before the file is closed.
 	defer func() { runState.printAgentSummary(opts.Out.Phase) }()
 
+	// Live execution-flow tree (plan 20260604-1632): the decolored, readable
+	// sibling of the --log-file colored stream, written incrementally to
+	// <run-ts>/flow.txt so a halted run still leaves the partial tree on disk
+	// (D3/D5). The writer is threaded into trace.WrapAll below and rendered
+	// from the same per-dispatch Event records the live stream consumes (D2).
+	// Fail-soft: if the file can't be opened we warn and continue with a nil
+	// writer — the trace is informational, never load-bearing (Item 4),
+	// matching the openEventsLog / PID-marker policy.
+	flowStart := nowFn()
+	runDir := filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp)
+	var flowTree *trace.TreeWriter
+	if f, err := openFlowFile(runDir); err != nil {
+		fmt.Fprintf(opts.Stderr, "driver: warning: open flow.txt: %v\n", err)
+	} else {
+		flowTree = trace.NewTreeWriter(f)
+		flowTree.WriteHeader(trace.TreeHeader{
+			RunTimestamp: runState.runTimestamp,
+			RepoPath:     repoPath,
+			Process:      opts.ProcessName,
+			IssueNum:     opts.IssueNum,
+		})
+		// Footer carries the named runErr (final verdict) and the dispatch
+		// count straight from runState's records — the same tally
+		// printAgentSummary renders — so the two cannot diverge. Registered
+		// here so it fires before printAgentSummary / logClose (LIFO) but
+		// after the digest tail; flow.txt is its own file, independent of
+		// the --log-file logClose.
+		defer func() {
+			flowTree.WriteFooter(trace.TreeFooter{
+				Result:     runErr,
+				WallClock:  nowFn().Sub(flowStart),
+				CommitSHA:  headCommitSHA(repoPath),
+				Dispatches: len(runState.snapshotRecords()),
+				RunDir:     runDir,
+				LogFile:    opts.LogFile,
+			})
+			f.Close()
+		}()
+	}
+
 	// Post-Bind decoration order matters:
 	//   1. Wrap user-task agent dispatch with per-node info-printer (uses
 	//      RawNode metadata only available after Bind).
@@ -380,6 +420,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		Out:      opts.Out.Phase,
 		RepoPath: repoPath,
 		Colorize: isatty.IsTerminal(os.Stdout.Fd()),
+		Tree:     flowTree,
 	})
 	// Phase-boundary banners sit OUTSIDE trace so each `[phase] start …`
 	// / `[phase] end …` bracket wraps the corresponding
@@ -1809,6 +1850,36 @@ func pruneOldRuns(runsDir string, keep int) error {
 		}
 	}
 	return firstErr
+}
+
+// openFlowFile creates runDir (if absent) and truncates/opens
+// <runDir>/flow.txt for the live execution-flow tree. runDir is the same
+// per-run directory dispatchPaths writes the per-agent *.prompt.md into and
+// the same one --keep-runs prunes, so flow.txt is covered by that pruning
+// for free — no new pruning is added (Item 4). The 0o644 file + O_TRUNC
+// mirror installLogFileMirror's --log-file handling.
+func openFlowFile(runDir string) (*os.File, error) {
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(filepath.Join(runDir, "flow.txt"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+}
+
+// headCommitSHA returns the short HEAD sha for the flow.txt footer, or "" on
+// any error (no git, empty/detached repo). Best-effort: the SHA is footer
+// garnish, never load-bearing, so a failure is swallowed silently rather
+// than warned — unlike the file-open path, there is nothing the operator
+// can act on.
+func headCommitSHA(repoPath string) string {
+	cmd := exec.Command("git", "rev-parse", "--short", "HEAD")
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // ensureGhOptivemGitignore appends ".gh-optivem/" as a line in
