@@ -894,6 +894,44 @@ func TestDispatch_EnterBannerSurfacesTuning(t *testing.T) {
 	}
 }
 
+// TestDispatch_EnterBannerSurfacesChannel pins the channel-visibility
+// contract: channel-split dispatches (system driver adapter / system
+// implementers, unrolled per project channel) carry a `channel`
+// node-param that scopes WHAT the agent implements (api vs ui). That
+// scope lives only inside the substituted prompt body, so the banner
+// must surface it — otherwise the operator can't tell from the trace
+// whether a run covers one channel or all. Channel-agnostic dispatches
+// carry no `channel` param and must emit no Channel line (no spurious
+// empty annotation).
+func TestDispatch_EnterBannerSurfacesChannel(t *testing.T) {
+	t.Run("channel present", func(t *testing.T) {
+		var buf bytes.Buffer
+		gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")}}
+		opts := newOpts()
+		opts.Stdout = &buf
+		opts.NodeParams = map[string]string{"channel": "api"}
+
+		if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+			t.Fatalf("Dispatch: %v", err)
+		}
+		mustContain(t, buf.String(), "Channel: api")
+	})
+
+	t.Run("channel absent → no Channel line", func(t *testing.T) {
+		var buf bytes.Buffer
+		gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")}}
+		opts := newOpts()
+		opts.Stdout = &buf
+
+		if _, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts); err != nil {
+			t.Fatalf("Dispatch: %v", err)
+		}
+		if strings.Contains(buf.String(), "Channel:") {
+			t.Errorf("channel-agnostic dispatch emitted a Channel line:\n%s", buf.String())
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Token usage parsing & banner formatting
 // ---------------------------------------------------------------------------

@@ -1393,6 +1393,17 @@ func writeEnterBanner(opts Options) {
 	// back to "(claude session default)" rather than being silently
 	// elided — no silent inheritance.
 	fmt.Fprintln(w, cyan.Sprintf("         Tuning: %s", formatTuning(opts.Model, opts.Effort)))
+	// Surface the delivery channel for channel-split dispatches (system
+	// driver adapter / system implementers, unrolled per project channel
+	// by UnrollSystemChannels). The channel scopes WHAT the agent
+	// implements — `api` vs `ui` — but lived only inside the substituted
+	// prompt body, so the operator couldn't tell from the banner whether
+	// the run was one channel or all. Gated on presence: channel-agnostic
+	// dispatches (most phases) carry no `channel` node-param and emit no
+	// line.
+	if ch := opts.NodeParams["channel"]; ch != "" {
+		fmt.Fprintln(w, cyan.Sprintf("         Channel: %s", ch))
+	}
 	// Surface the per-dispatch log paths so a headless operator —
 	// who has no TTY to interject through — knows where to tail for
 	// the rendered prompt, the claude event stream, and the agent's
