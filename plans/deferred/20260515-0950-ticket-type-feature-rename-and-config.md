@@ -1,5 +1,7 @@
 # Ticket-type classification: rename `story`, configurability, label fallback
 
+> 📋 **Deferred-plan review (2026-06-04): KEEP (borderline) — parked decision record.** Three intertwined, still-open design questions: (1) full `story`→`feature` rename end-to-end, (2) config-driven ticket-type recognition in `gh-optivem.yaml`, (3) `kind:*` labels vs/as-fallback-to native issue type. None resolved; all unblocked. The shipped quick-fix alias it builds on has since moved — it now lives as `ticketKindAliases{"feature":"story"}` in `internal/atdd/runtime/gates/bindings.go` (the plan's `actions/bindings.go` ref is stale). Keep as the parked decision record; delete only if you've permanently decided against all three.
+
 > ⏳ **Deferred (2026-05-15): quick-fix alias is sufficient for now.**
 > The `ticketTypeAliases` map in `internal/atdd/runtime/actions/bindings.go`
 > normalizes GitHub's current type name (`"feature"`) → internal `"story"`

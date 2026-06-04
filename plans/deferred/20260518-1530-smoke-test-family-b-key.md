@@ -1,5 +1,7 @@
 # Plan (deferred): Add `smoke_test` as a Family B canonical key
 
+> 📋 **Deferred-plan review (2026-06-04): KEEP (borderline) — speculative, refs stale.** Work is genuinely unstarted (`CanonicalPathKeys()` still holds exactly the canonical eight, no `smoke_test`), but two anchors have drifted: the `placeholders.md` target no longer exists (the `internal/assets/global/docs/` tree is gone), and canonical keys are now hyphenated, not the underscored `smoke_test`/`at_test` the plan assumes. No BPMN phase consumes smoke tests, and the demand has never materialized. Keep only if smoke-test paths are still on the roadmap (and refresh the stale refs); otherwise a defensible delete.
+
 **Date filed:** 2026-05-18
 
 **Filed from:** [SSoT phase-scope plan (20260518-1530)](../20260518-1530-atdd-phase-scope-ssot.md), item 1's γ-extension refinement discussion.

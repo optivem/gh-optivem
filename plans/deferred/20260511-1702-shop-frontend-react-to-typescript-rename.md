@@ -1,5 +1,7 @@
 # Shop: rename `frontend-react` → `frontend-typescript` (and related workflow names)
 
+> 📋 **Deferred-plan review (2026-06-04): KEEP — live bookmark, work pending.** The documented mismatch is fully intact: shop still has `system/multitier/frontend-react/` + `multitier-frontend-react-*.yml`, and all three temporary `"react"` hardcodes survive with their bookmark comments (`internal/steps/names.go:176`, `apply_template.go:361` & `:436`, and the `multitierForbiddenRefs(..., "react", ...)` at `:930`). Only the gh-optivem-side flag rename has landed. This plan is the live bookmark for removing those hardcodes.
+
 > ⚠️ **Deferred.** gh-optivem already accepts `--frontend-lang typescript` (the
 > user-facing flag value). The shop template still uses the legacy `react`
 > token internally for the framework directory + workflow filename. This

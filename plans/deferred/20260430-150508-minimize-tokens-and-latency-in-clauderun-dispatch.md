@@ -1,5 +1,7 @@
 # Minimize tokens and latency in clauderun agent dispatch
 
+> 📋 **Deferred-plan review (2026-06-04): KEEP — pending work.** Phase 1 (Items 1, 2, 6) shipped. **Item 4 is still genuinely pending**: the resolved issue body/labels/projectItems are not yet passed into subagent prompts (`clauderun.Options` has `IssueTitle` but no `IssueBody`; `preResolveIssue`/`writeResolvedIssue` seed only num/url/title/handle/id), so each subagent still re-runs `gh issue view`. Item 3's old blocker has cleared — a `--no-update-check` flag now exists (used in `preflight/tools.go`). Items 5/7 are shop-side. Trim the shipped Phase 1 items if revisited.
+
 ## Motivation
 
 Concrete waste observed during a v2b rehearsal run on issue #61 (`atdd-task` agent, interactive mode). The host `claude` session — whose only instruction was the templated *"Launch the atdd-task subagent for the current ATDD phase"* — performed six sequential tool calls before invoking the requested subagent:

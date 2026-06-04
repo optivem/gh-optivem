@@ -1,5 +1,7 @@
 # ❓❓❓ NEEDS DISCUSSION ❓❓❓
 
+> 📋 **Deferred-plan review (2026-06-04): KEEP — live, unresolved decision.** Code still matches the plan's "current state" exactly: `bindings.go:154` wires `realShell{stdout: d.Out.Detail, stderr: d.Stderr}` (Option 1), the zero-value fallback at `:1345` uses `os.Stderr`, and the `realShell.Run` "stream live to the operator's terminal" comment is unchanged. The load-bearing forensics path (`command-stderr-tail` / `writeInfraHaltBanner`) still exists. Just needs VJ to pick Option 1 (keep stderr always visible) vs Option 2 (route through the level-filtered sink); Option 2's 5-step implementation is ready to execute.
+
 **Open question (2026-05-28):** When `gh optivem implement` runs without
 `--verbose`, should the subprocess **stderr** stream be routed through
 `Out.Detail` (level-filtered, hidden at non-verbose) or stay wired to

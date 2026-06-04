@@ -1,5 +1,7 @@
 # Fix unfiltered workflow-status badges across `gh-optivem`, the scaffolding template, and the rest of the academy
 
+> 📋 **Deferred-plan review (2026-06-04): KEEP — entirely unimplemented.** Add `?event=push`/`?event=schedule` filtering (or delete dead dispatch-only badges) so badges stop reading "no status" forever. Verified still un-done: `README.md` badges carry no `?event=`, and `internal/steps/readme.go`'s `badgeFmt`/`pipelineBadges` still emit unfiltered URLs into every scaffolded repo. The picked-up marker below is stale (started, no code landed).
+
 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-05-02T11:52:06Z`
 
 ## Motivation
