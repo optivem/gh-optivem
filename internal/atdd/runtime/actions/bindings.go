@@ -1051,6 +1051,24 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		}
 	}
 
+	// CT-path System-Driver fence (plan 20260527-1147 Item 4). A
+	// dsl-implementer dispatched on the contract-test path (tests=contract)
+	// stimulates the External-System Driver only — the System Driver port is
+	// conceptually out of scope. If it emits system-driver-port-changed=true,
+	// that flag leaks up into the AT cycle's system-driver-adapter gate and
+	// fires a spurious adapter cycle. This is a structural invariant
+	// violation, not a recoverable agent-output problem (no fix-* pass can
+	// correct "wrong test path"), so it halts with a diagnostic rather than
+	// routing to the soft fix loop. The AT path (tests=acceptance) emitting
+	// the same flag is correct and untouched. `tests` reaches here via the
+	// wrapCallActivity param-merge from the IMPLEMENT_AND_VERIFY_DSL call site.
+	if ctx.Params["tests"] == "contract" {
+		if changed, _ := ctx.State["system-driver-port-changed"].(bool); changed {
+			return statemachine.Outcome{Err: fmt.Errorf(
+				"validate-outputs-and-scopes: CT-path dsl-implementer must not touch the System Driver port; contract tests stimulate the External-System Driver only (set system-driver-port-changed=false on the tests=contract path)")}
+		}
+	}
+
 	// 2. Output presence check — every non-Optional declared key must
 	// be present in ctx.State after the flatten.
 	var missing []string

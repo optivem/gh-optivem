@@ -1169,6 +1169,51 @@ func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 	}
 }
 
+// CT-path System-Driver fence (plan 20260527-1147 Item 4). A dsl-implementer
+// dispatched with tests=contract that emits system-driver-port-changed=true
+// must HALT — the flag would otherwise leak up into the AT cycle's
+// system-driver-adapter gate. The fence is a hard Outcome.Err (structural
+// invariant, no fix-* recovery), and it fires before the presence/scope
+// checks, so no git/config/fingerprint wiring is needed to trip it.
+func TestValidateOutputsAndScopes_CTPath_SystemDriverPortChanged_Halts(t *testing.T) {
+	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
+	ctx.Params["tests"] = "contract"
+	ctx.Set("system-driver-port-changed", true)
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err == nil {
+		t.Fatalf("CT-path dsl-implementer emitting system-driver-port-changed=true must halt, got nil err")
+	}
+	if !strings.Contains(out.Err.Error(), "System Driver port") {
+		t.Fatalf("diagnostic should name the System Driver port: %q", out.Err.Error())
+	}
+}
+
+// The AT path (tests=acceptance) emitting system-driver-port-changed=true is
+// correct and must pass cleanly — the fence is CT-only.
+func TestValidateOutputsAndScopes_ATPath_SystemDriverPortChanged_Allowed(t *testing.T) {
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte(""), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
+	ctx.Params["tests"] = "acceptance"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	ctx.Set("system-driver-port-changed", true)
+	ctx.Set("external-driver-port-changed", true)
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("AT-path system-driver-port-changed=true must be allowed, got err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+}
+
 func TestValidateOutputsAndScopes_Success_ClearsPriorFailureDiagnostics(t *testing.T) {
 	// Within a single run, ctx.State persists across call-activities (the
 	// state-fallback path documented at run.go:308). If a prior dispatch

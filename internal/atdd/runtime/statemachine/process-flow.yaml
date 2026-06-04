@@ -658,7 +658,10 @@ processes:
   # The shared, channel-AGNOSTIC contract slice (plan 20260530-1725 Item 2a).
   # This is the cascade up to — but NOT including — the per-channel System
   # Driver adapter gate: write the test code (inner primitive), then cascade
-  # into DSL + external-system driver adapters whenever those ports changed.
+  # into DSL whenever the DSL port changed, and — when the external-system
+  # driver port changed — into the contract-test-first CT-HIGH
+  # (`…-contract-tests`, Q31.a Option A nested), which writes+verifies the
+  # contract test (real, then stub) and implements the external adapter.
   # Reads `dsl-port-changed` from the inner call, then
   # `external-driver-port-changed` from the DSL impl (Q6 port-change wiring
   # table). The GATE bindings are bound to Go gate functions that promote the
@@ -712,14 +715,18 @@ processes:
         binding: external-driver-port-changed
         name: "External Driver Ports Changed?"
 
+      # Q31.a (resolved Option A, nested): the external-driver-port-changed
+      # true-branch enters the contract-test-first CT-HIGH, not a thin AT-only
+      # adapter step. The CT-HIGH is a superset — it writes+verifies the
+      # contract test (real, then stub) AND implements the external adapter.
+      # It is self-contained: it pins its own expected results internally
+      # (write-contract-tests → success; contract-real pass; contract-stub
+      # fail-then-pass) and sources `${test-names}` from write-contract-tests'
+      # output, so it reads NO caller params — bind none here.
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
         type: call-activity
-        process: implement-and-verify-external-system-driver-adapters
-        name: "Implement and Verify External-System Driver Adapters"
-        params:
-          task-name: implement-external-system-driver-adapters
-          expected-test-result: ${expected-test-result}
-          tests: acceptance
+        process: implement-and-verify-external-system-driver-adapters-contract-tests
+        name: "Implement and Verify External-System Driver Adapters Contract Tests"
 
       - id: SHARED_CONTRACT_END
         type: end-event
@@ -922,46 +929,16 @@ processes:
     sequence-flows:
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_SYS_DRIVER_END}
 
-  implement-and-verify-external-system-driver-adapters:
-    name: "Implement and Verify External-System Driver Adapters"
-    start: IMPLEMENT_TEST_LAYER
-    nodes:
-      - id: IMPLEMENT_TEST_LAYER
-        type: call-activity
-        process: implement-test-layer
-        name: "Implement External-System Driver Adapter Layer"
-        params:
-          task-name: implement-external-system-driver-adapters
-          action: implement-external-system-driver-adapters
-          expected-test-result: ${expected-test-result}
-          tests: ${tests}
-          layer: "EXTERNAL DRIVER ADAPTERS"
-
-      - id: IMPL_EXT_DRIVER_END
-        type: end-event
-        name: "External System Driver Adapter Layer Verified"
-
-    sequence-flows:
-      - {from: IMPLEMENT_TEST_LAYER, to: IMPL_EXT_DRIVER_END}
-
   # Contract-test variant of the external driver-adapter impl. Mirrors the
   # AT-side cascade but with `tests: contract` semantics and the
   # contract-real / contract-stub verify split. Absorbs the pre-refactor
   # diagram #8 (contract-test-sub-process).
   #
-  # **Orphan in the structural call graph (intentional — known gap).** No
-  # other process calls this HIGH today: the cascade
-  # `change-system-behavior` → `write-and-verify-acceptance-tests` →
-  # `implement-and-verify-external-system-driver-adapters` for the AT
-  # side, but do **not** show a corresponding call into the CT-side HIGH.
-  # Per Q31.a (resolved Option A nested) the intended wiring is that CT
-  # runs as a nested sub-process called by the AT-side when the AT layer
-  # needs a stub/driver to pass; the exact call site (inside the AT-side
-  # adapter HIGH, or as a sibling step in `write-and-verify-acceptance-
-  # tests`) is unresolved in the brainstorm and left for Phase D.
-  # Encoding here so diagram #8's absorption is visible per the cross-
-  # check inventory; the call-site wiring lands in the downstream-
-  # alignment plan.
+  # Called by `shared-contract`'s `GATE_EXTERNAL_DRIVER_PORTS_CHANGED`
+  # true-branch (Q31.a resolved: CT nested under AT). The AT cycle drives;
+  # when the DSL impl raises `external-driver-port-changed`, the external-
+  # driver gate fires this CT-HIGH as a sub-step between AT-red and AT-green,
+  # so the contract test certifies the stub before the AT goes green.
   implement-and-verify-external-system-driver-adapters-contract-tests:
     name: "Implement and Verify External-System Driver Adapters Contract Tests"
     start: WRITE_CONTRACT_TESTS

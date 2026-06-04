@@ -55,7 +55,6 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"write-and-verify-acceptance-test-code",
 		"implement-and-verify-dsl",
 		"implement-and-verify-system-driver-adapters",
-		"implement-and-verify-external-system-driver-adapters",
 		"implement-and-verify-external-system-driver-adapters-contract-tests",
 		"implement-and-verify-system",
 		"refactor-and-verify-tests",
@@ -376,6 +375,89 @@ func TestFixDispatch_LoopsAreBounded(t *testing.T) {
 			wantEdge(t, proc, "FIX", origin, "")
 		})
 	}
+}
+
+// Q31.a (CT nested under AT, plan 20260527-1147): shared-contract's
+// external-driver gate true-branch now enters the contract-test-first CT-HIGH
+// (a superset that writes+verifies the contract test, real then stub, AND
+// implements the external adapter) instead of the retired thin AT-only step.
+// This is a pure structural assertion over the static graph — no execution
+// walk, so no statemachine loop hazard.
+func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) {
+	eng := loadSnapshot(t)
+
+	// 1. The thin AT-only external-adapter HIGH is retired entirely.
+	if _, ok := eng.Processes["implement-and-verify-external-system-driver-adapters"]; ok {
+		t.Errorf("thin AT-only HIGH implement-and-verify-external-system-driver-adapters should be retired, still present")
+	}
+
+	// 2. shared-contract's external-driver gate true-branch reaches the
+	//    external-driver adapter node; that node now dispatches the CT-HIGH.
+	sc, ok := eng.Processes["shared-contract"]
+	if !ok {
+		t.Fatalf("process shared-contract missing")
+	}
+	wantEdge(t, sc, "GATE_EXTERNAL_DRIVER_PORTS_CHANGED", "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "external-driver-port-changed == true")
+	node, ok := sc.Nodes["IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"]
+	if !ok {
+		t.Fatalf("shared-contract: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS node missing")
+	}
+	if got := node.Raw.Process; got != "implement-and-verify-external-system-driver-adapters-contract-tests" {
+		t.Errorf("external-driver node process = %q, want the CT-HIGH", got)
+	}
+	// The CT-HIGH is self-contained — the call site binds none of the
+	// caller params the retired thin step used to forward.
+	for _, p := range []string{"tests", "expected-test-result", "task-name"} {
+		if v, set := node.Raw.Params[p]; set {
+			t.Errorf("external-driver node should not bind %q (CT-HIGH is self-contained), got %q", p, v)
+		}
+	}
+
+	// 3. The CT-HIGH starts by dispatching write-contract-tests (the
+	//    contract-test-writer agent) — proving a contract test is written.
+	ct, ok := eng.Processes["implement-and-verify-external-system-driver-adapters-contract-tests"]
+	if !ok {
+		t.Fatalf("CT-HIGH process missing")
+	}
+	if ct.Start != "WRITE_CONTRACT_TESTS" {
+		t.Errorf("CT-HIGH start = %q, want WRITE_CONTRACT_TESTS", ct.Start)
+	}
+	start, ok := ct.Nodes["WRITE_CONTRACT_TESTS"]
+	if !ok {
+		t.Fatalf("CT-HIGH: WRITE_CONTRACT_TESTS node missing")
+	}
+	if got := start.Raw.Process; got != "write-contract-tests" {
+		t.Errorf("CT-HIGH start node process = %q, want write-contract-tests", got)
+	}
+	wct, ok := eng.Processes["write-contract-tests"]
+	if !ok {
+		t.Fatalf("process write-contract-tests missing")
+	}
+	if ea, ok := wct.Nodes["EXECUTE_AGENT"]; !ok {
+		t.Errorf("write-contract-tests: EXECUTE_AGENT node missing")
+	} else if got := ea.Raw.Params["agent"]; got != "contract-test-writer" {
+		t.Errorf("write-contract-tests agent = %q, want contract-test-writer", got)
+	}
+
+	// 4. The CT-HIGH walks the contract-real -> contract-stub verify split.
+	realNode, ok := ct.Nodes["VERIFY_TESTS_PASS_CONTRACT_REAL"]
+	if !ok {
+		t.Fatalf("CT-HIGH: VERIFY_TESTS_PASS_CONTRACT_REAL node missing")
+	}
+	if got := realNode.Raw.Params["suite"]; got != "contract-real" {
+		t.Errorf("contract-real verify suite = %q, want contract-real", got)
+	}
+	stubFail, ok := ct.Nodes["VERIFY_TESTS_FAIL_CONTRACT_STUB"]
+	if !ok {
+		t.Fatalf("CT-HIGH: VERIFY_TESTS_FAIL_CONTRACT_STUB node missing")
+	}
+	if got := stubFail.Raw.Params["suite"]; got != "contract-stub" {
+		t.Errorf("contract-stub fail-verify suite = %q, want contract-stub", got)
+	}
+	// real-pass precedes stub-fail (the split: prove tests pass against the
+	// real system, then fail against the not-yet-implemented stub).
+	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL", "START_SYSTEM_BEFORE_STUB_FAIL", "")
+	wantEdge(t, ct, "START_SYSTEM_BEFORE_STUB_FAIL", "VERIFY_TESTS_FAIL_CONTRACT_STUB", "")
 }
 
 func wantEdge(t *testing.T, proc *Process, from, to, predicate string) {

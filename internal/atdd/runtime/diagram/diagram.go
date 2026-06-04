@@ -73,7 +73,6 @@ var processOrder = []string{
 	"write-and-verify-acceptance-test-code",
 	"implement-and-verify-dsl",
 	"implement-and-verify-system-driver-adapters",
-	"implement-and-verify-external-system-driver-adapters",
 	"implement-and-verify-external-system-driver-adapters-contract-tests",
 	"implement-and-verify-system",
 	"refactor-and-verify-tests",
