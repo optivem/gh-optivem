@@ -1,11 +1,21 @@
 # Sonar retry: local/CI parity on one canonical mechanism
 
-**Status:** In progress — immediate flakes fixed (Items 1b, 3 done); **all
-decisions now locked (2026-06-05)**, remaining parity work (Items 1, 1c, 2, 4) is
-mechanical. D2/D3 resolved-by-execution; **D1 → (a)** (extend 1b override regex
-with the CDN host); **D4 → shop-copy + repo-relative sourcing**; **D5 → (a)**
-(concurrency-stagger, not skip+Java). Gradle `skipJreProvisioning` is a clean win
-(Item 1c); dotnet/JS stay on provisioning + the D5 stagger.
+## TL;DR
+
+**Why:** Sonar runs on three surfaces (shop CI, shop local, gh-optivem CI) but
+retry is uneven — local `run-sonar.sh` has none, and transient `403`s (CDN
+binary-download, `/analysis/jres`) intermittently fail commit stages.
+**End result:** one canonical retry pattern (CLI scanner + canonical retry) across
+all three surfaces, with the `403` classification splitting transient-download
+(retryable) from auth (hard-fail), and local achieving CI-equal resilience.
+
+**Status:** In progress. Done: Items 1b, 3; **Item 1 code+test** (CDN-403 added
+to force-retry regex, 49/49 green) and **Item 1c Gradle skip** (5 edits) executed
+2026-06-05 — uncommitted/unreleased. **Items 2 + D4 DROPPED** (shop is
+deliberately script-free; local retry not pursued). Decisions: D2/D3
+resolved-by-execution; **D1 → (a)**; **D4 dropped**; **D5 → (a)** (concurrency-
+stagger). **Open tail:** Item 1 release (gated — `v1` retarget), Item 1c dotnet/JS
+stagger (D5), Item 4 verify.
 **Created:** 2026-06-04 09:06 CEDT
 **Updated:** 2026-06-05 — refine-plan walk: D1/D4/D5 all resolved with rationale;
 Items 1, 1c (dotnet/JS), 2 rewritten to match; Item 3's stray verify box folded
@@ -33,31 +43,43 @@ forms, with retry on only one of them:
 
 Two gaps:
 
-1. **Local has no retry.** The `run-sonar.sh` scripts even claim parity — "CI
-   runs the same analysis … this script is for manual runs" — yet CI retries and
-   local does not. They have drifted on resilience.
+1. **Local `run-sonar.sh` comments overclaim parity.** They imply CI runs the
+   *identical* thing, but CI adds automatic retry and local does not.
+   **Resolution (2026-06-05): this is acceptable, not a gap to close** — a manual
+   run is attended, so a human re-run is the right recovery (see corrected
+   decisive constraint). The honest fix is to *reword the comment*, not to add
+   local retry (Items 2/D4 dropped).
 2. **gh-optivem CI is the outlier form.** It uses the official composite action
    while every other surface uses the CLI scanner. The composite action is also
    the one with no canonical retry, and is what 403'd.
 
-### The decisive constraint
+### The decisive constraint (CORRECTED 2026-06-05)
 
-**Only the bash `sonar_retry` (`.github/scripts/sonar-retry.sh`, built on the
-shared `retry-core.sh` engine) runs in both local and CI.** The official Sonar
-action *and* `optivem/actions/retry@v1` are **GHA-only** — neither exists when a
-student runs `./run-sonar.sh` on their laptop. So local parity is not achievable
-with either GHA mechanism; the bash wrapper is the *only* canonical retry that
-spans both environments. That makes "CLI scanner + canonical retry" the single
-pattern that unifies all three surfaces, and reframes the gh-optivem composite
-action as the outlier to converge — not a maintained baseline to protect.
+> The original framing here was wrong and drove a stale plan. It claimed the bash
+> `sonar_retry` (`.github/scripts/sonar-retry.sh`) was the *only* retry spanning
+> local and CI, and concluded we must vendor that wrapper into shop for local
+> parity. Both premises are obsolete: (1) the per-tool `sonar-retry.sh` was
+> **unified into a single domain-agnostic `retry.sh`** (`retry_run`); (2) shop is
+> **deliberately script-free** — it consumes retry via `uses: optivem/actions/retry@v1`
+> and vendors *no* retry helpers (decision recorded in `sync-shared.sh:16-18`).
 
-### Two facts that make this non-trivial
+**Retry is domain-agnostic and GHA-only by design.** It lives in `optivem/actions`,
+is consumed in CI via `retry@v1`, and is vendored (as `retry.sh` + `retry-core.sh`)
+only into **gh-optivem** (an internal tool), never into shop. On a student laptop
+there is *no* GHA action — and that is fine: a manual `./run-sonar.sh` flake is
+**attended**, so the natural recovery is a human re-run, not automated retry. The
+unifying pattern is therefore **"CLI scanner + `retry@v1` in CI"**; local
+`run-sonar.sh` is intentionally out of scope for retry. (This is why Items 2/D4 —
+"vendor retry into shop for local parity" — were dropped; see Decisions.)
 
-- **The scaffolded repos have no `.github/scripts/`.** `sonar-retry.sh` /
-  `retry-core.sh` are not synced into shop today, so `run-sonar.sh` has nothing
-  to `source`. Local retry requires *first* getting the bash wrappers into
-  scaffolded repos.
-- **`sonar-retry.sh` classifies all `403/Forbidden` as hard-fail (never retry).**
+### Two facts that make the 403 work non-trivial
+
+- **shop is intentionally script-free — not a gap to fill.** It has no
+  `.github/scripts/` and `run-sonar.sh` sources nothing, *by design*. The 403
+  reclassification (Item 1) therefore lands purely upstream in `optivem/actions`
+  and reaches shop CI through `retry@v1`; nothing is vendored into shop.
+- **The unified `retry.sh` classifies all `403/Forbidden` as hard-fail (never retry)
+  by default.**
   Correct for a scanner→SonarCloud auth 403 (bad token), but it would *also*
   refuse to retry the transient CDN/binary-download 403 that caused this run.
   These two 403s are semantically opposite and currently conflated.
@@ -84,15 +106,19 @@ action as the outlier to converge — not a maintained baseline to protect.
 
 ## Goal
 
-One canonical retry pattern — **CLI scanner wrapped in canonical retry** — across
-all three Sonar surfaces, with local and CI achieving equal resilience, and the
-403 classification correctly distinguishing transient-download from auth.
+One canonical, **domain-agnostic** retry pattern — **CLI scanner wrapped in
+`optivem/actions/retry@v1`** — across both **CI** Sonar surfaces (shop CI,
+gh-optivem CI), with the 403 classification correctly distinguishing
+transient-download/JRE from auth. Local `run-sonar.sh` is intentionally
+retry-free (attended manual runs recover by human re-run); "parity" means the
+*analysis* is the same, not that local replicates CI's automated retry.
 
 ## Decisions
 
 - **D2 — Scope of this plan. RESOLVED → (b)** by execution. gh-optivem CI was
-  converted (Item 3); shop CI left as-is (already canonical). Local parity
-  (Item 2) remains the open tail of this scope.
+  converted (Item 3); shop CI left as-is (already canonical). Local-retry parity
+  (Item 2) was subsequently **dropped** (2026-06-05) — shop is deliberately
+  script-free; see corrected decisive constraint + D4.
 - **D3 — gh-optivem CI mechanism. RESOLVED → (a)** by execution. `gh-commit-stage.yml`
   now wraps the `sonar-scanner-cli` docker command in `optivem/actions/retry@v1`
   (commit `0976ceb`), matching shop CI.
@@ -143,19 +169,15 @@ all three Sonar surfaces, with local and CI achieving equal resilience, and the
   for consistency with shop CI; gh-optivem has no local `run-sonar.sh`, so the
   bash-spans-both argument doesn't apply to this repo.
 - **D4 — Sync mechanism for bash wrappers into scaffolded repos. RESOLVED →
-    (shop-copy + repo-relative sourcing)** (2026-06-05). Add
-  `.github/scripts/{retry-core,sonar-retry}.sh` to the **`shop/` repo** and let
-  the existing scaffolder copy that dir verbatim into student repos (it already
-  copies files from `shop/` via `apply_template.go`, `cfg.ShopPath`); `run-sonar.sh`
-  then `source`s a **repo-relative** path (`.github/scripts/sonar-retry.sh`).
-
-  *Why:* use the mechanism that already exists, one source of truth. Repo-relative
-  over installed-location because it needs **zero install step** on a student
-  laptop and stays byte-identical local↔CI.
-
-  **One verification before executing Item 2:** confirm the scaffolder's copy
-  globs actually include `.github/scripts/` (it may filter dotfiles / `.github`).
-  If excluded, widen the glob at the scaffolder source — do not special-case.
+    DROPPED / MOOT** (2026-06-05, superseded). The question only existed to serve
+  Item 2 (local retry in `run-sonar.sh`), which is itself dropped. **shop is
+  deliberately script-free** — it consumes retry via `uses: optivem/actions/retry@v1`
+  and vendors no retry helpers (`sync-shared.sh:16-18`; original decision
+  `20260515-0723-shop-zero-retry-scripts`). Vendoring `retry.sh`/`retry-core.sh`
+  into shop would reverse that architecture and re-duplicate domain-agnostic
+  retry into a student-facing repo. My earlier "shop-copy + repo-relative"
+  resolution was made without knowing shop was intentionally script-free — it is
+  withdrawn. Nothing is copied into shop.
 
 - **D5 — dotnet/JS `/analysis/jres` handling. RESOLVED → (a)** (2026-06-05).
   **Stagger the meta-prerelease fan-out / cap Sonar concurrency** so
@@ -184,18 +206,13 @@ all three Sonar surfaces, with local and CI achieving equal resilience, and the
 ### Item 1 — Upstream: 403 reclassification (per D1 → (a))
 > Reuses Item 1b's force-retry override tier (already in `retry-core.sh`); this is
 > an *extension of the override regex*, not new classification machinery.
-- [ ] In `optivem/actions` `retry.sh`, extend `_RETRY_FORCE_RETRY` to also match
-      the transient binary-download/CDN 403 — add the scanner-download host
-      (`binaries.sonarsource.com`) alongside the existing
-      `Failed to query JRE metadata|/analysis/jres`. Keep it narrow: a host/URL
-      anchor, so an auth 403 on the analysis submission still fails fast.
-- [ ] Extend `_test-retry.sh` to cover a `binaries.sonarsource.com` 403 (retries)
-      vs. a bare auth `HTTP 403 Forbidden` with no allowlisted host (hard-fails).
-      No `retry-core` change needed — the override tier already exists from 1b.
-- [ ] Release + re-sync: push `optivem/actions`, retarget the floating `v1` tag,
-      then re-sync vendored copies into gh-optivem via
-      `bash optivem/actions/scripts/sync-shared.sh`. Verify the regenerated
-      `.github/scripts/retry.sh` blob updates and content matches.
+> Code+test done 2026-06-05 (`actions/shared/retry.sh`, `_test-retry.sh`, 49/49
+> green) — committed but **not yet released**; release is the gated tail below.
+- [ ] ⏳ Deferred (gated — third-party-visible): Release + re-sync. Push
+      `optivem/actions`, retarget the floating `v1` tag (this hits **every** shop
+      CI consumer instantly — needs explicit go-ahead), then re-sync vendored
+      copies into gh-optivem via `bash optivem/actions/scripts/sync-shared.sh`.
+      Verify the regenerated `.github/scripts/retry.sh` blob updates and matches.
 
 ### Item 1b — Upstream: JRE-provisioning 403 force-retry override (DONE)
 > Done 2026-06-04, triggered by acceptance run `26937916287`. Lands in
@@ -290,15 +307,12 @@ JVM. That precondition is the whole story (see investigation below).
   toolchains **without** forcing Java onto anyone — strictly less invasive than
   adding `setup-java` to 6 workflows. Captured as decision **D5** below.
 
-#### Gradle edit set (all in `shop/`, append `-Dsonar.scanner.skipJreProvisioning=true`)
-- [ ] **Local `run-sonar.sh` (×3):** `system/monolith/java`,
-      `system/multitier/backend-java`, `system-test/java`.
-- [ ] **CI commit-stage (×2):** `monolith-java-commit-stage.yml:139` and
-      `multitier-backend-java-commit-stage.yml:139` (the `./gradlew sonar --info`
-      line). Java **acceptance-stage** CI runs `bash ./run-sonar.sh`, so it
-      inherits the local edit — no separate change.
-- [ ] Keep Item 1b retry as the backstop for the *other* transient 403s
-      (binary-download CDN, genuine 5xx) and for dotnet/JS `/analysis/jres`.
+#### Gradle edit set — DONE 2026-06-05 (all in `shop/`)
+> Appended `-Dsonar.scanner.skipJreProvisioning=true` to all 3 Java
+> `run-sonar.sh` (monolith, multitier backend, system-test) and both Java
+> commit-stage workflows (`monolith-java`, `multitier-backend-java`, line 139).
+> Java acceptance-stage CI runs `bash ./run-sonar.sh` so it inherits the local
+> edit. Item 1b retry remains the backstop for the *other* transient 403s.
 
 #### dotnet / JS — concurrency-stagger (per D5 → (a); do NOT naked-skip)
 - [ ] Stagger the meta-prerelease fan-out / cap concurrent Sonar-running pipelines
@@ -306,20 +320,22 @@ JVM. That precondition is the whole story (see investigation below).
       provisioning + Item 1b retry — the stagger removes the burst that defeats the
       retry. No `setup-java`, no new local Java dependency.
 
-### Item 2 — Local parity: retry in `run-sonar.sh` (the gap with zero coverage)
-- [ ] Get `sonar-retry.sh` + `retry-core.sh` into scaffolded repos (per D4) —
-      they have no `.github/scripts/` today.
-- [ ] Wrap the scanner calls in every `run-sonar.sh` (monolith dotnet/java/ts,
-      multitier backends + frontend, system-test dotnet/java/ts) with
-      `sonar_retry`: `source …/sonar-retry.sh` then
-      `sonar_retry dotnet sonarscanner end …` / `sonar_retry ./gradlew … sonar …`.
-- [ ] **Also wrap** `dotnet tool install --global dotnet-sonarscanner` — it hits
-      an external registry and is the local analogue of the very download-403 that
-      triggered this plan, so it gets `sonar_retry` too (wrap every
-      external-network call, not just the scanner).
-- [ ] Edit `shop/system*/**/run-sonar.sh` **directly** — per the Item 1c
-      investigation, `shop/` *is* the source of truth and the student repos are the
-      generated output; there is nothing to "regenerate" in shop.
+### Item 2 — DROPPED 2026-06-05 (was: local retry in `run-sonar.sh`)
+> **Dropped, superseded by the corrected decisive constraint.** The original
+> premise — vendor bash retry wrappers into shop so `run-sonar.sh` can `source`
+> them — reverses the deliberate **script-free shop** architecture (retry is
+> domain-agnostic, consumed via `retry@v1` in CI, never vendored into a
+> student-facing repo; `sync-shared.sh:16-18`). It was also written in the
+> obsolete `sonar-retry.sh`/`sonar_retry` vocabulary (now unified into
+> `retry.sh`/`retry_run`). A manual `run-sonar.sh` flake is **attended** → human
+> re-run is the right recovery; and the dominant local flake (JRE-provisioning
+> 403) is already eliminated for Java by the Item 1c skip flag.
+>
+> **Replacement (the honest fix for the parity-overclaim):** reword the
+> `run-sonar.sh` header comments so they no longer imply CI is identical.
+- [ ] Reword `run-sonar.sh` comments (all toolchains) from "CI runs the same
+      analysis" to e.g. "for manual local runs; CI adds automatic retry via
+      `optivem/actions`." Comment-only, no behavioural retry added locally.
 
 ### Item 3 — gh-optivem CI: converge to CLI + canonical retry (per D2/D3) — DONE
 > Done 2026-06-04, commit `0976ceb`. Resolved D2→(b) and D3→(a).
