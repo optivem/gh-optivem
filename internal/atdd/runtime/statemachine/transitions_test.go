@@ -209,15 +209,10 @@ func TestExecuteAgent_ScopeExceptionRoutesToStopViolation(t *testing.T) {
 		t.Errorf("execute-agent: GATE_SCOPE_EXCEPTION_REQUESTED binding = %q, want %q", gate.Raw.Binding, "scope-exception-requested")
 	}
 
-	// 2. STOP_SCOPE_VIOLATION is an error-end-event (deliberate halt, must
-	//    bubble up — not a soft end-event).
-	stop, ok := proc.Nodes["STOP_SCOPE_VIOLATION"]
-	if !ok {
-		t.Fatalf("execute-agent: STOP_SCOPE_VIOLATION node missing")
-	}
-	if stop.Kind != ErrorEndEvent {
-		t.Errorf("execute-agent: STOP_SCOPE_VIOLATION kind = %v, want ErrorEndEvent", stop.Kind)
-	}
+	// 2. STOP_SCOPE_VIOLATION's error-end-event kind (deliberate halt, must
+	//    bubble up — not a soft end-event) is now asserted by the quantified
+	//    halt-terminals-are-error-end rule (`STOP_` marker) in
+	//    invariants_test.go. This test keeps the process-specific routing.
 
 	// 3. Validation feeds the exception gate first, and the old direct edge
 	//    VALIDATE_OUTPUTS_AND_SCOPES -> GATE_OUTPUTS_AND_SCOPES_VALID is gone.
@@ -230,13 +225,17 @@ func TestExecuteAgent_ScopeExceptionRoutesToStopViolation(t *testing.T) {
 }
 
 // Both verify-tests-pass and verify-tests-fail must route
-// test-outcome=="infra" to TESTS_INFRA_HALT (an error-end-event), not
-// to the same node that pass/fail routes to. An infra failure means
-// the runner could not start — neither fixer (failing-tests, passing-
-// tests) is appropriate and the pre-classifier behaviour of treating
-// it as test-red silently advanced verify-tests-fail past a runner
-// that never produced a report. The error-end-event ensures the
-// failure bubbles up to driver.Run as a non-zero exit.
+// test-outcome=="infra" to TESTS_INFRA_HALT, not to the same node that
+// pass/fail routes to. An infra failure means the runner could not start
+// — neither fixer (failing-tests, passing-tests) is appropriate and the
+// pre-classifier behaviour of treating it as test-red silently advanced
+// verify-tests-fail past a runner that never produced a report.
+//
+// That TESTS_INFRA_HALT is an error-end-event (so the failure bubbles up
+// to driver.Run as a non-zero exit) is now asserted by the quantified
+// halt-terminals-are-error-end rule (`_INFRA_HALT` marker) in
+// invariants_test.go; this test keeps the process-specific routing edge,
+// which the graph rule does not cover.
 func TestVerifyTests_InfraOutcomeRoutesToHalt(t *testing.T) {
 	eng := loadSnapshot(t)
 	for _, proc := range []string{"verify-tests-pass", "verify-tests-fail"} {
@@ -244,13 +243,6 @@ func TestVerifyTests_InfraOutcomeRoutesToHalt(t *testing.T) {
 			p, ok := eng.Processes[proc]
 			if !ok {
 				t.Fatalf("process %q missing", proc)
-			}
-			node, ok := p.Nodes["TESTS_INFRA_HALT"]
-			if !ok {
-				t.Fatalf("%s: TESTS_INFRA_HALT node missing", proc)
-			}
-			if node.Kind != ErrorEndEvent {
-				t.Errorf("%s: TESTS_INFRA_HALT kind = %v, want ErrorEndEvent (must bubble up, not soft-end)", proc, node.Kind)
 			}
 			wantEdge(t, p, "GATE_TESTS_OUTCOME", "TESTS_INFRA_HALT", "test-outcome == infra")
 		})
@@ -270,6 +262,11 @@ func TestVerifyTests_InfraOutcomeRoutesToHalt(t *testing.T) {
 // A regression that re-points any of these edges back to an end-event
 // would silently strip the re-verification — the fix would dispatch
 // and the process would exit without confirming the fix worked.
+//
+// The quantified fix-loops-back rule in invariants_test.go now asserts
+// that every fix dispatch loops back *somehow* (reachability), over all
+// sites; this test is kept as the focused regression that pins the exact
+// origin edge per site, which the reachability-based rule does not.
 func TestFixDispatch_LoopsBackToOriginatingStep(t *testing.T) {
 	eng := loadSnapshot(t)
 	cases := []struct {
@@ -362,12 +359,12 @@ func TestFixDispatch_LoopsAreBounded(t *testing.T) {
 			if fix.Raw.OnMaxVisits != c.halt {
 				t.Errorf("%s: FIX on-max-visits = %q, want %q", c.proc, fix.Raw.OnMaxVisits, c.halt)
 			}
-			halt, ok := proc.Nodes[c.halt]
-			if !ok {
+			// The exhausted terminal's error-end-event kind is asserted by
+			// the quantified halt-terminals-are-error-end rule (`_EXHAUSTED`
+			// marker) in invariants_test.go; here we keep the process-
+			// specific cap wiring (max-visits, on-max-visits target).
+			if _, ok := proc.Nodes[c.halt]; !ok {
 				t.Fatalf("%s: %s node missing", c.proc, c.halt)
-			}
-			if halt.Kind != ErrorEndEvent {
-				t.Errorf("%s: %s kind = %v, want ErrorEndEvent", c.proc, c.halt, halt.Kind)
 			}
 			// The back-edge to the originating step is preserved (the cap
 			// intercepts on the 3rd arrival; the loop itself stays intact).

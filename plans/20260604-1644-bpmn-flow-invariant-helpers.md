@@ -5,7 +5,7 @@
 **Why:** Cross-process invariants in the statemachine graph are asserted ad hoc, one named site at a time — so adding a new `commit` / `FIX` / halt site that breaks the rule slips through, because the tests enumerate *known* sites rather than quantifying over *all* of them.
 **End result:** A small set of plain Go invariant helpers (`invariants.go`) over the loaded `*Engine` graph, each quantifying over every matching node, plus a test (`invariants_test.go`) that runs them against the embedded snapshot — so a new rule-violating site fails the suite with no test edit.
 
-**Status:** Draft — decisions locked (this conversation), awaiting execution
+**Status:** Executed — helpers landed (commit 3cc54a1) and Item 3 reconciliation done 2026-06-05
 **Created:** 2026-06-04 16:44 CEDT
 
 > Supersedes **Direction B** of the discussion doc
@@ -159,26 +159,27 @@ one place that edits a contended file — keep it deferred / coordinate, and re-
 
 ## Items
 
-### Item 3 — Reconcile with the ad-hoc assertions — ⏳ Deferred: optional + contended file (`transitions_test.go`), needs coordination with plan 1147 and a per-assertion keep/delete review gate
-- [ ] Once the rules are green against the snapshot, the per-site assertions they
-      subsume (`TestFixDispatch_LoopsBackToOriginatingStep`, the
-      `ErrorEndEvent`-kind checks inside `TestFixDispatch_LoopsAreBounded` /
-      `TestVerifyTests_InfraOutcomeRoutesToHalt` /
-      `TestExecuteAgent_ScopeExceptionRoutesToStopViolation`) become redundant
-      *coverage*. Decide per-assertion whether to delete (now covered by the
-      quantified rule) or keep as a focused regression doc — do **not** bulk-delete;
-      some carry process-specific routing assertions the rules don't (e.g. the exact
-      `max-visits == 2` / `on-max-visits` target). **Coordinate with plan 1147**
-      before editing `transitions_test.go`; re-check `git log` pre-commit.
-
-## Verification (operator, after the items land)
-- `go test ./internal/atdd/runtime/statemachine/ -run Invariant` (scoped — never
-  unbounded `go test ./...` on Windows, per `feedback_go_test_windows`) passes
-  against the current snapshot.
-- Temporarily wire a fifth `commit` call-activity reached directly from a non-verify
-  node and confirm `commit-is-verified` fails; revert.
-- Temporarily flip one `*_EXHAUSTED` terminal to `EndEvent` and confirm
-  `halt-terminals-are-error-end` fails; revert.
+### Item 3 — Reconcile with the ad-hoc assertions — ✅ Done (2026-06-05)
+- [x] Plan 1147 has landed (its plan file is gone, its `TestSharedContract_*` test
+      is committed) so the contention is resolved; `transitions_test.go` was clean.
+      Per-assertion decisions taken:
+      - **`TestVerifyTests_InfraOutcomeRoutesToHalt`** — removed the
+        `TESTS_INFRA_HALT` `ErrorEndEvent`-kind check (now covered by
+        `halt-terminals-are-error-end`, `_INFRA_HALT` marker); **kept** the
+        process-specific routing edge `GATE_TESTS_OUTCOME → TESTS_INFRA_HALT`.
+      - **`TestExecuteAgent_ScopeExceptionRoutesToStopViolation`** — removed the
+        `STOP_SCOPE_VIOLATION` kind check (covered by the rule, `STOP_` marker);
+        **kept** the gate node + binding and validation routing edges.
+      - **`TestFixDispatch_LoopsAreBounded`** — removed the `COMMAND_FIX_EXHAUSTED`
+        / `AGENT_FIX_EXHAUSTED` kind checks (covered, `_EXHAUSTED` marker); **kept**
+        `max-visits == 2`, `on-max-visits` target, edges, and the
+        **`FIX_REJECTED_END` kind check** (the rule deliberately *excludes*
+        `_REJECTED_END`, so this is not redundant).
+      - **`TestFixDispatch_LoopsBackToOriginatingStep`** — **kept in full** as the
+        focused regression that pins the *exact* origin edge per site; the
+        reachability-based `fix-loops-back` rule only asserts a loopback exists.
+      Each trimmed site left a breadcrumb comment pointing at the quantified rule.
+      Package suite green (`go test ./internal/atdd/runtime/statemachine/ -p 2`).
 
 ## Out of scope / explicitly not doing
 - **Fluent DSL / builder syntax** (backlog Direction B's rejected sketch shape) —
