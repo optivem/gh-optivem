@@ -440,22 +440,25 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		"external-systems/simulators",
 		// system-test.paths.* — the eight canonical Family B testkit
 		// locations DefaultPaths emits for (java, "system-test/java",
-		// "page-turner"). Preflight now stats each one (so the runtime
-		// scope checker's eventual `path(s) outside scope` failure
-		// can't sneak through).
-		"system-test/java/src/main/java/testkit/driver/port/page-turner",
-		"system-test/java/src/main/java/testkit/driver/adapter/page-turner",
+		// "com/acme/pageturner"). The Java source package is a MIDDLE
+		// segment (src/main/java/<pkg>/testkit/…, src/test/java/<pkg>/
+		// systemtest/…), not a trailing leaf, and externals nest under the
+		// driver layer (driver/{port,adapter}/external). Preflight now stats
+		// each one (so the runtime scope checker's eventual `path(s) outside
+		// scope` failure can't sneak through).
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/port",
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/adapter",
 		// system-test.system-driver-adapter-channels.* — the per-channel
 		// (api, ui) adapter subfolders the scaffolder emits and preflight
 		// now stats (per-channel adapter folders feature).
-		"system-test/java/src/main/java/testkit/driver/adapter/page-turner/api",
-		"system-test/java/src/main/java/testkit/driver/adapter/page-turner/ui",
-		"system-test/java/src/main/java/testkit/external/port/page-turner",
-		"system-test/java/src/main/java/testkit/external/adapter/page-turner",
-		"system-test/java/src/main/java/testkit/dsl/port/page-turner",
-		"system-test/java/src/main/java/testkit/dsl/core/page-turner",
-		"system-test/java/src/test/java/page-turner/latest/acceptance",
-		"system-test/java/src/test/java/page-turner/latest/contract",
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/adapter/api",
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/adapter/ui",
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/port/external",
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/adapter/external",
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/dsl/port",
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/dsl/core",
+		"system-test/java/src/test/java/com/acme/pageturner/systemtest/latest/acceptance",
+		"system-test/java/src/test/java/com/acme/pageturner/systemtest/latest/contract",
 	} {
 		if err := os.MkdirAll(filepath.Join(repoDir, p), 0o755); err != nil {
 			t.Fatalf("seed dir %s: %v", p, err)
