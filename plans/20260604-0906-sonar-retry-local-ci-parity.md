@@ -9,15 +9,22 @@ binary-download, `/analysis/jres`) intermittently fail commit stages.
 all three surfaces, with the `403` classification splitting transient-download
 (retryable) from auth (hard-fail), and local achieving CI-equal resilience.
 
-**Status:** In progress. Done: Items 1b, 3; **Item 1 code+test** (CDN-403 added
-to force-retry regex, 49/49 green) and **Item 1c Gradle skip** (5 edits) executed
-2026-06-05 — uncommitted/unreleased. **Items 2 + D4 DROPPED** (shop is
-deliberately script-free; local retry not pursued). Decisions: D2/D3
-resolved-by-execution; **D1 → (a)**; **D4 dropped**; **D5 → (a)** (concurrency-
-stagger). **Open tail:** Item 1 release (gated — `v1` retarget), Item 1c dotnet/JS
-stagger (D5), Item 4 verify.
+**Status:** Nearly done — only two **deferred** items remain, both gated on the
+Item 1 release. Done: Items 0, 1b, 2 (shop `ea1bc4da`), 1c (Gradle skip done;
+dotnet/JS stagger **reconsidered → D5 (c): no cap** — rely on the Java-skip-reduced
+burst + Item 1b retry), 3. **Item 1 code+test** (CDN-403 in force-retry regex,
+49/49 green) committed in `optivem/actions` but **not yet released**. Decisions:
+**D1 → (a)**; D2/D3 resolved-by-execution; **D4 dropped** (shop script-free);
+**D5 → (c)** (no concurrency cap; revisit only on recurrence). **Open tail (both
+deferred):** Item 1 release (gated — `v1` retarget hits every shop CI consumer) →
+then Item 4 end-to-end verify (induced-transient retry on a real run).
 **Created:** 2026-06-04 09:06 CEDT
-**Updated:** 2026-06-05 — refine-plan walk: D1/D4/D5 all resolved with rationale;
+**Updated:** 2026-06-05 (execute-plan) — confirmed Item 2 already landed in shop
+`ea1bc4da`; **dropped the Item 1c dotnet/JS stagger** (D5 (a) → (c)) — the Java
+skip already shrank the burst, so `max-parallel`'s wall-time cost isn't justified
+against an already-mitigated flake; Item 4 static parity + inline docs confirmed,
+end-to-end verify deferred behind Item 1's release.
+2026-06-05 — refine-plan walk: D1/D4/D5 all resolved with rationale;
 Items 1, 1c (dotnet/JS), 2 rewritten to match; Item 3's stray verify box folded
 into Item 4. 2026-06-04 — Item 1c JRE-availability investigation; source-of-truth
 corrected to `shop/`; Gradle-only recommendation + decision D5 recorded.
@@ -179,21 +186,27 @@ retry-free (attended manual runs recover by human re-run); "parity" means the
   resolution was made without knowing shop was intentionally script-free — it is
   withdrawn. Nothing is copied into shop.
 
-- **D5 — dotnet/JS `/analysis/jres` handling. RESOLVED → (a)** (2026-06-05).
-  **Stagger the meta-prerelease fan-out / cap Sonar concurrency** so
-  `/analysis/jres` isn't hammered by 7 simultaneous pipelines. Skip-provisioning
-  is unsafe for dotnet/JS — they have no JRE on CI runners (no `setup-java`) or on
-  local dev machines, and pass today only *by* provisioning.
+- **D5 — dotnet/JS `/analysis/jres` handling. RESOLVED → (c)** (2026-06-05; revised
+  from an initial (a) during execution). **Leave dotnet/JS as-is — no concurrency
+  cap — relying on the Java skip (which shrank the burst) + Item 1b retry as the
+  backstop.** Skip-provisioning stays unsafe for dotnet/JS (no `setup-java` on CI,
+  no JRE on local dev machines; they pass only *by* provisioning), so (b) is out.
 
-  *Why (a) over (b)/(c):* the root cause is **concurrency** (7 pipelines hit
-  `/analysis/jres` at once), not provisioning. (a) fixes all toolchains at once
-  with **zero new dependencies** and targets the actual cause. (b) (add
-  `setup-java` to 6 workflows + skip) trades a transient, already-retried flake
-  for a **permanent new local Java requirement** on .NET/frontend devs —
-  undercutting this plan's own local-parity/UX goal. (c) (leave as-is) relies
-  solely on 1b's retry, which we *already saw exhaust* on `multitier-frontend-react`
-  under sustained bursts → insufficient alone. dotnet/JS keep provisioning + 1b
-  retry as backstop; the stagger removes the burst that defeats the retry.
+  *Why (c), revised from (a):* the initial (a) chose a concurrency-stagger
+  (`max-parallel`) because retry-alone had exhausted on `multitier-frontend-react`
+  under a **7-wide** `/analysis/jres` burst. But the Java skip (Item 1c Gradle,
+  shipped the same day) removes the 2 Java provisioners → the burst is now
+  **5-wide**, and there is **no evidence** the reduced burst still defeats the
+  4-attempt retry. Weighed against that, `max-parallel` is too blunt and too
+  costly: it serializes the *entire* ~30-min commit/acceptance stages to space out
+  a ~1-min Sonar call, tripling Phase 1b and doubling Phase 2 critical path on an
+  hours-long release pipeline. The flake is transient and the pipeline is
+  **attended** (3h-gated / weekly) → a recurrence is a re-run, the same recovery
+  model the plan accepts for local `run-sonar.sh`. **Revisit:** add the cap (commit
+  matrix first) only if `/analysis/jres` 403s actually recur on a real run — at
+  which point there'd be evidence for the right `max-parallel` value. (b) remains
+  rejected: it trades a transient flake for a permanent new local Java requirement
+  on .NET/frontend devs.
 
 ## Items
 
@@ -314,28 +327,26 @@ JVM. That precondition is the whole story (see investigation below).
 > Java acceptance-stage CI runs `bash ./run-sonar.sh` so it inherits the local
 > edit. Item 1b retry remains the backstop for the *other* transient 403s.
 
-#### dotnet / JS — concurrency-stagger (per D5 → (a); do NOT naked-skip)
-- [ ] Stagger the meta-prerelease fan-out / cap concurrent Sonar-running pipelines
-      so `/analysis/jres` isn't hit by all 7 toolchains at once. dotnet/JS stay on
-      provisioning + Item 1b retry — the stagger removes the burst that defeats the
-      retry. No `setup-java`, no new local Java dependency.
+#### dotnet / JS — no stagger (D5 reconsidered → (c)) — RESOLVED 2026-06-05
+> D5's concurrency-stagger (a) was **reconsidered and dropped during execution**.
+> The Java skip (Gradle, above) already shrank the `/analysis/jres` burst from
+> 7-wide to 5-wide, and the only evidence that retry-alone is insufficient
+> (frontend-react exhausting its 4 attempts in run `26937916287`) was under the
+> *old 7-wide* burst — nothing shows the reduced 5-wide burst still trips the 403.
+> Against that speculative, already-mitigated risk, `max-parallel` is a blunt,
+> costly lever: it serializes the *entire* ~30-min commit/acceptance stages to
+> space out a ~1-min Sonar call, tripling Phase 1b and doubling Phase 2 critical
+> path. dotnet/JS stay on provisioning + Item 1b retry as the backstop; a
+> recurrence on this *attended* release pipeline is a re-run. Revisit the cap
+> (commit matrix first) only if `/analysis/jres` 403s actually recur on a real run.
 
-### Item 2 — DROPPED 2026-06-05 (was: local retry in `run-sonar.sh`)
-> **Dropped, superseded by the corrected decisive constraint.** The original
-> premise — vendor bash retry wrappers into shop so `run-sonar.sh` can `source`
-> them — reverses the deliberate **script-free shop** architecture (retry is
-> domain-agnostic, consumed via `retry@v1` in CI, never vendored into a
-> student-facing repo; `sync-shared.sh:16-18`). It was also written in the
-> obsolete `sonar-retry.sh`/`sonar_retry` vocabulary (now unified into
-> `retry.sh`/`retry_run`). A manual `run-sonar.sh` flake is **attended** → human
-> re-run is the right recovery; and the dominant local flake (JRE-provisioning
-> 403) is already eliminated for Java by the Item 1c skip flag.
->
-> **Replacement (the honest fix for the parity-overclaim):** reword the
-> `run-sonar.sh` header comments so they no longer imply CI is identical.
-- [ ] Reword `run-sonar.sh` comments (all toolchains) from "CI runs the same
-      analysis" to e.g. "for manual local runs; CI adds automatic retry via
-      `optivem/actions`." Comment-only, no behavioural retry added locally.
+### Item 2 — DONE 2026-06-05 (reword `run-sonar.sh` comments; local-retry vendoring dropped)
+> The original "vendor bash retry into shop" premise was dropped (it reverses the
+> deliberate **script-free shop** architecture; see D4 + the corrected decisive
+> constraint). The honest replacement — reword the `run-sonar.sh` header comments
+> so they no longer overclaim CI parity — was committed in shop `ea1bc4da`: all 10
+> headers now read "auto-retried in CI via `optivem/actions` ... this script is for
+> manual runs." Comment-only, no behavioural retry added locally.
 
 ### Item 3 — gh-optivem CI: converge to CLI + canonical retry (per D2/D3) — DONE
 > Done 2026-06-04, commit `0976ceb`. Resolved D2→(b) and D3→(a).
@@ -351,14 +362,20 @@ JVM. That precondition is the whole story (see investigation below).
 - Real-run verification (Sonar step passes; induced transient actually retries)
   folded into Item 4's consolidated verification pass.
 
-### Item 4 — Verify parity + document
-- [ ] Confirm all three surfaces now run the CLI scanner through a canonical
-      retry, and that the 403 split behaves (auth 403 fails fast, download 403
-      retries) in both local and CI.
-- [ ] (folded from Item 3) On a real gh-optivem CI run, confirm the Sonar step
-      passes and an induced transient actually retries (log inspection).
-- [ ] Note the unified pattern wherever the Sonar setup is documented so it
-      doesn't drift back to the composite action.
+### Item 4 — Verify parity + document — ⏳ Deferred: blocked on Item 1 release
+> Static parity + docs confirmed 2026-06-05. All three surfaces run the CLI
+> scanner: shop CI (`*-commit-stage.yml` inline `dotnet sonarscanner` /
+> `./gradlew sonar`, wrapped in `retry@v1`), gh-optivem CI (`sonar-scanner-cli`
+> docker in `retry@v1`, `gh-commit-stage.yml`), local `run-sonar.sh`
+> (intentionally retry-free, attended). The unified pattern is already documented
+> inline at both CI surfaces — `gh-commit-stage.yml:37-43` names the canonical
+> pattern and the composite it replaced, and the 10 `run-sonar.sh` headers note
+> CI auto-retry; no drift-prone prose doc exists, so the doc sub-item needs
+> nothing further.
+- [ ] ⏳ Deferred (needs Item 1 released): on a real gh-optivem CI run, confirm
+      the Sonar step passes and an induced transient (binary-download 403) retries
+      via the Item 1 reclassification (log inspection) — proving the 403 split
+      behaves end-to-end (auth 403 fails fast, download 403 retries).
 
 ## Out of scope / explicitly not doing
 
