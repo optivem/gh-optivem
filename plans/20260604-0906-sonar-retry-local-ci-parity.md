@@ -1,11 +1,12 @@
 # Sonar retry: local/CI parity on one canonical mechanism
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-04T14:12:37Z`
-
 **Status:** In progress — immediate flakes fixed (Items 1b, 3 done); parity work
-(Items 1, 1c, 2, 4) still open. D2/D3 resolved-by-execution; D1/D4 still open.
+(Items 1, 1c, 2, 4) still open. Item 1c investigated 2026-06-04: **Gradle skip
+recommended now; dotnet/JS deferred to new decision D5** (concurrency-stagger
+preferred over skip+Java). D2/D3 resolved-by-execution; D1/D4/D5 still open.
 **Created:** 2026-06-04 09:06 CEDT
-**Updated:** 2026-06-04 — Items 1b + 3 landed; status reconciled against `main`.
+**Updated:** 2026-06-04 — Item 1c JRE-availability investigation; source-of-truth
+corrected to `shop/`; Gradle-only recommendation + decision D5 recorded.
 
 > Triggered by acceptance run `26935724762` (2026-06-04): the gh-optivem Commit
 > Stage failed with `Action failed: Unexpected HTTP response: 403` while the
@@ -119,7 +120,24 @@ all three Sonar surfaces, with local and CI achieving equal resilience, and the
 - **D4 — Sync mechanism for bash wrappers into scaffolded repos.** How
   `sonar-retry.sh`+`retry-core.sh` reach shop: scaffolder copies them into
   `.github/scripts/`, vs. `run-sonar.sh` sources them from an installed location.
-  Needs a look at how the scaffolder lays down `system*/**/run-sonar.sh` today.
+  **Partial answer (2026-06-04):** the scaffolder copies files verbatim *from
+  `shop/`* into student repos (`apply_template.go`, `cfg.ShopPath`). So the path
+  of least resistance is: add `.github/scripts/{retry-core,sonar-retry}.sh` to
+  the **`shop/` repo** and have the scaffolder copy that dir alongside the rest —
+  then `run-sonar.sh` can `source` a path that exists in both shop and every
+  scaffolded repo. Still open: confirm the scaffolder's file-copy globs include
+  `.github/scripts/`, and pick source-relative vs. installed-location sourcing.
+
+- **D5 — dotnet/JS `/analysis/jres` handling (NEW, from Item 1c investigation).**
+  Skip-provisioning is unsafe for dotnet/JS — they have no JRE on their CI
+  runners (no `setup-java`) or on local dev machines, and pass today only *by*
+  provisioning. Options: (a) **stagger the meta-prerelease fan-out / cap Sonar
+  concurrency** so `/analysis/jres` isn't hammered by 7 simultaneous pipelines —
+  fixes all toolchains, adds no dependency; (b) add `setup-java` to the 6
+  dotnet/JS workflows + set skip + document a new **local** Java requirement for
+  .NET/frontend devs; (c) leave as-is on the Item 1b retry backstop.
+  **Recommend (a)** — least invasive, no new local Java dependency, and it
+  addresses the actual root cause (concurrency) rather than working around it.
 
 ## Items
 
@@ -178,29 +196,72 @@ all three Sonar surfaces, with local and CI achieving equal resilience, and the
 > `/analysis/jres` at once, so it rate-limits/403s. Retrying around a saturated
 > endpoint is a band-aid; the durable fix is to **stop calling it**.
 
-The scanner only hits `/analysis/jres` to download a JRE to run the analyzer.
-The runner already has a JDK/JRE (Setup Java / Setup Node steps). Skipping
-provisioning and pointing the scanner at the installed JRE removes the flaky
-call entirely.
+The scanner only hits `/analysis/jres` to download a JRE to run the analyzer
+(SonarScanner is a JVM program). `skipJreProvisioning=true` removes that call —
+**but only works if a JRE is already present**, since the analyzer still needs a
+JVM. That precondition is the whole story (see investigation below).
 
-- [ ] **Gradle (java backend):** set `sonar.scanner.skipJreProvisioning=true`
-      (+ ensure `JAVA_HOME` / a usable JRE) so `./gradlew sonar` uses the
-      runner's JDK instead of querying `/analysis/jres`.
-- [ ] **JS bootstrapper (react/typescript):** set
-      `SONAR_SCANNER_SKIP_JRE_PROVISIONING=true` (env) /
-      `sonar.scanner.skipJreProvisioning=true` so the npm scanner uses the
-      installed Node/JRE instead of provisioning one.
-- [ ] **dotnet:** verify whether `dotnet sonarscanner` provisions a JRE the
-      same way; apply the equivalent skip if so. (It passed throughout these
-      runs, so it may already bundle/skip — confirm before changing.)
-- [ ] Apply at the scaffolder/shop-template source of truth (the `run-sonar.sh`
-      + commit-stage scanner invocations), not in generated output, so all three
-      surfaces get it. Keep the Item 1b retry as the backstop for the *other*
-      transient 403s (binary-download CDN, genuine 5xx).
-- [ ] **Optional, complementary:** stagger the meta-prerelease fan-out (or cap
-      Sonar concurrency) so the pipelines don't all hit SonarCloud at the same
-      instant. Lower priority than skip-provisioning, which fixes it regardless
-      of concurrency.
+#### Investigation (2026-06-04) — findings that reshape this item
+
+1. **Source of truth = the `shop/` repo, not gh-optivem.** The scaffolder copies
+   *from* `shop/` into student repos (`internal/steps/apply_template.go`:
+   `cfg.ShopPath`, `../../../system/`). The "generated output" is the student
+   repos (e.g. `page-turner-30`), **not** shop. The earlier wording ("don't
+   hand-edit run-sonar.sh in the shop repo / regenerate shop") was wrong — edit
+   `shop/system*/**/run-sonar.sh` and `shop/.github/workflows/*.yml` directly;
+   there is nothing to "regenerate" in gh-optivem.
+
+2. **Only the Gradle/Java pipelines have a JRE — so only they can safely skip.**
+   Audited every Sonar-running workflow + every `run-sonar.sh`:
+
+   | Toolchain | `setup-java` in CI? | Local dev has Java? | Safe to skip? |
+   |---|---|---|---|
+   | **Gradle/Java** | YES (temurin) | YES (it's a Java build) | **YES** |
+   | **dotnet** | NONE | NO (scanner provisions its own JRE today) | NO |
+   | **JS (ts/react)** | NONE (`setup-node` ≠ JRE) | NO (frontend devs have no Java) | NO |
+
+   dotnet/JS pass today **precisely because they provision** the JRE we'd be
+   skipping. Forcing skip there would break them unless we *also* add a JRE.
+   The original premise — "the runner already has a JDK/JRE (Setup Java / Setup
+   Node)" — holds **only for Java**; Setup Node provides no JVM.
+
+3. **Third surface (gh-optivem CI) is unaffected.** It runs the
+   `sonarsource/sonar-scanner-cli` docker image, which **bundles its own JRE** →
+   never calls `/analysis/jres`, and the whole `docker run` is already
+   retry-wrapped (Item 3). Out of scope for the three toolchains here.
+
+#### Recommendation — Gradle now; concurrency-stagger (not skip) for dotnet/JS
+
+**Do the Gradle skip (clean win), leave dotnet/JS on provisioning.** Rationale:
+
+- **Gradle skip is a pure win:** Java already has a JRE everywhere, so the flag
+  costs nothing and removes the flaky call on the exact surface that broke
+  (`multitier-backend-java` run `26937916287`).
+- **dotnet/JS skip is a bad trade, not a win:** a .NET/frontend dev running
+  `run-sonar.sh` needs **no Java today**. Skip would trade a *transient,
+  already-retried* flake for a **permanent new local Java requirement** — which
+  undercuts this plan's own local-parity/UX goal. They already have Item 1b's
+  `/analysis/jres` force-retry as a backstop.
+- **The better dotnet/JS lever is concurrency-staggering, not skip+Java.** The
+  root cause is 7 pipelines hammering `/analysis/jres` at once. Staggering the
+  meta-prerelease fan-out (or capping Sonar concurrency) fixes it for *all*
+  toolchains **without** forcing Java onto anyone — strictly less invasive than
+  adding `setup-java` to 6 workflows. Captured as decision **D5** below.
+
+#### Gradle edit set (all in `shop/`, append `-Dsonar.scanner.skipJreProvisioning=true`)
+- [ ] **Local `run-sonar.sh` (×3):** `system/monolith/java`,
+      `system/multitier/backend-java`, `system-test/java`.
+- [ ] **CI commit-stage (×2):** `monolith-java-commit-stage.yml:139` and
+      `multitier-backend-java-commit-stage.yml:139` (the `./gradlew sonar --info`
+      line). Java **acceptance-stage** CI runs `bash ./run-sonar.sh`, so it
+      inherits the local edit — no separate change.
+- [ ] Keep Item 1b retry as the backstop for the *other* transient 403s
+      (binary-download CDN, genuine 5xx) and for dotnet/JS `/analysis/jres`.
+
+#### dotnet / JS — deferred pending D5 (do NOT naked-skip)
+- [ ] Decide D5: concurrency-stagger (recommended) vs. add `setup-java` + skip +
+      local Java requirement. Until then dotnet/JS stay on provisioning + Item 1b
+      retry — no regression.
 
 ### Item 2 — Local parity: retry in `run-sonar.sh` (the gap with zero coverage)
 - [ ] Get `sonar-retry.sh` + `retry-core.sh` into scaffolded repos (per D4) —
