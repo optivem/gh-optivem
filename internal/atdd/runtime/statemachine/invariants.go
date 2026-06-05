@@ -10,7 +10,7 @@ package statemachine
 // soft end-event, and CheckInvariants flags it without anyone editing a test.
 //
 // The helpers are deliberately plain Go over the existing graph types (no DSL,
-// no fluent builder — plan 20260604-1644 D1) and live in a non-test file so the
+// no fluent builder) and live in a non-test file so the
 // precedence / reachability / terminal-kind vocabulary can be reused later by a
 // runtime-event invariant checker over the readable-trace plan's []Event seam
 // (D2/D4). They return structured Violations rather than calling t.Errorf, so
@@ -41,8 +41,8 @@ func (v Violation) String() string {
 // invariantRule checks one rule over the whole engine and returns any breaches.
 type invariantRule func(*Engine) []Violation
 
-// invariantRules is the registered rule set (plan 20260604-1644 D6 — three
-// seed rules spanning precedence, loop-back, and terminal-kind shapes).
+// invariantRules is the registered rule set — three seed rules spanning
+// precedence, loop-back, and terminal-kind shapes.
 var invariantRules = []invariantRule{
 	ruleCommitIsVerified,
 	ruleFixLoopsBack,
@@ -163,9 +163,9 @@ func ruleFixLoopsBack(eng *Engine) []Violation {
 // `*_REJECTED_END` is deliberately NOT a marker: rejection is bimodal — a PRE
 // rejection (EXECUTE_AGENT_REJECTED_END / EXECUTE_COMMAND_REJECTED_END) is an
 // intentional soft skip with no artifact produced, while FIX_REJECTED_END is a
-// hard halt — so the suffix is not a reliable halt signal (plan 20260604-1644,
-// resolved during execution). FIX_REJECTED_END's error-end kind stays covered
-// by TestFixDispatch_LoopsAreBounded.
+// hard halt — so the suffix is not a reliable halt signal.
+// FIX_REJECTED_END's error-end kind stays covered by
+// TestFixDispatch_LoopsAreBounded.
 func ruleHaltTerminalsAreErrorEnd(eng *Engine) []Violation {
 	const rule = "halt-terminals-are-error-end"
 	var out []Violation

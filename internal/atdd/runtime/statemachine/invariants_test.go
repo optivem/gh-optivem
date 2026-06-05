@@ -9,7 +9,7 @@ import (
 // is the quantified counterpart to the per-site assertions in
 // transitions_test.go: instead of naming the four commit / fix / halt sites by
 // hand, CheckInvariants walks the whole graph, so a new rule-violating site
-// fails here with no test edit (plan 20260604-1644 D3).
+// fails here with no test edit.
 //
 // Uses the unbound Engine (loadSnapshot, no Bind()) — the rules read the static
 // graph only and never dispatch a NodeFn.
