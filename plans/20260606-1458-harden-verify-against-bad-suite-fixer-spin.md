@@ -73,9 +73,37 @@ sweep does not evaluate.
 Extend the preflight to **double-validate**: keep the existing literal sweep *and* add a sweep
 of the *effective* suite each `verify-tests-*` call site will actually emit — resolve the same
 `suite:`-else-`tests:` fallback the runtime uses (`bindings.go:808` reads `ctx.Params["suite"]`
-via ExpandParams's state fallback), run it through `ExpandSuiteGroups`, and assert every
-resulting id is declared in `tests.yaml`. An ungrouped name like `contract` that expands to
-itself and is absent from `tests.yaml` must fail preflight.
+via ExpandParams's state fallback), run it through group expansion, and assert every resulting
+id is declared in `tests.yaml`. An ungrouped name like `contract` that expands to itself and is
+absent from `tests.yaml` must fail preflight.
+
+**No duplicated resolution logic — this is a hard constraint.** A validator that re-derives
+"effective suite" with its own copy of the fallback/expansion rule will drift from the runtime,
+which is the exact bug class this plan fixes. So:
+
+- Resolve through the **same two primitives the runtime uses**: `statemachine.ExpandParams`
+  (`run.go:345`, placeholder + state-fallback) and `testselect.ExpandSuiteGroups`
+  (`testselect/suite.go:47`, group expansion). No parallel fallback rule in the preflight.
+- Make the reuse **structural, not coincidental**: if the `suite:`-else-`tests:` →
+  `ExpandSuiteGroups` resolution is not already a single named helper, extract it into one
+  (e.g. `EffectiveSuites(params, state, projectGroups)`), and have **both** the runtime emit
+  path (`bindings.go` `runCommand`, where `--suite=` is appended) **and** the preflight call
+  it. One function = the validator literally checks the value the runtime will emit, so the
+  two cannot diverge.
+- The only preflight-specific code is gathering each verify node's **static param scope** from
+  the engine graph — which `collectSuiteLiterals` (`preflight.go:328`) already half-does by
+  walking nodes. Thread the call-activity param env down so `ExpandParams` resolves what is
+  statically knowable.
+- **Consolidate an existing divergence** as part of this item, don't add a third copy:
+  `preflight.expandSuiteLiteral` (`preflight.go:359`) hand-builds `acceptance-<ch>` /
+  `acceptance-isolated-<ch>` from `cfg.Channels` (channel-derived), while
+  `testselect.AcceptanceSuites` (`testselect/suite.go`) returns a **fixed** `{api,ui}` list used
+  by the CLI and the runtime's BPMN emission. These disagree for any non-`{api,ui}` channel set.
+  Reconcile to a single channel-aware source so preflight and runtime expand `acceptance`
+  identically.
+- If a verify node's suite is **not statically resolvable** (a `${…}` that resolves only from
+  runtime state a prior agent stamps), make *that* a preflight failure — do **not** simulate the
+  runtime to guess the value. Safer contract, and zero new resolution code.
 
 - Touches: `internal/atdd/runtime/preflight/preflight.go` (`collectSuiteLiterals` /
   `runSuiteExistenceChecks` / `expandSuiteLiteral`), and tests in `preflight_test.go`.
@@ -97,29 +125,22 @@ test routes to `classInfra` → `test-outcome=infra` → the existing `TESTS_INF
   `classInfra` with the new label).
 - No gateway change needed — `infra → TESTS_INFRA_HALT` already exists.
 
-### 3. Unattended mode: fail fast at a human-only gate instead of blocking
+### (dropped) Unattended human-gate policy — redundant
 
-The fixer is `category: human` (`process-flow.yaml:1748`), so even under `--auto --headless`
-the approval floor resolves to `floor=human` (trace: `confirm-source: env → floor=human`) and
-the run **blocks interactively** — the 12-minute `APPROVE_PRE` stall, then an unwatched
-interactive session. Decision (confirmed with operator): in unattended mode, reaching a
-`category: human` / `floor=human` gate must **hard-stop and surface** ("human fixer required —
-stopping for review") rather than block. The run ends in seconds and the operator picks it up,
-instead of a multi-hour silent block.
-
-- Touches: the approval-floor resolution in the dispatcher (`internal/atdd/runtime/driver/…`
-  / `statemachine/run.go` — the code that computes `floor=human` from auto/confirm sources).
-  Locate the floor-resolution site and branch: under `--auto`/`--headless`, a `floor=human`
-  requirement aborts with a clear operator-facing message instead of waiting on `ASK_HUMAN`.
-- Keep interactive (attended) behaviour unchanged: a human present *should* be allowed to take
-  as long as a real regression needs — no wall-clock kill is added.
+An earlier draft proposed a third item: under `--auto --headless`, hard-stop at the fixer's
+human gate instead of blocking. **Dropped — the mechanism already exists.** The fixer is
+`category: human` (`process-flow.yaml:1748`), so its `APPROVE_PRE` already stops and asks a
+human; that *is* "surface for review." The 12-min stall and the 2h27m spin were not a missing
+policy — they were downstream of the **spurious dispatch** that items 1 & 2 remove. Once a bad
+suite can no longer reach the runner, the fixer only fires on a real failure, where a human
+approving an interactive session is the intended design. With a wall-clock kill explicitly
+rejected, there is no software change left for this item to make.
 
 ## Verification
 
 - `go build ./...`
 - `go test ./internal/atdd/runtime/preflight/... ./internal/atdd/runtime/actions/... ./internal/runner/...`
-  (and the dispatcher package touched by item 3), via `scripts/test.sh` or `-p 2` — never
-  unbounded `go test ./...` on Windows.
+  via `scripts/test.sh` or `-p 2` — never unbounded `go test ./...` on Windows.
 - Rehearsal re-run of the #72 contract path (the one that produced the 2h27m spin) under
   `--auto --headless`: confirm it now either (a) fails at preflight naming the bad suite, or
   (b) if a bad suite still reaches the runner, halts at `TESTS_INFRA_HALT` in seconds — and in
@@ -141,7 +162,8 @@ those three files before editing, in case the line anchors above have shifted.
 - Reworking the `unexpected-failing-tests-fixer` agent body — it is correct when fed a real
   failure (the 7m20s clean run proves it).
 - Any wall-clock / no-progress kill timer on agents — explicitly rejected; long *attended*
-  runtime is legitimate, and the unattended case is handled by item 3.
+  runtime is legitimate, and the fixer's existing `category: human` gate already surfaces for
+  review (see the dropped item above).
 - Registering `contract`/`e2e` as default suite groups in Go — that is a separate taxonomy
   decision; item 1 catches the gap regardless of whether the group is added.
 - The cost outlier (`dsl-implementer` $3.51 / 4.0M input tokens on `rehearsal-20260604-102555`)
