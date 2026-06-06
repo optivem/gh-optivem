@@ -113,12 +113,12 @@ func TestRunConfigInit_MonolithRoundTrip(t *testing.T) {
 func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		name              string
-		flags             *config.RawFlags
-		wantSystemPath    string // empty on multitier
-		wantBackendPath   string // empty on monolith
-		wantFrontendPath  string // empty on monolith
-		wantSystemTest    string
+		name             string
+		flags            *config.RawFlags
+		wantSystemPath   string // empty on multitier
+		wantBackendPath  string // empty on monolith
+		wantFrontendPath string // empty on monolith
+		wantSystemTest   string
 	}{
 		{
 			name: "monolith flat defaults",
@@ -471,10 +471,12 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 	}
 }
 
-// TestRunConfigPreflight_MissingTierPath drops the simulators directory
+// TestRunConfigPreflight_MissingTierPath drops the simulator directory
 // from the seeded workspace — the exact scenario behind the late "preflight
-// failed: external-systems.simulators.path: ... does not exist" error
-// `config preflight` is meant to catch up-front.
+// failed: external-systems.<name>.simulator.path: ... does not exist" error
+// `config preflight` is meant to catch up-front. external-systems is
+// operator-owned (init no longer scaffolds it, plan 20260606-1356), so the
+// test hand-adds a simulator-backed entry after seeding the config.
 func TestRunConfigPreflight_MissingTierPath(t *testing.T) {
 	t.Parallel()
 	workspace := t.TempDir()
@@ -497,11 +499,28 @@ func TestRunConfigPreflight_MissingTierPath(t *testing.T) {
 	if _, err := configinit.Run(monolithMonorepoFlags(), yamlPath, false); err != nil {
 		t.Fatalf("seed config: %v", err)
 	}
-	_, err := runConfigPreflight(yamlPath, offlinePreflightOpts(workspace, repoDir))
-	if err == nil {
-		t.Fatal("want error for missing simulators path, got nil")
+	// init omits external-systems (operator-owns); hand-add a simulator-backed
+	// entry so preflight has an external tier to check. Reuse the system repo
+	// slug so it resolves to the same seeded repo dir.
+	cfg, err := projectconfig.LoadFromPath(yamlPath)
+	if err != nil {
+		t.Fatalf("load seeded config: %v", err)
 	}
-	if !strings.Contains(err.Error(), "external-systems.simulators.path") {
+	cfg.ExternalSystems = projectconfig.ExternalSystems{
+		"warehouse": {
+			RealKind:  projectconfig.RealKindSimulator,
+			Stub:      projectconfig.ExternalSpec{Path: "external-systems/stubs", Repo: cfg.System.Repo},
+			Simulator: projectconfig.ExternalSpec{Path: "external-systems/simulators", Repo: cfg.System.Repo},
+		},
+	}
+	if err := projectconfig.WriteToPath(yamlPath, cfg); err != nil {
+		t.Fatalf("write config with external-systems: %v", err)
+	}
+	_, err = runConfigPreflight(yamlPath, offlinePreflightOpts(workspace, repoDir))
+	if err == nil {
+		t.Fatal("want error for missing simulator path, got nil")
+	}
+	if !strings.Contains(err.Error(), "external-systems.warehouse.simulator.path") {
 		t.Errorf("error should name the missing field, got: %v", err)
 	}
 	if !strings.Contains(err.Error(), "does not exist") {
@@ -1147,7 +1166,6 @@ func TestRunConfigMigrate_DoesNotBackfillPaths(t *testing.T) {
 		t.Errorf("migrate grew a paths: block where there was none:\nbefore:\n%s\nafter:\n%s", before, after)
 	}
 }
-
 
 // equalSliceUnordered compares two []string for set equality (order
 // independent). Migrate's repos[] insertion order is structural — it

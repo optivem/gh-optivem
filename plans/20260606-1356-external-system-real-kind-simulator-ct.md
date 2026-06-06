@@ -1,7 +1,5 @@
 # Plan: `real-kind` per external system + simulator implementation in the CT pathway
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-06T12:19:15Z`
-
 ## TL;DR
 
 **Why:** The CT-HIGH real-side flow silently hard-codes `real-kind == test-instance`: it implements the Real client then expects contract-real GREEN, so the moment the real side is a simulator-we-author (no live test instance), `VERIFY_TESTS_PASS_CONTRACT_REAL` fails because nothing teaches the simulator the new contract.
@@ -97,34 +95,14 @@ IDENTIFY_EXTERNAL_SYSTEM            (resolve which external system; unknown → 
 The simulator branch is step-for-step the existing stub branch, so it reuses the existing
 `verify-tests-fail` / `verify-tests-pass` MID processes — no new primitives.
 
+## Status
+
+**Session 1 (2026-06-06) — DONE: Go-side schema foundation (Edits #1 + #2).**
+The schema is migrated to the per-system map; the tree builds and the full suite is
+green. What remains (this doc): the process-flow / gateway / new-agent / IDENTIFY work
+(#3–#6) plus the cross-repo shop template config. Remaining forks resolved below.
+
 ## Edits
-
-### 1. Config schema — `internal/projectconfig/config.go` (option 1B)
-- Replace `ExternalSystems{Stubs, Simulators}` (`:336`) with a name-keyed map:
-  ```go
-  type ExternalSystems map[string]ExternalSystem
-
-  type ExternalSystem struct {
-      RealKind  RealKind     `yaml:"real-kind"`           // test-instance | simulator
-      Stub      ExternalSpec `yaml:"stub"`                // contract-stub backing (always present)
-      Simulator ExternalSpec `yaml:"simulator,omitempty"` // present iff RealKind == simulator
-  }
-
-  type RealKind string
-  const (
-      RealKindTestInstance RealKind = "test-instance"
-      RealKindSimulator    RealKind = "simulator"
-  )
-  ```
-- `Repos()` (`:380`) — replace the two `add(c.ExternalSystems.Stubs/Simulators.Repo)` calls
-  with iteration over the map, adding each entry's `Stub.Repo` and (if present) `Simulator.Repo`.
-- Validation (`:531`, `:582`): per entry — `real-kind` required and ∈ enum; `stub` always
-  required (full `ExternalSpec`); `simulator` **present iff** `real-kind: simulator`
-  (absent-iff-test-instance is the SSoT — no cross-field reconciliation beyond this iff).
-
-### 2. Config docs — `internal/projectconfig/path-keys.md` (+ `config.go` doc comments)
-- Document the per-system `external-systems.<name>` shape, `real-kind` + enum, and the
-  "simulator present iff simulator" rule.
 
 ### 3. Process flow — `internal/atdd/runtime/statemachine/process-flow.yaml`
 - In CT-HIGH (`:946`): add `IDENTIFY_EXTERNAL_SYSTEM`, the `real-kind` gateway, the
@@ -132,15 +110,23 @@ The simulator branch is step-for-step the existing stub branch, so it reuses the
   build/start + `VERIFY_TESTS_PASS_CONTRACT_REAL` simulator branch, and the test-instance
   green-only branch. Wire sequence-flows.
 - New MID `implement-external-system-real-simulator` (mirror of
-  `implement-external-system-stubs`, `:1014`): `read`/`write` scoped to the identified
-  system's `external-systems.<name>.simulator.path` (+ whatever the stub MID reads).
+  `implement-external-system-stubs`, `:1685`): `read`/`write` scoped to
+  `external-system-driver-adapter` — the **same Family B scope key the stub MID uses**
+  (fork #2, locked session 1). The scope mechanism only understands Family B path keys;
+  `external-systems.<name>.simulator.path` is not one, and a faithful mirror of the stub
+  MID uses `external-system-driver-adapter`. (The plan's earlier "scope to simulator.path"
+  text is superseded.)
 
-### 4. Gate binding — `internal/atdd/runtime/gates/bindings.go` (+ test)
+### 4. Gate binding + identify action — `internal/atdd/runtime/gates/bindings.go` / actions (+ tests)
 - `real-kind` gateway binding: promote the identified system's `real-kind` from config into
-  `ctx.State` for the predicate evaluator (Q6 port-change wiring precedent).
-- `IDENTIFY_EXTERNAL_SYSTEM`: resolve the system name deterministically from changed
-  external-driver file paths (`external/.../<name>/`), validate against the `external-systems`
-  registry; unrecognized → error routing to onboarding.
+  `ctx.State` for the predicate evaluator (Q6 port-change wiring precedent). This is a true
+  gateway binding (reads `ctx.State`, like the other `*-changed` gates in `bindings.go`).
+- **`IDENTIFY_EXTERNAL_SYSTEM` is an ACTION, not a gateway binding** (correction, session 1):
+  resolving a system name from changed external-driver file paths (`external/.../<name>/`)
+  requires a service-task / action that inspects the diff and **stamps** the resolved name
+  into `ctx.State` (the bindings in `bindings.go` only *read* state). Validate the name
+  against the `external-systems` map; unrecognized → error routing to onboarding. The
+  changed-file source is the same diff the `external-driver-port-changed` gate consumes.
 
 ### 5. New agent — `internal/assets/runtime/agents/atdd/external-system-real-simulator-implementer.md`
 - Mirror `external-system-stub-implementer.md`: implement the simulator
@@ -160,24 +146,41 @@ The simulator branch is step-for-step the existing stub branch, so it reuses the
 - **`real-kind` vs `simulator` block → fidelity ladder** (simulator present iff
   `real-kind: simulator`; absent ⇒ test-instance). See Decisions.
 - **`IDENTIFY_EXTERNAL_SYSTEM` → deterministic** from changed-file paths. See Decisions.
+- **Scaffold emission → omit at `init`, operator-owns (fork #1, locked session 1).**
+  `gh optivem init` writes **no** `external-systems:` block. The flat `--stubs-path` /
+  `--simulators-path` scaffold flags carry no system *name* to key the per-system map on,
+  and a teaching repo regenerates its configs — so operators hand-add per-system entries
+  (Rule-22a "operator adds the lines" posture). The flat flags + `RawFlags.StubsPath` /
+  `SimulatorsPath` are left **inert** this session (not removed — that CLI-surface cleanup
+  is a separate follow-up). `buildExternals` and `externalsRepoSlug` were deleted;
+  `FillRawFlagsFromYAML` no longer reads external-systems.
+- **New simulator MID scope → mirror the stub MID's `external-system-driver-adapter`
+  (fork #2, locked session 1).** See Edit #3 / #5.
 
-Residual to confirm at execution (not blocking design):
-- **Existing-config migration.** The shop template's flat `stubs`/`simulators` tiers must be
-  rewritten to the per-system map; confirm whether any `migrate`/validation back-fill is
-  expected or operators hand-edit (mirrors the Rule-22a "operator adds the lines" posture).
+Residual / follow-ups:
+- **Shop template config (cross-repo).** The checked-in `gh-optivem-<arch>-<lang>.yaml`
+  lives in the sibling shop repo, not here — add the per-system `external-systems:` map
+  there and coordinate with shop CI. Out of this repo's session scope.
+- **Retire the inert scaffold flags.** `--stubs-path` / `--simulators-path` +
+  `DefaultStubsPath` / `DefaultSimulatorsPath` + the `RawFlags` fields no longer feed any
+  output; a follow-up can remove them (and the configinit prompt assertions that touch
+  them) once nothing else depends on the surface.
 
-## Tests to update / add
-- `internal/projectconfig/config_test.go` — `real-kind` parse, enum validation, required-per-
-  system, `simulator` present-iff-simulator, `stub` always required.
-- `internal/steps/optivem_yaml_test.go` — emitted YAML carries `real-kind`.
+## Tests to update / add (remaining)
+Done in session 1: `config_test.go` (real-kind parse / enum / required-per-system /
+present-iff / stub-required + sample round-trips), `optivem_yaml_test.go` (init omits the
+block), `config_commands_test.go`, `yaml_input_test.go`, `preflight_test.go`,
+`driver_test.go`.
+
 - `internal/atdd/runtime/gates/bindings_test.go` — `real-kind` gateway promotes the right
-  value; unrecognized system errors.
+  value; the IDENTIFY action stamps the resolved name; unrecognized system errors.
 - `internal/atdd/runtime/statemachine/transitions_test.go` — CT-HIGH new nodes + both gate
   branches; simulator branch red→green ordering.
 - `internal/atdd/runtime/clauderun/clauderun_test.go` — dispatch of
   `implement-external-system-real-simulator`.
-- Shop template config — add `real-kind` to the checked-in `gh-optivem-<arch>-<lang>.yaml`
-  so parity/validation stays green; coordinate with shop CI.
+- Shop template config — add the per-system `external-systems:` map to the checked-in
+  `gh-optivem-<arch>-<lang>.yaml` so parity/validation stays green; coordinate with shop CI
+  (cross-repo).
 
 ## Verification
 - `go build ./...`

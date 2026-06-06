@@ -775,8 +775,8 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 		},
 		ExternalSystems: projectconfig.ExternalSystems{
 			"warehouse": {
-				RealKind: projectconfig.RealKindSimulator,
-				Stub:     projectconfig.ExternalSpec{Path: "external-systems/stubs", Repo: "optivem/shop"},
+				RealKind:  projectconfig.RealKindSimulator,
+				Stub:      projectconfig.ExternalSpec{Path: "external-systems/stubs", Repo: "optivem/shop"},
 				Simulator: projectconfig.ExternalSpec{Path: "external-systems/simulators", Repo: "optivem/shop"},
 			},
 		},

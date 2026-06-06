@@ -89,7 +89,7 @@ const (
 // Config mirrors the YAML schema. Top-level keys:
 //   - project:          GitHub identity (currently just board URL).
 //   - repo-strategy:    mono-repo | multi-repo (top-level scalar, not a
-//                       property of the project board).
+//     property of the project board).
 //   - system:           the system being built — polymorphic by architecture.
 //   - system-test:      the test suite that drives the system.
 //   - external-systems: optional name-keyed map of external-system stand-ins.

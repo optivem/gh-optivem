@@ -719,7 +719,6 @@ func primaryLanguage(cfg *projectconfig.Config) string {
 	}
 }
 
-
 func (o Options) withDefaults() Options {
 	if o.ProcessName == "" {
 		o.ProcessName = DefaultProcessName
@@ -1203,23 +1202,23 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			// always launch interactively so the operator can drive the
 			// conversation — mirrors approval.go's "human tier never bypasses"
 			// rule on the dispatch side.
-			Headless:           opts.Headless && nodeParams["category"] != "human",
-			Approval:           opts.Approval,
-			Model:              tuning.Model,
-			Effort:             tuning.Effort,
-			ShowPrompt:         opts.ShowPrompt,
-			PromptLogPath:      promptLog,
-			EventsLogPath:      eventsLogPath,
-			EventsTextLogPath:  eventsTextLogPath,
-			PidFilePath:        pidFilePath,
-			OutputFilePath:     outputFilePath,
-			OutputKeysSpec:     outputKeysSpec,
-			ExpectedOutputs:    expectedOutputs,
-			RepoPath:           opts.RepoPath,
-			Stdout:             opts.Stdout,
-			Stderr:             opts.Stderr,
-			Stdin:              opts.Stdin,
-			Out:                opts.Out,
+			Headless:          opts.Headless && nodeParams["category"] != "human",
+			Approval:          opts.Approval,
+			Model:             tuning.Model,
+			Effort:            tuning.Effort,
+			ShowPrompt:        opts.ShowPrompt,
+			PromptLogPath:     promptLog,
+			EventsLogPath:     eventsLogPath,
+			EventsTextLogPath: eventsTextLogPath,
+			PidFilePath:       pidFilePath,
+			OutputFilePath:    outputFilePath,
+			OutputKeysSpec:    outputKeysSpec,
+			ExpectedOutputs:   expectedOutputs,
+			RepoPath:          opts.RepoPath,
+			Stdout:            opts.Stdout,
+			Stderr:            opts.Stderr,
+			Stdin:             opts.Stdin,
+			Out:               opts.Out,
 		}
 
 		t0 := nowFn()
@@ -1616,22 +1615,22 @@ func resolvePidRunDir(runTimestamp string, stderr io.Writer) string {
 //
 //   - <seq>-<agent>.prompt.md         — promptLog (project-local)
 //   - <seq>-<agent>.outputs.jsonl     — outputFile (project-local; agent's
-//                                       `gh optivem output write` appends here)
+//     `gh optivem output write` appends here)
 //   - <seq>-<agent>.events.jsonl      — eventsLog (project-local; clauderun
-//                                       tees the headless stream-json
-//                                       stdout here so post-mortem can
-//                                       replay every tool call / message
-//                                       the agent emitted)
+//     tees the headless stream-json
+//     stdout here so post-mortem can
+//     replay every tool call / message
+//     the agent emitted)
 //   - <seq>-<agent>.events.log        — eventsTextLog (project-local;
-//                                       human-readable sibling of
-//                                       eventsLog, formatted to look
-//                                       like the interactive Claude
-//                                       Code transcript)
+//     human-readable sibling of
+//     eventsLog, formatted to look
+//     like the interactive Claude
+//     Code transcript)
 //   - <seq>-<agent>.pid               — pidFile (user-level; clauderun
-//                                       writes the JSON marker for
-//                                       orphan-recovery between
-//                                       cmd.Start() and cmd.Wait(),
-//                                       removed on clean exit)
+//     writes the JSON marker for
+//     orphan-recovery between
+//     cmd.Start() and cmd.Wait(),
+//     removed on clean exit)
 //
 // Sharing the seq keeps the four artefacts paired on disk, so when an
 // operator inspects a failed dispatch they sit next to each other.

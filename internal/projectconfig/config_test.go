@@ -59,15 +59,17 @@ system-test:
     ct-test: system-test/java/src/test/java/shop/latest/contract
 
 external-systems:
-  stubs:
-    path: stubs
-    repo: optivem/shop
-  simulators:
-    path: simulators
-    repo: optivem/shop
+  warehouse:
+    real-kind: simulator
+    stub:
+      path: stubs
+      repo: optivem/shop
+    simulator:
+      path: simulators
+      repo: optivem/shop
 `
 
-const sampleMonoRepoMultitier =`project:
+const sampleMonoRepoMultitier = `project:
   provider: github
   url: https://github.com/orgs/optivem/projects/20
 
@@ -106,12 +108,14 @@ system-test:
     ct-test: system-test/java/src/test/java/shop/latest/contract
 
 external-systems:
-  stubs:
-    path: stubs
-    repo: optivem/shop
-  simulators:
-    path: simulators
-    repo: optivem/shop
+  warehouse:
+    real-kind: simulator
+    stub:
+      path: stubs
+      repo: optivem/shop
+    simulator:
+      path: simulators
+      repo: optivem/shop
 `
 
 const sampleMultiRepoMonolith = `project:
@@ -147,12 +151,14 @@ system-test:
     ct-test: system-test/src/test/java/shop/latest/contract
 
 external-systems:
-  stubs:
-    path: stubs
-    repo: optivem/shop
-  simulators:
-    path: simulators
-    repo: optivem/shop
+  warehouse:
+    real-kind: simulator
+    stub:
+      path: stubs
+      repo: optivem/shop
+    simulator:
+      path: simulators
+      repo: optivem/shop
 `
 
 const sampleMultiRepoMultitier = `project:
@@ -194,12 +200,14 @@ system-test:
     ct-test: system-test/src/test/java/shop-backend/latest/contract
 
 external-systems:
-  stubs:
-    path: stubs
-    repo: optivem/shop-main
-  simulators:
-    path: simulators
-    repo: optivem/shop-main
+  warehouse:
+    real-kind: simulator
+    stub:
+      path: stubs
+      repo: optivem/shop-main
+    simulator:
+      path: simulators
+      repo: optivem/shop-main
 `
 
 // ---------------------------------------------------------------------------
@@ -776,7 +784,7 @@ func TestValidate_RejectsReactAsLang(t *testing.T) {
 func TestValidate_RejectsAbsolutePath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		System: System{Architecture: ArchMonolith, Path: "/abs/path", Repo: "x/y", Lang: LangJava},
+		System:     System{Architecture: ArchMonolith, Path: "/abs/path", Repo: "x/y", Lang: LangJava},
 		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
 	}
 	if err := cfg.Validate(); err == nil {
@@ -787,7 +795,7 @@ func TestValidate_RejectsAbsolutePath(t *testing.T) {
 func TestValidate_RejectsDotDotPath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		System: System{Architecture: ArchMonolith, Path: "../foo", Repo: "x/y", Lang: LangJava},
+		System:     System{Architecture: ArchMonolith, Path: "../foo", Repo: "x/y", Lang: LangJava},
 		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
 	}
 	if err := cfg.Validate(); err == nil {
@@ -798,7 +806,7 @@ func TestValidate_RejectsDotDotPath(t *testing.T) {
 func TestValidate_RejectsEmbeddedDotDotPath(t *testing.T) {
 	t.Parallel()
 	cfg := &Config{
-		System: System{Architecture: ArchMonolith, Path: "foo/../bar", Repo: "x/y", Lang: LangJava},
+		System:     System{Architecture: ArchMonolith, Path: "foo/../bar", Repo: "x/y", Lang: LangJava},
 		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
 	}
 	if err := cfg.Validate(); err == nil {
@@ -1116,7 +1124,7 @@ func TestValidate_MultiRepoRejectsAllEmptyRepos(t *testing.T) {
 		System: System{
 			Architecture: ArchMonolith,
 			Path:         "p", /* repo missing — caught by tier rule first */
-			Lang: LangJava,
+			Lang:         LangJava,
 		},
 	}
 	if err := cfg.Validate(); err == nil {
@@ -1132,8 +1140,8 @@ func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:   Sonar{Organization: "x"},
 		System: System{
-			Architecture:    ArchMonolith,
-			Path:            "p", Repo: "x/y", Lang: LangJava,
+			Architecture: ArchMonolith,
+			Path:         "p", Repo: "x/y", Lang: LangJava,
 			SonarProject:    "x_y-system",
 			DbMigrationPath: DefaultDbMigrationPath,
 		},
@@ -1154,8 +1162,8 @@ func TestValidate_AcceptsTestInstanceAndSimulatorKinds(t *testing.T) {
 			Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 			Sonar:   Sonar{Organization: "x"},
 			System: System{
-				Architecture:    ArchMonolith,
-				Path:            "p", Repo: "x/y", Lang: LangJava,
+				Architecture: ArchMonolith,
+				Path:         "p", Repo: "x/y", Lang: LangJava,
 				SonarProject:    "x_y-system",
 				DbMigrationPath: DefaultDbMigrationPath,
 			},
@@ -1202,8 +1210,8 @@ func TestValidate_ExternalSystemRealKindRules(t *testing.T) {
 			Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 			Sonar:   Sonar{Organization: "x"},
 			System: System{
-				Architecture:    ArchMonolith,
-				Path:            "p", Repo: "x/y", Lang: LangJava,
+				Architecture: ArchMonolith,
+				Path:         "p", Repo: "x/y", Lang: LangJava,
 				SonarProject:    "x_y-system",
 				DbMigrationPath: DefaultDbMigrationPath,
 			},
@@ -1391,8 +1399,8 @@ func TestWrite_OmitsEmptyOptionalFields(t *testing.T) {
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
 		Sonar:   Sonar{Organization: "x"},
 		System: System{
-			Architecture:    ArchMonolith,
-			Path:            "p", Repo: "x/y", Lang: LangJava,
+			Architecture: ArchMonolith,
+			Path:         "p", Repo: "x/y", Lang: LangJava,
 			SonarProject:    "x_y-system",
 			DbMigrationPath: DefaultDbMigrationPath,
 		},

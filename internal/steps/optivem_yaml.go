@@ -362,4 +362,3 @@ func systemTestRepoSlug(cfg *config.Config) string {
 	}
 	return cfg.SystemFullRepo
 }
-

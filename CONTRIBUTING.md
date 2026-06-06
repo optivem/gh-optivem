@@ -394,7 +394,7 @@ Every scaffolded repo gets a `gh-optivem.yaml` at its root. The file declares fi
 - `repo-strategy:` — `mono-repo` or `multi-repo`.
 - `system:` — the system being built. Polymorphic by architecture: under `monolith`, `system:` carries flat `path:` / `repo:` / `lang:` directly; under `multitier`, it nests `backend:` and `frontend:` blocks (each with its own per-component language).
 - `system-test:` — the acceptance-test suite that drives the system. Top-level (not nested under `system:`) because tests aren't part of the system; they drive it.
-- `external-systems:` (optional) — vendored stand-ins for third-party dependencies. `stubs:` is the cycle-2 WireMock-style pattern; `simulators:` is the cycle-3 real-sim pattern.
+- `external-systems:` (optional) — a name-keyed map of stand-ins for third-party dependencies, one entry per external system. Each entry declares `real-kind:` (`test-instance` | `simulator` — what backs its contract-real suite), an always-present `stub:` block (the cycle-2 WireMock-style stand-in), and — iff `real-kind: simulator` — a `simulator:` block (the cycle-3 real-sim we author). `gh optivem init` does not scaffold this map; operators add entries by hand.
 
 Every populated tier carries the same `path:` (repo-relative) and `repo:` (slug from the participating repos) pair; system-tier blocks additionally carry `lang:`. The runtime preflight on `gh optivem implement` validates that every declared path exists on disk before any agent runs, so a config / layout mismatch fails fast with a readable error rather than mid-pipeline.
 
