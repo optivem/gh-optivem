@@ -69,6 +69,7 @@ key from `CanonicalPathKeys()` in
 | `dsl-port` | DSL port (interface) |
 | `dsl-core` | DSL core (implementation) |
 | `ct-test` | contract test files |
+| `system-driver-adapter-shared` | shared System Driver adapter foundation (`driver/adapter/shared/**`) — the test-transport wrappers (Playwright/HTTP clients, base `Client`, shared DTOs, serialization, config) consumed by every channel adapter, the API driver, and external adapters |
 
 Values are **fully-resolved physical paths** set at scaffold time
 (per plan 20260518-1530 item 3). No runtime `${...}` substitution.
@@ -77,11 +78,12 @@ Values are **fully-resolved physical paths** set at scaffold time
 
 The System Driver test adapters split physically by **channel folder** —
 `driver/adapter/api`, `driver/adapter/ui`, … — each owned by a different
-channel team, with shared/common adapter code as the residual directly
-under the layer root. The whole-layer `system-driver-adapter` key above
-names that root (where broad writers — the DSL stub-writer, `implement-system`,
-`update-system` — scope, and where `shared` lives). The per-channel split is
-carried by a **sibling** block under `system-test:`:
+channel team, with the shared/common test-transport foundation living under
+`driver/adapter/shared`. The whole-layer `system-driver-adapter` key above
+names the adapter root (where broad writers — the DSL stub-writer,
+`implement-system`, `update-system` — scope); the `shared` foundation is its
+own first-class key `system-driver-adapter-shared` (below). The per-channel
+split is carried by a **sibling** block under `system-test:`:
 
 ```yaml
 system-test:
@@ -119,8 +121,36 @@ taught about them explicitly — none picks them up for free:
 (`.../adapter/api`), .NET PascalCases it (`.../Adapter/Api`), and a
 team may restructure. Only scaffold-time resolution can carry that shape —
 the same resolve-fully-at-`init`, read-verbatim doctrine the other path keys
-follow. `shared` adapter code is the residual under the root, not a member —
-no phase scopes to "shared only", so it earns no schema slot.
+follow.
+
+### Shared System Driver adapter foundation
+
+`driver/adapter/shared` is the **test-transport foundation** — the Playwright
+and HTTP client wrappers, the base `Client` interface, shared DTOs,
+serialization, and config — consumed by every channel adapter (UI page
+objects, the API driver) *and* by external adapters (an external system with
+no API can only be driven via Playwright; HTTP wrappers are shared across api
++ every external adapter). It is placed by architectural layer, not by the
+current consumer set.
+
+It is its own first-class, **explicitly stored** Family B key
+`system-driver-adapter-shared` — it joins `paths:` like every other layer key,
+so a developer can rename or relocate the shared folder (the same
+*users-own-values, explicit-only, no-runtime-fallback* doctrine, and the same
+reasoning as the `system-driver-adapter-channels` members). Its value is the
+whole `driver/adapter/shared` subtree (NOT just `…/shared/client` — the base
+`Client`, shared DTOs, serialization and config live directly under `shared/`).
+
+Adapter implementers may **extend** this foundation directly: the four adapter
+call-activities (`implement`/`update`-`system-driver-adapters` and their
+external variants) carry `system-driver-adapter-shared` in both `read:` and
+`write:`. Unlike `system-driver-adapter`, this key is **never narrowed by
+channel** — `narrowAdapterScopeByChannel` rewrites only the exact
+`system-driver-adapter` entry, so every channel dispatch and the external
+dispatch can read and extend the foundation without a scope halt.
+`driver/adapter/ui` and `driver/adapter/shared` are disjoint subtrees, so
+per-channel ownership and resume footprints (keyed on the channel member) are
+unaffected.
 
 > **`external` nests under the driver layer.** The external-system driver
 > keys resolve to `driver/port/external` and `driver/adapter/external`
@@ -134,7 +164,7 @@ no phase scopes to "shared only", so it earns no schema slot.
 `gh optivem init` writes the `system-test.paths:` block as the
 **authoritative initial value matching the directory tree the same
 scaffolder just created**. The scaffolder owns both sides of the join
-(YAML + tree), so the eight Family B values are correct by construction
+(YAML + tree), so the nine Family B values are correct by construction
 at that moment — they are not "defaults the operator never asked for".
 
 After `init`, the block is operator-owned at every other layer:
@@ -187,6 +217,7 @@ system-test:
     dsl-port: system-test/typescript/src/testkit/dsl/port
     dsl-core: system-test/typescript/src/testkit/dsl/core
     ct-test: system-test/typescript/tests/latest/contract
+    system-driver-adapter-shared: system-test/typescript/src/testkit/driver/adapter/shared
   channels: [api, ui]
   system-driver-adapter-channels:
     api: system-test/typescript/src/testkit/driver/adapter/api

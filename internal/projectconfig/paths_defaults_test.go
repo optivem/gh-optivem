@@ -26,6 +26,7 @@ func TestDefaultPaths_TypescriptFlatScaffold(t *testing.T) {
 		"dsl-port":                       "system-test/src/testkit/dsl/port",
 		"dsl-core":                       "system-test/src/testkit/dsl/core",
 		"ct-test":                        "system-test/tests/latest/contract",
+		"system-driver-adapter-shared":   "system-test/src/testkit/driver/adapter/shared",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("typescript: got %v, want %v", got, want)
@@ -44,6 +45,7 @@ func TestDefaultPaths_JavaFlatScaffold(t *testing.T) {
 		"dsl-port":                       "system-test/src/main/java/com/mycompany/myshop/testkit/dsl/port",
 		"dsl-core":                       "system-test/src/main/java/com/mycompany/myshop/testkit/dsl/core",
 		"ct-test":                        "system-test/src/test/java/com/mycompany/myshop/systemtest/latest/contract",
+		"system-driver-adapter-shared":   "system-test/src/main/java/com/mycompany/myshop/testkit/driver/adapter/shared",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("java: got %v, want %v", got, want)
@@ -62,6 +64,7 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 		"dsl-port":                       "system-test/Dsl.Port",
 		"dsl-core":                       "system-test/Dsl.Core",
 		"ct-test":                        "system-test/SystemTests/Latest/ExternalSystemContractTests",
+		"system-driver-adapter-shared":   "system-test/Driver.Adapter/Shared",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("dotnet: got %v, want %v", got, want)
@@ -234,6 +237,7 @@ func TestDefaultPaths_KeysMatchPlaceholderDoctrine(t *testing.T) {
 		"dsl-port",
 		"dsl-core",
 		"ct-test",
+		"system-driver-adapter-shared",
 	}
 	for _, key := range want {
 		if _, ok := got[key]; !ok {

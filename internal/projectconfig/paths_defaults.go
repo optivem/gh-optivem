@@ -17,12 +17,13 @@ import (
 const DefaultDbMigrationPath = "system/db/migrations"
 
 // DefaultPaths returns the canonical Family B `paths:` entries for the
-// given system-test language, root, and Java source package. The eight keys
+// given system-test language, root, and Java source package. The nine keys
 // match the doctrine referenced by the inline `read:` / `write:` scope
 // on writing-agent MID nodes in
 // `internal/atdd/runtime/statemachine/process-flow.yaml`: system-driver-port,
 // system-driver-adapter, external-system-driver-port,
-// external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test.
+// external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test,
+// system-driver-adapter-shared.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
 // the scaffolder leaves `paths:` absent for partial configs (no
@@ -61,7 +62,7 @@ const DefaultDbMigrationPath = "system/db/migrations"
 //
 // Users own subsequent edits — the scaffolder writes these defaults
 // once and the migrate path back-fills only canonical keys that are
-// absent. Anything beyond the canonical eight set by the user is
+// absent. Anything beyond the canonical nine set by the user is
 // preserved across migrations.
 //
 // See `internal/projectconfig/path-keys.md` for the
@@ -165,6 +166,7 @@ func CanonicalPathKeys() []string {
 		"dsl-port",
 		"dsl-core",
 		"ct-test",
+		"system-driver-adapter-shared",
 	}
 }
 
@@ -192,6 +194,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			"src/testkit/dsl/port",
 			"src/testkit/dsl/core",
 			"tests/latest/contract",
+			"src/testkit/driver/adapter/shared",
 		}, true
 	case LangJava:
 		main := path.Join("src/main/java", javaPackage, "testkit")
@@ -205,6 +208,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			path.Join(main, "dsl/port"),
 			path.Join(main, "dsl/core"),
 			path.Join(test, "latest/contract"),
+			path.Join(main, "driver/adapter/shared"),
 		}, true
 	case LangDotnet:
 		return []string{
@@ -216,6 +220,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			"Dsl.Port",
 			"Dsl.Core",
 			"SystemTests/Latest/ExternalSystemContractTests",
+			"Driver.Adapter/Shared",
 		}, true
 	default:
 		return nil, false

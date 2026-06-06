@@ -841,7 +841,7 @@ func (c *Config) Validate() error {
 
 	// Rule 22: paths.* keys must (a) not shadow reserved Family A
 	// placeholder names, (b) be in the canonical Family B key set
-	// (CanonicalPathKeys — eight names today), and (c) carry fully-
+	// (CanonicalPathKeys — nine names today), and (c) carry fully-
 	// resolved values with no `${...}` substitution markers. (a) is the
 	// historical wires-crossed guard (a typo'd `paths.language:
 	// typescript` would otherwise quietly override system.lang). (b) is

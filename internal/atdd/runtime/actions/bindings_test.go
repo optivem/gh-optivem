@@ -242,6 +242,31 @@ func TestNarrowAdapterScopeByChannel(t *testing.T) {
 			t.Errorf("error should name the offending channel: %v", err)
 		}
 	})
+
+	// The gift-wrap repro: a per-channel (ui) dispatch carries both
+	// system-driver-adapter (narrowed to the channel member) and
+	// system-driver-adapter-shared (the test-transport foundation). The
+	// narrower rewrites ONLY the exact system-driver-adapter entry, so the
+	// shared entry survives untouched — a write under driver/adapter/shared
+	// (e.g. PageClient.setChecked) passes scope for a channel-ui dispatch
+	// without a halt.
+	t.Run("shared key is never narrowed by a channel param", func(t *testing.T) {
+		writeWithShared := []string{"system-driver-port", "system-driver-adapter", "system-driver-adapter-shared"}
+		resolved := []string{"driver/port", "driver/adapter", "driver/adapter/shared"}
+		got, err := narrowAdapterScopeByChannel(writeWithShared, resolved, "ui", cfg)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		want := []string{"driver/port", "system-test/driver/adapter/ui", "driver/adapter/shared"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v (shared entry must be untouched)", got, want)
+		}
+		// A gift-wrap edit under the shared foundation is in scope for the
+		// narrowed ui dispatch.
+		if !pathInScope("driver/adapter/shared/client/playwright/PageClient.java", got) {
+			t.Errorf("a write under driver/adapter/shared must pass scope for a channel-ui dispatch; allowed=%v", got)
+		}
+	})
 }
 
 // writePhaseScopeTestConfig writes a minimal gh-optivem.yaml containing
@@ -282,6 +307,7 @@ system-test:
     ct-test: system-test/typescript/tests/latest/contract
     external-system-driver-port: driver/typescript/src/external-port
     external-system-driver-adapter: driver/typescript/src/external-adapter
+    system-driver-adapter-shared: driver/typescript/src/adapter/shared
 `
 	if err := os.WriteFile(filepath.Join(repoPath, "gh-optivem.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write gh-optivem.yaml: %v", err)
@@ -2127,6 +2153,7 @@ system-test:
     ct-test: system-test/typescript/tests/latest/contract
     external-system-driver-port: driver/typescript/src/external-port
     external-system-driver-adapter: driver/typescript/src/external-adapter
+    system-driver-adapter-shared: driver/typescript/src/adapter/shared
 
 external-systems:
   warehouse:

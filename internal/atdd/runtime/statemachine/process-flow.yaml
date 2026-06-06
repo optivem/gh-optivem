@@ -1657,14 +1657,18 @@ processes:
           agent: system-driver-adapter-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [system-driver-port, system-driver-adapter]
+        read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared]
         # This node is shared: UnrollSystemDriverAdapterChannels clones it
         # once per channel (binding a `channel` param). The scope checker
         # (validate-outputs-and-scopes) narrows this whole-layer write down
         # to that channel's configured member when a `channel` param is
         # present, so a per-channel dispatch can only write its own folder.
         # A no-`channels:` full run carries no param and keeps the whole layer.
-        write: [system-driver-adapter]
+        # system-driver-adapter-shared is the test-transport foundation
+        # (driver/adapter/shared); it is NOT narrowed by channel (the
+        # narrower rewrites only the exact system-driver-adapter entry), so
+        # every per-channel dispatch can extend the shared foundation.
+        write: [system-driver-adapter, system-driver-adapter-shared]
 
       - id: IMPL_SYS_DA_END
         type: end-event
@@ -1690,8 +1694,8 @@ processes:
           agent: system-driver-adapter-updater
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [system-driver-port, system-driver-adapter]
-        write: [system-driver-adapter]
+        read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared]
+        write: [system-driver-adapter, system-driver-adapter-shared]
 
       - id: UPDATE_SYS_DA_END
         type: end-event
@@ -1714,8 +1718,12 @@ processes:
           agent: external-system-driver-adapter-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [external-system-driver-port, external-system-driver-adapter]
-        write: [external-system-driver-adapter]
+        # system-driver-adapter-shared: an external system with no API can only
+        # be driven via Playwright, and the HTTP wrappers under
+        # driver/adapter/shared are shared across api + every external adapter,
+        # so external adapter implementers read and extend the foundation too.
+        read:  [external-system-driver-port, external-system-driver-adapter, system-driver-adapter-shared]
+        write: [external-system-driver-adapter, system-driver-adapter-shared]
 
       - id: IMPL_EXT_DA_END
         type: end-event
@@ -1742,8 +1750,8 @@ processes:
           agent: external-system-driver-adapter-updater
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [external-system-driver-port, external-system-driver-adapter]
-        write: [external-system-driver-adapter]
+        read:  [external-system-driver-port, external-system-driver-adapter, system-driver-adapter-shared]
+        write: [external-system-driver-adapter, system-driver-adapter-shared]
 
       - id: UPDATE_EXT_DA_END
         type: end-event
@@ -1765,8 +1773,11 @@ processes:
           agent: external-system-stub-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [external-system-driver-adapter]
-        write: [external-system-driver-adapter]
+        # External stub clients sit on the shared HTTP/WireMock transport
+        # (e.g. TaxStubClient imports shared.client.http / shared.client.wiremock),
+        # so the stub implementer reads and may extend the shared foundation.
+        read:  [external-system-driver-adapter, system-driver-adapter-shared]
+        write: [external-system-driver-adapter, system-driver-adapter-shared]
 
       - id: IMPL_STUBS_END
         type: end-event
@@ -1794,8 +1805,11 @@ processes:
           agent: external-system-real-simulator-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [external-system-driver-adapter]
-        write: [external-system-driver-adapter]
+        # Faithful mirror of implement-external-system-stubs: the simulator-backed
+        # real side likewise sits on the shared HTTP transport, so it reads and
+        # may extend the shared foundation (kept in lockstep with the stub MID).
+        read:  [external-system-driver-adapter, system-driver-adapter-shared]
+        write: [external-system-driver-adapter, system-driver-adapter-shared]
 
       - id: IMPL_REAL_SIM_END
         type: end-event
