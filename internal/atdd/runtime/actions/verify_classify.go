@@ -97,6 +97,27 @@ var infraPatterns = []infraPattern{
 		label: "missing language toolchain",
 		re:    regexp.MustCompile(`(?i)(go: cannot find|no such file or directory.*\b(go|node|npm|python|java|dotnet)\b|\b(node|npm|python|java|dotnet)\b: command not found)`),
 	},
+	{
+		// The runner rejected the requested suite id before any test ran
+		// (runner.selectSuites, internal/runner/tests.go: "suite(s) not
+		// found: <id>. Available: …"). A verify that names a renamed or
+		// undeclared suite produced no test report at all, so it is an
+		// orchestrator-side wiring fault — not a red test. Classifying it
+		// red is exactly what spun unexpected-failing-tests-fixer for hours
+		// on a non-signal (plan 20260606-1458). Match the runner's fixed
+		// prefix, not the id, per the table's own guidance.
+		label: "unknown test suite",
+		re:    regexp.MustCompile(`(?i)suite\(s\) not found:`),
+	},
+	{
+		// `gh optivem test run` itself rejected the invocation before
+		// running anything — a bad flag or subcommand emitted by a verify
+		// call site (cobra: "unknown flag: --x", "unknown shorthand flag",
+		// "unknown command \"x\""). Like the suite case, no test ran, so
+		// this is infra, not a red signal.
+		label: "invalid runner invocation",
+		re:    regexp.MustCompile(`(?i)unknown (flag|shorthand flag|command)`),
+	},
 }
 
 // classifyShellErr is the pure-function entry point. It takes the

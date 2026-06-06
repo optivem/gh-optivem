@@ -881,3 +881,121 @@ func TestSuiteExistence_SkippedWhenEngineNilOrPathEmpty(t *testing.T) {
 		t.Errorf("empty tests path should skip the sweep, got: %v", got)
 	}
 }
+
+// --- effective-suite resolution sweep --------------------------------------
+
+// TestEffectiveSuiteResolution_RealEngineAllResolvable is the no-false-positive
+// guard: every `${suite}` placeholder in the shipped process-flow.yaml must
+// resolve to a concrete value by propagating concrete `suite:` call-site params
+// down the call graph. A failure here would mean the new sweep halts the real
+// `gh optivem implement` preflight — so this asserts the live flow is clean
+// (and catches any future edit that introduces a state-sourced suite).
+func TestEffectiveSuiteResolution_RealEngineAllResolvable(t *testing.T) {
+	t.Parallel()
+	if got := runEffectiveSuiteResolutionChecks(loadDefaultEngine(t)); len(got) != 0 {
+		t.Errorf("real engine must have no unresolvable suites, got:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+func TestEffectiveSuiteResolution_NilEngineSkips(t *testing.T) {
+	t.Parallel()
+	if got := runEffectiveSuiteResolutionChecks(nil); got != nil {
+		t.Errorf("nil engine should skip the sweep, got: %v", got)
+	}
+}
+
+// TestEffectiveSuiteResolution_StateSourcedSuiteFlagged is the regression for
+// the plan's root cause: a verify node whose `${suite}` is never bound by a
+// static call-site param (it would resolve only from runtime state) must fail
+// preflight, naming the node — so a bad suite can never silently reach the
+// runner. A sibling flow that DOES bind a concrete suite at the call site must
+// pass, proving the sweep only flags the genuinely unresolvable case.
+func TestEffectiveSuiteResolution_StateSourcedSuiteFlagged(t *testing.T) {
+	t.Parallel()
+
+	const unboundFlow = `
+processes:
+  root:
+    name: "Root"
+    start: CALL_VERIFY
+    nodes:
+      - id: CALL_VERIFY
+        type: call-activity
+        process: verify
+        name: "Call Verify"
+      - id: ROOT_END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: CALL_VERIFY, to: ROOT_END}
+  verify:
+    name: "Verify"
+    start: RUN_TESTS
+    nodes:
+      - id: RUN_TESTS
+        type: service-task
+        action: run-command
+        name: "Run Tests"
+        params:
+          suite: ${suite}
+      - id: VERIFY_END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: RUN_TESTS, to: VERIFY_END}
+`
+	engUnbound, err := statemachine.LoadBytes([]byte(unboundFlow))
+	if err != nil {
+		t.Fatalf("load unbound flow: %v", err)
+	}
+	got := runEffectiveSuiteResolutionChecks(engUnbound)
+	if len(got) == 0 {
+		t.Fatal("expected a failure for the state-sourced suite, got none")
+	}
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, "RUN_TESTS") || !strings.Contains(joined, `"verify"`) {
+		t.Errorf("failure should name node RUN_TESTS in process verify, got: %v", got)
+	}
+
+	// Same shape, but the caller binds a concrete suite at the call site.
+	const boundFlow = `
+processes:
+  root:
+    name: "Root"
+    start: CALL_VERIFY
+    nodes:
+      - id: CALL_VERIFY
+        type: call-activity
+        process: verify
+        name: "Call Verify"
+        params:
+          suite: acceptance
+      - id: ROOT_END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: CALL_VERIFY, to: ROOT_END}
+  verify:
+    name: "Verify"
+    start: RUN_TESTS
+    nodes:
+      - id: RUN_TESTS
+        type: service-task
+        action: run-command
+        name: "Run Tests"
+        params:
+          suite: ${suite}
+      - id: VERIFY_END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: RUN_TESTS, to: VERIFY_END}
+`
+	engBound, err := statemachine.LoadBytes([]byte(boundFlow))
+	if err != nil {
+		t.Fatalf("load bound flow: %v", err)
+	}
+	if got := runEffectiveSuiteResolutionChecks(engBound); len(got) != 0 {
+		t.Errorf("a concretely-bound suite must not be flagged, got: %v", got)
+	}
+}

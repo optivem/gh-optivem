@@ -83,7 +83,11 @@ func newTestRunCmd() *cobra.Command {
 			// --test=foo` is two raw values and rejected. Expansion happens
 			// after validation so the runner only sees canonical suite ids.
 			exitOnError(validateSuiteTestCombo(suites, test))
-			suites = testselect.ExpandSuiteGroups(suites, tests.SuiteGroups)
+			// nil channels: the CLI loads only tests.yaml, not the project's
+			// channel set, so `--suite=acceptance` uses the {api,ui} fallback
+			// default. A non-{api,ui} project declares its own
+			// `suiteGroups: acceptance:` in tests.yaml, which takes precedence.
+			suites = testselect.ExpandSuiteGroups(suites, tests.SuiteGroups, nil)
 			resolvedSystem, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolvedSystem)

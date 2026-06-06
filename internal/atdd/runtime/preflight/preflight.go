@@ -211,6 +211,12 @@ func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	}
 	failures = append(failures, runSuiteExistenceChecks(cfg, opts.Engine, testsYAML)...)
 
+	// Effective-suite resolution sweep (optional; only runs when an engine is
+	// wired). Independent of tests.yaml: it validates that every `${suite}`
+	// placeholder is statically resolvable through the call graph, not that the
+	// resolved ids are declared (runSuiteExistenceChecks owns that).
+	failures = append(failures, runEffectiveSuiteResolutionChecks(opts.Engine)...)
+
 	return aggregateFailures(failures)
 }
 
@@ -302,7 +308,13 @@ func runSuiteExistenceChecks(cfg *projectconfig.Config, eng *statemachine.Engine
 		if strings.HasPrefix(lit, "contract") && !hasExternal {
 			continue
 		}
-		for _, id := range expandSuiteLiteral(lit, cfg, tests.SuiteGroups) {
+		// Channel-aware expansion through the SAME source the runtime/CLI use
+		// (testselect.ExpandSuiteGroups): the `acceptance` alias unrolls to
+		// acceptance-<ch> + acceptance-isolated-<ch> per cfg.Channels, every
+		// other literal passes through (project-declared group aliases resolve
+		// via tests.SuiteGroups). One function = preflight validates exactly
+		// the ids the runtime's `--suite=` emission requests.
+		for _, id := range testselect.ExpandSuiteGroups([]string{lit}, tests.SuiteGroups, cfg.Channels) {
 			expected[id] = true
 		}
 	}
@@ -345,26 +357,116 @@ func collectSuiteLiterals(eng *statemachine.Engine) []string {
 	return out
 }
 
-// expandSuiteLiteral maps one engine `suite:` literal onto the concrete suite
-// ids it resolves to at run time. The `acceptance` group alias unrolls to
-// acceptance-<channel> AND acceptance-isolated-<channel> per cfg.Channels
-// (matching UnrollSystemChannels and the four-id default acceptance group):
-// `--suite=acceptance` runs both the parallel and the serial isolated suites,
-// so an api-only project still requires its isolated suite (acceptance-isolated-api)
-// but never the ui ids. With no channels declared it falls back to the
-// runtime's own group expansion so behaviour matches resolution on the static
-// path. Every other literal — explicit per-channel ids, contract ids — passes
-// through ExpandSuiteGroups so a project that declared it as a group alias
-// resolves the same way the runner would.
-func expandSuiteLiteral(lit string, cfg *projectconfig.Config, projectGroups map[string][]string) []string {
-	if lit == "acceptance" && len(cfg.Channels) > 0 {
-		out := make([]string, 0, len(cfg.Channels)*2)
-		for _, ch := range cfg.Channels {
-			out = append(out, "acceptance-"+ch, "acceptance-isolated-"+ch)
-		}
-		return out
+// runEffectiveSuiteResolutionChecks is the placeholder-coverage half of the
+// suite-existence sweep. collectSuiteLiterals validates the concrete `suite:`
+// literals but deliberately skips `${…}` placeholders; this pass closes that
+// gap by walking the engine's call graph from its root processes, threading
+// each call-activity's resolved param environment down into the callee exactly
+// as the runtime's ExpandParams params-chain does, and flagging any node whose
+// `suite` param cannot be resolved to a concrete value from static call-site
+// params — i.e. one that bottoms out in runtime state.
+//
+// That is the precise failure that let `--suite=contract` reach the runner
+// (plan 20260606-1458): a `${suite}` placeholder resolved at run time from a
+// value no static call site bound, the runner rejected it ("suite(s) not
+// found"), and the never-ran command was mis-read as a red test that spun the
+// fixer for hours. Surfacing it here turns that into a sub-second startup error.
+//
+// Resolvable placeholders are NOT re-validated against tests.yaml here — every
+// value they can resolve to is itself a `suite:` literal bound at some call
+// site, which collectSuiteLiterals already checks. nil engine = skip, matching
+// the nil-skip convention of the other optional check classes.
+func runEffectiveSuiteResolutionChecks(eng *statemachine.Engine) []string {
+	if eng == nil {
+		return nil
 	}
-	return testselect.ExpandSuiteGroups([]string{lit}, projectGroups)
+	// Root processes = those never targeted by a call-activity. The walk
+	// starts there with an empty env; concrete `suite:` values are bound at
+	// intermediate call sites and propagate down through `${suite}` forwarders.
+	called := map[string]bool{}
+	for _, proc := range eng.Processes {
+		for _, node := range proc.Nodes {
+			if node.Raw.Process != "" {
+				called[node.Raw.Process] = true
+			}
+		}
+	}
+
+	failures := map[string]bool{}
+	visited := map[string]bool{}
+	var walk func(procName string, env map[string]string)
+	walk = func(procName string, env map[string]string) {
+		proc, ok := eng.Processes[procName]
+		if !ok {
+			return
+		}
+		// Memoise on (process, effective suite): the suite param is the only
+		// value this sweep cares about, so two invocations that agree on it
+		// explore identically. Bounds the fix-loop / shared-subprocess fan-in.
+		sig := procName + "\x00" + env["suite"]
+		if visited[sig] {
+			return
+		}
+		visited[sig] = true
+
+		for _, node := range proc.Nodes {
+			if raw, ok := node.Raw.Params["suite"]; ok {
+				if _, resolved := resolveParam(raw, env); !resolved {
+					failures[fmt.Sprintf(
+						"node %s in process %q requests a test suite that is not statically resolvable (%q resolves only from runtime state); every verify call site must bind a concrete suite so a bad suite cannot reach the runner",
+						node.ID, procName, raw)] = true
+				}
+			}
+			if node.Raw.Process != "" {
+				childEnv := map[string]string{}
+				for k, v := range node.Raw.Params {
+					if rv, ok := resolveParam(v, env); ok {
+						childEnv[k] = rv
+					}
+					// Unresolved params are omitted so the callee sees the key
+					// as absent (still unresolved) rather than as empty-bound.
+				}
+				walk(node.Raw.Process, childEnv)
+			}
+		}
+	}
+
+	roots := make([]string, 0, len(eng.Processes))
+	for name := range eng.Processes {
+		if !called[name] {
+			roots = append(roots, name)
+		}
+	}
+	sort.Strings(roots) // deterministic walk order
+	for _, name := range roots {
+		walk(name, map[string]string{})
+	}
+
+	out := make([]string, 0, len(failures))
+	for f := range failures {
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// resolveParam substitutes ${k} occurrences in a YAML param value against env,
+// the same params-chain ExpandParams uses (state fallback excluded — that is
+// exactly the dynamic resolution this sweep refuses to simulate). A literal
+// (including the empty-string verify-noop sentinel) resolves to itself. A value
+// with a ${…} whose key is absent from env is reported unresolved.
+func resolveParam(raw string, env map[string]string) (string, bool) {
+	if !strings.Contains(raw, "${") {
+		return raw, true
+	}
+	out := raw
+	for k, v := range env {
+		out = strings.ReplaceAll(out, "${"+k+"}", v)
+	}
+	if strings.Contains(out, "${") {
+		return "", false
+	}
+	return out, true
 }
 
 // aggregateFailures returns nil when failures is empty; otherwise a

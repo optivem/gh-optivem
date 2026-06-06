@@ -95,6 +95,28 @@ func TestClassifyShellErr(t *testing.T) {
 			wantClass: classInfra,
 			wantLabel: "docker daemon unreachable",
 		},
+		// ---- infra: runner rejected the invocation before any test ran ----
+		{
+			name:      "unknown test suite (renamed/undeclared suite)",
+			stderr:    "ERROR: suite(s) not found: contract. Available: acceptance-api, acceptance-ui, contract-stub, contract-real",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "unknown test suite",
+		},
+		{
+			name:      "cobra unknown flag from a bad verify invocation",
+			stderr:    "Error: unknown flag: --suit",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "invalid runner invocation",
+		},
+		{
+			name:      "cobra unknown command",
+			stderr:    `Error: unknown command "ru" for "optivem test"`,
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "invalid runner invocation",
+		},
 		// ---- red: tests ran, at least one failed --------------------------
 		{
 			name: "jest reports failures",
