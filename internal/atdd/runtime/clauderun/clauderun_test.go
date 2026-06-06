@@ -209,6 +209,7 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 		"external-system-driver-adapter-implementer",
 		"dsl-implementer",
 		"external-system-stub-implementer",
+		"external-system-real-simulator-implementer",
 		"acceptance-test-writer", "contract-test-writer",
 	} {
 		opts := newOpts()
@@ -245,6 +246,35 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 		if strings.Contains(got, "# Commit Confirmation Rule") {
 			t.Errorf("%s: legacy commit-confirmation rule block leaked", name)
 		}
+	}
+}
+
+// TestRenderPrompt_ExternalSystemRealSimulatorImplementer proves the new
+// simulator-implementer agent (plan 20260606-1356) is embedded and
+// dispatchable: its body renders with ${external-system-driver-adapter} +
+// ${scope-block} expanded, mirroring the stub implementer. The
+// implement-external-system-real-simulator MID dispatches this agent.
+func TestRenderPrompt_ExternalSystemRealSimulatorImplementer(t *testing.T) {
+	opts := newOpts()
+	opts.Agent = "external-system-real-simulator-implementer"
+	// Same Family B scope key as the stub MID (fork #2).
+	opts.ScopeRead = []string{"external-system-driver-adapter"}
+	opts.ScopeWrite = []string{"external-system-driver-adapter"}
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	// Simulator-specific body (the test-instance analogue of the stub
+	// implementer's "reflect the real Test Instance's contract" line).
+	mustContain(t, got, "real simulator")
+	mustContain(t, got, "stands in for the real Test Instance")
+	// ${external-system-driver-adapter} expanded to the configured path
+	// (language-stable suffix of the external-system-driver-adapter layer).
+	mustContain(t, got, "driver/adapter/external")
+	mustContain(t, got, "### Scope")
+	if strings.Contains(got, "${") {
+		t.Errorf("prompt still contains ${...} placeholder:\n%s", got)
 	}
 }
 

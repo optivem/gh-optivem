@@ -110,56 +110,16 @@ the later placement costs nothing.
 ## Status
 
 **Session 1 (2026-06-06) — DONE: Go-side schema foundation (Edits #1 + #2).**
-The schema is migrated to the per-system map; the tree builds and the full suite is
-green. What remains (this doc): the process-flow / gateway / new-agent / IDENTIFY work
-(#3–#6) plus the cross-repo shop template config. Remaining forks resolved below.
+The schema is migrated to the per-system map.
+
+**Session 2 (2026-06-06) — DONE: process-flow + gateway + action + new agent (Edits #3–#5)
+and all in-repo tests.** CT-HIGH now runs IDENTIFY → `real-kind` gate → simulator red→green
+/ test-instance green-only; `identify-external-system` action + `real-kind` gateway wired and
+tested; `external-system-real-simulator-implementer` agent added. Full affected suite green.
+What remains: the forward onboarding dependency (#6, separate plan) and the cross-repo shop
+template config + inert-flag retirement (follow-ups below).
 
 ## Edits
-
-### 3. Process flow — `internal/atdd/runtime/statemachine/process-flow.yaml`
-- In CT-HIGH (`:946`): add `IDENTIFY_EXTERNAL_SYSTEM`, the `real-kind` gateway, the
-  `VERIFY_TESTS_FAIL_CONTRACT_REAL` + `IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR` +
-  build/start + `VERIFY_TESTS_PASS_CONTRACT_REAL` simulator branch, and the test-instance
-  green-only branch. Wire sequence-flows.
-- New MID `implement-external-system-real-simulator` (mirror of
-  `implement-external-system-stubs`, `:1685`): `read`/`write` scoped to
-  `external-system-driver-adapter` — the **same Family B scope key the stub MID uses**
-  (fork #2, locked session 1). The scope mechanism only understands Family B path keys;
-  `external-systems.<name>.simulator.path` is not one, and a faithful mirror of the stub
-  MID uses `external-system-driver-adapter`. (The plan's earlier "scope to simulator.path"
-  text is superseded.)
-
-### 4. Gate binding + identify action — `internal/atdd/runtime/gates/bindings.go` + `internal/atdd/runtime/actions/bindings.go` (+ tests)
-
-**Source & wiring resolved 2026-06-06, session 2.** `gates.Deps` has no `Config`;
-`actions.Deps` does — so the `real-kind` *lookup* lives in the action, and the gateway is a
-pure state-reader.
-
-- **`IDENTIFY_EXTERNAL_SYSTEM` is an ACTION** (`actions` package), registered like
-  `snapshot-working-tree` / `validate-outputs-and-scopes`. It:
-  1. Reads `ctx.State["phase-changed-files"]` (newline-joined; populated by the preceding
-     `IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS` dispatch — see IDENTIFY ordering above).
-  2. Resolves the layer root: `root = ResolveLayerPaths(["external-system-driver-adapter"],
-     cfg)[0]` (same path space as `phase-changed-files`; both feed `pathInScope`).
-  3. For each changed path under `root`, takes `<name>` = first segment of
-     `TrimPrefix(path, root+"/")`. Paths with no further `/` are residual `shared` adapter
-     code → ignored. Collects the distinct name set.
-  4. Validates against the registry: exactly one known `cfg.ExternalSystems[name]` → stamps
-     `ctx.State["external-system-name"]` **and** `ctx.State["real-kind"] =
-     string(cfg.ExternalSystems[name].RealKind)`. Zero / ambiguous (>1) / unknown →
-     `Outcome{Err}` **hard stop** whose message points at onboarding (Edit #6 posture).
-- **`real-kind` gateway binding** (`gates` package): trivial enum value-reader — reads
-  `ctx.State["real-kind"]`, returns `Outcome{Value: v}`, errors on unset or any value outside
-  `{test-instance, simulator}`. Structurally identical to the existing `expectedTestResult` /
-  `testOutcome` bindings. No `Config` dependency (the action already promoted the value).
-  *(Supersedes the earlier "promote from config in the gateway" / "same diff the
-  external-driver-port-changed gate consumes" text — that gate reads a bool, not a diff.)*
-
-### 5. New agent — `internal/assets/runtime/agents/atdd/external-system-real-simulator-implementer.md`
-- Mirror `external-system-stub-implementer.md`: implement the simulator
-  (`external-systems.<name>.simulator.path`) so contract-real passes. Real-server fidelity:
-  same shapes / status codes / error semantics as the published contract (the stub
-  implementer's "reflect the real Test Instance's contract" line is the test-instance analogue).
 
 ### 6. Onboarding dependency (forward) — `plans/backlog/20260526-1746-rebuild-onboard-external-system.md`
 - The rebuilt `onboard-external-system` flow is where `real-kind` is **declared** for a new
@@ -193,27 +153,25 @@ Residual / follow-ups:
   output; a follow-up can remove them (and the configinit prompt assertions that touch
   them) once nothing else depends on the surface.
 
-## Tests to update / add (remaining)
-Done in session 1: `config_test.go` (real-kind parse / enum / required-per-system /
-present-iff / stub-required + sample round-trips), `optivem_yaml_test.go` (init omits the
-block), `config_commands_test.go`, `yaml_input_test.go`, `preflight_test.go`,
-`driver_test.go`.
+## Tests (remaining)
+Done in session 1: `config_test.go`, `optivem_yaml_test.go`, `config_commands_test.go`,
+`yaml_input_test.go`, `preflight_test.go`, `driver_test.go`.
+Done in session 2: `actions/bindings_test.go` (IDENTIFY action — name + real-kind stamp,
+shared-residual ignore, unknown/ambiguous/zero/nil-config hard errors, RegisterAll),
+`gates/bindings_test.go` (`real-kind` gateway enum + unset/wrong-type halts, RegisterAll),
+`statemachine/transitions_test.go` (CT-HIGH IDENTIFY + `real-kind` gate + both branches +
+simulator red→green ordering + new MID scope/agent), `clauderun_test.go`
+(`external-system-real-simulator-implementer` renders + dispatch).
 
-- `internal/atdd/runtime/gates/bindings_test.go` — `real-kind` gateway promotes the right
-  value; the IDENTIFY action stamps the resolved name; unrecognized system errors.
-- `internal/atdd/runtime/statemachine/transitions_test.go` — CT-HIGH new nodes + both gate
-  branches; simulator branch red→green ordering.
-- `internal/atdd/runtime/clauderun/clauderun_test.go` — dispatch of
-  `implement-external-system-real-simulator`.
 - Shop template config — add the per-system `external-systems:` map to the checked-in
   `gh-optivem-<arch>-<lang>.yaml` so parity/validation stays green; coordinate with shop CI
   (cross-repo).
 
-## Verification
-- `go build ./...`
-- `go test ./internal/projectconfig/... ./internal/atdd/... ./internal/steps/...`
-- `gh optivem process scope implement-external-system-real-simulator` shows the simulator
-  path in the resolved write set.
+## Verification (session 2 — all green)
+- `go build ./...` ✓
+- `go test ./internal/projectconfig/... ./internal/atdd/... ./internal/steps/...` ✓
+- `gh optivem process scope implement-external-system-real-simulator` → resolves the
+  `external-system-driver-adapter` layer (fork #2 write set) ✓
 - Diagram regenerates on push to main (do **not** regen locally — the workflow owns it).
 
 ## Cross-references

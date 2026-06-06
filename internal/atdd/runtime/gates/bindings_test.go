@@ -80,6 +80,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"dsl-port-changed",
 		"system-driver-port-changed",
 		"external-driver-port-changed",
+		"real-kind",
 		"refactor-type-choice",
 		"approval-outcome",
 		"outputs-and-scopes-valid",
@@ -338,6 +339,47 @@ func TestTestOutcome(t *testing.T) {
 				ctx.Set("test-outcome", tc.seed)
 			}
 			out := b.testOutcome(ctx)
+			if tc.err {
+				if out.Err == nil {
+					t.Fatalf("expected err, got %+v", out)
+				}
+				return
+			}
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if out.Value != tc.want {
+				t.Fatalf("Value: got %q, want %q", out.Value, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// real-kind — GATE_REAL_KIND (plan 20260606-1356)
+// ---------------------------------------------------------------------------
+
+func TestRealKind(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		seed   any
+		seeded bool
+		want   string
+		err    bool
+	}{
+		{name: "test-instance", seed: "test-instance", seeded: true, want: "test-instance"},
+		{name: "simulator", seed: "simulator", seeded: true, want: "simulator"},
+		{name: "unset_halts", seeded: false, err: true},
+		{name: "wrong_type_halts", seed: 42, seeded: true, err: true},
+		{name: "unrecognised_value_halts", seed: "stub", seeded: true, err: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+			ctx := statemachine.NewContext()
+			if tc.seeded {
+				ctx.Set("real-kind", tc.seed)
+			}
+			out := b.realKind(ctx)
 			if tc.err {
 				if out.Err == nil {
 					t.Fatalf("expected err, got %+v", out)

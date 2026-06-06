@@ -974,6 +974,19 @@ processes:
         process: implement-external-system-driver-adapters
         name: "Implement External-System Driver Adapters"
 
+      # Resolve which external system this cycle targets from the driver-
+      # adapter files the step above just wrote (the external-system-driver-
+      # adapter layer root → first path segment = <name>). Stamps
+      # external-system-name + real-kind into ctx.State for the gate below;
+      # an unrecognized / ambiguous name is a hard stop pointing at onboarding
+      # (where real-kind is declared). Must run AFTER the driver-adapter impl
+      # so phase-changed-files carries the per-system paths (plan 20260606-1356,
+      # IDENTIFY ordering).
+      - id: IDENTIFY_EXTERNAL_SYSTEM
+        type: service-task
+        action: identify-external-system
+        name: "Identify External System"
+
       # GREEN-shape: impl edited system source → rebuild and restart
       # before verifying. `system start` brings up both real and stub.
       - id: BUILD_SYSTEM_AFTER_DRIVER
@@ -986,12 +999,58 @@ processes:
         process: start-system-restart
         name: "Start System"
 
+      # real-kind gate (plan 20260606-1356). test-instance: the vendor sandbox
+      # already honors the contract, so contract-real is expected GREEN now —
+      # collapse to a single pass-verify. simulator: contract-real is expected
+      # RED until we author the simulator, then red→green — structurally the
+      # same shape as the stub side below.
+      - id: GATE_REAL_KIND
+        type: gateway
+        binding: real-kind
+        name: "Real Kind?"
+
       - id: VERIFY_TESTS_PASS_CONTRACT_REAL
         type: call-activity
         process: verify-tests-pass
         name: "Verify Contract Tests Pass Against the Real System"
         params:
           task-name: implement-external-system-driver-adapters
+          suite: contract-real
+          test-names: ${test-names}
+
+      # simulator branch (real-kind == simulator): contract-real is RED until
+      # the simulator we author learns the new contract.
+      - id: VERIFY_TESTS_FAIL_CONTRACT_REAL
+        type: call-activity
+        process: verify-tests-fail
+        name: "Verify Contract Tests Fail Against the Real Simulator"
+        params:
+          task-name: implement-external-system-driver-adapters
+          suite: contract-real
+          test-names: ${test-names}
+
+      - id: IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR
+        type: call-activity
+        process: implement-external-system-real-simulator
+        name: "Implement External-System Real Simulator"
+
+      # GREEN-shape: impl edited simulator source → rebuild and restart.
+      - id: BUILD_SYSTEM_AFTER_SIMULATOR
+        type: call-activity
+        process: build-system
+        name: "Build System"
+
+      - id: START_SYSTEM_AFTER_SIMULATOR
+        type: call-activity
+        process: start-system-restart
+        name: "Start System"
+
+      - id: VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR
+        type: call-activity
+        process: verify-tests-pass
+        name: "Verify Contract Tests Pass Against the Real Simulator"
+        params:
+          task-name: implement-external-system-real-simulator
           suite: contract-real
           test-names: ${test-names}
 
@@ -1046,10 +1105,21 @@ processes:
       - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_AND_VERIFY_DSL,                     when: "dsl-port-changed == true"}
       - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS,    when: "dsl-port-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_DSL,                  to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
-      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: BUILD_SYSTEM_AFTER_DRIVER}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IDENTIFY_EXTERNAL_SYSTEM}
+      - {from: IDENTIFY_EXTERNAL_SYSTEM,                  to: BUILD_SYSTEM_AFTER_DRIVER}
       - {from: BUILD_SYSTEM_AFTER_DRIVER,                 to: START_SYSTEM_AFTER_DRIVER}
-      - {from: START_SYSTEM_AFTER_DRIVER,                 to: VERIFY_TESTS_PASS_CONTRACT_REAL}
+      - {from: START_SYSTEM_AFTER_DRIVER,                 to: GATE_REAL_KIND}
+      # test-instance: contract-real expected GREEN now → straight to stub side.
+      - {from: GATE_REAL_KIND,                            to: VERIFY_TESTS_PASS_CONTRACT_REAL, when: "real-kind == test-instance"}
       - {from: VERIFY_TESTS_PASS_CONTRACT_REAL,           to: START_SYSTEM_BEFORE_STUB_FAIL}
+      # simulator: contract-real RED → implement simulator → rebuild/restart →
+      # GREEN → stub side. Mirror of the stub red→green below.
+      - {from: GATE_REAL_KIND,                            to: VERIFY_TESTS_FAIL_CONTRACT_REAL, when: "real-kind == simulator"}
+      - {from: VERIFY_TESTS_FAIL_CONTRACT_REAL,           to: IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR,  to: BUILD_SYSTEM_AFTER_SIMULATOR}
+      - {from: BUILD_SYSTEM_AFTER_SIMULATOR,              to: START_SYSTEM_AFTER_SIMULATOR}
+      - {from: START_SYSTEM_AFTER_SIMULATOR,              to: VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR}
+      - {from: VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR, to: START_SYSTEM_BEFORE_STUB_FAIL}
       - {from: START_SYSTEM_BEFORE_STUB_FAIL,             to: VERIFY_TESTS_FAIL_CONTRACT_STUB}
       - {from: VERIFY_TESTS_FAIL_CONTRACT_STUB,           to: IMPLEMENT_EXTERNAL_SYSTEM_STUBS}
       - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS,           to: BUILD_SYSTEM_AFTER_STUBS}
@@ -1704,6 +1774,35 @@ processes:
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_STUBS_END}
+
+  # Mirror of implement-external-system-stubs for the simulator-backed real
+  # side (plan 20260606-1356). Teaches the simulator we author the new
+  # contract so contract-real goes GREEN. Same Family B scope key as the stub
+  # MID (external-system-driver-adapter — fork #2): the scope mechanism only
+  # understands Family B path keys, and a faithful mirror of the stub MID
+  # writes there.
+  implement-external-system-real-simulator:
+    name: "Implement External-System Real Simulator"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: implement-external-system-real-simulator
+          agent: external-system-real-simulator-implementer
+          # prod-agent tier: production-code writing agent.
+          category: prod-agent
+        read:  [external-system-driver-adapter]
+        write: [external-system-driver-adapter]
+
+      - id: IMPL_REAL_SIM_END
+        type: end-event
+        name: "External System Real Simulator Implemented"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: IMPL_REAL_SIM_END}
 
   # The fix agent has no a-priori knowledge of which layer is wrong, so
   # the scope is the union of every layer below system-test-path plus

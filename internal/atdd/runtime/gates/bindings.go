@@ -153,6 +153,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("dsl-port-changed", b.dslPortChanged)
 	r.Register("system-driver-port-changed", b.systemDriverPortChanged)
 	r.Register("external-driver-port-changed", b.externalDriverPortChanged)
+	// CT-HIGH real-side fork (plan 20260606-1356). Routes contract-real on
+	// the identified external system's real-kind. The value is stamped by the
+	// upstream identify-external-system ACTION (which has Config access); this
+	// gate is a pure state-reader, like expectedTestResult / testOutcome.
+	r.Register("real-kind", b.realKind)
 	r.Register("refactor-type-choice", b.refactorTypeChoice)
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
@@ -360,6 +365,32 @@ func (b bindings) systemDriverPortChanged(ctx *statemachine.Context) statemachin
 
 func (b bindings) externalDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "external-driver-port-changed")
+}
+
+// realKind is the CT-HIGH real-side fork gate (plan 20260606-1356). It
+// routes contract-real on the identified external system's real-kind:
+// `test-instance` collapses to a single pass-verify (the vendor sandbox
+// already honors the contract); `simulator` takes the red→implement→green
+// branch. The value is stamped by the upstream identify-external-system
+// ACTION (promoted from cfg.ExternalSystems[name].RealKind), so this gate is
+// a pure state-reader — halt on unset (the action must have run) and on any
+// value outside the closed enum so a config/action drift surfaces loudly
+// instead of mis-routing.
+func (b bindings) realKind(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["real-kind"]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("real-kind: not set in Context — identify-external-system action must run before the gate")}
+	}
+	s, ok := v.(string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("real-kind: %T, want string", v)}
+	}
+	switch s {
+	case "test-instance", "simulator":
+		return statemachine.Outcome{Value: s}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("real-kind: unrecognised value %q (identify-external-system stamped a value the gate does not handle; expected test-instance | simulator)", s)}
+	}
 }
 
 // boolStateGate is the shared body of the three driver-port-changed

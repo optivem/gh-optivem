@@ -213,6 +213,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	// dormant standalone action is registered here regardless so tests
 	// and re-wirings find it.
 	r.Register("snapshot-working-tree", a.snapshotWorkingTree)
+	// CT-HIGH real-side identity (plan 20260606-1356). Resolves the external
+	// system from the driver-adapter files the preceding dispatch wrote and
+	// stamps external-system-name + real-kind into ctx.State for the
+	// GATE_REAL_KIND gateway. Deterministic — no agent.
+	r.Register("identify-external-system", a.identifyExternalSystem)
 	// MARK_* state-transition service tasks (per plan
 	// 20260526-1220-fix-mark-ticket-state-transition-routing.md). Each
 	// dispatches Tracker.SetStatus against the ticketing-system column the
@@ -514,6 +519,86 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 	}
 	ctx.Set(CtxKeyPhaseScopeClean, true)
 	return statemachine.Outcome{Bool: true}
+}
+
+// identifyExternalSystem resolves which external system the current CT-HIGH
+// cycle targets from the driver-adapter files the preceding
+// IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS dispatch just wrote, and promotes
+// that system's real-kind into ctx.State for the GATE_REAL_KIND gateway.
+//
+// The external-system-driver-adapter layer root ends at the `external`
+// segment; each system's files live under `<root>/<name>/...`, so <name> is
+// the first path segment of every changed path relative to the root. Residual
+// `shared` adapter code sits directly under the root (no `<name>/` segment)
+// and is ignored. The changed-file source is ctx.State["phase-changed-files"],
+// stamped by the preceding dispatch's validate-outputs-and-scopes — which is
+// why IDENTIFY must run after the driver-adapter impl, not before it (plan
+// 20260606-1356).
+//
+// Resolution is deterministic — no agent. Stamps
+// ctx.State["external-system-name"] and ctx.State["real-kind"]. The real-kind
+// lookup lives here rather than in the gateway because gates.Deps carries no
+// Config; the GATE_REAL_KIND binding is a pure state-reader. Zero
+// identifiable names, more than one distinct name, or a name absent from the
+// external-systems registry is a hard error: identity must resolve before the
+// real-kind gate, and the message points at onboarding, where real-kind is
+// declared.
+func (a actions) identifyExternalSystem(ctx *statemachine.Context) statemachine.Outcome {
+	cfg := a.deps.Config
+	if cfg == nil {
+		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
+	}
+	roots, err := ResolveLayerPaths([]string{"external-system-driver-adapter"}, cfg)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: %w", err)}
+	}
+	root := roots[0]
+
+	names := map[string]struct{}{}
+	for _, p := range strings.Split(ctx.GetString("phase-changed-files"), "\n") {
+		p = strings.TrimSpace(p)
+		if !strings.HasPrefix(p, root+"/") {
+			continue
+		}
+		rel := strings.TrimPrefix(p, root+"/")
+		// First segment is the system name; a path with no further separator
+		// is residual `shared` adapter code directly under the root, not a
+		// per-system file.
+		slash := strings.IndexByte(rel, '/')
+		if slash <= 0 {
+			continue
+		}
+		names[rel[:slash]] = struct{}{}
+	}
+
+	switch len(names) {
+	case 0:
+		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: no external system identifiable from the changed driver-adapter files under %q — the implement step wrote no per-system files. Onboard the external system (which declares its real-kind) and re-run", root)}
+	case 1:
+		// resolved below
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: changed driver-adapter files under %q span %d external systems (%s); a CT-HIGH cycle targets exactly one", root, len(names), strings.Join(sortedSetKeys(names), ", "))}
+	}
+	name := sortedSetKeys(names)[0]
+	sys, ok := cfg.ExternalSystems[name]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: external system %q is not registered in gh-optivem.yaml external-systems: — onboard it (declaring its real-kind) before running the contract-test cycle", name)}
+	}
+	ctx.Set("external-system-name", name)
+	ctx.Set("real-kind", string(sys.RealKind))
+	return statemachine.Outcome{}
+}
+
+// sortedSetKeys returns the keys of a string-set in deterministic order, so
+// identify-external-system's error messages and single-element extraction are
+// stable across map-iteration order.
+func sortedSetKeys(set map[string]struct{}) []string {
+	out := make([]string, 0, len(set))
+	for k := range set {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ResolveLayerPaths joins a phase's layer list against the project's

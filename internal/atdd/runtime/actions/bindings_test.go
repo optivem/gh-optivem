@@ -127,6 +127,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"run-command",
 		"validate-outputs-and-scopes",
 		"snapshot-working-tree",
+		"identify-external-system",
 		"move-to-in-refinement",
 		"move-to-ready",
 		"move-to-in-progress",
@@ -2081,5 +2082,186 @@ func TestSnapshotWorkingTreeAction_GitFailureIsHardError(t *testing.T) {
 	}
 	if _, set := ctx.State[CtxKeyPreAgentFingerprint]; set {
 		t.Errorf("fingerprint must not be stashed on error")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// identifyExternalSystem — CT-HIGH real-side identity (plan 20260606-1356)
+// ---------------------------------------------------------------------------
+
+// writeIdentifyTestConfig writes a config whose external-system-driver-adapter
+// root is `driver/typescript/src/external-adapter` and whose external-systems
+// registry holds `warehouse` (simulator) + `payments` (test-instance), so the
+// IDENTIFY tests can exercise both real-kind values plus the unknown/ambiguous
+// error paths.
+func writeIdentifyTestConfig(t *testing.T, repoPath string) *projectconfig.Config {
+	t.Helper()
+	body := `project:
+  provider: github
+  url: https://github.com/orgs/acme/projects/1
+
+repo-strategy: mono-repo
+
+sonar:
+  organization: acme
+
+system:
+  architecture: monolith
+  path: system/monolith/typescript
+  repo: acme/shop
+  lang: typescript
+  sonar-project: acme_shop-system
+  db-migration-path: system/db/migrations
+
+system-test:
+  path: system-test/typescript
+  repo: acme/shop
+  lang: typescript
+  sonar-project: acme_shop-system-test
+  paths:
+    at-test: system-test/typescript/tests/latest/acceptance
+    dsl-port: dsl/typescript/src/port
+    dsl-core: dsl/typescript/src/core
+    system-driver-port: driver/typescript/src/port
+    system-driver-adapter: driver/typescript/src/adapter
+    ct-test: system-test/typescript/tests/latest/contract
+    external-system-driver-port: driver/typescript/src/external-port
+    external-system-driver-adapter: driver/typescript/src/external-adapter
+
+external-systems:
+  warehouse:
+    real-kind: simulator
+    stub:
+      path: stubs/warehouse
+      repo: acme/shop
+    simulator:
+      path: simulators/warehouse
+      repo: acme/shop
+  payments:
+    real-kind: test-instance
+    stub:
+      path: stubs/payments
+      repo: acme/shop
+`
+	if err := os.WriteFile(filepath.Join(repoPath, "gh-optivem.yaml"), []byte(body), 0o644); err != nil {
+		t.Fatalf("write gh-optivem.yaml: %v", err)
+	}
+	cfg, err := projectconfig.Load(repoPath)
+	if err != nil {
+		t.Fatalf("load gh-optivem.yaml: %v", err)
+	}
+	return cfg
+}
+
+func TestIdentifyExternalSystem_StampsNameAndRealKind_Simulator(t *testing.T) {
+	cfg := writeIdentifyTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	// The driver-adapter impl just wrote a warehouse file; phase-changed-files
+	// carries it (root + `/warehouse/...`).
+	ctx.Set("phase-changed-files", "driver/typescript/src/external-adapter/warehouse/WarehouseClient.ts")
+	if out := a.identifyExternalSystem(ctx); out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.GetString("external-system-name"); got != "warehouse" {
+		t.Errorf("external-system-name: got %q, want warehouse", got)
+	}
+	if got := ctx.GetString("real-kind"); got != "simulator" {
+		t.Errorf("real-kind: got %q, want simulator", got)
+	}
+}
+
+func TestIdentifyExternalSystem_StampsRealKind_TestInstance(t *testing.T) {
+	cfg := writeIdentifyTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	ctx.Set("phase-changed-files", "driver/typescript/src/external-adapter/payments/PaymentsClient.ts")
+	if out := a.identifyExternalSystem(ctx); out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.GetString("external-system-name"); got != "payments" {
+		t.Errorf("external-system-name: got %q, want payments", got)
+	}
+	if got := ctx.GetString("real-kind"); got != "test-instance" {
+		t.Errorf("real-kind: got %q, want test-instance", got)
+	}
+}
+
+func TestIdentifyExternalSystem_IgnoresSharedResidual(t *testing.T) {
+	// A file directly under the adapter root (no `<name>/` segment) is
+	// residual `shared` code and must not be mistaken for a system name; the
+	// per-system warehouse file is the only identifiable system.
+	cfg := writeIdentifyTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	ctx.Set("phase-changed-files",
+		"driver/typescript/src/external-adapter/SharedBase.ts\n"+
+			"driver/typescript/src/external-adapter/warehouse/WarehouseClient.ts")
+	if out := a.identifyExternalSystem(ctx); out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.GetString("external-system-name"); got != "warehouse" {
+		t.Errorf("external-system-name: got %q, want warehouse (shared residual ignored)", got)
+	}
+}
+
+func TestIdentifyExternalSystem_UnknownName_HardErrors(t *testing.T) {
+	cfg := writeIdentifyTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	ctx.Set("phase-changed-files", "driver/typescript/src/external-adapter/shipping/ShippingClient.ts")
+	out := a.identifyExternalSystem(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected hard error on unregistered system, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "shipping") || !strings.Contains(out.Err.Error(), "onboard") {
+		t.Errorf("error should name the unknown system and point at onboarding: %v", out.Err)
+	}
+	if _, set := ctx.State["real-kind"]; set {
+		t.Errorf("real-kind must not be stamped on an unrecognised system")
+	}
+}
+
+func TestIdentifyExternalSystem_NoPerSystemFiles_HardErrors(t *testing.T) {
+	// Only shared / out-of-root paths changed — nothing identifies a system.
+	cfg := writeIdentifyTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	ctx.Set("phase-changed-files",
+		"driver/typescript/src/external-adapter/SharedBase.ts\n"+
+			"some/other/layer/File.ts")
+	out := a.identifyExternalSystem(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected hard error when no per-system files changed, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "no external system identifiable") {
+		t.Errorf("error should explain nothing was identifiable: %v", out.Err)
+	}
+}
+
+func TestIdentifyExternalSystem_AmbiguousMultipleSystems_HardErrors(t *testing.T) {
+	cfg := writeIdentifyTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	ctx.Set("phase-changed-files",
+		"driver/typescript/src/external-adapter/warehouse/WarehouseClient.ts\n"+
+			"driver/typescript/src/external-adapter/payments/PaymentsClient.ts")
+	out := a.identifyExternalSystem(ctx)
+	if out.Err == nil {
+		t.Fatalf("expected hard error on ambiguous multi-system diff, got nil")
+	}
+	// Both names surface, deterministically ordered.
+	if !strings.Contains(out.Err.Error(), "payments, warehouse") {
+		t.Errorf("error should list both systems in sorted order: %v", out.Err)
+	}
+}
+
+func TestIdentifyExternalSystem_NilConfig_HardErrors(t *testing.T) {
+	a := newActions(Deps{}) // no Config
+	ctx := statemachine.NewContext()
+	ctx.Set("phase-changed-files", "driver/typescript/src/external-adapter/warehouse/WarehouseClient.ts")
+	out := a.identifyExternalSystem(ctx)
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "gh-optivem.yaml not loaded") {
+		t.Fatalf("expected nil-config wiring error, got %v", out.Err)
 	}
 }

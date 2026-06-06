@@ -493,6 +493,89 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	}
 }
 
+// TestContractTestHIGH_RealKindFork pins the CT-HIGH real-side restructure
+// (plan 20260606-1356): the IDENTIFY service-task, the real-kind gateway, and
+// both gate branches — test-instance collapsing to a single pass-verify, and
+// simulator taking the red→implement→build/start→green branch that mirrors the
+// stub side.
+func TestContractTestHIGH_RealKindFork(t *testing.T) {
+	eng, err := LoadDefault()
+	if err != nil {
+		t.Fatalf("LoadDefault: %v", err)
+	}
+	ct, ok := eng.Processes["implement-and-verify-external-system-driver-adapters-contract-tests"]
+	if !ok {
+		t.Fatalf("CT-HIGH process missing")
+	}
+
+	// 1. IDENTIFY runs AFTER the driver-adapter impl (so phase-changed-files
+	//    carries the per-system paths) and is a deterministic service-task.
+	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "IDENTIFY_EXTERNAL_SYSTEM", "")
+	identify, ok := ct.Nodes["IDENTIFY_EXTERNAL_SYSTEM"]
+	if !ok {
+		t.Fatalf("CT-HIGH: IDENTIFY_EXTERNAL_SYSTEM node missing")
+	}
+	if got := identify.Raw.Action; got != "identify-external-system" {
+		t.Errorf("IDENTIFY action = %q, want identify-external-system", got)
+	}
+	// Build/start happen between identity and the gate.
+	wantEdge(t, ct, "IDENTIFY_EXTERNAL_SYSTEM", "BUILD_SYSTEM_AFTER_DRIVER", "")
+	wantEdge(t, ct, "START_SYSTEM_AFTER_DRIVER", "GATE_REAL_KIND", "")
+
+	// 2. The real-kind gateway routes contract-real on the stamped real-kind.
+	gate, ok := ct.Nodes["GATE_REAL_KIND"]
+	if !ok {
+		t.Fatalf("CT-HIGH: GATE_REAL_KIND node missing")
+	}
+	if got := gate.Raw.Binding; got != "real-kind" {
+		t.Errorf("GATE_REAL_KIND binding = %q, want real-kind", got)
+	}
+
+	// 3. test-instance branch: a single contract-real pass-verify, then the
+	//    stub side. (collapsed — no fail-verify, no simulator impl.)
+	wantEdge(t, ct, "GATE_REAL_KIND", "VERIFY_TESTS_PASS_CONTRACT_REAL", "real-kind == test-instance")
+	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL", "START_SYSTEM_BEFORE_STUB_FAIL", "")
+
+	// 4. simulator branch: contract-real RED → implement simulator →
+	//    rebuild/restart → contract-real GREEN → stub side.
+	wantEdge(t, ct, "GATE_REAL_KIND", "VERIFY_TESTS_FAIL_CONTRACT_REAL", "real-kind == simulator")
+	wantEdge(t, ct, "VERIFY_TESTS_FAIL_CONTRACT_REAL", "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "")
+	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "BUILD_SYSTEM_AFTER_SIMULATOR", "")
+	wantEdge(t, ct, "BUILD_SYSTEM_AFTER_SIMULATOR", "START_SYSTEM_AFTER_SIMULATOR", "")
+	wantEdge(t, ct, "START_SYSTEM_AFTER_SIMULATOR", "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "")
+	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "START_SYSTEM_BEFORE_STUB_FAIL", "")
+
+	// The RED verify targets contract-real (verify-tests-fail), the post-sim
+	// GREEN verify targets contract-real (verify-tests-pass).
+	if n := ct.Nodes["VERIFY_TESTS_FAIL_CONTRACT_REAL"]; n.Raw.Process != "verify-tests-fail" {
+		t.Errorf("VERIFY_TESTS_FAIL_CONTRACT_REAL process = %q, want verify-tests-fail", n.Raw.Process)
+	} else if got := n.Raw.Params["suite"]; got != "contract-real" {
+		t.Errorf("simulator RED-verify suite = %q, want contract-real", got)
+	}
+	if n := ct.Nodes["VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR"]; n.Raw.Process != "verify-tests-pass" {
+		t.Errorf("post-sim verify process = %q, want verify-tests-pass", n.Raw.Process)
+	} else if got := n.Raw.Params["suite"]; got != "contract-real" {
+		t.Errorf("simulator GREEN-verify suite = %q, want contract-real", got)
+	}
+
+	// 5. The new simulator MID dispatches the mirror agent and scopes writes
+	//    to external-system-driver-adapter (fork #2).
+	sim, ok := eng.Processes["implement-external-system-real-simulator"]
+	if !ok {
+		t.Fatalf("process implement-external-system-real-simulator missing")
+	}
+	ea, ok := sim.Nodes["EXECUTE_AGENT"]
+	if !ok {
+		t.Fatalf("implement-external-system-real-simulator: EXECUTE_AGENT node missing")
+	}
+	if got := ea.Raw.Params["agent"]; got != "external-system-real-simulator-implementer" {
+		t.Errorf("simulator MID agent = %q, want external-system-real-simulator-implementer", got)
+	}
+	if got := ea.Raw.Write; len(got) != 1 || got[0] != "external-system-driver-adapter" {
+		t.Errorf("simulator MID write scope = %v, want [external-system-driver-adapter]", got)
+	}
+}
+
 func wantEdge(t *testing.T, proc *Process, from, to, predicate string) {
 	t.Helper()
 	for _, e := range proc.OutgoingByNode[from] {
