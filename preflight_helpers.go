@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/shell"
@@ -33,10 +34,17 @@ import (
 // BoardURLOK signature still receives the URL but it's the same value
 // already inside cfg.Project, so the captured copy stays authoritative.
 //
+// The embedded state machine is wired here too (opts.Engine), so the
+// scope-resolution and BPMN-suite-existence sweeps run on both surfaces that
+// build their options through this helper — `gh optivem implement` and
+// `gh optivem config preflight`. That is the whole point of the shared
+// builder: one definition of "ready to implement", validated identically
+// wherever it's checked.
+//
 // Returns an error when cfg declares a SonarCloud setup (sonar.organization
 // non-empty) but $SONAR_TOKEN is not in the environment — strict on
 // purpose, so preflight cannot pass while silently skipping the Sonar
-// remote contract.
+// remote contract. Also errors if the embedded state machine fails to load.
 func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (preflight.Options, error) {
 	var project projectconfig.Project
 	if cfg != nil {
@@ -59,6 +67,15 @@ func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (
 			return tr.Verify(ctx)
 		},
 	}
+	// Load the embedded state machine so preflight sweeps every writing-agent
+	// MID's read/write scope and the BPMN-required test suites against cfg
+	// before any agent runs. The driver re-loads internally — process-flow.yaml
+	// is small enough that the second read is free.
+	eng, err := statemachine.LoadDefault()
+	if err != nil {
+		return preflight.Options{}, fmt.Errorf("preflight: load state machine: %w", err)
+	}
+	opts.Engine = eng
 	if cfg == nil || cfg.Sonar.Organization == "" {
 		return opts, nil
 	}

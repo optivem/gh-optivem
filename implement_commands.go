@@ -34,7 +34,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/configinit"
@@ -298,16 +297,9 @@ func runImplementPreflight(configPath string, workspace string, manualAgents boo
 	if !manualAgents {
 		opts.ClaudeCheck = preflight.VerifyClaude
 	}
-	// Load the state machine so preflight can sweep every writing-agent
-	// MID's read/write scope through the layer resolver before any agent
-	// runs. The driver re-loads internally — process-flow.yaml is small
-	// enough that the second read is free, same rationale as the cfg
-	// double load above.
-	eng, err := statemachine.LoadDefault()
-	if err != nil {
-		return nil, fmt.Errorf("preflight: load state machine: %w", err)
-	}
-	opts.Engine = eng
+	// opts.Engine is wired by defaultPreflightOptions, so the scope and
+	// suite-existence sweeps run here exactly as they do on
+	// `gh optivem config preflight`.
 	if err := preflight.Run(context.Background(), cfg, opts); err != nil {
 		return nil, err
 	}

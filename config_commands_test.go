@@ -28,7 +28,8 @@ func init() {
 // only workspace + cwd — every remote-check field is left nil so the
 // test surface stays local-FS-only. Used by every runConfigPreflight
 // test below; the cobra layer's real defaultPreflightOptions adds the
-// GitHub / SonarCloud / board-URL wiring.
+// GitHub / SonarCloud / board-URL wiring plus the state-machine engine
+// (scope + suite-existence sweeps).
 func offlinePreflightOpts(workspace, cwd string) func(*projectconfig.Config) (preflight.Options, error) {
 	return func(*projectconfig.Config) (preflight.Options, error) {
 		return preflight.Options{Workspace: workspace, Cwd: cwd}, nil
@@ -558,6 +559,9 @@ func TestDefaultPreflightOptions_NoSonarConfig(t *testing.T) {
 	}
 	if opts.BoardURLOK == nil {
 		t.Error("BoardURLOK should always be wired")
+	}
+	if opts.Engine == nil {
+		t.Error("Engine should always be wired so the scope + suite sweeps run on every surface (implement and config preflight)")
 	}
 }
 

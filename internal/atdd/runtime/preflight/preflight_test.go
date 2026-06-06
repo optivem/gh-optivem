@@ -707,11 +707,13 @@ func TestRun_ScopeSweepCatchesBlankDbMigrationPath(t *testing.T) {
 	}
 }
 
-// TestRun_ScopeSweepSkippedWhenEngineNil documents the nil-Engine skip:
-// `gh optivem config preflight` opts out of the sweep because it validates
-// a YAML shape without committing to a particular state-machine version.
-// Same passing cfg + blank DbMigrationPath as the previous test — but
-// with no Engine wired, the sweep is silent and Run returns nil.
+// TestRun_ScopeSweepSkippedWhenEngineNil pins the function-level nil-Engine
+// contract: with no Engine wired, the engine-derived sweeps are silent and
+// Run returns nil even on a cfg that would otherwise fail the scope sweep
+// (blank DbMigrationPath). Production callers (`implement`, `config
+// preflight`) now both wire the engine via defaultPreflightOptions, so this
+// guards the API contract that other callers can opt out, not a specific
+// command's behaviour.
 func TestRun_ScopeSweepSkippedWhenEngineNil(t *testing.T) {
 	t.Parallel()
 	ws := t.TempDir()
@@ -730,5 +732,139 @@ func TestRun_ScopeSweepSkippedWhenEngineNil(t *testing.T) {
 	}
 	if err := Run(context.Background(), cfg, opts); err != nil {
 		t.Errorf("expected nil with Engine unset (sweep skipped), got: %v", err)
+	}
+}
+
+// --- suite-existence sweep -------------------------------------------------
+//
+// These exercise runSuiteExistenceChecks directly against the real default
+// engine, so the literal sweep runs over the actual process-flow.yaml
+// `suite:` values (acceptance, contract-real, contract-stub). Engine-wiring
+// into Run itself is already covered by the scope-sweep tests above (same
+// opts.Engine gate); these isolate the suite-resolution logic from the FS,
+// remote, and scope-sweep passes.
+
+// loadDefaultEngine loads the embedded process-flow.yaml, failing the test on
+// error. Shared by the suite-existence cases below.
+func loadDefaultEngine(t *testing.T) *statemachine.Engine {
+	t.Helper()
+	eng, err := statemachine.LoadDefault()
+	if err != nil {
+		t.Fatalf("load state machine: %v", err)
+	}
+	return eng
+}
+
+// writeTestsYAML writes a minimal-but-valid tests.yaml declaring one suite per
+// id (LoadTests requires id/name/command on each), returning the file path.
+func writeTestsYAML(t *testing.T, suiteIDs ...string) string {
+	t.Helper()
+	var b strings.Builder
+	b.WriteString("suites:\n")
+	for _, id := range suiteIDs {
+		fmt.Fprintf(&b, "  - id: %s\n    name: %q\n    command: echo run\n", id, id)
+	}
+	path := filepath.Join(t.TempDir(), "tests.yaml")
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		t.Fatalf("write tests.yaml: %v", err)
+	}
+	return path
+}
+
+func TestSuiteExistence_RenamedAcceptanceSuite(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
+	// acceptance-api renamed to the bare "acceptance" alias; acceptance-ui
+	// kept. Expected per-channel ids are acceptance-api + acceptance-ui, so
+	// acceptance-api is the missing one.
+	path := writeTestsYAML(t, "acceptance", "acceptance-ui")
+	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
+	joined := strings.Join(got, "\n")
+	if !strings.Contains(joined, `"acceptance-api"`) {
+		t.Errorf("expected failure naming acceptance-api, got: %v", got)
+	}
+	if strings.Contains(joined, `"acceptance-ui"`) {
+		t.Errorf("acceptance-ui is present and must not be flagged, got: %v", got)
+	}
+}
+
+func TestSuiteExistence_RenamedContractSuite_WithExternalSystems(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{
+		Channels: []string{"api", "ui"},
+		ExternalSystems: projectconfig.ExternalSystems{
+			Stubs: projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/externals"},
+		},
+	}
+	// contract-real renamed away; everything else present. External systems
+	// are configured, so the contract suites are required.
+	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui", "contract-stub")
+	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
+	if !strings.Contains(strings.Join(got, "\n"), `"contract-real"`) {
+		t.Errorf("expected failure naming contract-real, got: %v", got)
+	}
+}
+
+func TestSuiteExistence_RenamedContractSuite_NoExternalSystems(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
+	// Same missing contract suites, but no external-systems: the contract
+	// branch is unreachable, so requiring them would be a false positive.
+	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui")
+	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
+	if len(got) != 0 {
+		t.Errorf("expected no failures with no external systems, got: %v", got)
+	}
+}
+
+func TestSuiteExistence_APIOnlyProject_NoUIFalsePositive(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{Channels: []string{"api"}}
+	// An api-only project's tests.yaml declares only acceptance-api; the
+	// acceptance alias must expand per cfg.Channels, not to the static
+	// [api, ui] group — so acceptance-ui must NOT be required.
+	path := writeTestsYAML(t, "acceptance-api")
+	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
+	if len(got) != 0 {
+		t.Errorf("api-only project should not require acceptance-ui, got: %v", got)
+	}
+}
+
+func TestSuiteExistence_AllSuitesPresent(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{
+		Channels: []string{"api", "ui"},
+		ExternalSystems: projectconfig.ExternalSystems{
+			Stubs: projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/externals"},
+		},
+	}
+	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui", "contract-real", "contract-stub")
+	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
+	if len(got) != 0 {
+		t.Errorf("expected no failures when every required suite is declared, got: %v", got)
+	}
+}
+
+func TestSuiteExistence_MissingTestsFile_NamesPath(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
+	missing := filepath.Join(t.TempDir(), "does-not-exist.yaml")
+	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), missing)
+	if len(got) != 1 {
+		t.Fatalf("expected exactly one failure for a missing tests.yaml, got: %v", got)
+	}
+	if !strings.Contains(got[0], missing) {
+		t.Errorf("failure should name the tests.yaml path %q, got: %v", missing, got[0])
+	}
+}
+
+func TestSuiteExistence_SkippedWhenEngineNilOrPathEmpty(t *testing.T) {
+	t.Parallel()
+	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
+	if got := runSuiteExistenceChecks(cfg, nil, "tests.yaml"); got != nil {
+		t.Errorf("nil engine should skip the sweep, got: %v", got)
+	}
+	if got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), ""); got != nil {
+		t.Errorf("empty tests path should skip the sweep, got: %v", got)
 	}
 }

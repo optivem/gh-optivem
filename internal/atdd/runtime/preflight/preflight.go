@@ -35,7 +35,9 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/repolocator"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/runner"
 )
 
 // Options bundles the optional inputs to Run. All four remote-check
@@ -76,13 +78,21 @@ type Options struct {
 	BoardURLOK func(ctx context.Context, projectURL string) error
 
 	// Engine is the loaded ATDD state machine (process-flow.yaml). When
-	// non-nil, preflight sweeps every writing-agent MID's inline `read:` /
-	// `write:` scope lists through actions.ResolveLayerPaths against cfg,
-	// surfacing any unresolvable layer (missing Family A switch case,
-	// blank cfg path, unknown Family B key) at startup instead of mid-run
-	// inside validate-outputs-and-scopes. nil = skip the sweep — used by
-	// the `gh optivem config preflight` surface, which validates the YAML
-	// shape without committing to a particular state-machine version.
+	// non-nil, preflight runs two engine-derived sweeps against cfg: the
+	// scope-resolution sweep (every writing-agent MID's inline `read:` /
+	// `write:` scope lists through actions.ResolveLayerPaths, surfacing any
+	// unresolvable layer — missing Family A switch case, blank cfg path,
+	// unknown Family B key) and the suite-existence sweep (every `suite:`
+	// literal the flow requests, expanded to concrete per-channel ids and
+	// checked against tests.yaml). Both surface at startup instead of mid-run
+	// — the scope sweep inside validate-outputs-and-scopes, the suite check
+	// inside runner.selectSuites after agents have already committed.
+	//
+	// Both `gh optivem implement` and `gh optivem config preflight` wire the
+	// embedded default engine here (via defaultPreflightOptions), so the two
+	// surfaces validate against one definition of "ready to implement". nil =
+	// skip both sweeps — the function-level contract tests rely on this, and
+	// any future caller that wants the structural-only checks can pass nil.
 	Engine *statemachine.Engine
 
 	// ClaudeCheck verifies the `claude` CLI is on PATH and runnable.
@@ -188,6 +198,19 @@ func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	// Scope-resolution sweep (optional; only runs when an engine is wired).
 	failures = append(failures, runScopeResolutionChecks(cfg, opts.Engine)...)
 
+	// Suite-existence sweep (optional; only runs when an engine is wired).
+	// Resolve the project's tests.yaml against the system-test repo's local
+	// clone. An empty path — no system-test.config declared, or its repo
+	// didn't resolve above (already reported as a repo-level failure) — skips
+	// the check.
+	testsYAML := ""
+	if cfg.SystemTest.Config != "" {
+		if hostPath := res.Local[cfg.SystemTest.Repo]; hostPath != "" {
+			testsYAML = filepath.Join(hostPath, cfg.SystemTest.Config)
+		}
+	}
+	failures = append(failures, runSuiteExistenceChecks(cfg, opts.Engine, testsYAML)...)
+
 	return aggregateFailures(failures)
 }
 
@@ -235,6 +258,110 @@ func runScopeResolutionChecks(cfg *projectconfig.Config, eng *statemachine.Engin
 		}
 	}
 	return failures
+}
+
+// runSuiteExistenceChecks validates that every test-suite id the ATDD
+// process flow will request via `gh optivem test run --suite=…` actually
+// exists in the project's tests.yaml — surfacing a renamed or missing suite
+// at preflight time instead of deep inside the pipeline (runner.selectSuites)
+// after agents have already done work and committed.
+//
+// The expected set is derived deterministically, never invented: the distinct
+// `suite:` literals declared on the loaded engine's nodes, expanded to
+// concrete per-channel ids against cfg, then filtered to the suites the
+// project can actually reach (contract suites only when external systems are
+// configured — they live solely on the external-driver-port-changed branch a
+// no-external project never takes). nil engine / cfg, or an empty
+// testsYAMLPath (no system-test.config declared, or its repo didn't resolve),
+// skips the check — matching the nil-skip convention of the other optional
+// check classes. A tests.yaml that fails to load is itself surfaced as one
+// failure line naming the path.
+func runSuiteExistenceChecks(cfg *projectconfig.Config, eng *statemachine.Engine, testsYAMLPath string) []string {
+	if eng == nil || cfg == nil || testsYAMLPath == "" {
+		return nil
+	}
+	literals := collectSuiteLiterals(eng)
+	if len(literals) == 0 {
+		return nil
+	}
+	tests, err := runner.LoadTests(testsYAMLPath)
+	if err != nil {
+		// LoadTests already names the path in its wrapped error, so the
+		// field-name prefix alone keeps the line from repeating the path twice.
+		return []string{fmt.Sprintf("system-test.config: %v", err)}
+	}
+	declared := make(map[string]bool, len(tests.Suites))
+	for _, id := range tests.SuiteIDs() {
+		declared[id] = true
+	}
+
+	hasExternal := !cfg.ExternalSystems.Stubs.IsEmpty() || !cfg.ExternalSystems.Simulators.IsEmpty()
+
+	expected := make(map[string]bool)
+	for _, lit := range literals {
+		if strings.HasPrefix(lit, "contract") && !hasExternal {
+			continue
+		}
+		for _, id := range expandSuiteLiteral(lit, cfg, tests.SuiteGroups) {
+			expected[id] = true
+		}
+	}
+
+	var failures []string
+	for id := range expected {
+		if !declared[id] {
+			failures = append(failures, fmt.Sprintf(
+				"tests suite %q is required by the ATDD process flow but not declared in %s; available: %s",
+				id, testsYAMLPath, strings.Join(tests.SuiteIDs(), ", ")))
+		}
+	}
+	sort.Strings(failures)
+	return failures
+}
+
+// collectSuiteLiterals returns the distinct, concrete `suite:` param values
+// declared across every node in the engine, in sorted order. Mirrors the
+// node-walk shape of runScopeResolutionChecks. Skips the explicit-empty
+// verify-noop sentinel ("") and any value carrying a ${…} placeholder
+// (runtime-resolved; its concrete value originates at the literal call site
+// the sweep already sees).
+func collectSuiteLiterals(eng *statemachine.Engine) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, proc := range eng.Processes {
+		for _, node := range proc.Nodes {
+			suite := node.Raw.Params["suite"]
+			if suite == "" || strings.Contains(suite, "${") {
+				continue
+			}
+			if seen[suite] {
+				continue
+			}
+			seen[suite] = true
+			out = append(out, suite)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// expandSuiteLiteral maps one engine `suite:` literal onto the concrete suite
+// ids it resolves to at run time. The `acceptance` group alias unrolls to
+// acceptance-<channel> per cfg.Channels (matching UnrollSystemChannels); with
+// no channels declared it falls back to the runtime's own group expansion so
+// behaviour matches resolution on the static path. Every other literal —
+// explicit per-channel ids, contract ids — passes through ExpandSuiteGroups so
+// a project that declared it as a group alias resolves the same way the runner
+// would.
+func expandSuiteLiteral(lit string, cfg *projectconfig.Config, projectGroups map[string][]string) []string {
+	if lit == "acceptance" && len(cfg.Channels) > 0 {
+		out := make([]string, 0, len(cfg.Channels))
+		for _, ch := range cfg.Channels {
+			out = append(out, "acceptance-"+ch)
+		}
+		return out
+	}
+	return testselect.ExpandSuiteGroups([]string{lit}, projectGroups)
 }
 
 // aggregateFailures returns nil when failures is empty; otherwise a
