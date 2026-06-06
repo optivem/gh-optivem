@@ -93,8 +93,6 @@ var processOrder = []string{
 	"refactor-system",
 	"refine-acceptance-criteria",
 	// MID — command tasks
-	"compile",
-	"compile-system",
 	"compile-tests",
 	"build-system",
 	"start-system",

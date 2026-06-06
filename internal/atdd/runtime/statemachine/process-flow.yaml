@@ -1973,46 +1973,6 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFINE_AC_END}
 
-  compile:
-    name: "Compile"
-    start: EXECUTE_COMMAND
-    nodes:
-      - id: EXECUTE_COMMAND
-        type: call-activity
-        process: execute-command
-        name: "Dispatch the Command"
-        params:
-          command: "gh optivem compile"
-          # command tier: cheap, no AI cost, no global state mutation.
-          category: command
-
-      - id: COMPILE_MID_END
-        type: end-event
-        name: "Compile Complete"
-
-    sequence-flows:
-      - {from: EXECUTE_COMMAND, to: COMPILE_MID_END}
-
-  compile-system:
-    name: "Compile System"
-    start: EXECUTE_COMMAND
-    nodes:
-      - id: EXECUTE_COMMAND
-        type: call-activity
-        process: execute-command
-        name: "Dispatch the Command"
-        params:
-          command: "gh optivem system compile"
-          # command tier: cheap, no AI cost, no global state mutation.
-          category: command
-
-      - id: COMPILE_SYS_END
-        type: end-event
-        name: "System Compiled"
-
-    sequence-flows:
-      - {from: EXECUTE_COMMAND, to: COMPILE_SYS_END}
-
   compile-tests:
     name: "Compile Tests"
     start: EXECUTE_COMMAND
