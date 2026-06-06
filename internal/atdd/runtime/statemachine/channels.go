@@ -76,10 +76,17 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 // like the system step (1702) it must become one node per channel for the
 // channel team to own its slice.
 //
-// Only `channel` is overridden per node — the adapter has no common layer (it
-// is channel-shaped by nature) and its verify suite stays the inherited
-// `suite:` value (`acceptance`) (the per-channel suite refinement belongs to the `--target`
-// slice work, not this foundation). The agent prompt
+// `channel` and `suite` are overridden per node — the adapter has no common
+// layer (it is channel-shaped by nature), and its verify suite is narrowed to
+// `acceptance-<channel>` so each per-channel node verifies ONLY its own
+// channel. Previously each clone inherited the union `suite: acceptance`, so
+// for N channels every node re-ran all N suites (2N suite runs for 2 channels)
+// — pure redundancy: the adapter is channel-specific, so a node only needs to
+// exercise its own channel, and each channel's RED is still verified exactly
+// once. (The channel-AGNOSTIC layers — the DSL verify and the test-code
+// pass/fail verifies — deliberately KEEP the union: there the second channel
+// is the only guard that catches a per-channel vacuous/false-green acceptance
+// test at RED, so it is real signal, not redundancy.) The agent prompt
 // (system-driver-adapter-implementer.md) reads `${channel}` and writes only
 // that channel's adapter, leaving the other channels' stubs to their own
 // dispatch.
@@ -97,9 +104,10 @@ func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 		implementAndVerifySystemDriverAdaptersProcess,
 		channels,
 		func(_ int, ch string, anchorParams map[string]string) map[string]string {
-			params := make(map[string]string, len(anchorParams)+1)
+			params := make(map[string]string, len(anchorParams)+2)
 			maps.Copy(params, anchorParams)
 			params["channel"] = ch
+			params["suite"] = "acceptance-" + ch
 			return params
 		},
 		func(ch string) string {

@@ -150,10 +150,14 @@ func TestUnrollSystemDriverAdapterChannels_TwoChannels(t *testing.T) {
 		t.Errorf("API node name = %q, want %q", api.Raw.Name, "Implement System Driver Adapters (API)")
 	}
 
-	// Only `channel` is overridden — the driver adapter is channel-shaped by
-	// nature, so unlike the system step there is no common / suite override.
+	// `channel` and `suite` are overridden — the driver adapter is channel-
+	// shaped, so each node verifies ONLY its own channel (acceptance-<ch>)
+	// instead of inheriting the union `acceptance` and re-running every channel.
+	// There is still no common layer (channel-shaped by nature).
 	checkParam(t, api, "channel", "api")
 	checkParam(t, ui, "channel", "ui")
+	checkParam(t, api, "suite", "acceptance-api")
+	checkParam(t, ui, "suite", "acceptance-ui")
 	if _, ok := api.Raw.Params["common"]; ok {
 		t.Errorf("adapter node should not carry a common param, got %q", api.Raw.Params["common"])
 	}
@@ -200,6 +204,7 @@ func TestUnrollSystemDriverAdapterChannels_SingleChannel(t *testing.T) {
 	}
 	api := requireNode(t, proc, sysDriverAdapterAnchorAPI)
 	checkParam(t, api, "channel", "api")
+	checkParam(t, api, "suite", "acceptance-api")
 
 	// Sole channel: gate TRUE → the one adapter node (predicate preserved),
 	// then straight to WAV_AT_END.
