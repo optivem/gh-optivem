@@ -144,14 +144,11 @@ template config + inert-flag retirement (follow-ups below).
 - **New simulator MID scope → mirror the stub MID's `external-system-driver-adapter`
   (fork #2, locked session 1).** See Edit #3 / #5.
 
-Residual / follow-ups:
-- **Shop template config (cross-repo).** The checked-in `gh-optivem-<arch>-<lang>.yaml`
-  lives in the sibling shop repo, not here — add the per-system `external-systems:` map
-  there and coordinate with shop CI. Out of this repo's session scope.
-- **Retire the inert scaffold flags.** `--stubs-path` / `--simulators-path` +
-  `DefaultStubsPath` / `DefaultSimulatorsPath` + the `RawFlags` fields no longer feed any
-  output; a follow-up can remove them (and the configinit prompt assertions that touch
-  them) once nothing else depends on the surface.
+Residual / follow-ups — **spun out into their own plans (2026-06-06):**
+- **Shop template config (cross-repo).** →
+  `plans/20260606-1520-shop-template-external-systems-per-system-map.md`
+- **Retire the inert scaffold flags.** →
+  `plans/20260606-1521-retire-inert-stub-simulator-scaffold-flags.md`
 
 ## Tests (remaining)
 Done in session 1: `config_test.go`, `optivem_yaml_test.go`, `config_commands_test.go`,
@@ -163,9 +160,8 @@ shared-residual ignore, unknown/ambiguous/zero/nil-config hard errors, RegisterA
 simulator red→green ordering + new MID scope/agent), `clauderun_test.go`
 (`external-system-real-simulator-implementer` renders + dispatch).
 
-- Shop template config — add the per-system `external-systems:` map to the checked-in
-  `gh-optivem-<arch>-<lang>.yaml` so parity/validation stays green; coordinate with shop CI
-  (cross-repo).
+- Shop template config (cross-repo) — spun out:
+  `plans/20260606-1520-shop-template-external-systems-per-system-map.md`.
 
 ## Verification (session 2 — all green)
 - `go build ./...` ✓
