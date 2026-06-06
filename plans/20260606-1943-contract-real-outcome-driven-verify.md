@@ -1,5 +1,10 @@
 # Make contract-real (and contract-stub) verification outcome-driven
 
+## TL;DR
+
+**Why:** Contract-real/-stub verification statically predicts test polarity from `real-kind`, but red/green is a runtime property of the external system's state; the echo simulator makes additive-field tests arrive GREEN where RED is expected (this halted issue #72), and a missing-plumbing real instance burns fix-loop passes trying to fix code it can't.
+**End result:** Both contract legs run the test and branch on the observed `test-outcome` (a `PROBE_*` step over `run-tests`) instead of asserting a predicted polarity — GREEN proceeds, RED+simulator implements the simulator, RED+test-instance halts with an upstream-gap message; statemachine tests/fixtures and prose docs match the new topology.
+
 **Created:** 2026-06-06 19:43 (CEDT)
 **Supersedes part of:** `plans/20260606-1356-*` (the `real-kind` gate that pins contract-real polarity). This plan does **not** edit that plan; it replaces the polarity-prediction half of it. See [[project_bpmn_full_coverage_story_and_realkind_gap]].
 
@@ -65,74 +70,6 @@ echoing the request DTO, so `VERIFY_TESTS_FAIL_CONTRACT_STUB` (line 1154) also a
 additive field and would trap on the next step after contract-real. Fixing only contract-real leaves
 the pipeline broken one node later. Item 2 applies the same transform to the stub leg (simpler — stubs
 are always owned, so no `real-kind` branch). If you want contract-stub left alone, drop Item 2.
-
-## Items (agent work)
-
-### Item 1 — contract-real: replace polarity-prediction with outcome probe
-
-In `implement-and-verify-external-system-driver-adapters-contract-tests`:
-
-- **Remove** `GATE_REAL_KIND`, `VERIFY_TESTS_PASS_CONTRACT_REAL`, `VERIFY_TESTS_FAIL_CONTRACT_REAL` and
-  their edges (lines ~1100–1121, 1201–1206).
-- **Keep** `IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR`, `BUILD_SYSTEM_AFTER_SIMULATOR`,
-  `START_SYSTEM_AFTER_SIMULATOR`, `VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR`.
-- **Add** the probe + branch. Target topology:
-
-  ```
-  START_SYSTEM_AFTER_DRIVER → PROBE_CONTRACT_REAL
-  PROBE_CONTRACT_REAL            (call-activity, process: run-tests, suite: contract-real, test-names: ${test-names})
-  PROBE_CONTRACT_REAL → GATE_CONTRACT_REAL_OUTCOME       (gateway, binding: test-outcome)
-    test-outcome == pass  → START_SYSTEM_BEFORE_STUB_PROBE   # already honors contract → stub side
-    test-outcome == fail  → GATE_CONTRACT_REAL_RED_KIND
-    test-outcome == infra → TESTS_INFRA_HALT                 (error-end-event)
-    (default)             → UNKNOWN_TESTS_OUTCOME            (error-end-event)
-  GATE_CONTRACT_REAL_RED_KIND   (gateway, binding: real-kind)
-    real-kind == simulator     → IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR (→ build → start →
-                                  VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR → START_SYSTEM_BEFORE_STUB_PROBE)
-    real-kind == test-instance → CONTRACT_REAL_UPSTREAM_GAP_HALT (error-end-event)
-  ```
-
-- `CONTRACT_REAL_UPSTREAM_GAP_HALT` name (doubles as BPMN label): something like
-  *"Contract-real red on a real instance — upstream/provider has not yet shipped this contract; not fixable in this repo"*.
-- Add `TESTS_INFRA_HALT` / `UNKNOWN_TESTS_OUTCOME` error-end-events to this sub-flow (mirror
-  `verify-tests-pass`).
-- Rewrite the comment block at lines ~1095–1099 to describe the outcome-driven model (delete the
-  "test-instance ⇒ GREEN / simulator ⇒ RED" framing).
-
-### Item 2 — contract-stub: same outcome probe (no real-kind branch)
-
-- **Remove** `VERIFY_TESTS_FAIL_CONTRACT_STUB` (line 1154) and its edge.
-- Rename `START_SYSTEM_BEFORE_STUB_FAIL` → `START_SYSTEM_BEFORE_STUB_PROBE`.
-- Target topology:
-
-  ```
-  START_SYSTEM_BEFORE_STUB_PROBE → PROBE_CONTRACT_STUB
-  PROBE_CONTRACT_STUB            (call-activity, process: run-tests, suite: contract-stub, test-names: ${test-names})
-  PROBE_CONTRACT_STUB → GATE_CONTRACT_STUB_OUTCOME       (gateway, binding: test-outcome)
-    test-outcome == pass  → IMPL_EXT_DRIVER_CT_END           # already honors → done
-    test-outcome == fail  → IMPLEMENT_EXTERNAL_SYSTEM_STUBS  (→ build → start → VERIFY_TESTS_PASS_CONTRACT_STUB → END)
-    test-outcome == infra → TESTS_INFRA_HALT
-    (default)             → UNKNOWN_TESTS_OUTCOME
-  ```
-
-### Item 3 — update statemachine tests / fixtures for the new topology
-
-- Find tests/golden fixtures asserting this sub-flow's node IDs and edges (grep for
-  `GATE_REAL_KIND`, `VERIFY_TESTS_FAIL_CONTRACT_REAL`, `VERIFY_TESTS_PASS_CONTRACT_REAL`,
-  `VERIFY_TESTS_FAIL_CONTRACT_STUB`, `START_SYSTEM_BEFORE_STUB_FAIL` across `internal/atdd/**`,
-  `**/*_test.go`, and any `testdata`/golden trace fixtures). Update to the new node set.
-- **Hazard:** per [[feedback_statemachine_test_loop_hazard]], audit any gate/loop fixtures before
-  running statemachine tests and watch RAM — the new back-edge from
-  `VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR` already existed, but reconfirm no new self-loop was
-  introduced. Run scoped (`-p 2` / single package), never unbounded `go test ./...`
-  ([[feedback_go_test_windows]]).
-
-### Item 4 — align prose docs
-
-- Sweep `docs/atdd/**` and `docs/bpmn-process-design.md` for the "contract-real RED until we author the
-  simulator" / "test-instance already honors → GREEN" narrative and rewrite to outcome-driven.
-- Do **not** touch `docs/process-diagram.md` or `docs/images/process-diagram-19-*.svg` — the
-  regenerate-diagram GH Action rebuilds these on push to main ([[feedback_plans_no_diagram_regen]]).
 
 ## Verification (after agent work)
 

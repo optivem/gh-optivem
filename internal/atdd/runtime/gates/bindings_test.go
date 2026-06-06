@@ -357,7 +357,7 @@ func TestTestOutcome(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// real-kind — GATE_REAL_KIND (plan 20260606-1356)
+// real-kind — GATE_CONTRACT_REAL_RED_KIND (plans 20260606-1356, -1943)
 // ---------------------------------------------------------------------------
 
 func TestRealKind(t *testing.T) {

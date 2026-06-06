@@ -216,7 +216,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// CT-HIGH real-side identity (plan 20260606-1356). Resolves the external
 	// system from the driver-adapter files the preceding dispatch wrote and
 	// stamps external-system-name + real-kind into ctx.State for the
-	// GATE_REAL_KIND gateway. Deterministic — no agent.
+	// GATE_CONTRACT_REAL_RED_KIND gateway. Deterministic — no agent.
 	r.Register("identify-external-system", a.identifyExternalSystem)
 	// MARK_* state-transition service tasks (per plan
 	// 20260526-1220-fix-mark-ticket-state-transition-routing.md). Each
@@ -524,7 +524,7 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 // identifyExternalSystem resolves which external system the current CT-HIGH
 // cycle targets from the driver-adapter files the preceding
 // IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS dispatch just wrote, and promotes
-// that system's real-kind into ctx.State for the GATE_REAL_KIND gateway.
+// that system's real-kind into ctx.State for the GATE_CONTRACT_REAL_RED_KIND gateway.
 //
 // The external-system-driver-adapter layer root ends at the `external`
 // segment; each system's files live under `<root>/<name>/...`, so <name> is
@@ -538,7 +538,7 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 // Resolution is deterministic — no agent. Stamps
 // ctx.State["external-system-name"] and ctx.State["real-kind"]. The real-kind
 // lookup lives here rather than in the gateway because gates.Deps carries no
-// Config; the GATE_REAL_KIND binding is a pure state-reader. Zero
+// Config; the GATE_CONTRACT_REAL_RED_KIND binding is a pure state-reader. Zero
 // identifiable names, more than one distinct name, or a name absent from the
 // external-systems registry is a hard error: identity must resolve before the
 // real-kind gate, and the message points at onboarding, where real-kind is

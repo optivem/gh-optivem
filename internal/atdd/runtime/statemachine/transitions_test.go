@@ -440,25 +440,33 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 		t.Errorf("write-contract-tests agent = %q, want contract-test-writer", got)
 	}
 
-	// 4. The CT-HIGH walks the contract-real -> contract-stub verify split.
-	realNode, ok := ct.Nodes["VERIFY_TESTS_PASS_CONTRACT_REAL"]
+	// 4. The CT-HIGH walks the contract-real -> contract-stub probe split
+	//    (plan 20260606-1943): both legs run the suite via run-tests and branch
+	//    on the observed test-outcome — no asserted polarity.
+	realNode, ok := ct.Nodes["PROBE_CONTRACT_REAL"]
 	if !ok {
-		t.Fatalf("CT-HIGH: VERIFY_TESTS_PASS_CONTRACT_REAL node missing")
+		t.Fatalf("CT-HIGH: PROBE_CONTRACT_REAL node missing")
+	}
+	if got := realNode.Raw.Process; got != "run-tests" {
+		t.Errorf("PROBE_CONTRACT_REAL process = %q, want run-tests", got)
 	}
 	if got := realNode.Raw.Params["suite"]; got != "contract-real" {
-		t.Errorf("contract-real verify suite = %q, want contract-real", got)
+		t.Errorf("contract-real probe suite = %q, want contract-real", got)
 	}
-	stubFail, ok := ct.Nodes["VERIFY_TESTS_FAIL_CONTRACT_STUB"]
+	stubProbe, ok := ct.Nodes["PROBE_CONTRACT_STUB"]
 	if !ok {
-		t.Fatalf("CT-HIGH: VERIFY_TESTS_FAIL_CONTRACT_STUB node missing")
+		t.Fatalf("CT-HIGH: PROBE_CONTRACT_STUB node missing")
 	}
-	if got := stubFail.Raw.Params["suite"]; got != "contract-stub" {
-		t.Errorf("contract-stub fail-verify suite = %q, want contract-stub", got)
+	if got := stubProbe.Raw.Process; got != "run-tests" {
+		t.Errorf("PROBE_CONTRACT_STUB process = %q, want run-tests", got)
 	}
-	// real-pass precedes stub-fail (the split: prove tests pass against the
-	// real system, then fail against the not-yet-implemented stub).
-	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL", "START_SYSTEM_BEFORE_STUB_FAIL", "")
-	wantEdge(t, ct, "START_SYSTEM_BEFORE_STUB_FAIL", "VERIFY_TESTS_FAIL_CONTRACT_STUB", "")
+	if got := stubProbe.Raw.Params["suite"]; got != "contract-stub" {
+		t.Errorf("contract-stub probe suite = %q, want contract-stub", got)
+	}
+	// real-green precedes the stub probe (the split: if the real system already
+	// honors the contract, proceed to the stub side; restart between them).
+	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "START_SYSTEM_BEFORE_STUB_PROBE", "test-outcome == pass")
+	wantEdge(t, ct, "START_SYSTEM_BEFORE_STUB_PROBE", "PROBE_CONTRACT_STUB", "")
 
 	// 5. The CT-HIGH's nested DSL step verifies against suite `contract-real`,
 	//    decoupled from the `tests: contract` path discriminator. Guards the
@@ -497,12 +505,13 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	}
 }
 
-// TestContractTestHIGH_RealKindFork pins the CT-HIGH real-side restructure
-// (plan 20260606-1356): the IDENTIFY service-task, the real-kind gateway, and
-// both gate branches — test-instance collapsing to a single pass-verify, and
-// simulator taking the red→implement→build/start→green branch that mirrors the
-// stub side.
-func TestContractTestHIGH_RealKindFork(t *testing.T) {
+// TestContractTestHIGH_OutcomeDrivenFork pins the CT-HIGH real-side restructure
+// (plan 20260606-1943, supersedes the polarity-prediction of plan 20260606-1356):
+// the IDENTIFY service-task, the contract-real OUTCOME probe + gateway, and the
+// red-kind sub-gateway — GREEN proceeds to the stub side, RED+simulator takes the
+// implement→build/start→green branch that mirrors the stub side, and
+// RED+test-instance halts on an upstream contract gap.
+func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	eng, err := LoadDefault()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
@@ -522,45 +531,75 @@ func TestContractTestHIGH_RealKindFork(t *testing.T) {
 	if got := identify.Raw.Action; got != "identify-external-system" {
 		t.Errorf("IDENTIFY action = %q, want identify-external-system", got)
 	}
-	// Build/start happen between identity and the gate.
+	// Build/start happen between identity and the probe.
 	wantEdge(t, ct, "IDENTIFY_EXTERNAL_SYSTEM", "BUILD_SYSTEM_AFTER_DRIVER", "")
-	wantEdge(t, ct, "START_SYSTEM_AFTER_DRIVER", "GATE_REAL_KIND", "")
+	wantEdge(t, ct, "START_SYSTEM_AFTER_DRIVER", "PROBE_CONTRACT_REAL", "")
 
-	// 2. The real-kind gateway routes contract-real on the stamped real-kind.
-	gate, ok := ct.Nodes["GATE_REAL_KIND"]
+	// 2. The probe runs the suite via run-tests (no asserted polarity); the
+	//    outcome gateway routes on the stamped test-outcome.
+	probe, ok := ct.Nodes["PROBE_CONTRACT_REAL"]
 	if !ok {
-		t.Fatalf("CT-HIGH: GATE_REAL_KIND node missing")
+		t.Fatalf("CT-HIGH: PROBE_CONTRACT_REAL node missing")
 	}
-	if got := gate.Raw.Binding; got != "real-kind" {
-		t.Errorf("GATE_REAL_KIND binding = %q, want real-kind", got)
+	if got := probe.Raw.Process; got != "run-tests" {
+		t.Errorf("PROBE_CONTRACT_REAL process = %q, want run-tests", got)
+	}
+	wantEdge(t, ct, "PROBE_CONTRACT_REAL", "GATE_CONTRACT_REAL_OUTCOME", "")
+	outGate, ok := ct.Nodes["GATE_CONTRACT_REAL_OUTCOME"]
+	if !ok {
+		t.Fatalf("CT-HIGH: GATE_CONTRACT_REAL_OUTCOME node missing")
+	}
+	if got := outGate.Raw.Binding; got != "test-outcome" {
+		t.Errorf("GATE_CONTRACT_REAL_OUTCOME binding = %q, want test-outcome", got)
 	}
 
-	// 3. test-instance branch: a single contract-real pass-verify, then the
-	//    stub side. (collapsed — no fail-verify, no simulator impl.)
-	wantEdge(t, ct, "GATE_REAL_KIND", "VERIFY_TESTS_PASS_CONTRACT_REAL", "real-kind == test-instance")
-	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL", "START_SYSTEM_BEFORE_STUB_FAIL", "")
+	// 3. GREEN: external system already honors the contract → straight to the
+	//    stub side. infra/unknown halt.
+	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "START_SYSTEM_BEFORE_STUB_PROBE", "test-outcome == pass")
+	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "GATE_CONTRACT_REAL_RED_KIND", "test-outcome == fail")
+	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "TESTS_INFRA_HALT", "test-outcome == infra")
+	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "UNKNOWN_TESTS_OUTCOME", "")
 
-	// 4. simulator branch: contract-real RED → implement simulator →
-	//    rebuild/restart → contract-real GREEN → stub side.
-	wantEdge(t, ct, "GATE_REAL_KIND", "VERIFY_TESTS_FAIL_CONTRACT_REAL", "real-kind == simulator")
-	wantEdge(t, ct, "VERIFY_TESTS_FAIL_CONTRACT_REAL", "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "")
+	// 4. RED: the red-kind sub-gateway routes on the stamped real-kind.
+	redKind, ok := ct.Nodes["GATE_CONTRACT_REAL_RED_KIND"]
+	if !ok {
+		t.Fatalf("CT-HIGH: GATE_CONTRACT_REAL_RED_KIND node missing")
+	}
+	if got := redKind.Raw.Binding; got != "real-kind" {
+		t.Errorf("GATE_CONTRACT_REAL_RED_KIND binding = %q, want real-kind", got)
+	}
+	// simulator: we own it → implement → rebuild/restart → GREEN → stub side.
+	wantEdge(t, ct, "GATE_CONTRACT_REAL_RED_KIND", "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "real-kind == simulator")
 	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "BUILD_SYSTEM_AFTER_SIMULATOR", "")
 	wantEdge(t, ct, "BUILD_SYSTEM_AFTER_SIMULATOR", "START_SYSTEM_AFTER_SIMULATOR", "")
 	wantEdge(t, ct, "START_SYSTEM_AFTER_SIMULATOR", "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "")
-	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "START_SYSTEM_BEFORE_STUB_FAIL", "")
-
-	// The RED verify targets contract-real (verify-tests-fail), the post-sim
-	// GREEN verify targets contract-real (verify-tests-pass).
-	if n := ct.Nodes["VERIFY_TESTS_FAIL_CONTRACT_REAL"]; n.Raw.Process != "verify-tests-fail" {
-		t.Errorf("VERIFY_TESTS_FAIL_CONTRACT_REAL process = %q, want verify-tests-fail", n.Raw.Process)
-	} else if got := n.Raw.Params["suite"]; got != "contract-real" {
-		t.Errorf("simulator RED-verify suite = %q, want contract-real", got)
+	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "START_SYSTEM_BEFORE_STUB_PROBE", "")
+	// test-instance: we do NOT own it → upstream contract-gap hard halt (an
+	// error-end-event so it bubbles up, never the code-fixer).
+	wantEdge(t, ct, "GATE_CONTRACT_REAL_RED_KIND", "CONTRACT_REAL_UPSTREAM_GAP_HALT", "real-kind == test-instance")
+	if n := ct.Nodes["CONTRACT_REAL_UPSTREAM_GAP_HALT"]; n.Kind != ErrorEndEvent {
+		t.Errorf("CONTRACT_REAL_UPSTREAM_GAP_HALT kind = %v, want ErrorEndEvent", n.Kind)
 	}
+
+	// The post-sim GREEN verify targets contract-real (verify-tests-pass).
 	if n := ct.Nodes["VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR"]; n.Raw.Process != "verify-tests-pass" {
 		t.Errorf("post-sim verify process = %q, want verify-tests-pass", n.Raw.Process)
 	} else if got := n.Raw.Params["suite"]; got != "contract-real" {
 		t.Errorf("simulator GREEN-verify suite = %q, want contract-real", got)
 	}
+
+	// 4b. The contract-stub leg is likewise an outcome probe (no fail-verify):
+	//     GREEN → done, RED → implement stubs → red→green.
+	stubGate, ok := ct.Nodes["GATE_CONTRACT_STUB_OUTCOME"]
+	if !ok {
+		t.Fatalf("CT-HIGH: GATE_CONTRACT_STUB_OUTCOME node missing")
+	}
+	if got := stubGate.Raw.Binding; got != "test-outcome" {
+		t.Errorf("GATE_CONTRACT_STUB_OUTCOME binding = %q, want test-outcome", got)
+	}
+	wantEdge(t, ct, "PROBE_CONTRACT_STUB", "GATE_CONTRACT_STUB_OUTCOME", "")
+	wantEdge(t, ct, "GATE_CONTRACT_STUB_OUTCOME", "IMPL_EXT_DRIVER_CT_END", "test-outcome == pass")
+	wantEdge(t, ct, "GATE_CONTRACT_STUB_OUTCOME", "IMPLEMENT_EXTERNAL_SYSTEM_STUBS", "test-outcome == fail")
 
 	// 5. The new simulator MID dispatches the mirror agent and scopes writes
 	//    to external-system-driver-adapter (fork #2) plus the shared
