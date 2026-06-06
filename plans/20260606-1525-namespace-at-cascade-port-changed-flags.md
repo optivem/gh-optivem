@@ -1,5 +1,12 @@
 # Plan: Namespace the AT-cascade port-changed flags so the CT excursion can't clobber them
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-06T13:48:58Z`
+
+## TL;DR
+
+**Why:** The three `*-port-changed` verdicts are flat global `ctx.State` keys, so the nested external CT excursion overwrites the acceptance cascade's values (and `bindings.go:1066` forces `system-driver-port-changed=false`); the parent re-gate then skips the required system-driver-adapter step, leaving the AT red and mis-routing it to the fixer.
+**End result:** Each verdict is stored under a cascade-namespaced key (`at-*` for the acceptance cascade, `ct-*` for the contract excursion); the CT excursion writes only `ct-*`, the parent re-gates read the surviving `at-*` values, the required adapter step runs, and a human trace shows both verdicts distinctly attributed.
+
 > **DECISION MADE (2026-06-06):** the three `*-port-changed` verdicts are stored under
 > **cascade-namespaced** State keys (`at-…` for the acceptance cascade, `ct-…` for the nested
 > contract excursion) so the parent re-gates read the AT-side verdict the CT excursion can never
