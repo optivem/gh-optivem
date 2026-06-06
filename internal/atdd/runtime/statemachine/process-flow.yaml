@@ -29,8 +29,8 @@
 #
 #   MID    — atomic agent or command tasks. Each wraps exactly one LOW
 #            primitive call with task-specific params: `write-acceptance-
-#            tests`, `implement-system`, `compile`, `commit`, `run-tests`,
-#            etc. The MID layer is the only place an agent name or command
+#            tests`, `implement-system`, `compile-tests`, `commit`,
+#            `run-tests`, etc. The MID layer is the only place an agent name or command
 #            name appears literally (everything below is templated).
 #
 #   LOW    — primitives. Four total: `approve` (HUMAN gate), `execute-agent`
@@ -2036,6 +2036,7 @@ processes:
   #   - `implement-and-verify-system` — `START_SYSTEM` after `BUILD_SYSTEM`.
   #   - `implement-and-verify-external-system-driver-adapters-contract-tests`
   #     — `START_SYSTEM_AFTER_DRIVER` after `BUILD_SYSTEM_AFTER_DRIVER`.
+  #   - Same process — `START_SYSTEM_AFTER_SIMULATOR` after `BUILD_SYSTEM_AFTER_SIMULATOR`.
   #   - Same process — `START_SYSTEM_AFTER_STUBS` after `BUILD_SYSTEM_AFTER_STUBS`.
   start-system:
     name: "Start System"
@@ -2077,9 +2078,9 @@ processes:
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: START_SYS_RESTART_END}
 
-  # The message is constructed here, not at each call site: every COMMIT_*
-  # caller runs downstream of parse-ticket, which writes `ticket-id` and
-  # `issue-title` into ctx.State, so the same `#<id> <title>` resolves
+  # The message is constructed here, not at each call site: `preResolveIssue`
+  # seeds `ticket-id` and `issue-title` into ctx.State at run startup (before
+  # any COMMIT_* caller runs), so the same `#<id> <title>` resolves
   # deterministically for every commit inside one ticket's workflow. Using
   # `#` rather than `[` makes the id auto-link to the GitHub issue in
   # commit listings and PR views.
