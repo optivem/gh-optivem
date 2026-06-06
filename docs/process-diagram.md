@@ -284,11 +284,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    GATE_AT_TERMINAL_GREEN{Cover Run Needs Terminal AT-Green?}
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
     GATE_EXTERNAL_DRIVER_PORTS_CHANGED{External Driver Ports Changed?}
     IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
     IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[Implement and Verify External-System Driver Adapters Contract Tests]
     SHARED_CONTRACT_END(( ))
+    START_SYSTEM_AT_TERMINAL[Start System]
+    VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL[Verify Acceptance Tests Pass — see § verify-tests-pass]
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE[Write and Verify Acceptance Test Code]
 
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE --> GATE_DSL_PORT_CHANGED
@@ -297,7 +300,11 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_DSL --> GATE_EXTERNAL_DRIVER_PORTS_CHANGED
     GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
     GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- No --> SHARED_CONTRACT_END
-    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS --> SHARED_CONTRACT_END
+    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS --> GATE_AT_TERMINAL_GREEN
+    GATE_AT_TERMINAL_GREEN -- Yes --> START_SYSTEM_AT_TERMINAL
+    GATE_AT_TERMINAL_GREEN -- No --> SHARED_CONTRACT_END
+    START_SYSTEM_AT_TERMINAL --> VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL
+    VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL --> SHARED_CONTRACT_END
 ```
 
 ## Write and Verify Acceptance Test Code
@@ -644,26 +651,6 @@ flowchart TD
     REFINE_AC_END(( ))
 
     EXECUTE_AGENT --> REFINE_AC_END
-```
-
-## Compile
-
-```mermaid
-flowchart TD
-    COMPILE_MID_END(( ))
-    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
-
-    EXECUTE_COMMAND --> COMPILE_MID_END
-```
-
-## Compile System
-
-```mermaid
-flowchart TD
-    COMPILE_SYS_END(( ))
-    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
-
-    EXECUTE_COMMAND --> COMPILE_SYS_END
 ```
 
 ## Compile Tests
