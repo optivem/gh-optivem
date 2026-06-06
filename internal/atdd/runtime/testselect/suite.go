@@ -4,11 +4,19 @@ package testselect
 // dispatch fallback used by run_targeted_tests when its call-activity is
 // invoked without a specific `suite:` param (as is the case for the
 // collapsed AT_GREEN node, which writes once and verifies both channels).
-// A future channel-execution plan may introduce sentinel suites like
+// It includes both the parallel non-isolated suites (acceptance-<ch>) and
+// the serial isolated suites (acceptance-isolated-<ch>): the split is an
+// execution concern (parallel vs maxParallelForks=1), not a semantic one,
+// so `--suite=acceptance` runs all of them — the runner runs suites
+// sequentially, so the serial isolated suites simply run after the parallel
+// ones. A future channel-execution plan may introduce sentinel suites like
 // `<acceptance>` that union these explicitly; today, the absent-key case
 // resolves to this fixed list.
 func AcceptanceSuites() []string {
-	return []string{"acceptance-api", "acceptance-ui"}
+	return []string{
+		"acceptance-api", "acceptance-ui",
+		"acceptance-isolated-api", "acceptance-isolated-ui",
+	}
 }
 
 // defaultSuiteGroups is the fallback registry of group-alias names used
@@ -31,8 +39,9 @@ var defaultSuiteGroups = map[string][]string{
 // in the runner still catches typos.
 //
 // Used by the `gh optivem test run` CLI to let `--suite=acceptance`
-// resolve to `acceptance-api,acceptance-ui` — and by the BPMN
-// runtime, which emits `--suite=acceptance` from the
+// resolve to the four acceptance suites (parallel + isolated, both
+// channels) — and by the BPMN runtime, which emits `--suite=acceptance`
+// from the
 // verify-tests-pass/fail call-activities in
 // `write-and-verify-acceptance-test-code`.
 func ExpandSuiteGroups(names []string, projectGroups map[string][]string) []string {

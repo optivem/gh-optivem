@@ -373,8 +373,8 @@ func TestRun_ExternalSystemsOmittedDoesNotFail(t *testing.T) {
 // SystemTestPaths tests below.
 func canonicalTSPaths() map[string]string {
 	return map[string]string{
-		"system-driver-port":                    "system-test/typescript/src/testkit/driver/port",
-		"system-driver-adapter":                 "system-test/typescript/src/testkit/driver/adapter",
+		"system-driver-port":             "system-test/typescript/src/testkit/driver/port",
+		"system-driver-adapter":          "system-test/typescript/src/testkit/driver/adapter",
 		"external-system-driver-port":    "system-test/typescript/src/testkit/external/port",
 		"external-system-driver-adapter": "system-test/typescript/src/testkit/external/adapter",
 		"at-test":                        "system-test/typescript/tests/latest/acceptance",
@@ -425,8 +425,8 @@ func TestRun_SystemTestPathsMissingEntries(t *testing.T) {
 	// `myShop`-suffixed entries (system-driver-port, system-driver-adapter, dsl-port,
 	// dsl-core) phantom.
 	paths := map[string]string{
-		"system-driver-port":                    "system-test/typescript/src/testkit/driver/port/myShop",
-		"system-driver-adapter":                 "system-test/typescript/src/testkit/driver/adapter/myShop",
+		"system-driver-port":             "system-test/typescript/src/testkit/driver/port/myShop",
+		"system-driver-adapter":          "system-test/typescript/src/testkit/driver/adapter/myShop",
 		"external-system-driver-port":    "system-test/typescript/src/testkit/driver/port/external",
 		"external-system-driver-adapter": "system-test/typescript/src/testkit/driver/adapter/external",
 		"at-test":                        "system-test/typescript/tests/latest/acceptance",
@@ -780,10 +780,10 @@ func writeTestsYAML(t *testing.T, suiteIDs ...string) string {
 func TestSuiteExistence_RenamedAcceptanceSuite(t *testing.T) {
 	t.Parallel()
 	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
-	// acceptance-api renamed to the bare "acceptance" alias; acceptance-ui
-	// kept. Expected per-channel ids are acceptance-api + acceptance-ui, so
-	// acceptance-api is the missing one.
-	path := writeTestsYAML(t, "acceptance", "acceptance-ui")
+	// acceptance-api renamed to the bare "acceptance" alias; the other three
+	// acceptance ids kept. Expected per-channel ids are acceptance-<ch> plus
+	// acceptance-isolated-<ch>, so acceptance-api is the only missing one.
+	path := writeTestsYAML(t, "acceptance", "acceptance-ui", "acceptance-isolated-api", "acceptance-isolated-ui")
 	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
 	joined := strings.Join(got, "\n")
 	if !strings.Contains(joined, `"acceptance-api"`) {
@@ -807,7 +807,7 @@ func TestSuiteExistence_RenamedContractSuite_WithExternalSystems(t *testing.T) {
 	}
 	// contract-real renamed away; everything else present. External systems
 	// are configured, so the contract suites are required.
-	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui", "contract-stub")
+	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui", "acceptance-isolated-api", "acceptance-isolated-ui", "contract-stub")
 	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
 	if !strings.Contains(strings.Join(got, "\n"), `"contract-real"`) {
 		t.Errorf("expected failure naming contract-real, got: %v", got)
@@ -819,7 +819,7 @@ func TestSuiteExistence_RenamedContractSuite_NoExternalSystems(t *testing.T) {
 	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
 	// Same missing contract suites, but no external-systems: the contract
 	// branch is unreachable, so requiring them would be a false positive.
-	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui")
+	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui", "acceptance-isolated-api", "acceptance-isolated-ui")
 	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
 	if len(got) != 0 {
 		t.Errorf("expected no failures with no external systems, got: %v", got)
@@ -829,13 +829,14 @@ func TestSuiteExistence_RenamedContractSuite_NoExternalSystems(t *testing.T) {
 func TestSuiteExistence_APIOnlyProject_NoUIFalsePositive(t *testing.T) {
 	t.Parallel()
 	cfg := &projectconfig.Config{Channels: []string{"api"}}
-	// An api-only project's tests.yaml declares only acceptance-api; the
-	// acceptance alias must expand per cfg.Channels, not to the static
-	// [api, ui] group — so acceptance-ui must NOT be required.
-	path := writeTestsYAML(t, "acceptance-api")
+	// An api-only project's tests.yaml declares its api acceptance suites
+	// (plain + isolated); the acceptance alias must expand per cfg.Channels,
+	// not to the static [api, ui] group — so the ui ids (acceptance-ui,
+	// acceptance-isolated-ui) must NOT be required.
+	path := writeTestsYAML(t, "acceptance-api", "acceptance-isolated-api")
 	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
 	if len(got) != 0 {
-		t.Errorf("api-only project should not require acceptance-ui, got: %v", got)
+		t.Errorf("api-only project should not require ui acceptance suites, got: %v", got)
 	}
 }
 
@@ -850,7 +851,7 @@ func TestSuiteExistence_AllSuitesPresent(t *testing.T) {
 			},
 		},
 	}
-	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui", "contract-real", "contract-stub")
+	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui", "acceptance-isolated-api", "acceptance-isolated-ui", "contract-real", "contract-stub")
 	got := runSuiteExistenceChecks(cfg, loadDefaultEngine(t), path)
 	if len(got) != 0 {
 		t.Errorf("expected no failures when every required suite is declared, got: %v", got)

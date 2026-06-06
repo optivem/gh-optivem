@@ -347,17 +347,20 @@ func collectSuiteLiterals(eng *statemachine.Engine) []string {
 
 // expandSuiteLiteral maps one engine `suite:` literal onto the concrete suite
 // ids it resolves to at run time. The `acceptance` group alias unrolls to
-// acceptance-<channel> per cfg.Channels (matching UnrollSystemChannels); with
-// no channels declared it falls back to the runtime's own group expansion so
-// behaviour matches resolution on the static path. Every other literal —
-// explicit per-channel ids, contract ids — passes through ExpandSuiteGroups so
-// a project that declared it as a group alias resolves the same way the runner
-// would.
+// acceptance-<channel> AND acceptance-isolated-<channel> per cfg.Channels
+// (matching UnrollSystemChannels and the four-id default acceptance group):
+// `--suite=acceptance` runs both the parallel and the serial isolated suites,
+// so an api-only project still requires its isolated suite (acceptance-isolated-api)
+// but never the ui ids. With no channels declared it falls back to the
+// runtime's own group expansion so behaviour matches resolution on the static
+// path. Every other literal — explicit per-channel ids, contract ids — passes
+// through ExpandSuiteGroups so a project that declared it as a group alias
+// resolves the same way the runner would.
 func expandSuiteLiteral(lit string, cfg *projectconfig.Config, projectGroups map[string][]string) []string {
 	if lit == "acceptance" && len(cfg.Channels) > 0 {
-		out := make([]string, 0, len(cfg.Channels))
+		out := make([]string, 0, len(cfg.Channels)*2)
 		for _, ch := range cfg.Channels {
-			out = append(out, "acceptance-"+ch)
+			out = append(out, "acceptance-"+ch, "acceptance-isolated-"+ch)
 		}
 		return out
 	}
