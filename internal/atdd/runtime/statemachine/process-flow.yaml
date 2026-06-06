@@ -1042,7 +1042,6 @@ processes:
         process: verify-tests-pass
         name: "Verify Contract Tests Pass Against the Real System"
         params:
-          task-name: implement-external-system-driver-adapters
           suite: contract-real
           test-names: ${test-names}
 
@@ -1053,7 +1052,6 @@ processes:
         process: verify-tests-fail
         name: "Verify Contract Tests Fail Against the Real Simulator"
         params:
-          task-name: implement-external-system-driver-adapters
           suite: contract-real
           test-names: ${test-names}
 
@@ -1078,7 +1076,6 @@ processes:
         process: verify-tests-pass
         name: "Verify Contract Tests Pass Against the Real Simulator"
         params:
-          task-name: implement-external-system-real-simulator
           suite: contract-real
           test-names: ${test-names}
 
@@ -1094,7 +1091,6 @@ processes:
         process: verify-tests-fail
         name: "Verify Contract Tests Fail Against the Stub"
         params:
-          task-name: implement-external-system-driver-adapters
           suite: contract-stub
           test-names: ${test-names}
 
@@ -1120,7 +1116,6 @@ processes:
         process: verify-tests-pass
         name: "Verify Contract Tests Pass Against the Stub"
         params:
-          task-name: implement-external-system-stubs
           suite: contract-stub
           test-names: ${test-names}
 
