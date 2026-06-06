@@ -163,6 +163,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("at-system-driver-port-changed", b.atSystemDriverPortChanged)
 	r.Register("at-external-driver-port-changed", b.atExternalDriverPortChanged)
 	r.Register("ct-dsl-port-changed", b.ctDslPortChanged)
+	// Cover-path mode-aware acceptance-test verify gate + its case-D
+	// terminal-verify gate (plan 20260606-1518). The shared verify gate
+	// routes on at-verify-expectation so the cover path expects AT green
+	// only when the plumbing it needs is complete; the change path (red /
+	// unset verify-mode) is unchanged.
+	r.Register("at-verify-expectation", b.atVerifyExpectation)
+	r.Register("at-external-terminal-verify-needed", b.atExternalTerminalVerifyNeeded)
 	// CT-HIGH real-side fork (plan 20260606-1356). Routes contract-real on
 	// the identified external system's real-kind. The value is stamped by the
 	// upstream identify-external-system ACTION (which has Config access); this
@@ -382,6 +389,106 @@ func (b bindings) atExternalDriverPortChanged(ctx *statemachine.Context) statema
 
 func (b bindings) ctDslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "ct-dsl-port-changed")
+}
+
+// atVerifyExpectation is the mode-aware acceptance-test verify gate (plan
+// 20260606-1518). The shared verify gate in
+// write-and-verify-acceptance-test-code and implement-test-layer routes on
+// this binding instead of the raw expected-test-result, so the cover path can
+// expect the AT to PASS only when the test plumbing it needs is complete.
+//
+//   - verify-mode == "green-when-complete" (cover path): the system already
+//     has the behaviour, so the AT is expected to PASS exactly when no further
+//     plumbing change is pending and FAIL otherwise. "Pending" is scoped to
+//     this layer by verify-pending-on (which ports' changes still imply a
+//     downstream plumbing layer): dsl → at-dsl-port-changed (test-code layer);
+//     drivers → at-system-driver-port-changed || at-external-driver-port-changed
+//     (DSL layer); none → terminal layer, never pending (always PASS).
+//   - verify-mode == "red" or unset (change path, --target, no-arg full run):
+//     routes on the caller-pinned expected-test-result verbatim — the change
+//     cascade is uniformly red and greened by implement-and-verify-system,
+//     exactly as before this plan.
+//
+// Returns success|failure so the existing verify-gate edges (now
+// `at-verify-expectation == success|failure`) and their
+// UNKNOWN_EXPECTED_TEST_RESULT catch-all are unchanged.
+func (b bindings) atVerifyExpectation(ctx *statemachine.Context) statemachine.Outcome {
+	if strings.TrimSpace(ctx.Params["verify-mode"]) == "green-when-complete" {
+		pending, err := plumbingPending(ctx)
+		if err != nil {
+			return statemachine.Outcome{Err: err}
+		}
+		if pending {
+			return statemachine.Outcome{Value: "failure"}
+		}
+		return statemachine.Outcome{Value: "success"}
+	}
+	// red / unset: unchanged — route on the caller-pinned expected result.
+	return b.expectedTestResult(ctx)
+}
+
+// plumbingPending reports whether a further test-plumbing layer must still run
+// after the current one, scoped by the verify-pending-on call param (plan
+// 20260606-1518). The flags are the acceptance-cascade-namespaced verdicts
+// (at-*, plan 20260606-1525); each is strict (the writer/impl that runs
+// immediately before this gate must have emitted it) so an unset flag halts
+// rather than defaulting to "not pending" and mis-routing a still-red AT into
+// verify-pass.
+func plumbingPending(ctx *statemachine.Context) (bool, error) {
+	switch on := strings.TrimSpace(ctx.Params["verify-pending-on"]); on {
+	case "dsl":
+		return boolState(ctx, "at-dsl-port-changed")
+	case "drivers":
+		sys, err := boolState(ctx, "at-system-driver-port-changed")
+		if err != nil {
+			return false, err
+		}
+		ext, err := boolState(ctx, "at-external-driver-port-changed")
+		if err != nil {
+			return false, err
+		}
+		return sys || ext, nil
+	case "none":
+		return false, nil
+	case "":
+		return false, fmt.Errorf("at-verify-expectation: verify-pending-on not set on the green-when-complete path — the caller must pin dsl|drivers|none")
+	default:
+		return false, fmt.Errorf("at-verify-expectation: unknown verify-pending-on %q (expected dsl|drivers|none)", on)
+	}
+}
+
+// atExternalTerminalVerifyNeeded gates the cover path's terminal AT-green
+// assertion on the external-driver-only branch (plan 20260606-1518, case D).
+// The external CT-HIGH verifies the contract tests (real/stub), not the AT, so
+// on the cover path the AT would otherwise end last-verified as FAILING at the
+// DSL layer. This gate fires a trailing AT-pass verify exactly when the run is
+// green-when-complete AND no system-driver adapter step follows (that step,
+// when present, owns the terminal PASS instead). Reached only from the
+// external-driver-port-changed == true branch, so at-external is implied true.
+func (b bindings) atExternalTerminalVerifyNeeded(ctx *statemachine.Context) statemachine.Outcome {
+	if strings.TrimSpace(ctx.Params["verify-mode"]) != "green-when-complete" {
+		return statemachine.Outcome{Bool: false}
+	}
+	sys, err := boolState(ctx, "at-system-driver-port-changed")
+	if err != nil {
+		return statemachine.Outcome{Err: err}
+	}
+	return statemachine.Outcome{Bool: !sys}
+}
+
+// boolState reads a strict boolean ctx.State flag for the plumbing-pending
+// derivation: a missing key halts (same doctrine as boolStateGate — the
+// writer/impl that precedes the gate must have emitted it).
+func boolState(ctx *statemachine.Context, key string) (bool, error) {
+	v, ok := ctx.State[key]
+	if !ok {
+		return false, fmt.Errorf("%s: not set in Context — the agent's `outputs:` block must emit %q (unset is a bug, not a default no)", key, key)
+	}
+	out := outcomeFromBoolish(v)
+	if out.Err != nil {
+		return false, out.Err
+	}
+	return out.Bool, nil
 }
 
 // realKind is the CT-HIGH real-side fork gate (plan 20260606-1356). It

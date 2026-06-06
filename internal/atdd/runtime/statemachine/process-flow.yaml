@@ -658,6 +658,14 @@ processes:
         name: "Write and Verify Acceptance Tests"
         params:
           expected-test-result: success
+          # Cover-path verify mode (plan 20260606-1518). The system already
+          # has the behaviour, so each AT layer expects PASS only when no
+          # further plumbing change is pending (else FAIL) — unlike the change
+          # path (-fail wrapper), which leaves verify-mode unset so the gate
+          # defaults to `red` and routes on the pinned expected-test-result.
+          # Inherits down the whole cover cascade via the wrapCallActivity
+          # param-merge; each layer pins its own verify-pending-on below.
+          verify-mode: green-when-complete
 
       - id: WAV_AT_PASS_END
         type: end-event
@@ -713,6 +721,11 @@ processes:
           # `at-dsl-port-changed` from this tests context so the nested
           # contract excursion can't clobber the acceptance verdict.
           tests: acceptance
+          # Cover-path plumbing scope (plan 20260606-1518): the test-code
+          # layer's plumbing is complete unless the DSL port changed, so the
+          # green-when-complete verify gate expects PASS iff at-dsl-port-changed
+          # is false. Ignored on the change path (verify-mode red).
+          verify-pending-on: dsl
 
       - id: GATE_DSL_PORT_CHANGED
         type: gateway
@@ -728,6 +741,12 @@ processes:
           expected-test-result: ${expected-test-result}
           tests: acceptance
           suite: acceptance
+          # Cover-path plumbing scope (plan 20260606-1518): after the DSL impl,
+          # plumbing is still pending iff a system- or external-driver port
+          # changed, so the green-when-complete verify gate expects PASS only
+          # when both at-system/at-external-driver-port-changed are false.
+          # Inherits into implement-and-verify-dsl → implement-test-layer.
+          verify-pending-on: drivers
 
       - id: GATE_EXTERNAL_DRIVER_PORTS_CHANGED
         type: gateway
@@ -753,6 +772,38 @@ processes:
         name: "Implement and Verify External-System Driver Adapters Contract Tests"
         params:
           tests: contract
+          # The CT-HIGH is self-contained and pins its own expected results
+          # internally (contract-real/stub), so it must run its inner verify
+          # gates in `red` mode regardless of the enclosing cover run — pin it
+          # here so the green-when-complete cover mode does not inherit into the
+          # contract excursion's IMPLEMENT_AND_VERIFY_DSL → implement-test-layer
+          # gate (plan 20260606-1518).
+          verify-mode: red
+
+      - id: GATE_AT_TERMINAL_GREEN
+        type: gateway
+        binding: at-external-terminal-verify-needed
+        name: "Cover Run Needs Terminal AT-Green?"
+
+      # RED writes/builds tests, not system source; the CT-HIGH already left the
+      # system up against the stub. `system start` is idempotent.
+      - id: START_SYSTEM_AT_TERMINAL
+        type: call-activity
+        process: start-system
+        name: "Start System"
+
+      # Case D (plan 20260606-1518): on the external-driver-only cover branch the
+      # CT-HIGH verified the contract tests, not the AT, so the AT would otherwise
+      # end last-verified as FAILING at the DSL layer. With the external adapters
+      # now built and no system-driver adapter step to follow, all AT plumbing is
+      # complete — assert the AT greens.
+      - id: VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL
+        type: call-activity
+        process: verify-tests-pass
+        name: "Verify Acceptance Tests Pass"
+        params:
+          suite: acceptance
+          test-names: ${test-names}
 
       - id: SHARED_CONTRACT_END
         type: end-event
@@ -765,7 +816,11 @@ processes:
       - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED}
       - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, when: "at-external-driver-port-changed == true"}
       - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: SHARED_CONTRACT_END,                           when: "at-external-driver-port-changed == false"}
-      - {from: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, to: SHARED_CONTRACT_END}
+      - {from: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, to: GATE_AT_TERMINAL_GREEN}
+      - {from: GATE_AT_TERMINAL_GREEN, to: START_SYSTEM_AT_TERMINAL, when: "at-external-terminal-verify-needed == true"}
+      - {from: GATE_AT_TERMINAL_GREEN, to: SHARED_CONTRACT_END,      when: "at-external-terminal-verify-needed == false"}
+      - {from: START_SYSTEM_AT_TERMINAL, to: VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL}
+      - {from: VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL, to: SHARED_CONTRACT_END}
 
   # The full RED acceptance cascade = shared contract + the per-channel System
   # Driver adapter tail. Composes `shared-contract` (above) and then, IFF the
@@ -824,6 +879,11 @@ processes:
           expected-test-result: ${expected-test-result}
           tests: acceptance
           suite: acceptance
+          # Cover-path plumbing scope (plan 20260606-1518): the system-driver
+          # adapter layer is the terminal AT-plumbing step, so nothing is
+          # pending after it — the green-when-complete verify gate always
+          # expects PASS here. Inherits into implement-test-layer.
+          verify-pending-on: none
 
       - id: WAV_AT_END
         type: end-event
@@ -866,9 +926,14 @@ processes:
         process: start-system
         name: "Start System"
 
+      # Mode-aware verify gate (plan 20260606-1518). On the change path
+      # (verify-mode red/unset) at-verify-expectation returns the pinned
+      # expected-test-result verbatim — unchanged routing. On the cover path
+      # (verify-mode green-when-complete) it returns success iff no further
+      # plumbing is pending (verify-pending-on: dsl here), else failure.
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
-        binding: expected-test-result
+        binding: at-verify-expectation
         name: "Expected Test Result?"
 
       - id: VERIFY_TESTS_PASS_ACCEPTANCE
@@ -908,8 +973,8 @@ processes:
       - {from: WRITE_ACCEPTANCE_TESTS, to: COMPILE_TESTS}
       - {from: COMPILE_TESTS,          to: START_SYSTEM}
       - {from: START_SYSTEM,           to: GATE_EXPECTED_TEST_RESULT}
-      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_ACCEPTANCE, when: "expected-test-result == success"}
-      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_ACCEPTANCE, when: "expected-test-result == failure"}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_ACCEPTANCE, when: "at-verify-expectation == success"}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_ACCEPTANCE, when: "at-verify-expectation == failure"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
       - {from: VERIFY_TESTS_PASS_ACCEPTANCE, to: COMMIT_TEST_CODE}
       - {from: VERIFY_TESTS_FAIL_ACCEPTANCE, to: COMMIT_TEST_CODE}
@@ -1296,9 +1361,14 @@ processes:
         process: start-system
         name: "Start System"
 
+      # Mode-aware verify gate (plan 20260606-1518) — shared by the DSL layer
+      # (verify-pending-on: drivers) and the system-driver adapter layer
+      # (verify-pending-on: none). Change path (verify-mode red/unset) routes on
+      # the pinned expected-test-result verbatim; cover path returns success iff
+      # this layer's plumbing scope reports nothing pending.
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
-        binding: expected-test-result
+        binding: at-verify-expectation
         name: "Expected Test Result?"
 
       - id: VERIFY_TESTS_PASS_FILTERED
@@ -1338,8 +1408,8 @@ processes:
       - {from: RUN_ACTION, to: COMPILE_TESTS}
       - {from: COMPILE_TESTS,     to: START_SYSTEM}
       - {from: START_SYSTEM,      to: GATE_EXPECTED_TEST_RESULT}
-      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_FILTERED, when: "expected-test-result == success"}
-      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_FILTERED, when: "expected-test-result == failure"}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_FILTERED, when: "at-verify-expectation == success"}
+      - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_FILTERED, when: "at-verify-expectation == failure"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
       - {from: VERIFY_TESTS_PASS_FILTERED, to: COMMIT_LAYER}
       - {from: VERIFY_TESTS_FAIL_FILTERED, to: COMMIT_LAYER}

@@ -545,6 +545,133 @@ func TestDriverPortChangedGates(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// cover-path mode-aware verify gate (plan 20260606-1518)
+// ---------------------------------------------------------------------------
+
+// TestAtVerifyExpectation is the verify-polarity matrix for the four cover-path
+// rows of the plan's table plus the change-path regression. It exercises the
+// binding directly: the change path (verify-mode red/unset) must echo the
+// pinned expected-test-result verbatim, and the cover path (green-when-complete)
+// must return success exactly when this layer's plumbing scope reports nothing
+// pending.
+func TestAtVerifyExpectation(t *testing.T) {
+	cases := []struct {
+		name      string
+		mode      string         // verify-mode param ("" = unset)
+		pendingOn string         // verify-pending-on param ("" = unset)
+		expected  string         // expected-test-result param ("" = unset)
+		state     map[string]any // preseeded at-* flags
+		wantValue string
+		wantErr   bool
+	}{
+		// change path (red / unset) — echoes expected-test-result verbatim.
+		{name: "red/success", mode: "red", expected: "success", wantValue: "success"},
+		{name: "red/failure", mode: "red", expected: "failure", wantValue: "failure"},
+		{name: "unset_defaults_red", expected: "failure", wantValue: "failure"},
+		{name: "red/empty_halts", mode: "red", wantErr: true},
+		// case A — test-code layer, no DSL change: greens at the code layer.
+		{name: "green/dsl/not-pending", mode: "green-when-complete", pendingOn: "dsl",
+			state: map[string]any{"at-dsl-port-changed": false}, wantValue: "success"},
+		// cases B/C/D at the code layer — DSL changed, still red here.
+		{name: "green/dsl/pending", mode: "green-when-complete", pendingOn: "dsl",
+			state: map[string]any{"at-dsl-port-changed": true}, wantValue: "failure"},
+		// case B — DSL layer, no driver ports change: greens at the DSL layer.
+		{name: "green/drivers/none-pending", mode: "green-when-complete", pendingOn: "drivers",
+			state: map[string]any{"at-system-driver-port-changed": false, "at-external-driver-port-changed": false}, wantValue: "success"},
+		// case C — DSL layer, system-driver port changed: still red (adapters pending).
+		{name: "green/drivers/system-pending", mode: "green-when-complete", pendingOn: "drivers",
+			state: map[string]any{"at-system-driver-port-changed": true, "at-external-driver-port-changed": false}, wantValue: "failure"},
+		// case D — DSL layer, external-driver port changed only: still red (external CT-HIGH pending).
+		{name: "green/drivers/external-pending", mode: "green-when-complete", pendingOn: "drivers",
+			state: map[string]any{"at-system-driver-port-changed": false, "at-external-driver-port-changed": true}, wantValue: "failure"},
+		// case C terminal — system-driver adapter layer: always greens (nothing after).
+		{name: "green/none/terminal", mode: "green-when-complete", pendingOn: "none", wantValue: "success"},
+		// strictness: unset/unknown scope and unset flags halt rather than mis-route.
+		{name: "green/pending-on-unset_halts", mode: "green-when-complete", wantErr: true},
+		{name: "green/pending-on-unknown_halts", mode: "green-when-complete", pendingOn: "bogus", wantErr: true},
+		{name: "green/drivers/flag-unset_halts", mode: "green-when-complete", pendingOn: "drivers",
+			state: map[string]any{"at-system-driver-port-changed": false}, wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+			ctx := statemachine.NewContext()
+			if tc.mode != "" {
+				ctx.Params["verify-mode"] = tc.mode
+			}
+			if tc.pendingOn != "" {
+				ctx.Params["verify-pending-on"] = tc.pendingOn
+			}
+			if tc.expected != "" {
+				ctx.Params["expected-test-result"] = tc.expected
+			}
+			for k, v := range tc.state {
+				ctx.Set(k, v)
+			}
+			out := b.atVerifyExpectation(ctx)
+			if tc.wantErr {
+				if out.Err == nil {
+					t.Fatalf("want err, got Value=%q", out.Value)
+				}
+				return
+			}
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if out.Value != tc.wantValue {
+				t.Fatalf("Value = %q, want %q", out.Value, tc.wantValue)
+			}
+		})
+	}
+}
+
+// TestAtExternalTerminalVerifyNeeded covers the case-D terminal-verify gate: it
+// fires only on the cover path and only when no system-driver adapter step
+// follows (else that step owns the terminal PASS).
+func TestAtExternalTerminalVerifyNeeded(t *testing.T) {
+	cases := []struct {
+		name     string
+		mode     string
+		state    map[string]any
+		wantBool bool
+		wantErr  bool
+	}{
+		{name: "red_never", mode: "red", wantBool: false},
+		{name: "unset_never", wantBool: false},
+		{name: "green/no-system-driver/needs-terminal", mode: "green-when-complete",
+			state: map[string]any{"at-system-driver-port-changed": false}, wantBool: true},
+		{name: "green/system-driver-follows/no-terminal", mode: "green-when-complete",
+			state: map[string]any{"at-system-driver-port-changed": true}, wantBool: false},
+		{name: "green/system-flag-unset_halts", mode: "green-when-complete", wantErr: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+			ctx := statemachine.NewContext()
+			if tc.mode != "" {
+				ctx.Params["verify-mode"] = tc.mode
+			}
+			for k, v := range tc.state {
+				ctx.Set(k, v)
+			}
+			out := b.atExternalTerminalVerifyNeeded(ctx)
+			if tc.wantErr {
+				if out.Err == nil {
+					t.Fatalf("want err, got Bool=%v", out.Bool)
+				}
+				return
+			}
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if out.Bool != tc.wantBool {
+				t.Fatalf("Bool = %v, want %v", out.Bool, tc.wantBool)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // refactor-type-choice
 // ---------------------------------------------------------------------------
 

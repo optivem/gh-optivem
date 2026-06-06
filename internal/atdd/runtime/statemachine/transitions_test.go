@@ -601,6 +601,75 @@ func notEdge(t *testing.T, proc *Process, from, to string) {
 	}
 }
 
+// TestCoverPath_GreenWhenComplete_Wiring asserts the plan 20260606-1518 wiring:
+// the cover wrapper pins verify-mode, each AT layer pins its plumbing scope, the
+// CT-HIGH overrides back to red so green mode can't leak in, the two verify
+// gates route on the mode-aware at-verify-expectation binding, and the case-D
+// terminal AT-green tail exists. The change wrapper must NOT pin verify-mode so
+// the gate defaults to red and the change path is unchanged.
+func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
+	eng := loadSnapshot(t)
+	proc := func(id string) *Process {
+		p, ok := eng.Processes[id]
+		if !ok {
+			t.Fatalf("process %q missing", id)
+		}
+		return p
+	}
+
+	// 1. Cover wrapper pins green-when-complete; change wrapper leaves it unset.
+	if got := proc("write-and-verify-acceptance-tests-pass").Nodes["WRITE_AND_VERIFY_ACCEPTANCE_TESTS"].Raw.Params["verify-mode"]; got != "green-when-complete" {
+		t.Errorf("cover wrapper verify-mode = %q, want green-when-complete", got)
+	}
+	if got, set := proc("write-and-verify-acceptance-tests-fail").Nodes["WRITE_AND_VERIFY_ACCEPTANCE_TESTS"].Raw.Params["verify-mode"]; set {
+		t.Errorf("change wrapper must NOT pin verify-mode (defaults red), got %q", got)
+	}
+
+	// 2. Each AT layer pins its plumbing scope (inherits down to its verify gate).
+	sc := proc("shared-contract")
+	if got := sc.Nodes["WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE"].Raw.Params["verify-pending-on"]; got != "dsl" {
+		t.Errorf("test-code layer verify-pending-on = %q, want dsl", got)
+	}
+	if got := sc.Nodes["IMPLEMENT_AND_VERIFY_DSL"].Raw.Params["verify-pending-on"]; got != "drivers" {
+		t.Errorf("DSL layer verify-pending-on = %q, want drivers", got)
+	}
+	if got := proc("write-and-verify-acceptance-tests").Nodes["IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS"].Raw.Params["verify-pending-on"]; got != "none" {
+		t.Errorf("adapter layer verify-pending-on = %q, want none", got)
+	}
+
+	// 3. The CT-HIGH excursion overrides back to red so green mode can't leak in.
+	if got := sc.Nodes["IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"].Raw.Params["verify-mode"]; got != "red" {
+		t.Errorf("CT-HIGH verify-mode = %q, want red", got)
+	}
+
+	// 4. Both verify gates route on the mode-aware binding.
+	for _, p := range []struct{ proc, node string }{
+		{"write-and-verify-acceptance-test-code", "GATE_EXPECTED_TEST_RESULT"},
+		{"implement-test-layer", "GATE_EXPECTED_TEST_RESULT"},
+	} {
+		if got := proc(p.proc).Nodes[p.node].Raw.Binding; got != "at-verify-expectation" {
+			t.Errorf("%s/%s binding = %q, want at-verify-expectation", p.proc, p.node, got)
+		}
+	}
+
+	// 5. Case-D terminal AT-green tail in shared-contract.
+	wantEdge(t, sc, "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "GATE_AT_TERMINAL_GREEN", "")
+	wantEdge(t, sc, "GATE_AT_TERMINAL_GREEN", "START_SYSTEM_AT_TERMINAL", "at-external-terminal-verify-needed == true")
+	wantEdge(t, sc, "GATE_AT_TERMINAL_GREEN", "SHARED_CONTRACT_END", "at-external-terminal-verify-needed == false")
+	wantEdge(t, sc, "START_SYSTEM_AT_TERMINAL", "VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL", "")
+	wantEdge(t, sc, "VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL", "SHARED_CONTRACT_END", "")
+	if got := sc.Nodes["GATE_AT_TERMINAL_GREEN"].Raw.Binding; got != "at-external-terminal-verify-needed" {
+		t.Errorf("GATE_AT_TERMINAL_GREEN binding = %q, want at-external-terminal-verify-needed", got)
+	}
+	term := sc.Nodes["VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL"]
+	if got := term.Raw.Process; got != "verify-tests-pass" {
+		t.Errorf("terminal verify process = %q, want verify-tests-pass", got)
+	}
+	if got := term.Raw.Params["suite"]; got != "acceptance" {
+		t.Errorf("terminal verify suite = %q, want acceptance", got)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Predicate evaluator unit tests
 // ---------------------------------------------------------------------------
