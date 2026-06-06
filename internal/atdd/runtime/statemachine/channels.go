@@ -78,7 +78,7 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 //
 // Only `channel` is overridden per node — the adapter has no common layer (it
 // is channel-shaped by nature) and its verify suite stays the inherited
-// `tests:` value (the per-channel suite refinement belongs to the `--target`
+// `suite:` value (`acceptance`) (the per-channel suite refinement belongs to the `--target`
 // slice work, not this foundation). The agent prompt
 // (system-driver-adapter-implementer.md) reads `${channel}` and writes only
 // that channel's adapter, leaving the other channels' stubs to their own

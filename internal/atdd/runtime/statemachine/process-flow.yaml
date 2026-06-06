@@ -709,6 +709,7 @@ processes:
           task-name: implement-dsl
           expected-test-result: ${expected-test-result}
           tests: acceptance
+          suite: acceptance
 
       - id: GATE_EXTERNAL_DRIVER_PORTS_CHANGED
         type: gateway
@@ -794,6 +795,7 @@ processes:
           task-name: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: acceptance
+          suite: acceptance
 
       - id: WAV_AT_END
         type: end-event
@@ -898,6 +900,7 @@ processes:
           action: implement-dsl
           expected-test-result: ${expected-test-result}
           tests: ${tests}
+          suite: ${suite}
           layer: "DSL"
 
       - id: IMPL_DSL_END
@@ -920,6 +923,7 @@ processes:
           action: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
           tests: ${tests}
+          suite: ${suite}
           layer: "SYSTEM DRIVER ADAPTERS"
 
       - id: IMPL_SYS_DRIVER_END
@@ -963,6 +967,7 @@ processes:
           task-name: implement-dsl
           expected-test-result: success
           tests: contract
+          suite: contract-real
 
       - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
@@ -1208,7 +1213,7 @@ processes:
         process: verify-tests-pass
         name: "Verify Tests Pass"
         params:
-          suite: ${tests}
+          suite: ${suite}
           test-names: ${test-names}
 
       - id: VERIFY_TESTS_FAIL_FILTERED
@@ -1216,7 +1221,7 @@ processes:
         process: verify-tests-fail
         name: "Verify Tests Fail"
         params:
-          suite: ${tests}
+          suite: ${suite}
           test-names: ${test-names}
 
       - id: COMMIT_LAYER

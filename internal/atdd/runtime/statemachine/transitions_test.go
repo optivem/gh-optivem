@@ -455,6 +455,42 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	// real system, then fail against the not-yet-implemented stub).
 	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL", "START_SYSTEM_BEFORE_STUB_FAIL", "")
 	wantEdge(t, ct, "START_SYSTEM_BEFORE_STUB_FAIL", "VERIFY_TESTS_FAIL_CONTRACT_STUB", "")
+
+	// 5. The CT-HIGH's nested DSL step verifies against suite `contract-real`,
+	//    decoupled from the `tests: contract` path discriminator. Guards the
+	//    bare-`--suite=contract` regression: `tests` (the AT/CT path fence)
+	//    and `suite` (the runner selector) must stay independent, so the
+	//    filtered verify never copies the unregistered `contract` value.
+	dslCaller, ok := ct.Nodes["IMPLEMENT_AND_VERIFY_DSL"]
+	if !ok {
+		t.Fatalf("CT-HIGH: IMPLEMENT_AND_VERIFY_DSL node missing")
+	}
+	if got := dslCaller.Raw.Params["suite"]; got != "contract-real" {
+		t.Errorf("CT-HIGH DSL caller suite = %q, want contract-real", got)
+	}
+	if got := dslCaller.Raw.Params["tests"]; got != "contract" {
+		t.Errorf("CT-HIGH DSL caller tests = %q, want contract (path discriminator unchanged)", got)
+	}
+	// The nested implement-and-verify-dsl threads ${suite} (not ${tests}) into
+	// its filtered verify, so the caller's contract-real reaches the runner.
+	dsl, ok := eng.Processes["implement-and-verify-dsl"]
+	if !ok {
+		t.Fatalf("process implement-and-verify-dsl missing")
+	}
+	if itl, ok := dsl.Nodes["IMPLEMENT_TEST_LAYER"]; !ok {
+		t.Fatalf("implement-and-verify-dsl: IMPLEMENT_TEST_LAYER node missing")
+	} else if got := itl.Raw.Params["suite"]; got != "${suite}" {
+		t.Errorf("implement-and-verify-dsl IMPLEMENT_TEST_LAYER suite = %q, want ${suite}", got)
+	}
+	itlProc, ok := eng.Processes["implement-test-layer"]
+	if !ok {
+		t.Fatalf("process implement-test-layer missing")
+	}
+	if vf, ok := itlProc.Nodes["VERIFY_TESTS_PASS_FILTERED"]; !ok {
+		t.Fatalf("implement-test-layer: VERIFY_TESTS_PASS_FILTERED node missing")
+	} else if got := vf.Raw.Params["suite"]; got != "${suite}" {
+		t.Errorf("VERIFY_TESTS_PASS_FILTERED suite = %q, want ${suite} (decoupled from ${tests})", got)
+	}
 }
 
 func wantEdge(t *testing.T, proc *Process, from, to, predicate string) {
