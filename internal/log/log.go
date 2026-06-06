@@ -97,7 +97,7 @@ func Debug(msg string) {
 	if !verbose {
 		return
 	}
-	fmt.Printf(prefixedLineFmt, prefixDebug("DBG"), msg)
+	fmt.Fprintf(color.Output, prefixedLineFmt, prefixDebug("DBG"), msg)
 }
 
 func Debugf(format string, args ...any) {
@@ -114,7 +114,7 @@ func Info(msg string) {
 		return
 	}
 	colored := fmt.Sprintf("%s %s", color.New(color.Faint).Sprintf("[%s]", ts), msg)
-	fmt.Printf(prefixedLineFmt, prefixInfo(">"), colored)
+	fmt.Fprintf(color.Output, prefixedLineFmt, prefixInfo(">"), colored)
 }
 
 func Infof(format string, args ...any) {
@@ -124,7 +124,7 @@ func Infof(format string, args ...any) {
 // Success prints a positive completion line. Always shown. Goes to stdout.
 func Success(msg string) {
 	writeFile(plainSuccess, msg)
-	fmt.Printf(prefixedLineFmt, prefixSuccess("OK"), msg)
+	fmt.Fprintf(color.Output, prefixedLineFmt, prefixSuccess("OK"), msg)
 }
 
 func Successf(format string, args ...any) {
@@ -134,7 +134,7 @@ func Successf(format string, args ...any) {
 // Warn prints a warning. Always shown. Goes to stderr (Unix convention).
 func Warn(msg string) {
 	writeFile(plainWarn, msg)
-	fmt.Fprintf(os.Stderr, prefixedLineFmt, prefixWarn("WARN"), msg)
+	fmt.Fprintf(color.Error, prefixedLineFmt, prefixWarn("WARN"), msg)
 }
 
 func Warnf(format string, args ...any) {
@@ -144,7 +144,7 @@ func Warnf(format string, args ...any) {
 // Error prints an error that does not stop the program. Always shown. Goes to stderr.
 func Error(msg string) {
 	writeFile(plainError, msg)
-	fmt.Fprintf(os.Stderr, prefixedLineFmt, prefixError("FAIL"), msg)
+	fmt.Fprintf(color.Error, prefixedLineFmt, prefixError("FAIL"), msg)
 }
 
 func Errorf(format string, args ...any) {
@@ -163,7 +163,7 @@ func StepDone(pos, total int, duration string) {
 		color.New(color.FgCyan, color.Bold).Sprintf("Step %d/%d", pos, total),
 		color.New(color.Faint).Sprintf("(%s)", duration))
 	writeFile(plainSuccess, plain)
-	fmt.Printf(prefixedLineFmt, prefixSuccess("OK"), colored)
+	fmt.Fprintf(color.Output, prefixedLineFmt, prefixSuccess("OK"), colored)
 }
 
 // PhaseHeader prints a phase banner like:
@@ -198,7 +198,7 @@ func (e *StepError) Error() string { return e.Msg }
 // For use during step execution. For pre-validation failures, use FatalExit.
 func Fatal(msg string) {
 	writeFile(plainFatal, msg)
-	fmt.Fprintf(os.Stderr, prefixedLineFmt, prefixError(plainFatal), msg)
+	fmt.Fprintf(color.Error, prefixedLineFmt, prefixError(plainFatal), msg)
 	panic(&StepError{Msg: msg})
 }
 
@@ -209,7 +209,7 @@ func Fatalf(format string, args ...any) {
 // FatalExit prints an error and exits immediately. Use for pre-validation failures only.
 func FatalExit(msg string) {
 	writeFile(plainFatal, msg)
-	fmt.Fprintf(os.Stderr, prefixedLineFmt, prefixError(plainFatal), msg)
+	fmt.Fprintf(color.Error, prefixedLineFmt, prefixError(plainFatal), msg)
 	Close()
 	os.Exit(1)
 }
