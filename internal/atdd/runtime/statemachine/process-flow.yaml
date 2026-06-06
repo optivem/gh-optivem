@@ -230,10 +230,10 @@ processes:
   # story, bug, or task? then, if task, what kind?" The slash-delimited
   # vocabulary used by the older flat gateway (`task/legacy-coverage`)
   # is split into a `ticket-kind` axis and a `task-subtype` axis at the
-  # binding layer. The binding-side split lands in Phase D; this plan
-  # ships the YAML structure plus a `task-subtype` stub binding (per
-  # Q11.2). End-to-end execution for task-kind tickets requires the
-  # Phase D wiring.
+  # binding layer. Both axes are live: the ticket-kind binding resolves
+  # the kind from the tracker (Tracker.Classify) and the task-subtype
+  # binding resolves the subtype (Tracker.Subtypes), so task-kind
+  # tickets dispatch end-to-end to their cycles.
   #
   # Absorbs the pre-refactor github-intake process (cross-check
   # inventory diagram #3). The OLD intake's classification + body-

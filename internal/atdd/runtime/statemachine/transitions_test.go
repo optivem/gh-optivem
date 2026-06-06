@@ -670,6 +670,56 @@ func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
 	}
 }
 
+// TestImplementTicket_TwoAxisRouting asserts the wired two-axis ticket
+// gateway (plan 20260606-1637): with the bindings emitting bare `task` on the
+// kind axis and the bare subtype on the subtype axis, a task ticket routes
+// *past* GATE_TICKET_KIND into GATE_TASK_SUBTYPE and on to its cycle — not into
+// the UNKNOWN_TICKET_KIND error end that the old composite `task/<sub>` value
+// fell through to. Story/bug still route to CHANGE_SYSTEM_BEHAVIOR. Uses
+// NextEdge (predicate eval over seeded state) rather than a full walk, per the
+// statemachine-test-loop hazard.
+func TestImplementTicket_TwoAxisRouting(t *testing.T) {
+	eng := loadSnapshot(t)
+
+	route := func(t *testing.T, from string, state map[string]string) string {
+		t.Helper()
+		ctx := NewContext()
+		for k, v := range state {
+			ctx.Set(k, v)
+		}
+		to, err := eng.NextEdge("implement-ticket", from, ctx)
+		if err != nil {
+			t.Fatalf("NextEdge(%s) with %v: %v", from, state, err)
+		}
+		return to
+	}
+
+	// Kind axis: story/bug → change cycle; task → the subtype gateway, NOT
+	// the unknown-kind error end.
+	if got := route(t, "GATE_TICKET_KIND", map[string]string{"ticket-kind": "story"}); got != "CHANGE_SYSTEM_BEHAVIOR" {
+		t.Errorf("story routes to %q, want CHANGE_SYSTEM_BEHAVIOR", got)
+	}
+	if got := route(t, "GATE_TICKET_KIND", map[string]string{"ticket-kind": "bug"}); got != "CHANGE_SYSTEM_BEHAVIOR" {
+		t.Errorf("bug routes to %q, want CHANGE_SYSTEM_BEHAVIOR", got)
+	}
+	if got := route(t, "GATE_TICKET_KIND", map[string]string{"ticket-kind": "task"}); got != "GATE_TASK_SUBTYPE" {
+		t.Errorf("task routes to %q, want GATE_TASK_SUBTYPE (regression: must not dead-end at UNKNOWN_TICKET_KIND)", got)
+	}
+
+	// Subtype axis: each of the 5 subtypes reaches its cycle.
+	for _, tc := range []struct{ subtype, cycle string }{
+		{"legacy-coverage", "COVER_SYSTEM_BEHAVIOR"},
+		{"system-redesign", "REDESIGN_SYSTEM_STRUCTURE"},
+		{"external-system-redesign", "REDESIGN_EXTERNAL_SYSTEM_STRUCTURE"},
+		{"system-refactor", "REFACTOR_SYSTEM_STRUCTURE"},
+		{"test-refactor", "REFACTOR_TEST_STRUCTURE"},
+	} {
+		if got := route(t, "GATE_TASK_SUBTYPE", map[string]string{"task-subtype": tc.subtype}); got != tc.cycle {
+			t.Errorf("subtype %q routes to %q, want %s", tc.subtype, got, tc.cycle)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Predicate evaluator unit tests
 // ---------------------------------------------------------------------------

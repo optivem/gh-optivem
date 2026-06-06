@@ -842,42 +842,38 @@ func TestTicketKind_PreseededShortCircuits(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
 	ctx := statemachine.NewContext()
 	ctx.Set("issue-url", "https://example/1")
-	ctx.Set("ticket-kind", "task/legacy-coverage")
+	ctx.Set("ticket-kind", "task")
 	out := b.ticketKind(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if out.Value != "task/legacy-coverage" {
-		t.Fatalf("Value: got %q, want %q", out.Value, "task/legacy-coverage")
+	if out.Value != "task" {
+		t.Fatalf("Value: got %q, want %q", out.Value, "task")
 	}
 }
 
 func TestTicketKind_LookupTable(t *testing.T) {
+	// ticketKind resolves only the kind axis — subtype resolution moved
+	// down to taskSubtype (TestTaskSubtype_LookupTable). Every task,
+	// regardless of its subtype labels, resolves to bare "task".
 	for _, tc := range []struct {
 		name      string
 		kind      string
-		subtypes  []string
 		want      string
 		expectErr bool
 	}{
 		{name: "story", kind: "story", want: "story"},
 		{name: "bug", kind: "bug", want: "bug"},
 		{name: "feature_aliased_to_story", kind: "feature", want: "story"},
-		{name: "task_legacy_coverage", kind: "task", subtypes: []string{"legacy-coverage"}, want: "task/legacy-coverage"},
-		{name: "task_system_redesign", kind: "task", subtypes: []string{"system-redesign"}, want: "task/system-redesign"},
-		{name: "task_external_system_redesign", kind: "task", subtypes: []string{"external-system-redesign"}, want: "task/external-system-redesign"},
-		{name: "task_system_refactor", kind: "task", subtypes: []string{"system-refactor"}, want: "task/system-refactor"},
-		{name: "task_test_refactor", kind: "task", subtypes: []string{"test-refactor"}, want: "task/test-refactor"},
-		{name: "task_unrecognised_subtype_halts", kind: "task", subtypes: []string{"weird-subtype"}, expectErr: true},
-		{name: "task_no_subtype_halts", kind: "task", subtypes: nil, expectErr: true},
-		{name: "task_multiple_subtypes_halts", kind: "task", subtypes: []string{"legacy-coverage", "system-refactor"}, expectErr: true},
+		{name: "task", kind: "task", want: "task"},
 		{name: "unsupported_ticket_type_halts", kind: "spike", expectErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tk := fakeTracker{
 				classifyKind:      tc.kind,
 				classifyConfident: true,
-				subtypes:          tc.subtypes,
+				// subtypes intentionally left unset: ticketKind no longer
+				// reads them (that is taskSubtype's job now).
 			}
 			b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
 			ctx := statemachine.NewContext()
@@ -914,6 +910,76 @@ func TestTicketKind_NoIssueURL_Halts(t *testing.T) {
 	tk := fakeTracker{}
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
 	out := b.ticketKind(statemachine.NewContext())
+	if out.Err == nil {
+		t.Fatalf("expected err for missing issue-url, got %+v", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// task-subtype (second-level GATE_TASK_SUBTYPE axis)
+// ---------------------------------------------------------------------------
+
+func TestTaskSubtype_PreseededShortCircuits(t *testing.T) {
+	// fakeTracker.Subtypes would return nil; the preseed must short-
+	// circuit before the binding reaches the tracker at all.
+	tk := fakeTracker{}
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
+	ctx := statemachine.NewContext()
+	ctx.Set("issue-url", "https://example/1")
+	ctx.Set("task-subtype", "legacy-coverage")
+	out := b.taskSubtype(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if out.Value != "legacy-coverage" {
+		t.Fatalf("Value: got %q, want %q", out.Value, "legacy-coverage")
+	}
+}
+
+func TestTaskSubtype_LookupTable(t *testing.T) {
+	// Mirror of ticketKind's old task branch, lifted down one axis: the
+	// subtype resolves from Tracker.Subtypes, exactly one label expected.
+	for _, tc := range []struct {
+		name      string
+		subtypes  []string
+		want      string
+		expectErr bool
+	}{
+		{name: "legacy_coverage", subtypes: []string{"legacy-coverage"}, want: "legacy-coverage"},
+		{name: "system_redesign", subtypes: []string{"system-redesign"}, want: "system-redesign"},
+		{name: "external_system_redesign", subtypes: []string{"external-system-redesign"}, want: "external-system-redesign"},
+		{name: "system_refactor", subtypes: []string{"system-refactor"}, want: "system-refactor"},
+		{name: "test_refactor", subtypes: []string{"test-refactor"}, want: "test-refactor"},
+		{name: "unrecognised_subtype_halts", subtypes: []string{"weird-subtype"}, expectErr: true},
+		{name: "no_subtype_halts", subtypes: nil, expectErr: true},
+		{name: "multiple_subtypes_halts", subtypes: []string{"legacy-coverage", "system-refactor"}, expectErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tk := fakeTracker{subtypes: tc.subtypes}
+			b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
+			ctx := statemachine.NewContext()
+			ctx.Set("issue-url", "https://example/1")
+			out := b.taskSubtype(ctx)
+			if tc.expectErr {
+				if out.Err == nil {
+					t.Fatalf("expected err, got %+v", out)
+				}
+				return
+			}
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if out.Value != tc.want {
+				t.Fatalf("Value: got %q, want %q", out.Value, tc.want)
+			}
+		})
+	}
+}
+
+func TestTaskSubtype_NoIssueURL_Halts(t *testing.T) {
+	tk := fakeTracker{}
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}, Tracker: tk})
+	out := b.taskSubtype(statemachine.NewContext())
 	if out.Err == nil {
 		t.Fatalf("expected err for missing issue-url, got %+v", out)
 	}

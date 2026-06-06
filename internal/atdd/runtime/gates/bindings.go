@@ -178,13 +178,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("refactor-type-choice", b.refactorTypeChoice)
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
+	// Two-axis implement-ticket gateway (Item 11): ticketKind resolves the
+	// kind (story | bug | task) at GATE_TICKET_KIND; taskSubtype resolves
+	// the subtype (legacy-coverage | system-redesign | …) at
+	// GATE_TASK_SUBTYPE, reached only when ticketKind emits bare `task`.
+	// Both resolve from the tracker (Classify / Subtypes respectively).
 	r.Register("ticket-kind", b.ticketKind)
-	// task-subtype: Item-11 second-level gateway. Stub binding for now —
-	// reads ctx.State["task-subtype"] if preseeded, errors otherwise.
-	// Phase D wires the real implementation alongside the ticketKind
-	// split (the existing ticketKind binding still emits the composite
-	// `task/<subtype>` value; reconciling that with the new two-gateway
-	// YAML is Phase D's job — see plans/20260526-0832 Item 11 Q11.2).
 	r.Register("task-subtype", b.taskSubtype)
 }
 
@@ -593,27 +592,23 @@ func (b bindings) outputsAndScopesValid(ctx *statemachine.Context) statemachine.
 	return outcomeFromBoolish(v)
 }
 
-// ticketKind composes the TOP `implement-ticket` dispatch
-// discriminator from (Tracker.Classify, Tracker.Subtypes). Lookup
-// table per Q-D3:
+// ticketKind is the TOP `implement-ticket` first-level
+// (GATE_TICKET_KIND) dispatch discriminator. It resolves only the
+// *kind* axis from Tracker.Classify; for task tickets the subtype is
+// resolved one axis down by the taskSubtype binding
+// (GATE_TASK_SUBTYPE). Lookup table:
 //
-//	ticket-type | subtype                    | discriminator
-//	---         | ---                        | ---
-//	story       | (any/none)                 | story
-//	bug         | (any/none)                 | bug
-//	task        | legacy-coverage            | task/legacy-coverage
-//	task        | system-redesign            | task/system-redesign
-//	task        | external-system-redesign   | task/external-system-redesign
-//	task        | system-refactor            | task/system-refactor
-//	task        | test-refactor              | task/test-refactor
+//	ticket-type | discriminator
+//	---         | ---
+//	story       | story
+//	bug         | bug
+//	task        | task   (subtype resolved on the downstream GATE_TASK_SUBTYPE axis)
 //
 // Preseed via ctx.State["ticket-kind"] short-circuits the
 // classification (hand-debug / transitions tests). Tracker.Classify
-// returns the GitHub native issue type; ticketTypeAliases is the same
+// returns the GitHub native issue type; ticketKindAliases is the same
 // "feature → story" normalization the older read_ticket_type action
-// applies. Tracker.Subtypes returns the `subtype:*` label values for
-// task tickets; exactly one is expected (multiple labels or none on a
-// task is unrecognised composition).
+// applies.
 func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
 	if v := ctx.GetString("ticket-kind"); v != "" {
 		return statemachine.Outcome{Value: v}
@@ -627,7 +622,7 @@ func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: %w", err)}
 	}
 	if !confident || kind == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: issue %s has no native issue type — set one of: Feature, Bug, Task (and for Task, also exactly one subtype:* label: %s) and re-run", issue.ID, strings.Join(ticketKindTaskSubtypes, ", "))}
+		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: issue %s has no native issue type — set one of: Feature, Bug, Task (and for Task, also exactly one subtype:* label: %s) and re-run", issue.ID, strings.Join(taskSubtypes, ", "))}
 	}
 	if alias, ok := ticketKindAliases[kind]; ok {
 		kind = alias
@@ -636,33 +631,46 @@ func (b bindings) ticketKind(ctx *statemachine.Context) statemachine.Outcome {
 	case "story", "bug":
 		return statemachine.Outcome{Value: kind}
 	case "task":
-		subs, err := b.deps.Tracker.Subtypes(context.Background(), issue)
-		if err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: %w", err)}
-		}
-		if len(subs) != 1 {
-			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: task %s has %d subtype:* labels (want exactly one of: %s)", issue.ID, len(subs), strings.Join(ticketKindTaskSubtypes, ", "))}
-		}
-		sub := subs[0]
-		if !ticketKindTaskSubtypeSet[sub] {
-			return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: task %s has unrecognised subtype:%s label (valid subtype:* labels are: %s)", issue.ID, sub, strings.Join(ticketKindTaskSubtypes, ", "))}
-		}
-		return statemachine.Outcome{Value: "task/" + sub}
+		// Subtype resolution lives on the downstream GATE_TASK_SUBTYPE
+		// axis (taskSubtype binding) — this gateway only discriminates
+		// the kind, so it emits bare `task`.
+		return statemachine.Outcome{Value: "task"}
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("ticket-kind: unsupported ticket type %q (expected one of: story, bug, task)", kind)}
 	}
 }
 
-// taskSubtype is the Item-11 second-level gateway stub. Reads a
-// preseeded `task-subtype` from ctx.State if present, errors
-// otherwise. Phase D wires the real implementation that lifts the
-// subtype out of `Tracker.Subtypes` so task-kind tickets dispatch
-// end-to-end without manual preseed.
+// taskSubtype is the TOP `implement-ticket` second-level
+// (GATE_TASK_SUBTYPE) gateway, reached only after ticketKind emits
+// bare `task`. It resolves the subtype axis from Tracker.Subtypes —
+// the structural mirror of ticketKind's kind resolution. Exactly one
+// `subtype:*` label is expected; zero, multiple, or an out-of-set
+// label is unrecognised composition and surfaces a clear operator
+// error so the ticket can be re-labelled and re-run.
+//
+// Preseed via ctx.State["task-subtype"] short-circuits the resolution
+// (hand-debug / transitions tests), matching ticketKind's preseed
+// affordance.
 func (b bindings) taskSubtype(ctx *statemachine.Context) statemachine.Outcome {
 	if v := ctx.GetString("task-subtype"); v != "" {
 		return statemachine.Outcome{Value: v}
 	}
-	return statemachine.Outcome{Err: fmt.Errorf("task-subtype: not preseeded in ctx.State and the real binding is Phase D scope (see plans/20260526-0832 Item 11 Q11.2)")}
+	issue, err := issueFromContext(ctx)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("task-subtype: %w", err)}
+	}
+	subs, err := b.deps.Tracker.Subtypes(context.Background(), issue)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("task-subtype: %w", err)}
+	}
+	if len(subs) != 1 {
+		return statemachine.Outcome{Err: fmt.Errorf("task-subtype: task %s has %d subtype:* labels (want exactly one of: %s)", issue.ID, len(subs), strings.Join(taskSubtypes, ", "))}
+	}
+	sub := subs[0]
+	if !taskSubtypeSet[sub] {
+		return statemachine.Outcome{Err: fmt.Errorf("task-subtype: task %s has unrecognised subtype:%s label (valid subtype:* labels are: %s)", issue.ID, sub, strings.Join(taskSubtypes, ", "))}
+	}
+	return statemachine.Outcome{Value: sub}
 }
 
 // ticketKindAliases mirrors the older read_ticket_type behaviour
@@ -670,13 +678,13 @@ func (b bindings) taskSubtype(ctx *statemachine.Context) statemachine.Outcome {
 // type is the new spelling of what the runtime calls "story".
 var ticketKindAliases = map[string]string{"feature": "story"}
 
-// ticketKindTaskSubtypes is the closed, canonically-ordered set of
-// `subtype:*` labels the implement-ticket gateway dispatches on.
-// Anything outside this set surfaces as unrecognised — the operator
-// re-labels the ticket and re-runs. The order is the order shown in
-// operator-facing error messages, so keep it in sync with the lookup
-// table in the ticketKind doc comment.
-var ticketKindTaskSubtypes = []string{
+// taskSubtypes is the closed, canonically-ordered set of `subtype:*`
+// labels the GATE_TASK_SUBTYPE axis (taskSubtype binding) dispatches
+// on. Anything outside this set surfaces as unrecognised — the
+// operator re-labels the ticket and re-runs. The order is the order
+// shown in operator-facing error messages. (ticketKind's no-native-
+// type error also lists it as the set of valid Task subtypes.)
+var taskSubtypes = []string{
 	"legacy-coverage",
 	"system-redesign",
 	"external-system-redesign",
@@ -684,12 +692,12 @@ var ticketKindTaskSubtypes = []string{
 	"test-refactor",
 }
 
-// ticketKindTaskSubtypeSet is the O(1) membership view of
-// ticketKindTaskSubtypes, built at package init. Keep the slice
-// authoritative for ordering; the set is derived.
-var ticketKindTaskSubtypeSet = func() map[string]bool {
-	m := make(map[string]bool, len(ticketKindTaskSubtypes))
-	for _, s := range ticketKindTaskSubtypes {
+// taskSubtypeSet is the O(1) membership view of taskSubtypes, built at
+// package init. Keep the slice authoritative for ordering; the set is
+// derived.
+var taskSubtypeSet = func() map[string]bool {
+	m := make(map[string]bool, len(taskSubtypes))
+	for _, s := range taskSubtypes {
 		m[s] = true
 	}
 	return m
