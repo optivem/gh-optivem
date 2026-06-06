@@ -18,4 +18,4 @@ gh optivem output write \
 
 ## Scope is the complete contract
 
-The `## Scope` block is the complete read/write contract — anything not in `read:` you cannot read, anything not in `write:` you cannot write to. Both escape via the envelope above.
+The `## Scope` block is the complete read/write contract — anything not in `read:` you cannot read, anything not in `write:` you cannot write to. Both escape via the envelope above. This holds for **every** agent that has a scope — production-code, test, and fix agents alike — not just production-code agents; only `scope: none` phases declare no contract and so have nothing to escape.

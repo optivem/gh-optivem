@@ -1121,18 +1121,24 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// path stash is also skipped so validate-outputs-and-scopes
 		// treats it as no-op.
 		//
-		// Envelope exception (plan 20260528-1150): every prod-agent
-		// dispatch must be able to emit the scope-exception envelope
-		// per scope.md doctrine, even when its MID declares no flag
-		// outputs (implement-system, update-system, the driver-adapter
-		// MIDs, …). For those dispatches we seed only the envelope keys
-		// into GH_OPTIVEM_OUTPUT_KEYS so `gh optivem output write
-		// scope-exception-files=...` is accepted; the per-dispatch
-		// JSONL path is the same one rs.dispatchPaths already computed.
-		// validate-outputs-and-scopes' readOutputsJSONL recognises the
-		// envelope key types as built-in facts (statemachine.
-		// EnvelopeOutputSpecs), so the absent declared list does not
-		// lose type fidelity.
+		// Envelope exception (plans 20260528-1150, 20260606-1539): every
+		// dispatch with a non-`none` scope must be able to emit the
+		// scope-exception envelope per scope.md doctrine, even when its
+		// MID declares no flag outputs — the prod-agent MIDs
+		// (implement-system, update-system, the driver-adapter MIDs, …)
+		// plus refactor-tests and the two fix-unexpected-*-tests agents.
+		// The gate is "has a scope to violate" (!eng.IsScopeNone), not
+		// category, so any scoped agent can raise the clean
+		// STOP_SCOPE_VIOLATION halt instead of churning the FIX loop to
+		// AGENT_FIX_EXHAUSTED. We merge the envelope keys into
+		// GH_OPTIVEM_OUTPUT_KEYS (deduped against any the MID already
+		// declares) so `gh optivem output write scope-exception-files=...`
+		// is accepted; the per-dispatch JSONL path is the same one
+		// rs.dispatchPaths already computed. validate-outputs-and-scopes'
+		// readOutputsJSONL recognises the envelope key types as built-in
+		// facts (statemachine.EnvelopeOutputSpecs), so the absent declared
+		// list does not lose type fidelity. scope: none dispatches
+		// (refine-acceptance-criteria) stay exempt.
 		var (
 			outputKeysSpec  string
 			expectedOutputs []statemachine.OutputSpec
@@ -1144,15 +1150,19 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			outs, _ := eng.Outputs(scopeKey)
 			expectedOutputs = outs
 			switch {
-			case len(outs) > 0 && outputFilePath != "":
-				outputKeysSpec = encodeOutputKeysSpec(outs)
-				ctx.Set("output-file-path", outputFilePath)
-			case nodeParams["category"] == "prod-agent" && outputFilePath != "":
-				outputKeysSpec = encodeOutputKeysSpec(statemachine.EnvelopeOutputSpecs())
+			case outputFilePath != "" && (len(outs) > 0 || !eng.IsScopeNone(scopeKey)):
+				// Declared outputs OR a non-`none` scope: wire the channel
+				// and merge the envelope keys in (deduped) so the writers
+				// that already list them don't double-list and the scoped
+				// agents that declare no flag outputs still get them.
+				outputKeysSpec = encodeOutputKeysSpec(withEnvelopeSpecs(outs))
 				ctx.Set("output-file-path", outputFilePath)
 			default:
-				// No declared outputs and not a prod-agent dispatch →
-				// unwire the path so clauderun doesn't export
+				// scope: none (refine-acceptance-criteria) or a no-MID
+				// dispatch (test fixtures whose scopeKey falls back to the
+				// agent noun, not a process — IsScopeNone returns false
+				// there, but those have no outputFilePath so they land
+				// here) → unwire the path so clauderun doesn't export
 				// GH_OPTIVEM_OUTPUT_FILE in isolation, which would let
 				// the agent write to a file the dispatcher never reads.
 				// Also clear any path the previous agent's dispatch
@@ -1265,6 +1275,26 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 // encoded — write-time the CLI just needs to know "is this key
 // declared, and what type?". Optional vs required is a read-time
 // concern (the dispatcher's presence-check honours it).
+// withEnvelopeSpecs appends the scope-exception envelope OutputSpecs to outs,
+// skipping any whose key is already declared. The three writers and
+// implement-dsl list the envelope explicitly, so for them this is a no-op;
+// for every other non-`none`-scope dispatch (the prod-agent MIDs,
+// refactor-tests, the two fix-unexpected-*-tests agents) it yields the
+// envelope-only allow-list.
+func withEnvelopeSpecs(outs []statemachine.OutputSpec) []statemachine.OutputSpec {
+	seen := make(map[string]bool, len(outs))
+	for _, o := range outs {
+		seen[o.Key] = true
+	}
+	merged := append([]statemachine.OutputSpec(nil), outs...)
+	for _, e := range statemachine.EnvelopeOutputSpecs() {
+		if !seen[e.Key] {
+			merged = append(merged, e)
+		}
+	}
+	return merged
+}
+
 func encodeOutputKeysSpec(outs []statemachine.OutputSpec) string {
 	if len(outs) == 0 {
 		return ""
