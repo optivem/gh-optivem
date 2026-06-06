@@ -611,14 +611,13 @@ func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath 
 			fmt.Fprintf(w, "  system-test:   %s (lang: %s, repo: %s)\n",
 				cfg.SystemTest.Path, cfg.SystemTest.Lang, cfg.SystemTest.Repo)
 		}
-		if !cfg.ExternalSystems.Stubs.IsEmpty() || !cfg.ExternalSystems.Simulators.IsEmpty() {
-			if !cfg.ExternalSystems.Stubs.IsEmpty() {
-				fmt.Fprintf(w, "  ext stubs:     %s (repo: %s)\n",
-					cfg.ExternalSystems.Stubs.Path, cfg.ExternalSystems.Stubs.Repo)
-			}
-			if !cfg.ExternalSystems.Simulators.IsEmpty() {
-				fmt.Fprintf(w, "  ext sims:      %s (repo: %s)\n",
-					cfg.ExternalSystems.Simulators.Path, cfg.ExternalSystems.Simulators.Repo)
+		for _, name := range cfg.ExternalSystemNames() {
+			es := cfg.ExternalSystems[name]
+			fmt.Fprintf(w, "  ext %s: real-kind=%s, stub: %s (repo: %s)\n",
+				name, es.RealKind, es.Stub.Path, es.Stub.Repo)
+			if !es.Simulator.IsEmpty() {
+				fmt.Fprintf(w, "  ext %s sim:  %s (repo: %s)\n",
+					name, es.Simulator.Path, es.Simulator.Repo)
 			}
 		}
 	}

@@ -77,14 +77,9 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 	f.SystemTestPath = pc.SystemTest.Path
 	f.TestLang = pc.SystemTest.Lang
 
-	if pc.ExternalSystems.Stubs.IsEmpty() {
-		return missingYAMLField("external-systems.stubs")
-	}
-	f.StubsPath = pc.ExternalSystems.Stubs.Path
-	if pc.ExternalSystems.Simulators.IsEmpty() {
-		return missingYAMLField("external-systems.simulators")
-	}
-	f.SimulatorsPath = pc.ExternalSystems.Simulators.Path
+	// external-systems is operator-owned and omitted by `gh optivem init`
+	// (plan 20260606-1356, option 1B): it is a per-system map with no flat
+	// scaffold path to recover, so re-init neither requires nor reads it.
 
 	owner, repo, err := workspaceRepoFromYAML(pc)
 	if err != nil {

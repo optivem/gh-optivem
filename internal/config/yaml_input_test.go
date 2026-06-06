@@ -24,10 +24,8 @@ func validMonolithYAML() *projectconfig.Config {
 			Lang:         projectconfig.LangJava,
 		},
 		SystemTest: projectconfig.TierSpec{Path: "system-test", Repo: "acme/page-turner", Lang: projectconfig.LangJava},
-		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs:      projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/page-turner"},
-			Simulators: projectconfig.ExternalSpec{Path: "simulators", Repo: "acme/page-turner"},
-		},
+		// external-systems is operator-owned and not scaffolded by init
+		// (plan 20260606-1356), so FillRawFlagsFromYAML never reads it.
 	}
 }
 
@@ -44,10 +42,6 @@ func validMultitierMultirepoYAML() *projectconfig.Config {
 			Frontend:     projectconfig.TierSpec{Path: "frontend", Repo: "acme/page-turner-frontend", Lang: projectconfig.LangTypescript},
 		},
 		SystemTest: projectconfig.TierSpec{Path: "system-test", Repo: "acme/page-turner-backend", Lang: projectconfig.LangTypescript},
-		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs:      projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/page-turner-backend"},
-			Simulators: projectconfig.ExternalSpec{Path: "simulators", Repo: "acme/page-turner-backend"},
-		},
 	}
 }
 

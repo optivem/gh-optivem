@@ -92,7 +92,7 @@ const (
 //                       property of the project board).
 //   - system:           the system being built — polymorphic by architecture.
 //   - system-test:      the test suite that drives the system.
-//   - external-systems: optional vendored stand-ins (stubs, simulators).
+//   - external-systems: optional name-keyed map of external-system stand-ins.
 //   - system-name:      human-readable system label for templating.
 //   - license:          license key for the scaffolded LICENSE file.
 //   - deploy:           deployment target (docker | cloud-run).
@@ -323,28 +323,71 @@ type TierSpec struct {
 	SystemDriverAdapterChannels map[string]string `yaml:"system-driver-adapter-channels,omitempty"`
 }
 
-// ExternalSystems declares vendored stand-ins for third-party dependencies
-// the system talks to during ATDD cycles. Both sub-fields are optional and
-// independent — a project might use only stubs, only simulators, both, or
-// neither. When a sub-field is non-empty, all of its inner fields must be
-// set.
+// ExternalSystems is a name-keyed map of the third-party dependencies the
+// system talks to during ATDD cycles — one entry per external system,
+// keyed by the system's name (e.g. "warehouse"). It replaces the pre-plan
+// flat two-tier model (a struct with shared Stubs/Simulators tiers); see
+// plan 20260606-1356, option 1B. The map is optional and may be absent
+// (`gh optivem init` no longer scaffolds it — operators add entries by
+// hand, mirroring the Rule-22a paths posture).
 //
-// Field order matches the ATDD cycle progression: Stubs (cycle 2,
-// WireMock-style no-logic stand-in driven by JSON mappings) comes before
-// Simulators (cycle 3, e.g. a node + json-server simulator with controlled
-// state).
-type ExternalSystems struct {
-	Stubs      ExternalSpec `yaml:"stubs,omitempty"`
-	Simulators ExternalSpec `yaml:"simulators,omitempty"`
+// Each entry is self-describing: it declares what backs its contract-real
+// suite (RealKind), its always-present Stub, and — iff RealKind is
+// `simulator` — its Simulator. Per-system means two externals can differ
+// in kind without a project-global switch.
+type ExternalSystems map[string]ExternalSystem
+
+// ExternalSystem is one external system's stand-in declaration.
+//
+// RealKind names what backs the system's contract-real suite:
+//   - test-instance — a live third-party sandbox that already honors the
+//     contract; after the Real driver (client) is implemented, contract-real
+//     is expected GREEN and there is nothing to implement on the real side
+//     (Simulator is absent).
+//   - simulator — a stand-in we author; after the client is implemented,
+//     contract-real is expected RED, then we implement the simulator and
+//     re-verify GREEN. Simulator is present.
+//
+// The Simulator block is present **iff** RealKind == simulator. Absence is
+// itself the "test instance" marker — the single SSoT, so RealKind and the
+// Simulator block can never disagree (Validate enforces the iff).
+type ExternalSystem struct {
+	RealKind  RealKind     `yaml:"real-kind"`           // test-instance | simulator
+	Stub      ExternalSpec `yaml:"stub"`                // contract-stub backing (always present)
+	Simulator ExternalSpec `yaml:"simulator,omitempty"` // present iff RealKind == simulator
 }
 
-// ExternalSpec describes one external-system tier. Two fields, both
-// mandatory when the tier is set. No Lang field — externals are config and
-// scaffolding (WireMock JSON, ad-hoc node simulators), not source code in
-// the language enum sense.
+// RealKind is the closed enum naming what backs an external system's
+// contract-real suite. Surfaced as a YAML string.
+type RealKind string
+
+const (
+	RealKindTestInstance RealKind = "test-instance"
+	RealKindSimulator    RealKind = "simulator"
+)
+
+// ExternalSpec describes one external-system stand-in (a stub or a
+// simulator). Two fields, both mandatory when the spec is present. No Lang
+// field — externals are config and scaffolding (WireMock JSON, ad-hoc node
+// simulators), not source code in the language enum sense.
 type ExternalSpec struct {
 	Path string `yaml:"path,omitempty"`
 	Repo string `yaml:"repo,omitempty"`
+}
+
+// ExternalSystemNames returns the external-system map keys in sorted order.
+// Used wherever deterministic iteration matters — Validate's error messages,
+// preflight existence checks, the driver config banner.
+func (c *Config) ExternalSystemNames() []string {
+	if c == nil || len(c.ExternalSystems) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(c.ExternalSystems))
+	for name := range c.ExternalSystems {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // RepoEntry is one entry in Config.LocalRepos — a single local repo path
@@ -377,8 +420,10 @@ func (c *Config) Repos() []string {
 	add(c.System.Backend.Repo)
 	add(c.System.Frontend.Repo)
 	add(c.SystemTest.Repo)
-	add(c.ExternalSystems.Stubs.Repo)
-	add(c.ExternalSystems.Simulators.Repo)
+	for _, es := range c.ExternalSystems {
+		add(es.Stub.Repo)
+		add(es.Simulator.Repo)
+	}
 	out := make([]string, 0, len(set))
 	for r := range set {
 		out = append(out, r)
@@ -528,8 +573,6 @@ func (c *Config) Validate() error {
 		{"system.frontend.path", c.System.Frontend.Path},
 		{"system.db-migration-path", c.System.DbMigrationPath},
 		{"system-test.path", c.SystemTest.Path},
-		{"external-systems.stubs.path", c.ExternalSystems.Stubs.Path},
-		{"external-systems.simulators.path", c.ExternalSystems.Simulators.Path},
 	} {
 		if err := validatePath(tp.field, tp.val); err != nil {
 			return err
@@ -579,10 +622,7 @@ func (c *Config) Validate() error {
 	if err := requireFullTier("system.frontend", c.System.Frontend); err != nil {
 		return err
 	}
-	if err := requireFullExternal("external-systems.stubs", c.ExternalSystems.Stubs); err != nil {
-		return err
-	}
-	if err := requireFullExternal("external-systems.simulators", c.ExternalSystems.Simulators); err != nil {
+	if err := c.validateExternalSystems(); err != nil {
 		return err
 	}
 
@@ -1030,6 +1070,68 @@ func requireFullTier(field string, t TierSpec) error {
 	if t.Path == "" || t.Repo == "" || t.Lang == "" {
 		return fmt.Errorf("config: %s requires path, repo, and lang all set when any is set",
 			field)
+	}
+	return nil
+}
+
+// validateExternalSystems enforces the per-system rules for the
+// external-systems map (plan 20260606-1356, option 1B):
+//
+//   - real-kind is required and must be one of the enum members;
+//   - stub is always required (a full path+repo ExternalSpec);
+//   - simulator is present iff real-kind == simulator. Absence is the
+//     "test instance" marker — the single SSoT, so the two can never
+//     disagree (no cross-field reconciliation beyond this iff);
+//   - stub/simulator paths pass validatePath.
+//
+// Iterates sorted names so errors are deterministic across the map.
+func (c *Config) validateExternalSystems() error {
+	for _, name := range c.ExternalSystemNames() {
+		es := c.ExternalSystems[name]
+		prefix := "external-systems." + name
+
+		switch es.RealKind {
+		case RealKindTestInstance, RealKindSimulator:
+			// ok
+		case "":
+			return fmt.Errorf("config: %s.real-kind is required (one of %q, %q)",
+				prefix, RealKindTestInstance, RealKindSimulator)
+		default:
+			return fmt.Errorf("config: %s.real-kind %q must be one of %q, %q",
+				prefix, es.RealKind, RealKindTestInstance, RealKindSimulator)
+		}
+
+		// Stub is always required, both fields set.
+		if es.Stub.IsEmpty() {
+			return fmt.Errorf("config: %s.stub is required (path and repo)", prefix)
+		}
+		if err := requireFullExternal(prefix+".stub", es.Stub); err != nil {
+			return err
+		}
+
+		// Simulator present iff real-kind == simulator.
+		switch es.RealKind {
+		case RealKindSimulator:
+			if es.Simulator.IsEmpty() {
+				return fmt.Errorf("config: %s.real-kind=%s requires a simulator block (path and repo)",
+					prefix, RealKindSimulator)
+			}
+			if err := requireFullExternal(prefix+".simulator", es.Simulator); err != nil {
+				return err
+			}
+		case RealKindTestInstance:
+			if !es.Simulator.IsEmpty() {
+				return fmt.Errorf("config: %s.real-kind=%s must not carry a simulator block (its absence is the test-instance marker)",
+					prefix, RealKindTestInstance)
+			}
+		}
+
+		if err := validatePath(prefix+".stub.path", es.Stub.Path); err != nil {
+			return err
+		}
+		if err := validatePath(prefix+".simulator.path", es.Simulator.Path); err != nil {
+			return err
+		}
 	}
 	return nil
 }

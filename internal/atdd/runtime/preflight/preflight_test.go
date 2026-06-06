@@ -295,8 +295,11 @@ func TestRun_ExternalSystemsDeclaredAndPresent(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs:      projectconfig.ExternalSpec{Path: "stubs", Repo: "optivem/shop"},
-			Simulators: projectconfig.ExternalSpec{Path: "simulators", Repo: "optivem/shop"},
+			"warehouse": {
+				RealKind:  projectconfig.RealKindSimulator,
+				Stub:      projectconfig.ExternalSpec{Path: "stubs", Repo: "optivem/shop"},
+				Simulator: projectconfig.ExternalSpec{Path: "simulators", Repo: "optivem/shop"},
+			},
 		},
 	}
 	if err := Run(context.Background(), cfg, Options{Cwd: root}); err != nil {
@@ -324,16 +327,19 @@ func TestRun_ExternalSystemsMissingPath(t *testing.T) {
 			Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava,
 		},
 		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs:      projectconfig.ExternalSpec{Path: "stubs", Repo: "optivem/shop"},
-			Simulators: projectconfig.ExternalSpec{Path: "simulators", Repo: "optivem/shop"},
+			"warehouse": {
+				RealKind:  projectconfig.RealKindSimulator,
+				Stub:      projectconfig.ExternalSpec{Path: "stubs", Repo: "optivem/shop"},
+				Simulator: projectconfig.ExternalSpec{Path: "simulators", Repo: "optivem/shop"},
+			},
 		},
 	}
 	err := Run(context.Background(), cfg, Options{Cwd: root})
 	if err == nil {
-		t.Fatal("expected error for missing simulators path")
+		t.Fatal("expected error for missing simulator path")
 	}
-	if !strings.Contains(err.Error(), "external-systems.simulators.path") {
-		t.Errorf("error should mention simulators.path, got: %v", err)
+	if !strings.Contains(err.Error(), "external-systems.warehouse.simulator.path") {
+		t.Errorf("error should mention the warehouse simulator path, got: %v", err)
 	}
 }
 
@@ -793,7 +799,10 @@ func TestSuiteExistence_RenamedContractSuite_WithExternalSystems(t *testing.T) {
 	cfg := &projectconfig.Config{
 		Channels: []string{"api", "ui"},
 		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs: projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/externals"},
+			"warehouse": {
+				RealKind: projectconfig.RealKindTestInstance,
+				Stub:     projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/externals"},
+			},
 		},
 	}
 	// contract-real renamed away; everything else present. External systems
@@ -835,7 +844,10 @@ func TestSuiteExistence_AllSuitesPresent(t *testing.T) {
 	cfg := &projectconfig.Config{
 		Channels: []string{"api", "ui"},
 		ExternalSystems: projectconfig.ExternalSystems{
-			Stubs: projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/externals"},
+			"warehouse": {
+				RealKind: projectconfig.RealKindTestInstance,
+				Stub:     projectconfig.ExternalSpec{Path: "stubs", Repo: "acme/externals"},
+			},
 		},
 	}
 	path := writeTestsYAML(t, "acceptance-api", "acceptance-ui", "contract-real", "contract-stub")

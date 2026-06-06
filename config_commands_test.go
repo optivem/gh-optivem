@@ -119,8 +119,6 @@ func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 		wantBackendPath   string // empty on monolith
 		wantFrontendPath  string // empty on monolith
 		wantSystemTest    string
-		wantStubsPath     string
-		wantSimsPath      string
 	}{
 		{
 			name: "monolith flat defaults",
@@ -134,8 +132,6 @@ func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 			// repo "page-turner" → "system/page-turner").
 			wantSystemPath: config.DefaultSystemPath + "/page-turner",
 			wantSystemTest: config.DefaultSystemTestPath,
-			wantStubsPath:  config.DefaultStubsPath,
-			wantSimsPath:   config.DefaultSimulatorsPath,
 		},
 		{
 			name: "multitier flat defaults",
@@ -149,8 +145,6 @@ func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 			wantBackendPath:  config.DefaultBackendPath,
 			wantFrontendPath: config.DefaultFrontendPath,
 			wantSystemTest:   config.DefaultSystemTestPath,
-			wantStubsPath:    config.DefaultStubsPath,
-			wantSimsPath:     config.DefaultSimulatorsPath,
 		},
 	}
 	for _, tc := range cases {
@@ -176,11 +170,10 @@ func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 			if cfg.SystemTest.Path != tc.wantSystemTest {
 				t.Errorf("system-test.path: got %q, want %q", cfg.SystemTest.Path, tc.wantSystemTest)
 			}
-			if cfg.ExternalSystems.Stubs.Path != tc.wantStubsPath {
-				t.Errorf("external-systems.stubs.path: got %q, want %q", cfg.ExternalSystems.Stubs.Path, tc.wantStubsPath)
-			}
-			if cfg.ExternalSystems.Simulators.Path != tc.wantSimsPath {
-				t.Errorf("external-systems.simulators.path: got %q, want %q", cfg.ExternalSystems.Simulators.Path, tc.wantSimsPath)
+			// external-systems is operator-owned and not scaffolded by init
+			// (plan 20260606-1356, option 1B): the block stays absent.
+			if len(cfg.ExternalSystems) != 0 {
+				t.Errorf("external-systems should be omitted by init, got: %+v", cfg.ExternalSystems)
 			}
 		})
 	}

@@ -341,7 +341,7 @@ func TestWrite_RoundTripPreservesAllFourSamples(t *testing.T) {
 				!reflect.DeepEqual(got.System.Backend, cfg.System.Backend) ||
 				!reflect.DeepEqual(got.System.Frontend, cfg.System.Frontend) ||
 				!reflect.DeepEqual(got.SystemTest, cfg.SystemTest) ||
-				got.ExternalSystems != cfg.ExternalSystems {
+				!reflect.DeepEqual(got.ExternalSystems, cfg.ExternalSystems) {
 				t.Fatalf("round-trip mismatch:\n got:  %+v\n want: %+v", got, cfg)
 			}
 		})
@@ -1147,7 +1147,7 @@ func TestValidate_AcceptsExternalSystemsOmitted(t *testing.T) {
 	}
 }
 
-func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
+func TestValidate_AcceptsTestInstanceAndSimulatorKinds(t *testing.T) {
 	t.Parallel()
 	base := func() *Config {
 		return &Config{
@@ -1166,18 +1166,102 @@ func TestValidate_AcceptsOnlyStubsOrOnlySimulators(t *testing.T) {
 		}
 	}
 
-	// Only stubs.
+	// test-instance: stub only, no simulator block.
 	c := base()
-	c.ExternalSystems.Stubs = ExternalSpec{Path: "stubs", Repo: "x/y"}
+	c.ExternalSystems = ExternalSystems{
+		"warehouse": {
+			RealKind: RealKindTestInstance,
+			Stub:     ExternalSpec{Path: "stubs", Repo: "x/y"},
+		},
+	}
 	if err := c.Validate(); err != nil {
-		t.Errorf("only stubs should validate, got: %v", err)
+		t.Errorf("test-instance with stub only should validate, got: %v", err)
 	}
 
-	// Only simulators.
+	// simulator: stub + simulator block.
 	c = base()
-	c.ExternalSystems.Simulators = ExternalSpec{Path: "simulators", Repo: "x/y"}
+	c.ExternalSystems = ExternalSystems{
+		"warehouse": {
+			RealKind:  RealKindSimulator,
+			Stub:      ExternalSpec{Path: "stubs", Repo: "x/y"},
+			Simulator: ExternalSpec{Path: "simulators", Repo: "x/y"},
+		},
+	}
 	if err := c.Validate(); err != nil {
-		t.Errorf("only simulators should validate, got: %v", err)
+		t.Errorf("simulator with stub + simulator should validate, got: %v", err)
+	}
+}
+
+// TestValidate_ExternalSystemRealKindRules covers the per-system rules:
+// real-kind required + enum, stub always required, and the simulator
+// present-iff-simulator invariant (plan 20260606-1356).
+func TestValidate_ExternalSystemRealKindRules(t *testing.T) {
+	t.Parallel()
+	base := func() *Config {
+		return &Config{
+			Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
+			Sonar:   Sonar{Organization: "x"},
+			System: System{
+				Architecture:    ArchMonolith,
+				Path:            "p", Repo: "x/y", Lang: LangJava,
+				SonarProject:    "x_y-system",
+				DbMigrationPath: DefaultDbMigrationPath,
+			},
+			SystemTest: TierSpec{
+				Path: "t", Repo: "x/y", Lang: LangJava, SonarProject: "x_y-system-test",
+				Paths: javaPaths("t", "y"),
+			},
+		}
+	}
+
+	cases := []struct {
+		name     string
+		entry    ExternalSystem
+		wantSubs string // non-empty → expect an error containing this
+	}{
+		{
+			name:     "real-kind missing",
+			entry:    ExternalSystem{Stub: ExternalSpec{Path: "stubs", Repo: "x/y"}},
+			wantSubs: "real-kind is required",
+		},
+		{
+			name:     "real-kind unknown",
+			entry:    ExternalSystem{RealKind: "live", Stub: ExternalSpec{Path: "stubs", Repo: "x/y"}},
+			wantSubs: "must be one of",
+		},
+		{
+			name:     "stub missing",
+			entry:    ExternalSystem{RealKind: RealKindTestInstance},
+			wantSubs: "stub is required",
+		},
+		{
+			name:     "simulator kind without simulator block",
+			entry:    ExternalSystem{RealKind: RealKindSimulator, Stub: ExternalSpec{Path: "stubs", Repo: "x/y"}},
+			wantSubs: "requires a simulator block",
+		},
+		{
+			name: "test-instance kind with stray simulator block",
+			entry: ExternalSystem{
+				RealKind:  RealKindTestInstance,
+				Stub:      ExternalSpec{Path: "stubs", Repo: "x/y"},
+				Simulator: ExternalSpec{Path: "simulators", Repo: "x/y"},
+			},
+			wantSubs: "must not carry a simulator block",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c := base()
+			c.ExternalSystems = ExternalSystems{"warehouse": tc.entry}
+			err := c.Validate()
+			if err == nil {
+				t.Fatalf("want error containing %q, got nil", tc.wantSubs)
+			}
+			if !strings.Contains(err.Error(), tc.wantSubs) {
+				t.Errorf("error should contain %q, got: %v", tc.wantSubs, err)
+			}
+		})
 	}
 }
 
@@ -1188,11 +1272,13 @@ func TestValidate_RejectsExternalWithMissingRepo(t *testing.T) {
 			Architecture: ArchMonolith,
 			Path:         "p", Repo: "x/y", Lang: LangJava,
 		},
-		SystemTest:      TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
-		ExternalSystems: ExternalSystems{Stubs: ExternalSpec{Path: "stubs" /* repo missing */}},
+		SystemTest: TierSpec{Path: "t", Repo: "x/y", Lang: LangJava},
+		ExternalSystems: ExternalSystems{
+			"warehouse": {RealKind: RealKindTestInstance, Stub: ExternalSpec{Path: "stubs" /* repo missing */}},
+		},
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("expected error for external stubs missing repo, got nil")
+		t.Fatal("expected error for external stub missing repo, got nil")
 	}
 }
 
@@ -1216,8 +1302,11 @@ func TestValidate_AcceptsExternalRepoNotInOtherTiers(t *testing.T) {
 			Paths: javaPaths("t", "main"),
 		},
 		ExternalSystems: ExternalSystems{
-			Stubs:      ExternalSpec{Path: "stubs", Repo: "x/externals" /* unique slug */},
-			Simulators: ExternalSpec{Path: "simulators", Repo: "x/externals"},
+			"warehouse": {
+				RealKind:  RealKindSimulator,
+				Stub:      ExternalSpec{Path: "stubs", Repo: "x/externals" /* unique slug */},
+				Simulator: ExternalSpec{Path: "simulators", Repo: "x/externals"},
+			},
 		},
 	}
 	if err := cfg.Validate(); err != nil {
@@ -1237,8 +1326,10 @@ func TestRepos_UnionAcrossTiers(t *testing.T) {
 			Backend:      TierSpec{Path: "be", Repo: "x/backend", Lang: LangJava},
 			Frontend:     TierSpec{Path: "fe", Repo: "x/frontend", Lang: LangTypescript},
 		},
-		SystemTest:      TierSpec{Path: "t", Repo: "x/backend", Lang: LangJava},
-		ExternalSystems: ExternalSystems{Stubs: ExternalSpec{Path: "stub", Repo: "x/main"}},
+		SystemTest: TierSpec{Path: "t", Repo: "x/backend", Lang: LangJava},
+		ExternalSystems: ExternalSystems{
+			"warehouse": {RealKind: RealKindTestInstance, Stub: ExternalSpec{Path: "stub", Repo: "x/main"}},
+		},
 	}
 	got := cfg.Repos()
 	want := []string{"x/backend", "x/frontend", "x/main"}

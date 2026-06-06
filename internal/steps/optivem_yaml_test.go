@@ -63,11 +63,10 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	if got.SystemTest.Path != "system-test" || got.SystemTest.Repo != "x/shop" || got.SystemTest.Lang != "java" {
 		t.Errorf("SystemTest mismatch: %+v", got.SystemTest)
 	}
-	if got.ExternalSystems.Stubs.Path != "external-systems/stubs" || got.ExternalSystems.Stubs.Repo != "x/shop" {
-		t.Errorf("Stubs mismatch: %+v", got.ExternalSystems.Stubs)
-	}
-	if got.ExternalSystems.Simulators.Path != "external-systems/simulators" || got.ExternalSystems.Simulators.Repo != "x/shop" {
-		t.Errorf("Simulators mismatch: %+v", got.ExternalSystems.Simulators)
+	// external-systems is operator-owned and not scaffolded by init
+	// (plan 20260606-1356, option 1B): the block is omitted.
+	if len(got.ExternalSystems) != 0 {
+		t.Errorf("ExternalSystems should be omitted by init, got: %+v", got.ExternalSystems)
 	}
 }
 
@@ -111,8 +110,8 @@ func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 	if got.SystemTest.Repo != "acme/shop-backend" {
 		t.Errorf("SystemTest.Repo: got %q, want backend slug", got.SystemTest.Repo)
 	}
-	if got.ExternalSystems.Stubs.Repo != "acme/shop-backend" {
-		t.Errorf("Stubs.Repo: got %q, want backend slug (default)", got.ExternalSystems.Stubs.Repo)
+	if len(got.ExternalSystems) != 0 {
+		t.Errorf("ExternalSystems should be omitted by init, got: %+v", got.ExternalSystems)
 	}
 }
 

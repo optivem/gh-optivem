@@ -12,19 +12,17 @@ ${scope-block}
 
 ### Parameters
 
-- `verify_results` — one block per verify command. The relevant blocks are the ones reporting the unexpectedly-passing test(s): suite, test name, captured stdout/stderr showing the assertion that should have tripped but did not.
-
-  ${verify-results}
-
-- `changed_files` — the working-tree diff the WRITE phase just produced (the new test, plus whatever supporting code it touched). Cross-reference the assertion against the SUT path it exercises.
+- `changed_files` — the working-tree diff the WRITE phase just produced (the new test, plus whatever supporting code it touched). This is your primary signal: the test that arrived green and whatever supporting code it touched. Cross-reference the assertion against the SUT path it exercises.
 
   ${changed-files}
+
+There is **no captured test output** to read here. The test ran green, so the runner produced no failure block — unlike the failing-tests path, a passing run carries no diagnostic tail. If you need to observe the test's runtime behaviour, re-run the single test yourself from the `Bash` tool.
 
 ## Steps
 
 The calling CYCLE's WRITE step *just authored* this test, then verify observed it passing — the opposite of what was asserted. The production system is more lenient than the test predicted, so the test cannot drive the change it was written to drive.
 
-1. **Identify the asserting line.** From `${verify-results}` and the diff in `${changed-files}`, find the exact assertion the test expected to trip (e.g. an expected exception, an expected error return, an expected validation rejection). Name it precisely.
+1. **Identify the asserting line.** From the diff in `${changed-files}`, find the exact assertion the test expected to trip (e.g. an expected exception, an expected error return, an expected validation rejection). Name it precisely.
 
 2. **Trace why the SUT accepted the input.** Walk from the test's entry point into the SUT and identify which branch, guard, or validation was expected to reject the case but did not. Common shapes:
    - The test set up an input that does not actually exercise the path it names (mis-targeted assertion).

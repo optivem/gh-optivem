@@ -295,7 +295,7 @@ func runSuiteExistenceChecks(cfg *projectconfig.Config, eng *statemachine.Engine
 		declared[id] = true
 	}
 
-	hasExternal := !cfg.ExternalSystems.Stubs.IsEmpty() || !cfg.ExternalSystems.Simulators.IsEmpty()
+	hasExternal := len(cfg.ExternalSystems) > 0
 
 	expected := make(map[string]bool)
 	for _, lit := range literals {
@@ -543,20 +543,23 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 			})
 		}
 	}
-	// External systems — stubs first (cycle 2), simulators second (cycle 3).
-	if !cfg.ExternalSystems.Stubs.IsEmpty() {
+	// External systems — one entry per named system. The stub is always
+	// present; the simulator only when real-kind: simulator (its absence is
+	// the test-instance marker, so there's nothing to stat).
+	for _, name := range cfg.ExternalSystemNames() {
+		es := cfg.ExternalSystems[name]
 		out = append(out, tierCheck{
-			field: "external-systems.stubs.path",
-			repo:  cfg.ExternalSystems.Stubs.Repo,
-			path:  cfg.ExternalSystems.Stubs.Path,
+			field: "external-systems." + name + ".stub.path",
+			repo:  es.Stub.Repo,
+			path:  es.Stub.Path,
 		})
-	}
-	if !cfg.ExternalSystems.Simulators.IsEmpty() {
-		out = append(out, tierCheck{
-			field: "external-systems.simulators.path",
-			repo:  cfg.ExternalSystems.Simulators.Repo,
-			path:  cfg.ExternalSystems.Simulators.Path,
-		})
+		if !es.Simulator.IsEmpty() {
+			out = append(out, tierCheck{
+				field: "external-systems." + name + ".simulator.path",
+				repo:  es.Simulator.Repo,
+				path:  es.Simulator.Path,
+			})
+		}
 	}
 	return out
 }

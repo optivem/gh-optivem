@@ -202,7 +202,11 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 		config.SystemCasings(cfg.SystemName).Lower)
 	pc.System = buildSystem(cfg, derived, sutNamespace)
 	pc.SystemTest = buildSystemTest(cfg, derived)
-	pc.ExternalSystems = buildExternals(cfg)
+	// external-systems is intentionally NOT scaffolded (plan 20260606-1356,
+	// option 1B): it is a per-system map keyed by external-system name, and
+	// the flat scaffold flags carry no name to key on. Operators add entries
+	// by hand (the Rule-22a "operator adds the lines" posture); `init` leaves
+	// the block absent.
 	// `init` writes `system-test.paths:` as the authoritative initial value
 	// matching the directory tree this same scaffolder just created — not a
 	// runtime default. The scaffolder owns both sides of the join (YAML +
@@ -320,16 +324,6 @@ func buildSystemTest(cfg *config.Config, derived projectconfig.DerivedSonar) pro
 	}
 }
 
-// buildExternals populates the ExternalSystems block from cfg.StubsPath and
-// cfg.SimulatorsPath.
-func buildExternals(cfg *config.Config) projectconfig.ExternalSystems {
-	repo := externalsRepoSlug(cfg)
-	return projectconfig.ExternalSystems{
-		Stubs:      projectconfig.ExternalSpec{Path: cfg.StubsPath, Repo: repo},
-		Simulators: projectconfig.ExternalSpec{Path: cfg.SimulatorsPath, Repo: repo},
-	}
-}
-
 // systemRepoSlug returns the slug for the monolith system tier:
 //   - mono-repo: cfg.FullRepo (the workspace repo)
 //   - multi-repo: cfg.SystemFullRepo (the per-system repo)
@@ -369,8 +363,3 @@ func systemTestRepoSlug(cfg *config.Config) string {
 	return cfg.SystemFullRepo
 }
 
-// externalsRepoSlug returns the slug for external-system tiers, mirroring
-// the system-test default (operator can override post-scaffold).
-func externalsRepoSlug(cfg *config.Config) string {
-	return systemTestRepoSlug(cfg)
-}
