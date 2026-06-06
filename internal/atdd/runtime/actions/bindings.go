@@ -605,10 +605,24 @@ func sortedSetKeys(set map[string]struct{}) []string {
 // configured paths: Family A path-shaped keys go through their dedicated
 // Config accessor (system-path → cfg.System.Path); everything else is a
 // Family B key in cfg.SystemTest.Paths. Missing values surface as errors
-// rather than silently shrinking the allowed set.
+// rather than silently shrinking the allowed set — except for a
+// monolith-only key (atdd.MonolithOnlyPathKeys) on a multitier config,
+// where the empty backing field is expected by construction, not drift:
+// the layer is not applicable and is skipped. This is the one resolver
+// the preflight scope sweep and the runtime scope check both use, so the
+// architecture polymorphism is honoured identically in both.
 func ResolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, error) {
 	out := make([]string, 0, len(layers))
 	for _, layer := range layers {
+		// Monolith-only key on a multitier config: not applicable. The
+		// phases that scope it are monolith-only by construction and never
+		// dispatched here, so the empty backing field (projectconfig.System
+		// polymorphism) is correct, not a misconfiguration. Skip before the
+		// switch so the monolith empty-path error below still fires for an
+		// actually-broken monolith config.
+		if atdd.MonolithOnlyPathKeys[layer] && cfg.System.Architecture == projectconfig.ArchMultitier {
+			continue
+		}
 		if atdd.FamilyAPathKeysInScope[layer] {
 			switch layer {
 			case "system-path":

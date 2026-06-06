@@ -185,6 +185,66 @@ func TestResolveLayerPaths_FamilyAKeysAllHaveAccessor(t *testing.T) {
 	}
 }
 
+// TestMonolithOnlyPathKeysAreInScope is the drift guard between
+// atdd.MonolithOnlyPathKeys and atdd.FamilyAPathKeysInScope: the skip
+// gate in ResolveLayerPaths only fires for layers it already knows how to
+// resolve, so every monolith-only key must also be an admitted Family A
+// scope key.
+func TestMonolithOnlyPathKeysAreInScope(t *testing.T) {
+	for key := range atdd.MonolithOnlyPathKeys {
+		if !atdd.FamilyAPathKeysInScope[key] {
+			t.Errorf("MonolithOnlyPathKeys[%q] is not in FamilyAPathKeysInScope", key)
+		}
+	}
+}
+
+// TestResolveLayerPaths_MonolithOnlyKeysSkippedOnMultitier covers the
+// architecture polymorphism: on a multitier config system.path is empty
+// by construction, so the monolith-only system-path layer is not
+// applicable and is dropped from the resolved scope rather than surfaced
+// as a phantom "resolves to empty system.path" failure (the 6 multitier
+// preflight failures this fix targets). Layers that DO apply to multitier
+// still resolve alongside it.
+func TestResolveLayerPaths_MonolithOnlyKeysSkippedOnMultitier(t *testing.T) {
+	cfg := &projectconfig.Config{}
+	cfg.System.Architecture = projectconfig.ArchMultitier // system.path left empty, as multitier configs do
+	cfg.SystemTest.Paths = map[string]string{"at-test": "system-test/typescript/tests/acceptance"}
+
+	t.Run("system-path alone resolves to no paths, no error", func(t *testing.T) {
+		got, err := ResolveLayerPaths([]string{"system-path"}, cfg)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if len(got) != 0 {
+			t.Errorf("got %v, want empty (system-path not applicable on multitier)", got)
+		}
+	})
+
+	t.Run("applicable layers still resolve alongside the skipped system-path", func(t *testing.T) {
+		got, err := ResolveLayerPaths([]string{"at-test", "system-path"}, cfg)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		want := []string{"system-test/typescript/tests/acceptance"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+}
+
+// TestResolveLayerPaths_EmptySystemPathStillErrorsOnMonolith guards the
+// other half of the polymorphism: on a monolith config an empty
+// system.path is genuine misconfiguration and must still fail loudly —
+// the architecture-aware skip must not weaken drift detection where the
+// key actually applies.
+func TestResolveLayerPaths_EmptySystemPathStillErrorsOnMonolith(t *testing.T) {
+	cfg := &projectconfig.Config{}
+	cfg.System.Architecture = projectconfig.ArchMonolith // system.path required but left empty
+	if _, err := ResolveLayerPaths([]string{"system-path"}, cfg); err == nil {
+		t.Fatal("want error for empty system.path on monolith, got nil")
+	}
+}
+
 // TestNarrowAdapterScopeByChannel covers the per-channel write-scope
 // narrowing the shared implement-system-driver-adapters node relies on:
 // (a) a channel param replaces the whole-layer system-driver-adapter

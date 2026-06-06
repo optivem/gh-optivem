@@ -29,3 +29,19 @@ var FamilyAPathKeysInScope = map[string]bool{
 	"system-path":              true,
 	"system-db-migration-path": true,
 }
+
+// MonolithOnlyPathKeys lists the Family A scope keys whose backing
+// gh-optivem.yaml field is populated only for monolith projects. Per the
+// projectconfig.System polymorphism, a monolith config populates
+// system.path while a multitier config leaves it empty by construction
+// and populates system.backend.path / system.frontend.path instead. The
+// phases that scope these keys (implement-system / refactor-system /
+// update-system / fix-unexpected-{failing,passing}-tests) are
+// monolith-only by construction, so on a multitier config the layer is
+// not applicable: ResolveLayerPaths skips it rather than reporting the
+// empty backing field as drift. `system-db-migration-path` is NOT here —
+// the migration set is architecture-agnostic and populated for both.
+// Every entry must also appear in FamilyAPathKeysInScope.
+var MonolithOnlyPathKeys = map[string]bool{
+	"system-path": true,
+}
