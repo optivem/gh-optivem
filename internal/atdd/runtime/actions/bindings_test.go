@@ -151,7 +151,7 @@ func TestPathInScope(t *testing.T) {
 		want bool
 	}{
 		{"system-test/typescript/tests/latest/acceptance/foo.spec.ts", true},
-		{"system-test/typescript/tests/latest/acceptance", true},  // exact match
+		{"system-test/typescript/tests/latest/acceptance", true}, // exact match
 		{"dsl/typescript/src/Driver.ts", true},
 		{"dsl/typescript/srcOther/Driver.ts", false}, // directory-aware: no false-prefix match
 		{"system-test/typescript/tests/latest/acceptanceX", false},
@@ -649,10 +649,10 @@ func TestRunCommand_RunTestsClassifiesInfraFailure(t *testing.T) {
 			if got := ctx.GetString("test-infra-label"); got != tc.wantLabel {
 				t.Fatalf("test-infra-label: got %q, want %q", got, tc.wantLabel)
 			}
-			// verify_results_text still gets stamped so the halt banner /
+			// verify_failure_output still gets stamped so the halt banner /
 			// trace can quote the runner output.
-			if got := ctx.GetString("verify_results_text"); got == "" {
-				t.Fatalf("verify_results_text should still be stamped on infra failure")
+			if got := ctx.GetString("verify_failure_output"); got == "" {
+				t.Fatalf("verify_failure_output should still be stamped on infra failure")
 			}
 		})
 	}
@@ -698,9 +698,9 @@ func TestRunCommand_SuiteAndTestFlagsAppendedOnlyWhenSet(t *testing.T) {
 			wantMiss: []string{"--suite=", "--test="},
 		},
 		{
-			name:    "suite only",
-			suite:   "acceptance",
-			wantHas: []string{"--suite=acceptance"},
+			name:     "suite only",
+			suite:    "acceptance",
+			wantHas:  []string{"--suite=acceptance"},
 			wantMiss: []string{"--test="},
 		},
 		{
@@ -892,11 +892,11 @@ func TestRunCommand_EmptyCommandHalts(t *testing.T) {
 	}
 }
 
-func TestRunCommand_TestRunFailure_StampsVerifyResults(t *testing.T) {
+func TestRunCommand_TestRunFailure_StampsVerifyFailureOutput(t *testing.T) {
 	// On the isTestRun && !succeeded branch, runCommand stashes the
-	// captured stdout/stderr tails into verify_results_text so the
+	// captured stdout/stderr tails into verify_failure_output so the
 	// downstream fix-unexpected-{failing,passing}-tests prompt's
-	// ${verify-results} placeholder renders the runner output the
+	// ${verify-failure-output} placeholder renders the runner output the
 	// operator saw inline. Both streams are individually capped by
 	// lastNLines(s, commandStderrTailLines).
 	var stdoutLines, stderrLines strings.Builder
@@ -917,17 +917,17 @@ func TestRunCommand_TestRunFailure_StampsVerifyResults(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	got := ctx.GetString("verify_results_text")
+	got := ctx.GetString("verify_failure_output")
 	if got == "" {
-		t.Fatalf("verify_results_text must be stamped on test-run failure")
+		t.Fatalf("verify_failure_output must be stamped on test-run failure")
 	}
 	// Both streams must be present, separated by the documented marker.
 	if !strings.Contains(got, "--- stderr ---") {
-		t.Fatalf("verify_results_text missing stderr separator:\n%s", got)
+		t.Fatalf("verify_failure_output missing stderr separator:\n%s", got)
 	}
 	parts := strings.SplitN(got, "\n--- stderr ---\n", 2)
 	if len(parts) != 2 {
-		t.Fatalf("verify_results_text not split into stdout/stderr sections:\n%s", got)
+		t.Fatalf("verify_failure_output not split into stdout/stderr sections:\n%s", got)
 	}
 	stdoutTailLines := strings.Split(parts[0], "\n")
 	stderrTailLines := strings.Split(parts[1], "\n")
@@ -947,8 +947,8 @@ func TestRunCommand_TestRunFailure_StampsVerifyResults(t *testing.T) {
 	}
 }
 
-func TestRunCommand_TestRunSuccess_DoesNotStampVerifyResults(t *testing.T) {
-	// A clean test-run must NOT stash verify_results_text so a later
+func TestRunCommand_TestRunSuccess_DoesNotStampVerifyFailureOutput(t *testing.T) {
+	// A clean test-run must NOT stash verify_failure_output so a later
 	// fix dispatch via an unrelated failure-kind cannot inherit a stale
 	// value. The placeholder is failure-only.
 	sh := &fakeShell{out: []byte("PASS: 12 tests"), stderr: nil}
@@ -959,15 +959,15 @@ func TestRunCommand_TestRunSuccess_DoesNotStampVerifyResults(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if _, set := ctx.State["verify_results_text"]; set {
-		t.Fatalf("verify_results_text must NOT be set on test-run success: got %q", ctx.GetString("verify_results_text"))
+	if _, set := ctx.State["verify_failure_output"]; set {
+		t.Fatalf("verify_failure_output must NOT be set on test-run success: got %q", ctx.GetString("verify_failure_output"))
 	}
 }
 
-func TestRunCommand_NonTestRunFailure_DoesNotStampVerifyResults(t *testing.T) {
+func TestRunCommand_NonTestRunFailure_DoesNotStampVerifyFailureOutput(t *testing.T) {
 	// A non-test-run failure (e.g. `gh optivem commit` exit 7) routes
 	// through the command-failed payload (command-line / command-exit-code
-	// / command-stderr-tail) — verify_results_text is fixer-only, so
+	// / command-stderr-tail) — verify_failure_output is fixer-only, so
 	// non-test-run dispatches must not register a placeholder the
 	// fix-command-failed prompt body doesn't reference.
 	sh := &fakeShell{
@@ -982,8 +982,8 @@ func TestRunCommand_NonTestRunFailure_DoesNotStampVerifyResults(t *testing.T) {
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if _, set := ctx.State["verify_results_text"]; set {
-		t.Fatalf("verify_results_text must NOT be set on non-test-run failure: got %q", ctx.GetString("verify_results_text"))
+	if _, set := ctx.State["verify_failure_output"]; set {
+		t.Fatalf("verify_failure_output must NOT be set on non-test-run failure: got %q", ctx.GetString("verify_failure_output"))
 	}
 	// Sanity: the command-failed payload IS set (so the test is exercising
 	// a real failure, not a no-op).
@@ -995,7 +995,7 @@ func TestRunCommand_NonTestRunFailure_DoesNotStampVerifyResults(t *testing.T) {
 func TestRunCommand_Success_ClearsPriorFailureDiagnostics(t *testing.T) {
 	// Within a single run, ctx.State persists across call-activities (the
 	// state-fallback path documented at run.go:308). If a prior dispatch
-	// failed and stamped failure-kind / command-* / verify_results_text,
+	// failed and stamped failure-kind / command-* / verify_failure_output,
 	// a later success on the same producer must wipe those keys — otherwise
 	// the trace's state-delta hoists stale values onto the success banner
 	// and a downstream fix-* dispatch's ExpandParams substitutes them into
@@ -1010,7 +1010,7 @@ func TestRunCommand_Success_ClearsPriorFailureDiagnostics(t *testing.T) {
 	ctx.Set("command-line", "previous failing cmd")
 	ctx.Set("command-exit-code", 42)
 	ctx.Set("command-stderr-tail", "old stderr blob")
-	ctx.Set("verify_results_text", "old verify blob")
+	ctx.Set("verify_failure_output", "old verify blob")
 	out := a.runCommand(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -1020,7 +1020,7 @@ func TestRunCommand_Success_ClearsPriorFailureDiagnostics(t *testing.T) {
 		"command-line",
 		"command-exit-code",
 		"command-stderr-tail",
-		"verify_results_text",
+		"verify_failure_output",
 	} {
 		if _, set := ctx.State[k]; set {
 			t.Errorf("%s must be cleared on success: still set to %v", k, ctx.Get(k))

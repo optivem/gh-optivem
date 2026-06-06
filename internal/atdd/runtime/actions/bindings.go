@@ -755,19 +755,19 @@ func shellEscape(s string) string {
 // scope before dispatch, so by the time the action fires:
 //
 //   - ctx.Params["command"]     — the fully-resolved bash command line
-//                                  (e.g. "gh optivem test run")
+//     (e.g. "gh optivem test run")
 //   - ctx.Params["suite"]       — optional; appended as --suite=…
-//                                  pins the test category (acceptance,
-//                                  contract-real, contract-stub)
+//     pins the test category (acceptance,
+//     contract-real, contract-stub)
 //   - ctx.Params["test-names"]  — optional; appended as --test=…
-//                                  comma-separated list of bare test
-//                                  method names (the writer-agent's
-//                                  emitted test-names, joined via
-//                                  coerceStateValue's []string case)
+//     comma-separated list of bare test
+//     method names (the writer-agent's
+//     emitted test-names, joined via
+//     coerceStateValue's []string case)
 //   - ctx.Params["message"]     — optional; appended as a positional
-//                                  `"<msg>"` argument when the command
-//                                  starts with `gh optivem commit`,
-//                                  escaped via shellEscape
+//     `"<msg>"` argument when the command
+//     starts with `gh optivem commit`,
+//     escaped via shellEscape
 //
 // Writes ctx.State["command-succeeded"] = (exit == 0). For the
 // `gh optivem test run` family it additionally stamps
@@ -860,7 +860,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		ctx.Unset("command-line")
 		ctx.Unset("command-exit-code")
 		ctx.Unset("command-stderr-tail")
-		ctx.Unset("verify_results_text")
+		ctx.Unset("verify_failure_output")
 	}
 	if isTestRun && !succeeded {
 		// Classify the failure so the gateway downstream of run-tests can
@@ -875,12 +875,12 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 			ctx.Set("test-outcome", "infra")
 			ctx.Set("test-infra-label", label)
 		}
-		ctx.Set("verify_results_text", formatVerifyResults(result.Stdout, result.Stderr))
+		ctx.Set("verify_failure_output", formatVerifyFailureOutput(result.Stdout, result.Stderr))
 	}
 	return statemachine.Outcome{}
 }
 
-// formatVerifyResults builds the ${verify-results} payload the
+// formatVerifyFailureOutput builds the ${verify-failure-output} payload the
 // fix-unexpected-{failing,passing}-tests prompts consume. It combines
 // runCommand's captured stdout and stderr into a single block, capping
 // each stream individually via lastNLines(s, commandStderrTailLines) so
@@ -893,7 +893,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 // Test runners typically print the failing test name + assertion on
 // stdout and the stack trace on stderr; preserving both streams gives
 // the diagnosing fixer everything the operator saw inline.
-func formatVerifyResults(stdout, stderr []byte) string {
+func formatVerifyFailureOutput(stdout, stderr []byte) string {
 	out := lastNLines(string(stdout), commandStderrTailLines)
 	errs := lastNLines(string(stderr), commandStderrTailLines)
 	switch {
@@ -957,70 +957,70 @@ func lastNLines(s string, n int) string {
 //
 // Reads:
 //   - ctx.State["output-file-path"]      — absolute path to the per-dispatch
-//                                          JSONL file. Set by the driver
-//                                          ONLY when the MID's BPMN
-//                                          `outputs:` list is non-empty;
-//                                          absent → no-op output read.
+//     JSONL file. Set by the driver
+//     ONLY when the MID's BPMN
+//     `outputs:` list is non-empty;
+//     absent → no-op output read.
 //   - ctx.Params["originating-task-name"] (preferred) or
 //     ctx.Params["task-name"]            — the writing-agent MID name used
-//                                          to look up scope (Engine.Scope)
-//                                          AND outputs (Engine.Outputs).
-//                                          The originating- prefix is set
-//                                          by the `fix` LOW so the inner
-//                                          execute-agent validation can
-//                                          recover the outer MID's scope +
-//                                          outputs after task-name is
-//                                          shadowed to fix-${failure-kind}.
+//     to look up scope (Engine.Scope)
+//     AND outputs (Engine.Outputs).
+//     The originating- prefix is set
+//     by the `fix` LOW so the inner
+//     execute-agent validation can
+//     recover the outer MID's scope +
+//     outputs after task-name is
+//     shadowed to fix-${failure-kind}.
 //   - ctx.State[CtxKeyPreAgentFingerprint] — WorkingTreeFingerprint
-//                                          captured by snapshot-working-tree.
-//                                          Required when the dispatching node
-//                                          has a write scope; missing key is
-//                                          a wiring bug and surfaces as
-//                                          Outcome.Err.
+//     captured by snapshot-working-tree.
+//     Required when the dispatching node
+//     has a write scope; missing key is
+//     a wiring bug and surfaces as
+//     Outcome.Err.
 //
 // Writes:
 //   - ctx.State["outputs-and-scopes-valid"]   — bool.
 //   - ctx.State["failure-kind"]               — set on false; one of
-//                                               missing-output | scope-diff
-//                                               (priority: missing-output
-//                                               wins when both fail).
+//     missing-output | scope-diff
+//     (priority: missing-output
+//     wins when both fail).
 //   - ctx.State["failing-task-name"]          — set on false; the OUTER
-//                                               execute-agent's task-name
-//                                               (e.g. "write-acceptance-tests")
-//                                               captured from ctx.Params
-//                                               before the inner `fix`
-//                                               call-activity shadows it.
-//                                               Consumed by the
-//                                               fix-missing-output /
-//                                               fix-scope-diff prompts.
+//     execute-agent's task-name
+//     (e.g. "write-acceptance-tests")
+//     captured from ctx.Params
+//     before the inner `fix`
+//     call-activity shadows it.
+//     Consumed by the
+//     fix-missing-output /
+//     fix-scope-diff prompts.
 //   - ctx.State["missing-outputs"]            — set on missing-output;
-//                                               comma-separated list of
-//                                               unemitted output keys.
+//     comma-separated list of
+//     unemitted output keys.
 //   - ctx.State["scope-violating-paths"]      — set on scope-diff;
-//                                               comma-separated list of
-//                                               working-tree paths
-//                                               outside the declared
-//                                               write scope.
+//     comma-separated list of
+//     working-tree paths
+//     outside the declared
+//     write scope.
 //   - ctx.State["phase-changed-files"]        — set on every dispatch
-//                                               (success and failure).
-//                                               Newline-joined sorted list of
-//                                               every path in the snapshot
-//                                               delta (in-scope +
-//                                               out-of-scope). Consumed by
-//                                               fix-scope-diff (this MID's
-//                                               own failure-kind),
-//                                               fix-unexpected-failing-tests,
-//                                               and fix-unexpected-passing-tests
-//                                               to scope their reasoning to
-//                                               "what the WRITE phase just
-//                                               edited." Replaces the
-//                                               previous live
-//                                               `git status --porcelain`
-//                                               shell-out at dispatch time,
-//                                               which was fragile against
-//                                               working-tree state (clean
-//                                               tree at dispatch ≠ no
-//                                               WRITE-phase changes).
+//     (success and failure).
+//     Newline-joined sorted list of
+//     every path in the snapshot
+//     delta (in-scope +
+//     out-of-scope). Consumed by
+//     fix-scope-diff (this MID's
+//     own failure-kind),
+//     fix-unexpected-failing-tests,
+//     and fix-unexpected-passing-tests
+//     to scope their reasoning to
+//     "what the WRITE phase just
+//     edited." Replaces the
+//     previous live
+//     `git status --porcelain`
+//     shell-out at dispatch time,
+//     which was fragile against
+//     working-tree state (clean
+//     tree at dispatch ≠ no
+//     WRITE-phase changes).
 //
 // Does NOT surface as Outcome.Err — the gateway's false branch
 // dispatches `fix-${failure-kind}` per Q-late-5. Hard errors

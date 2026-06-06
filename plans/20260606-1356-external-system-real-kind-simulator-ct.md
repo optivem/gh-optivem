@@ -80,8 +80,8 @@ Replace the straight-line real side at `process-flow.yaml:972–996` with an ide
 a `real-kind` gate, and the simulator red→green branch:
 
 ```
-IDENTIFY_EXTERNAL_SYSTEM            (resolve which external system; unknown → error → onboarding)
-  → IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS        (Real client — always)
+IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS        (Real client — always)
+  → IDENTIFY_EXTERNAL_SYSTEM        (resolve system from the adapter files just written; unknown → error → onboarding)
   → BUILD / START
   → GATE real-kind
        ├─ test-instance → VERIFY_TESTS_PASS_CONTRACT_REAL          (expect GREEN — done)
@@ -94,6 +94,18 @@ IDENTIFY_EXTERNAL_SYSTEM            (resolve which external system; unknown → 
 
 The simulator branch is step-for-step the existing stub branch, so it reuses the existing
 `verify-tests-fail` / `verify-tests-pass` MID processes — no new primitives.
+
+**IDENTIFY ordering (resolved 2026-06-06, session 2).** IDENTIFY runs **after**
+`IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS`, not before. The only deterministic,
+timing-stable source of the `<name>` is `ctx.State["phase-changed-files"]`, which
+`validate-outputs-and-scopes` populates **only for an agent with a write scope**. The
+driver-adapter impl (`write: [external-system-driver-adapter]`) always runs on the real
+side and writes under `.../adapter/external/<name>/…`, so reading `phase-changed-files`
+immediately after it is reliable. Running IDENTIFY *first* (as this pseudocode originally
+drew it) would read a **stale** `phase-changed-files` from whatever agent ran last — e.g.
+the contract-test author on the `dsl-port-changed == false` branch, which writes `ct-test`,
+not external-driver files. Identity is not needed until the downstream `real-kind` gate, so
+the later placement costs nothing.
 
 ## Status
 
@@ -117,16 +129,31 @@ green. What remains (this doc): the process-flow / gateway / new-agent / IDENTIF
   MID uses `external-system-driver-adapter`. (The plan's earlier "scope to simulator.path"
   text is superseded.)
 
-### 4. Gate binding + identify action — `internal/atdd/runtime/gates/bindings.go` / actions (+ tests)
-- `real-kind` gateway binding: promote the identified system's `real-kind` from config into
-  `ctx.State` for the predicate evaluator (Q6 port-change wiring precedent). This is a true
-  gateway binding (reads `ctx.State`, like the other `*-changed` gates in `bindings.go`).
-- **`IDENTIFY_EXTERNAL_SYSTEM` is an ACTION, not a gateway binding** (correction, session 1):
-  resolving a system name from changed external-driver file paths (`external/.../<name>/`)
-  requires a service-task / action that inspects the diff and **stamps** the resolved name
-  into `ctx.State` (the bindings in `bindings.go` only *read* state). Validate the name
-  against the `external-systems` map; unrecognized → error routing to onboarding. The
-  changed-file source is the same diff the `external-driver-port-changed` gate consumes.
+### 4. Gate binding + identify action — `internal/atdd/runtime/gates/bindings.go` + `internal/atdd/runtime/actions/bindings.go` (+ tests)
+
+**Source & wiring resolved 2026-06-06, session 2.** `gates.Deps` has no `Config`;
+`actions.Deps` does — so the `real-kind` *lookup* lives in the action, and the gateway is a
+pure state-reader.
+
+- **`IDENTIFY_EXTERNAL_SYSTEM` is an ACTION** (`actions` package), registered like
+  `snapshot-working-tree` / `validate-outputs-and-scopes`. It:
+  1. Reads `ctx.State["phase-changed-files"]` (newline-joined; populated by the preceding
+     `IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS` dispatch — see IDENTIFY ordering above).
+  2. Resolves the layer root: `root = ResolveLayerPaths(["external-system-driver-adapter"],
+     cfg)[0]` (same path space as `phase-changed-files`; both feed `pathInScope`).
+  3. For each changed path under `root`, takes `<name>` = first segment of
+     `TrimPrefix(path, root+"/")`. Paths with no further `/` are residual `shared` adapter
+     code → ignored. Collects the distinct name set.
+  4. Validates against the registry: exactly one known `cfg.ExternalSystems[name]` → stamps
+     `ctx.State["external-system-name"]` **and** `ctx.State["real-kind"] =
+     string(cfg.ExternalSystems[name].RealKind)`. Zero / ambiguous (>1) / unknown →
+     `Outcome{Err}` **hard stop** whose message points at onboarding (Edit #6 posture).
+- **`real-kind` gateway binding** (`gates` package): trivial enum value-reader — reads
+  `ctx.State["real-kind"]`, returns `Outcome{Value: v}`, errors on unset or any value outside
+  `{test-instance, simulator}`. Structurally identical to the existing `expectedTestResult` /
+  `testOutcome` bindings. No `Config` dependency (the action already promoted the value).
+  *(Supersedes the earlier "promote from config in the gateway" / "same diff the
+  external-driver-port-changed gate consumes" text — that gate reads a bool, not a diff.)*
 
 ### 5. New agent — `internal/assets/runtime/agents/atdd/external-system-real-simulator-implementer.md`
 - Mirror `external-system-stub-implementer.md`: implement the simulator

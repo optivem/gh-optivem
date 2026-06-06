@@ -1299,7 +1299,7 @@ processes:
 
       # Halt target for the fixer-retry cap. The FIX path here is reached
       # via a failing test run, so the last verify output is fresh in
-      # ctx.State (verify_results_text) and the driver surfaces it with the
+      # ctx.State (verify_failure_output) and the driver surfaces it with the
       # halt — the human reviews it to adjudicate. Name is the concise
       # headline (it doubles as the diagram BPMN label).
       - id: FIX_LOOP_EXHAUSTED
@@ -1359,7 +1359,7 @@ processes:
       # Halt target for the fixer-retry cap. ASYMMETRIC with the
       # verify-tests-pass twin: the FIX path here is reached via an
       # unexpectedly PASSING run, on which runCommand Unsets
-      # verify_results_text (a passing run has no failure output). So there
+      # verify_failure_output (a passing run has no failure output). So there
       # is no verify tail to surface — the name is authored self-contained
       # from the attempt count + the must-fail-still-green framing.
       - id: FIX_LOOP_EXHAUSTED

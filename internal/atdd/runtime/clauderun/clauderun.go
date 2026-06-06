@@ -153,19 +153,19 @@ type Options struct {
 	// same rationale as Language / AcceptanceCriteria.
 	ParsedConcepts string
 
-	// VerifyResults is the captured stdout/stderr tail from the most
+	// VerifyFailureOutput is the captured stdout/stderr tail from the most
 	// recent `gh optivem test run` invocation. Stamped by runCommand on
-	// the `isTestRun && !succeeded` branch (see formatVerifyResults for
+	// the `isTestRun && !succeeded` branch (see formatVerifyFailureOutput for
 	// the stdout/stderr combination shape) and flows through
-	// `verify_results_text` in ctx.State to the driver's
-	// cOpts.VerifyResults. Substituted into
+	// `verify_failure_output` in ctx.State to the driver's
+	// cOpts.VerifyFailureOutput. Substituted into
 	// fix-unexpected-passing-tests' / fix-unexpected-failing-tests'
-	// ${verify-results} placeholder so the fix agent reads the same
+	// ${verify-failure-output} placeholder so the fix agent reads the same
 	// captured runner output the operator saw inline. Registered only
 	// when non-empty so an absent value surfaces via
 	// findUnfilledPlaceholders rather than silently substituting "" —
 	// same rationale as CommandLine.
-	VerifyResults string
+	VerifyFailureOutput string
 
 	// ChangedFiles carries the working-tree path list the WRITE phase
 	// produced, for substitution into fix-unexpected-passing-tests' /
@@ -205,9 +205,9 @@ type Options struct {
 	// Other prompts don't reference these placeholders, so populating
 	// the fields on every dispatch (rather than agent-gating in the
 	// driver) is a no-op outside the recovery path.
-	CommandLine        string
-	CommandExitCode    int
-	CommandStderrTail  string
+	CommandLine       string
+	CommandExitCode   int
+	CommandStderrTail string
 
 	// FailingTaskName / MissingOutputs / ViolatingPaths carry the
 	// diagnostic payload validateOutputsAndScopes stashes in ctx.State on
@@ -229,9 +229,9 @@ type Options struct {
 	//
 	// Other prompts don't reference these placeholders, so populating
 	// the fields on every dispatch is a no-op outside the recovery path.
-	FailingTaskName     string
-	MissingOutputs      string
-	ViolatingPaths      string
+	FailingTaskName string
+	MissingOutputs  string
+	ViolatingPaths  string
 
 	// Language is the target language for this dispatch (e.g. "go",
 	// "typescript"). Substituted into the prompt's ${language} placeholder
@@ -434,12 +434,12 @@ type ClaudeRunner interface {
 // channel is the cross-mode replacement for the prose-YAML tail that used
 // to work only in headless mode.
 type RunOpts struct {
-	Prompt         string
-	Headless       bool
-	Model          string
-	Effort         string
-	Dir            string
-	Stdin          io.Reader
+	Prompt   string
+	Headless bool
+	Model    string
+	Effort   string
+	Dir      string
+	Stdin    io.Reader
 	// Stdout is the writer the interactive (claude TUI) subprocess pipes
 	// its stdout into. For Detail-level routing in production, Dispatch
 	// passes opts.Out.Detail through this field; tests may pass any
@@ -620,15 +620,15 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	}
 
 	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
-		Prompt:   prompt,
-		Headless: opts.Headless,
-		Model:    opts.Model,
-		Effort:   opts.Effort,
-		Dir:      opts.RepoPath,
-		Stdin:    opts.Stdin,
-		Stdout:         runnerStdout,
-		Stderr:         runStderr,
-		Out:            opts.Out,
+		Prompt:            prompt,
+		Headless:          opts.Headless,
+		Model:             opts.Model,
+		Effort:            opts.Effort,
+		Dir:               opts.RepoPath,
+		Stdin:             opts.Stdin,
+		Stdout:            runnerStdout,
+		Stderr:            runStderr,
+		Out:               opts.Out,
 		OutputFilePath:    opts.OutputFilePath,
 		OutputKeysSpec:    opts.OutputKeysSpec,
 		EventsLogPath:     opts.EventsLogPath,
@@ -735,15 +735,15 @@ func renderPrompt(opts Options) (string, error) {
 	} {
 		params[k] = v
 	}
-	// VerifyResults is load-bearing for fix-unexpected-{failing,passing}-tests
+	// VerifyFailureOutput is load-bearing for fix-unexpected-{failing,passing}-tests
 	// — same rationale as CommandLine. Only registered when non-empty so
 	// an absent value surfaces via findUnfilledPlaceholders rather than
 	// silently substituting "" into the diagnostic prompt's
 	// `### Verify results to address` block. ChangedFiles stays
 	// unconditional because fix-command-failed legitimately dispatches
 	// with an empty working tree.
-	if opts.VerifyResults != "" {
-		params["verify-results"] = opts.VerifyResults
+	if opts.VerifyFailureOutput != "" {
+		params["verify-failure-output"] = opts.VerifyFailureOutput
 	}
 	// Per-phase scope block (plan 20260526-1448 Item 4). Rendered from the
 	// BPMN node's read: / write: lists joined against the same path map

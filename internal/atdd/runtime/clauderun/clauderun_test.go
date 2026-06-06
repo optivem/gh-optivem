@@ -278,8 +278,8 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 		"system-path":                    "system/monolith/java",
 		"system-db-migration-path":       projectconfig.DefaultDbMigrationPath,
 		"system-test-path":               "system-test/java",
-		"system-driver-port":                    "system-test/src/testkit/driver/port/shop",
-		"system-driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+		"system-driver-port":             "system-test/src/testkit/driver/port/shop",
+		"system-driver-adapter":          "system-test/src/testkit/driver/adapter/shop",
 		"external-system-driver-port":    "system-test/src/testkit/external/port/shop",
 		"external-system-driver-adapter": "system-test/src/testkit/external/adapter/shop",
 		"at-test":                        "system-test/src/test/java/shop/latest/acceptance",
@@ -378,11 +378,11 @@ func TestRenderPrompt_RefactorSystemAgent_RendersScopeBlock(t *testing.T) {
 	// production dispatcher fills from cfg.PlaceholderMap(); supply them
 	// directly so the body renders without ${...} leftovers.
 	opts.Placeholders = map[string]string{
-		"sut-namespace":    "shop",
-		"system-path":      "system",
-		"system-test-path": "system-test",
-		"system-driver-port":      "system-test/src/testkit/driver/port/shop",
-		"system-driver-adapter":   "system-test/src/testkit/driver/adapter/shop",
+		"sut-namespace":         "shop",
+		"system-path":           "system",
+		"system-test-path":      "system-test",
+		"system-driver-port":    "system-test/src/testkit/driver/port/shop",
+		"system-driver-adapter": "system-test/src/testkit/driver/adapter/shop",
 	}
 
 	got, err := renderPrompt(opts)
@@ -1740,8 +1740,8 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 		"system-path":                    "system/monolith/typescript",
 		"system-db-migration-path":       projectconfig.DefaultDbMigrationPath,
 		"system-test-path":               "system-test/typescript",
-		"system-driver-port":                    "system-test/src/testkit/driver/port/shop",
-		"system-driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+		"system-driver-port":             "system-test/src/testkit/driver/port/shop",
+		"system-driver-adapter":          "system-test/src/testkit/driver/adapter/shop",
 		"external-system-driver-port":    "system-test/src/testkit/external/port/shop",
 		"external-system-driver-adapter": "system-test/src/testkit/external/adapter/shop",
 		"at-test":                        "system-test/tests/latest/acceptance",
@@ -2109,9 +2109,9 @@ func TestNoSnakeCasePlaceholdersInPromptBodies(t *testing.T) {
 // names it with snake.
 func TestRenderPrompt_NoSnakePlaceholdersInRenderedOutput(t *testing.T) {
 	for _, agent := range []string{
-		"acceptance-test-writer",  // writer
-		"command-failed-fixer",    // fixer
-		"system-refactorer",       // refactorer
+		"acceptance-test-writer", // writer
+		"command-failed-fixer",   // fixer
+		"system-refactorer",      // refactorer
 	} {
 		t.Run(agent, func(t *testing.T) {
 			if _, err := agents.Prompt(agent); err != nil {
@@ -2124,7 +2124,7 @@ func TestRenderPrompt_NoSnakePlaceholdersInRenderedOutput(t *testing.T) {
 			opts.AcceptanceCriteria = "Scenario: x\n  Given a\n  When b\n  Then c"
 			opts.Checklist = "- [ ] item"
 			opts.ParsedConcepts = "/tmp/parsed-concepts.md"
-			opts.VerifyResults = "results"
+			opts.VerifyFailureOutput = "results"
 			opts.ChangedFiles = "M foo.go"
 			opts.CommandLine = "go test ./..."
 			opts.CommandExitCode = 1

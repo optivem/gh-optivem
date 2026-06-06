@@ -3,8 +3,8 @@
 > **DECISION MADE (2026-06-06):** isolation is decided **upstream** (ticket / acceptance-criteria
 > refiner), not by the `acceptance-test-writer`. The writer stays a mechanical 1:1 translator. This
 > plan now describes the resulting design. Spun out of
-> `plans/20260606-1356-run-isolated-acceptance-suites.md` (the *run* side). One nuance still needs a
-> human nod — see "Open nuance" below — but the shape is settled.
+> `plans/20260606-1356-run-isolated-acceptance-suites.md` (the *run* side). Fully settled and ready
+> to execute once its run-side dependency lands (see Dependencies).
 
 ## Why
 
@@ -73,13 +73,12 @@ no shared-global scenarios simply never uses it.
    (`.github/ISSUE_TEMPLATE/*.yml`) that a scenario needing serial/global-state isolation can be
    tagged `@isolated`. Gate: only if it doesn't bloat the form; executor's call.
 
-## Open nuance (one human nod wanted before executing Item 1)
+## Settled: refiner suggests, human confirms
 
-Should the **refiner actively add** `@isolated` (agent judgement, but human-confirmed afterward), or
-should it only **preserve** tags the human author wrote (no agent judgement at all)? The design above
-assumes "refiner may add, human confirms." If you want the refiner to never infer it, Item 1 becomes
-"preserve `@isolated` tags verbatim, never add or remove" and the responsibility sits entirely with
-the ticket author.
+Decided (2026-06-06): the refiner **may suggest** `@isolated` on a scenario that sets shared-global
+state — it is a suggestion, not an authority, because the existing human-confirm-after-refine gate
+(`acceptance-criteria-refiner.md:16`) reviews it before the writer ever sees it. The human author can
+also set or remove the tag. The writer only mirrors whatever tag survives confirmation.
 
 ## Verification
 
