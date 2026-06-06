@@ -79,6 +79,15 @@ cd ../shop
 bash ../gh-optivem/scripts/atdd-rehearsal.sh 72 --config gh-optivem-monolith-java.yaml --auto
 ```
 
+> **#72 is the full-BPMN rehearsal story.** It is the only story in this corpus that trips all three change-detection gates on the `change-system-behavior` path TRUE, so it walks the entire flow end-to-end:
+> - `at-dsl-port-changed` — new `weighing …` / `shipping fee …` DSL steps + the `hasWeight` contract accessor.
+> - `at-external-driver-port-changed` — ERP `GetProductResponse` gains `weight` (only `sku`+`price` today), driving the contract-test cascade (external driver port + adapters, real-sim, stub).
+> - `at-system-driver-port-changed` — `ViewOrderResponse` has no `shippingFee` field, so asserting "shipping fee is 0.60" forces a new system driver-port field, driving the per-channel system driver adapter tail.
+>
+> Because `erp` is `real-kind: simulator` in every shop config, it also takes the longest external branch (verify-fail real → author real simulator → verify-pass real → stub red→green). By contrast #65/#69/#70/#71 have no external system, and #68's discount fields already exist on `ViewOrderResponse`.
+>
+> **Known coverage gap:** with `erp`/`clock` pinned to `real-kind: simulator`, the `real-kind == test-instance` branch of the contract-test flow (collapse to a single contract-real pass-verify, no real-sim authoring) is never exercised by any shop rehearsal. The simulator path is the superset, so this is fine functionally — noted as a gap until some external system is declared `test-instance`.
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
