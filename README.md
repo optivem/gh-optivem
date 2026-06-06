@@ -133,7 +133,7 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 - `--project-url` — URL of the GitHub Project board to attach. When omitted, `init` auto-creates the board and writes the URL back into `gh-optivem.yaml`.
 - `--license` — SPDX-like license key: `mit` (default), `apache-2.0`, `gpl-3.0`, `bsd-2-clause`, `bsd-3-clause`, or `unlicense`. Drives the scaffolded `LICENSE` file and README badge.
 - `--deploy` — deployment target: `docker` (default). `cloud-run` is in development and not yet usable.
-- Tier paths — `--system-path`, `--system-test-path`, `--backend-path`, `--frontend-path`, `--stubs-path`, `--simulators-path`. Repo-relative paths to the corresponding tier. Pass these only to point the YAML at a non-flat existing repo; the flat scaffold layout `init` itself produces is the default.
+- Tier paths — `--system-path`, `--system-test-path`, `--backend-path`, `--frontend-path`. Repo-relative paths to the corresponding tier. Pass these only to point the YAML at a non-flat existing repo; the flat scaffold layout `init` itself produces is the default.
 
 Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `init` run:
 
@@ -169,7 +169,7 @@ gh optivem config preflight  # validate + check every declared repo and tier pat
 gh optivem config migrate    # idempotently back-fill required fields (project.provider, repos:) on a pre-schema-bump file
 ```
 
-`config init` accepts the same YAML-affecting flags as `gh optivem init` (`--owner`, `--repo`, `--system-name`, `--arch`, `--repo-strategy`, `--monolith-lang` / `--backend-lang` / `--frontend-lang`, `--test-lang`, `--project-url`, `--license`, `--deploy`, plus the `--system-path` / `--system-test-path` / `--backend-path` / `--frontend-path` / `--stubs-path` / `--simulators-path` tier-path overrides). On a TTY with no required flags set, it drops into the same interactive prompt the `init` command uses. Extra flags: `--force` (overwrite an existing file) and `--dir <dir>` (target directory; ignored when `--config` is set).
+`config init` accepts the same YAML-affecting flags as `gh optivem init` (`--owner`, `--repo`, `--system-name`, `--arch`, `--repo-strategy`, `--monolith-lang` / `--backend-lang` / `--frontend-lang`, `--test-lang`, `--project-url`, `--license`, `--deploy`, plus the `--system-path` / `--system-test-path` / `--backend-path` / `--frontend-path` tier-path overrides). On a TTY with no required flags set, it drops into the same interactive prompt the `init` command uses. Extra flags: `--force` (overwrite an existing file) and `--dir <dir>` (target directory; ignored when `--config` is set).
 
 `config preflight` accepts `--workspace <dir>` to point at a non-default workspace root (default: parent directory of CWD). `config validate` and `config migrate` take no flags beyond the root-level `--config`.
 

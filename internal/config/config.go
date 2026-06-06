@@ -59,13 +59,11 @@ type Config struct {
 	// set (the YAML emitter does no path derivation — every call site that
 	// produces a Config supplies the paths matching its own on-disk layout).
 	// SystemPath applies only to monolith; BackendPath/FrontendPath apply only
-	// to multitier. SystemTestPath, StubsPath, SimulatorsPath apply to both.
+	// to multitier. SystemTestPath applies to both.
 	SystemPath      string
 	SystemTestPath  string
 	BackendPath     string
 	FrontendPath    string
-	StubsPath       string
-	SimulatorsPath  string
 
 	Deploy     string // "docker" (default) or "cloud-run"
 	License    string
@@ -494,8 +492,6 @@ type RawFlags struct {
 	SystemTestPath    string
 	BackendPath       string
 	FrontendPath      string
-	StubsPath         string
-	SimulatorsPath    string
 	KeepLocal         bool
 	NoLegacy          bool
 	NoLocalTests      bool
@@ -537,8 +533,6 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.SystemTestPath, "system-test-path", "", "Repo-relative path to system tests (default: "+DefaultSystemTestPath+")")
 	fs.StringVar(&f.BackendPath, "backend-path", "", "Repo-relative path to backend code (multitier only; default: "+DefaultBackendPath+")")
 	fs.StringVar(&f.FrontendPath, "frontend-path", "", "Repo-relative path to frontend code (multitier only; default: "+DefaultFrontendPath+")")
-	fs.StringVar(&f.StubsPath, "stubs-path", "", "Repo-relative path to external-system stubs (default: "+DefaultStubsPath+")")
-	fs.StringVar(&f.SimulatorsPath, "simulators-path", "", "Repo-relative path to external-system simulators (default: "+DefaultSimulatorsPath+")")
 }
 
 // BindInitFlags binds every `gh optivem init` CLI flag to the corresponding
@@ -698,8 +692,6 @@ const (
 	DefaultSystemTestPath = "system-test"
 	DefaultBackendPath    = "backend"
 	DefaultFrontendPath   = "frontend"
-	DefaultStubsPath      = "external-systems/external-stub"
-	DefaultSimulatorsPath = "external-systems/external-real-sim"
 )
 
 type envTokens struct {
@@ -1121,8 +1113,6 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		SystemTestPath: f.SystemTestPath,
 		BackendPath:    f.BackendPath,
 		FrontendPath:   f.FrontendPath,
-		StubsPath:      f.StubsPath,
-		SimulatorsPath: f.SimulatorsPath,
 		VerifyLevel:    resolvedLevel,
 		NoLegacy:       f.NoLegacy,
 		NoLocalTests:   f.NoLocalTests,
@@ -1350,8 +1340,6 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 		SystemTestPath:   f.SystemTestPath,
 		BackendPath:      f.BackendPath,
 		FrontendPath:     f.FrontendPath,
-		StubsPath:        f.StubsPath,
-		SimulatorsPath:   f.SimulatorsPath,
 		FrontendRepo:     mr.frontendRepo,
 		BackendRepo:      mr.backendRepo,
 		FrontendFullRepo: mr.frontendFullRepo,
@@ -1379,12 +1367,6 @@ func resolvePathFlagsForYAML(f *RawFlags) error {
 	}
 	if f.SystemTestPath == "" {
 		f.SystemTestPath = DefaultSystemTestPath
-	}
-	if f.StubsPath == "" {
-		f.StubsPath = DefaultStubsPath
-	}
-	if f.SimulatorsPath == "" {
-		f.SimulatorsPath = DefaultSimulatorsPath
 	}
 	switch f.Arch {
 	case "monolith":

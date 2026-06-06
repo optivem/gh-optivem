@@ -11,19 +11,19 @@ import (
 // monolith Config (matching the Default*Path constants in internal/config).
 // Tests that exercise BuildOptivemYAML for the post-scaffold layout reuse
 // these instead of repeating the literal strings.
-func monolithFlatPaths() (system, systemTest, stubs, simulators string) {
-	return "system", "system-test", "external-systems/stubs", "external-systems/simulators"
+func monolithFlatPaths() (system, systemTest string) {
+	return "system", "system-test"
 }
 
 // multitierFlatPaths returns the path values the scaffolder injects into a
 // multitier Config.
-func multitierFlatPaths() (backend, frontend, systemTest, stubs, simulators string) {
-	return "backend", "frontend", "system-test", "external-systems/stubs", "external-systems/simulators"
+func multitierFlatPaths() (backend, frontend, systemTest string) {
+	return "backend", "frontend", "system-test"
 }
 
 func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	t.Parallel()
-	sys, sysTest, stubs, sims := monolithFlatPaths()
+	sys, sysTest := monolithFlatPaths()
 	cfg := &config.Config{
 		Arch:           "monolith",
 		RepoStrategy:   "monorepo",
@@ -35,8 +35,6 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 		ProjectURL:     "https://github.com/orgs/x/projects/1",
 		SystemPath:     sys,
 		SystemTestPath: sysTest,
-		StubsPath:      stubs,
-		SimulatorsPath: sims,
 	}
 	got := BuildOptivemYAML(cfg)
 	if got.Project.URL != cfg.ProjectURL {
@@ -72,7 +70,7 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 
 func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 	t.Parallel()
-	be, fe, sysTest, stubs, sims := multitierFlatPaths()
+	be, fe, sysTest := multitierFlatPaths()
 	cfg := &config.Config{
 		Arch:             "multitier",
 		RepoStrategy:     "multirepo",
@@ -84,8 +82,6 @@ func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 		BackendPath:      be,
 		FrontendPath:     fe,
 		SystemTestPath:   sysTest,
-		StubsPath:        stubs,
-		SimulatorsPath:   sims,
 	}
 	got := BuildOptivemYAML(cfg)
 	if got.RepoStrategy != projectconfig.RepoStrategyMultiRepo {
@@ -117,7 +113,7 @@ func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 
 func TestBuildOptivemYAML_MonolithMultirepo(t *testing.T) {
 	t.Parallel()
-	sys, sysTest, stubs, sims := monolithFlatPaths()
+	sys, sysTest := monolithFlatPaths()
 	cfg := &config.Config{
 		Arch:           "monolith",
 		RepoStrategy:   "multirepo",
@@ -126,8 +122,6 @@ func TestBuildOptivemYAML_MonolithMultirepo(t *testing.T) {
 		SystemFullRepo: "acme/shop-system",
 		SystemPath:     sys,
 		SystemTestPath: sysTest,
-		StubsPath:      stubs,
-		SimulatorsPath: sims,
 	}
 	got := BuildOptivemYAML(cfg)
 	// SSoT (plan 20260518-1530 item 3): System.Path baked with
@@ -158,8 +152,6 @@ func TestBuildOptivemYAML_NonScaffoldPaths(t *testing.T) {
 		TestLang:       "java",
 		SystemPath:     "system/monolith/java",
 		SystemTestPath: "system-test/java",
-		StubsPath:      "external-systems/stubs",
-		SimulatorsPath: "external-systems/simulators",
 	}
 	got := BuildOptivemYAML(cfg)
 	// SSoT: even non-scaffold (shop-worktree-style) callers get
@@ -175,21 +167,21 @@ func TestBuildOptivemYAML_NonScaffoldPaths(t *testing.T) {
 
 func TestBuildOptivemYAML_OutputValidates(t *testing.T) {
 	t.Parallel()
-	monoSys, monoTest, monoStubs, monoSims := monolithFlatPaths()
-	multiBE, multiFE, multiTest, multiStubs, multiSims := multitierFlatPaths()
+	monoSys, monoTest := monolithFlatPaths()
+	multiBE, multiFE, multiTest := multitierFlatPaths()
 	const url = "https://github.com/orgs/x/projects/1"
 	cases := []*config.Config{
 		{Owner: "x", Repo: "y", Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "java", TestLang: "java", ProjectURL: url,
-			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
+			SystemPath: monoSys, SystemTestPath: monoTest},
 		{Owner: "x", Repo: "y", Arch: "multitier", RepoStrategy: "multirepo", BackendLang: "java", FrontendLang: "typescript", TestLang: "java", ProjectURL: url,
 			BackendFullRepo: "x/y-backend", FrontendFullRepo: "x/y-frontend",
-			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
+			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest},
 		{Owner: "x", Repo: "y", Arch: "monolith", RepoStrategy: "multirepo", Lang: "dotnet", TestLang: "dotnet", SystemFullRepo: "x/y-system", ProjectURL: url,
-			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
+			SystemPath: monoSys, SystemTestPath: monoTest},
 		{Owner: "x", Repo: "y", Arch: "monolith", RepoStrategy: "monorepo", FullRepo: "x/y", Lang: "typescript", TestLang: "typescript", ProjectURL: url,
-			SystemPath: monoSys, SystemTestPath: monoTest, StubsPath: monoStubs, SimulatorsPath: monoSims},
+			SystemPath: monoSys, SystemTestPath: monoTest},
 		{Owner: "x", Repo: "y", Arch: "multitier", RepoStrategy: "monorepo", FullRepo: "x/y", BackendLang: "java", FrontendLang: "typescript", TestLang: "java", ProjectURL: url,
-			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest, StubsPath: multiStubs, SimulatorsPath: multiSims},
+			BackendPath: multiBE, FrontendPath: multiFE, SystemTestPath: multiTest},
 	}
 	for i, cfg := range cases {
 		pc := BuildOptivemYAML(cfg)
@@ -235,8 +227,6 @@ func TestBuildOptivemYAML_PathsBlockSeededPerLanguage(t *testing.T) {
 				TestLang:       tc.testLang,
 				SystemPath:     "system",
 				SystemTestPath: "system-test",
-				StubsPath:      "external-systems/stubs",
-				SimulatorsPath: "external-systems/simulators",
 			}
 			got := BuildOptivemYAML(cfg)
 			if len(got.SystemTest.Paths) == 0 {
@@ -280,8 +270,6 @@ func TestBuildOptivemYAML_PathsBlockMaterializeOK(t *testing.T) {
 		ProjectURL:     "https://github.com/orgs/x/projects/1",
 		SystemPath:     "system",
 		SystemTestPath: "system-test",
-		StubsPath:      "external-systems/stubs",
-		SimulatorsPath: "external-systems/simulators",
 	}
 	pc := BuildOptivemYAML(cfg)
 	if err := pc.Validate(); err != nil {

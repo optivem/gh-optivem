@@ -87,7 +87,7 @@ while [[ $# -gt 0 ]]; do
     --project-url)       CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     # Tier-path flags are forwarded as-passed; the binary defaults
     # empty paths to the flat scaffold layout itself.
-    --system-path|--system-test-path|--backend-path|--frontend-path|--stubs-path|--simulators-path)
+    --system-path|--system-test-path|--backend-path|--frontend-path)
                          CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     # Per-invocation flags → init
     --verbose|-v|--quiet|-q|--yes|-y|--no-legacy|--no-local-tests|--no-local-sonar|--no-atdd|--no-project|--report-bug|--keep-local)

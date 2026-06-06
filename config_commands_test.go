@@ -55,8 +55,6 @@ func monolithMonorepoFlags() *config.RawFlags {
 		TestLang:       "java",
 		SystemPath:     "system/monolith/java",
 		SystemTestPath: "system-test/java",
-		StubsPath:      "external-systems/stubs",
-		SimulatorsPath: "external-systems/simulators",
 		ProjectURL:     "https://github.com/orgs/acme/projects/1",
 	}
 }
@@ -194,8 +192,6 @@ func TestRunConfigInit_MultitierMultirepo(t *testing.T) {
 		BackendPath:    "system/multitier/backend-dotnet",
 		FrontendPath:   "system/multitier/frontend-react",
 		SystemTestPath: "system-test/typescript",
-		StubsPath:      "external-systems/stubs",
-		SimulatorsPath: "external-systems/simulators",
 		ProjectURL:     "https://github.com/orgs/acme/projects/2",
 	}
 	if _, err := configinit.Run(f, filepath.Join(dir, projectconfig.Path), false); err != nil {
@@ -291,8 +287,6 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 				Arch: "multitier", RepoStrategy: "multirepo", FrontendLang: "typescript",
 				FrontendPath:   "frontend",
 				SystemTestPath: "system-test",
-				StubsPath:      "external-systems/stubs",
-				SimulatorsPath: "external-systems/simulators",
 			},
 			"--backend-lang",
 		},
@@ -306,8 +300,6 @@ func TestRunConfigInit_RejectsBadFlags(t *testing.T) {
 				BackendPath:    "backend",
 				FrontendPath:   "frontend",
 				SystemTestPath: "system-test",
-				StubsPath:      "external-systems/stubs",
-				SimulatorsPath: "external-systems/simulators",
 			},
 			"--system-path is not valid for --arch multitier",
 		},
@@ -432,7 +424,7 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		"system-test/java",
 		"external-systems/stubs",
 		"external-systems/simulators",
-		// system-test.paths.* — the eight canonical Family B testkit
+		// system-test.paths.* — the nine canonical Family B testkit
 		// locations DefaultPaths emits for (java, "system-test/java",
 		// "com/acme/pageturner"). The Java source package is a MIDDLE
 		// segment (src/main/java/<pkg>/testkit/…, src/test/java/<pkg>/
@@ -449,6 +441,9 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/adapter/ui",
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/port/external",
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/adapter/external",
+		// system-test.paths.system-driver-adapter-shared — the shared
+		// test-transport foundation DefaultPaths now emits; preflight stats it.
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/adapter/shared",
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/dsl/port",
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/dsl/core",
 		"system-test/java/src/test/java/com/acme/pageturner/systemtest/latest/acceptance",
@@ -767,6 +762,7 @@ system-test:
     dsl-port: system-test/src/main/java/testkit/dsl/port/shop-tests
     dsl-core: system-test/src/main/java/testkit/dsl/core/shop-tests
     ct-test: system-test/src/test/java/shop-tests/latest/contract
+    system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop-tests/shared
 `
 
 // multiRepoMultitierBody is a pre-repos:-field config of the canonical
@@ -810,6 +806,7 @@ system-test:
     dsl-port: system-test/src/main/java/testkit/dsl/port/shop-tests
     dsl-core: system-test/src/main/java/testkit/dsl/core/shop-tests
     ct-test: system-test/src/test/java/shop-tests/latest/contract
+    system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop-tests/shared
 `
 
 // monoRepoMonolithBody is the canonical mono-repo monolith config —
@@ -920,6 +917,7 @@ func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
     dsl-port: system-test/java/src/main/java/testkit/dsl/port
     dsl-core: system-test/java/src/main/java/testkit/dsl/core
     ct-test: system-test/java/src/test/java/latest/contract
+    system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shared
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1054,6 +1052,7 @@ const dbMigrationPathTestBody = monoRepoMonolithBody + `  paths:
     dsl-port: system-test/java/src/main/java/testkit/dsl/port
     dsl-core: system-test/java/src/main/java/testkit/dsl/core
     ct-test: system-test/java/src/test/java/latest/contract
+    system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shared
 `
 
 func TestRunConfigMigrate_BackfillsDbMigrationPathWhenAbsent(t *testing.T) {

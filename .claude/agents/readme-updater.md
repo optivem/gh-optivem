@@ -78,7 +78,7 @@ If the user passes `--readme <path>` or `--scope <dir>`, honour it. If asked to 
 
 **Rule.** Field names and example values for `gh-optivem.yaml` shown in the README must match the current `projectconfig` schema. The `config init` flag examples must use the current flag names.
 
-**How to check.** Read `internal/projectconfig/*.go` (look for the top-level `Config` struct and YAML tags) and `internal/config/flags*.go`. Compare every YAML field name and every `--system-path` / `--system-test-path` / `--stubs-path` / `--simulators-path` / `--monolith-lang` / `--backend-lang` / `--frontend-lang` / `--repo-strategy` / `--project-url` mention in the README.
+**How to check.** Read `internal/projectconfig/*.go` (look for the top-level `Config` struct and YAML tags) and `internal/config/flags*.go`. Compare every YAML field name and every `--system-path` / `--system-test-path` / `--monolith-lang` / `--backend-lang` / `--frontend-lang` / `--repo-strategy` / `--project-url` mention in the README.
 
 **Categories of finding:**
 

@@ -354,9 +354,7 @@ gh optivem config init --owner valentinajemuovic --repo page-turner \
     --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
     --project-url https://github.com/orgs/valentinajemuovic/projects/N \
     --backend-path backend --frontend-path frontend \
-    --system-test-path system-test \
-    --stubs-path external-systems/stubs \
-    --simulators-path external-systems/simulators
+    --system-test-path system-test
 
 # Step 4 — scaffold a fresh project (no --shop-ref → uses the baked-in SHA)
 gh optivem init

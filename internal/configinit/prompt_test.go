@@ -94,9 +94,9 @@ func TestPrompt_MonolithHappyPath(t *testing.T) {
 	// happens downstream in config.resolvePathFlagsForYAML so the
 	// flag-driven and interactive paths share one definition of "flat
 	// layout". End-to-end YAML output is covered by ensure_test.go.
-	if f.SystemPath != "" || f.SystemTestPath != "" || f.StubsPath != "" || f.SimulatorsPath != "" {
-		t.Errorf("path fields should be empty post-Prompt; got system=%q system-test=%q stubs=%q sims=%q",
-			f.SystemPath, f.SystemTestPath, f.StubsPath, f.SimulatorsPath)
+	if f.SystemPath != "" || f.SystemTestPath != "" {
+		t.Errorf("path fields should be empty post-Prompt; got system=%q system-test=%q",
+			f.SystemPath, f.SystemTestPath)
 	}
 	if f.ProjectURL != "https://github.com/orgs/acme/projects/1" {
 		t.Errorf("ProjectURL: got %q", f.ProjectURL)
