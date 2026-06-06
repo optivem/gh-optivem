@@ -50,6 +50,13 @@ the "what new ACs should I add?" decision.
 - Cover **idempotency** / repeat-call behavior when the operation mutates
   state.
 - Every scenario in Gherkin GIVEN-WHEN-THEN form.
+- Tag a scenario with the Gherkin `@isolated` tag (a line `@isolated` above
+  `Scenario:`) when it sets **process-global state shared across
+  concurrently-running tests** — e.g. a singleton clock or a global feature
+  toggle (examples, not the rule). Ordinary per-scenario data does not get the
+  tag. This is a *suggestion*: the human confirm-after-refine gate reviews it
+  before the writer ever mirrors it onto a test, and the author may add or
+  remove the tag.
 
 ACs describe end-to-end, user-observable behavior of the system. Do **not**
 add scenarios that assert an external system's own behavior (e.g. "ERP

@@ -2239,6 +2239,70 @@ func TestRenderGateMarkerExample_FailFast(t *testing.T) {
 	}
 }
 
+// TestRenderIsolatedMarkerExample pins the per-language isolation
+// snippet rendered into the acceptance-test-writer prompt. The writer
+// mirrors the source scenario's Gherkin `@isolated` tag onto the test's
+// language isolation shape: class-level `@Isolated` (Java), the
+// `[Collection("Isolated")]`+`[Trait]` pair (C#), or the serial-mode
+// describe wrapper (TypeScript). The symbols are what the run-side
+// isolated suites (acceptance-isolated-<ch>) filter on, so they must not
+// drift.
+func TestRenderIsolatedMarkerExample(t *testing.T) {
+	cases := []struct {
+		lang        string
+		wantSubstrs []string
+	}{
+		{
+			lang: "java",
+			wantSubstrs: []string{
+				`@Isolated`,
+				`import com.optivem.testing.Isolated;`,
+			},
+		},
+		{
+			lang: "csharp",
+			wantSubstrs: []string{
+				`[Collection("Isolated")]`,
+				`[Trait("Category", "isolated")]`,
+			},
+		},
+		{
+			lang: "typescript",
+			wantSubstrs: []string{
+				`test.describe('@isolated'`,
+				`mode: 'serial'`,
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.lang, func(t *testing.T) {
+			got := renderIsolatedMarkerExample(tc.lang)
+			if got == "" {
+				t.Fatalf("renderIsolatedMarkerExample(%q): got empty string", tc.lang)
+			}
+			for _, want := range tc.wantSubstrs {
+				if !strings.Contains(got, want) {
+					t.Errorf("renderIsolatedMarkerExample(%q): missing substring %q\nrendered:\n%s", tc.lang, want, got)
+				}
+			}
+		})
+	}
+}
+
+// TestRenderIsolatedMarkerExample_FailFast pins the empty-string
+// contract: an empty or unrecognised language produces "" so the
+// dispatcher's findUnfilledPlaceholders surfaces the gap rather than
+// silently substituting an empty placeholder.
+func TestRenderIsolatedMarkerExample_FailFast(t *testing.T) {
+	for _, lang := range []string{"", "rust"} {
+		t.Run("lang="+lang, func(t *testing.T) {
+			if got := renderIsolatedMarkerExample(lang); got != "" {
+				t.Errorf("renderIsolatedMarkerExample(%q): want empty, got %q", lang, got)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // PID marker file — writePidFile / removePidFile / dispatchCwd helpers
 // that runHeadless / runInteractive use to record the spawned claude PID

@@ -786,6 +786,19 @@ func renderPrompt(opts Options) (string, error) {
 	if ex := renderGateMarkerExample(opts.Language); ex != "" {
 		params["gate-marker-example"] = ex
 	}
+	// Isolation marker (acceptance-test-writer). Mirrors the Gherkin
+	// `@isolated` tag in the Acceptance Criteria onto the test's
+	// language isolation shape (class-level @Isolated in Java, the
+	// [Collection("Isolated")]+[Trait] pair in C#, the serial-mode
+	// describe wrapper in TypeScript). Same load-bearing registration as
+	// the WIP gate above: register only when the language is recognised,
+	// else findUnfilledPlaceholders fails the dispatch fast when the
+	// prompt references ${isolated-marker-example}. The per-language
+	// shapes are non-obvious and live outside the agent's read scope, so
+	// they are injected rather than reverse-engineered.
+	if ex := renderIsolatedMarkerExample(opts.Language); ex != "" {
+		params["isolated-marker-example"] = ex
+	}
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
 	// as Language. Only registered when non-empty so an absent value
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
@@ -1054,6 +1067,40 @@ func renderGateMarkerExample(lang string) string {
 		return ""
 	}
 	data, err := assets.FS.ReadFile("runtime/shared/wip-gate-" + lang + ".md")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(string(data), "\n")
+}
+
+// renderIsolatedMarkerExample inlines the per-language isolation snippet
+// the acceptance-test-writer applies to a test whose source scenario
+// carries the Gherkin `@isolated` tag, via ${isolated-marker-example}.
+// It is the isolation twin of renderGateMarkerExample: the writer is a
+// mechanical 1:1 translator, so the per-language shape (class-level
+// @Isolated in Java, the [Collection("Isolated")]+[Trait] pair in C#,
+// the serial-mode describe wrapper in TypeScript) is injected rather
+// than reverse-engineered from out-of-scope sibling tests.
+//
+// Unlike the WIP gate the isolation shape is class/describe-level, not
+// per-method: an isolated scenario yields a dedicated isolated test
+// class/describe block.
+//
+// Returns "" when `lang` is empty, unrecognised, or its asset is
+// missing; the caller registers the placeholder only when non-empty so
+// an absent value surfaces via findUnfilledPlaceholders rather than
+// silently substituting "". The snippet body lives in
+// runtime/shared/isolated-marker-<lang>.md (embedded via assets.FS) so
+// it is visible/editable as prose. Adding a new language requires
+// creating its isolated-marker-<lang>.md asset AND adding the case to
+// the switch below.
+func renderIsolatedMarkerExample(lang string) string {
+	switch lang {
+	case "java", "csharp", "typescript":
+	default:
+		return ""
+	}
+	data, err := assets.FS.ReadFile("runtime/shared/isolated-marker-" + lang + ".md")
 	if err != nil {
 		return ""
 	}
