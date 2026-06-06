@@ -394,7 +394,7 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	if !ok {
 		t.Fatalf("process shared-contract missing")
 	}
-	wantEdge(t, sc, "GATE_EXTERNAL_DRIVER_PORTS_CHANGED", "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "external-driver-port-changed == true")
+	wantEdge(t, sc, "GATE_EXTERNAL_DRIVER_PORTS_CHANGED", "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "at-external-driver-port-changed == true")
 	node, ok := sc.Nodes["IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"]
 	if !ok {
 		t.Fatalf("shared-contract: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS node missing")
@@ -402,9 +402,15 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	if got := node.Raw.Process; got != "implement-and-verify-external-system-driver-adapters-contract-tests" {
 		t.Errorf("external-driver node process = %q, want the CT-HIGH", got)
 	}
-	// The CT-HIGH is self-contained — the call site binds none of the
-	// caller params the retired thin step used to forward.
-	for _, p := range []string{"tests", "expected-test-result", "task-name"} {
+	// The CT-HIGH is self-contained except for the cascade tag (plan
+	// 20260606-1525): it binds `tests: contract` so its inner writers
+	// namespace their port-changed verdicts under `ct-*` and can't clobber
+	// the parent AT cascade's `at-*` verdicts. It still forwards none of the
+	// other caller params the retired thin step used to.
+	if got := node.Raw.Params["tests"]; got != "contract" {
+		t.Errorf("external-driver node should bind tests: contract (cascade tag), got %q", got)
+	}
+	for _, p := range []string{"expected-test-result", "task-name"} {
 		if v, set := node.Raw.Params[p]; set {
 			t.Errorf("external-driver node should not bind %q (CT-HIGH is self-contained), got %q", p, v)
 		}

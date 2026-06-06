@@ -174,13 +174,13 @@ func TestUnrollSystemDriverAdapterChannels_TwoChannels(t *testing.T) {
 	// first channel, so the per-channel adapter block still runs only when the
 	// system driver port changed (no-arg full-run behaviour intact).
 	entry := findEdge(t, proc, sysDriverPortChangedGate, sysDriverAdapterAnchorAPI)
-	if entry.Predicate != "system-driver-port-changed == true" {
-		t.Errorf("gate → first-channel edge predicate = %q, want %q", entry.Predicate, "system-driver-port-changed == true")
+	if entry.Predicate != "at-system-driver-port-changed == true" {
+		t.Errorf("gate → first-channel edge predicate = %q, want %q", entry.Predicate, "at-system-driver-port-changed == true")
 	}
 	// The gateway FALSE branch (skip the whole block) survives untouched.
 	skip := findEdge(t, proc, sysDriverPortChangedGate, "WAV_AT_END")
-	if skip.Predicate != "system-driver-port-changed == false" {
-		t.Errorf("gate skip edge predicate = %q, want %q", skip.Predicate, "system-driver-port-changed == false")
+	if skip.Predicate != "at-system-driver-port-changed == false" {
+		t.Errorf("gate skip edge predicate = %q, want %q", skip.Predicate, "at-system-driver-port-changed == false")
 	}
 
 	// Linear chain api → ui → WAV_AT_END, no loopback; intermediate edge
@@ -209,8 +209,8 @@ func TestUnrollSystemDriverAdapterChannels_SingleChannel(t *testing.T) {
 	// Sole channel: gate TRUE → the one adapter node (predicate preserved),
 	// then straight to WAV_AT_END.
 	entry := findEdge(t, proc, sysDriverPortChangedGate, sysDriverAdapterAnchorAPI)
-	if entry.Predicate != "system-driver-port-changed == true" {
-		t.Errorf("gate → adapter edge predicate = %q, want %q", entry.Predicate, "system-driver-port-changed == true")
+	if entry.Predicate != "at-system-driver-port-changed == true" {
+		t.Errorf("gate → adapter edge predicate = %q, want %q", entry.Predicate, "at-system-driver-port-changed == true")
 	}
 	assertSingleEdge(t, proc, sysDriverAdapterAnchorAPI, "WAV_AT_END")
 }

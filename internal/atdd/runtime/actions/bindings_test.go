@@ -1207,7 +1207,9 @@ func TestValidateOutputsAndScopes_CTPath_SystemDriverPortChanged_Halts(t *testin
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["tests"] = "contract"
-	ctx.Set("system-driver-port-changed", true)
+	// On the contract cascade the verdict lands namespaced (plan 20260606-1525);
+	// the fence reads the ct- key.
+	ctx.Set("ct-system-driver-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err == nil {
 		t.Fatalf("CT-path dsl-implementer emitting system-driver-port-changed=true must halt, got nil err")
@@ -1230,11 +1232,84 @@ func TestValidateOutputsAndScopes_ATPath_SystemDriverPortChanged_Allowed(t *test
 	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["tests"] = "acceptance"
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
-	ctx.Set("system-driver-port-changed", true)
-	ctx.Set("external-driver-port-changed", true)
+	// On the acceptance cascade the verdicts land namespaced (plan 20260606-1525).
+	ctx.Set("at-system-driver-port-changed", true)
+	ctx.Set("at-external-driver-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("AT-path system-driver-port-changed=true must be allowed, got err: %v", out.Err)
+	}
+	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
+		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+}
+
+// landingStateKey namespaces the three port-changed verdicts by cascade so
+// the nested contract excursion can't clobber the acceptance cascade's
+// verdict (plan 20260606-1525). Every other output, and any unrecognised
+// cascade, is the identity.
+func TestLandingStateKey_CascadeNamespacing(t *testing.T) {
+	cases := []struct {
+		key, tests, want string
+	}{
+		{"dsl-port-changed", "acceptance", "at-dsl-port-changed"},
+		{"dsl-port-changed", "contract", "ct-dsl-port-changed"},
+		{"system-driver-port-changed", "acceptance", "at-system-driver-port-changed"},
+		{"system-driver-port-changed", "contract", "ct-system-driver-port-changed"},
+		{"external-driver-port-changed", "acceptance", "at-external-driver-port-changed"},
+		{"external-driver-port-changed", "contract", "ct-external-driver-port-changed"},
+		// Non-port-changed outputs are never namespaced.
+		{"test-names", "acceptance", "test-names"},
+		{"scope-exception-reason", "contract", "scope-exception-reason"},
+		// Unrecognised / absent cascade falls back to the bare key (the
+		// downstream gate's strict "not set" check surfaces the wiring bug).
+		{"dsl-port-changed", "", "dsl-port-changed"},
+		{"system-driver-port-changed", "nonsense", "system-driver-port-changed"},
+	}
+	for _, c := range cases {
+		if got := landingStateKey(c.key, c.tests); got != c.want {
+			t.Errorf("landingStateKey(%q, %q) = %q, want %q", c.key, c.tests, got, c.want)
+		}
+	}
+}
+
+// The anti-clobber property at the landing layer: a port-changed verdict
+// flattened on the acceptance cascade lands under its `at-` key and NOT the
+// bare key, so a subsequent contract excursion (which writes only `ct-*`)
+// leaves it intact for the parent re-gate (plan 20260606-1525).
+func TestValidateOutputsAndScopes_PortChangedVerdicts_CascadeNamespaced(t *testing.T) {
+	dir := t.TempDir()
+	jsonl := filepath.Join(dir, "001-dsl-implementer.outputs.jsonl")
+	writeJSONL(t, jsonl, `{"system-driver-port-changed":true,"external-driver-port-changed":false}`)
+
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"}, []byte(""), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
+	ctx.Params["tests"] = "acceptance"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	ctx.State["output-file-path"] = jsonl
+
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.Get("at-system-driver-port-changed"); got != true {
+		t.Errorf("at-system-driver-port-changed: got %v, want true", got)
+	}
+	if got := ctx.Get("at-external-driver-port-changed"); got != false {
+		t.Errorf("at-external-driver-port-changed: got %v, want false", got)
+	}
+	// The bare keys must NOT be written — that is the whole point of the
+	// namespacing (a CT excursion writing bare/ct- can't touch at-*).
+	if _, set := ctx.State["system-driver-port-changed"]; set {
+		t.Errorf("bare system-driver-port-changed must not be set; namespacing is single-backend")
+	}
+	if _, set := ctx.State["external-driver-port-changed"]; set {
+		t.Errorf("bare external-driver-port-changed must not be set; namespacing is single-backend")
 	}
 	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
 		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)

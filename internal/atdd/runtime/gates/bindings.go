@@ -150,9 +150,19 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("test-outcome", b.testOutcome)
 	r.Register("expected-test-result", b.expectedTestResult)
 	r.Register("fix-on-failure-enabled", b.fixOnFailureEnabled)
-	r.Register("dsl-port-changed", b.dslPortChanged)
-	r.Register("system-driver-port-changed", b.systemDriverPortChanged)
-	r.Register("external-driver-port-changed", b.externalDriverPortChanged)
+	// Cascade-namespaced port-changed verdicts (plan 20260606-1525). The
+	// landing layer (validate-outputs-and-scopes) writes the agent's bare
+	// `*-port-changed` output under an `at-`/`ct-` key chosen by the active
+	// `tests` cascade, so the nested contract excursion can't clobber the
+	// acceptance cascade's verdict. Each gateway is cascade-fixed, so each
+	// reads its own namespaced key. Only the verdicts actually gated are
+	// registered: `ct-system-driver-port-changed` / `ct-external-driver-
+	// port-changed` are written but read directly by the CT-path fence /
+	// never gated, so they need no binding.
+	r.Register("at-dsl-port-changed", b.atDslPortChanged)
+	r.Register("at-system-driver-port-changed", b.atSystemDriverPortChanged)
+	r.Register("at-external-driver-port-changed", b.atExternalDriverPortChanged)
+	r.Register("ct-dsl-port-changed", b.ctDslPortChanged)
 	// CT-HIGH real-side fork (plan 20260606-1356). Routes contract-real on
 	// the identified external system's real-kind. The value is stamped by the
 	// upstream identify-external-system ACTION (which has Config access); this
@@ -346,25 +356,32 @@ func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Ou
 	return statemachine.Outcome{Bool: yes}
 }
 
-// dslPortChanged, systemDriverPortChanged, externalDriverPortChanged
-// are the writing-agent output flags consumed by the per-test-layer
-// fanout in implement-and-verify-dsl. Each reads the kebab ctx key the
-// agent emits via `gh optivem output write KEY=VAL` (flattened from the
-// per-dispatch JSONL file by validate-outputs-and-scopes). Missing/unset
-// is a bug — the writing-agent MID's BPMN `outputs:` list MUST declare
-// the key as required, so unset means the agent skipped the `output
-// write` call — and we halt rather than mis-route (same doctrine as the
-// older dslFlagsPresent gate).
-func (b bindings) dslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "dsl-port-changed")
+// atDslPortChanged, atSystemDriverPortChanged, atExternalDriverPortChanged,
+// ctDslPortChanged are the writing-agent output flags consumed by the
+// per-test-layer fanout in implement-and-verify-dsl and the parent re-gates.
+// The agent emits the bare key via `gh optivem output write KEY=VAL`; the
+// landing layer (validate-outputs-and-scopes) flattens it from the
+// per-dispatch JSONL file into the cascade-namespaced `at-`/`ct-` ctx key
+// (plan 20260606-1525), so the nested contract excursion can't overwrite the
+// acceptance cascade's verdict. Each gateway is cascade-fixed and reads its
+// own namespaced key. Missing/unset is a bug — the writing-agent MID's BPMN
+// `outputs:` list MUST declare the key as required, so unset means the agent
+// skipped the `output write` call — and we halt rather than mis-route (same
+// doctrine as the older dslFlagsPresent gate).
+func (b bindings) atDslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "at-dsl-port-changed")
 }
 
-func (b bindings) systemDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "system-driver-port-changed")
+func (b bindings) atSystemDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "at-system-driver-port-changed")
 }
 
-func (b bindings) externalDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "external-driver-port-changed")
+func (b bindings) atExternalDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "at-external-driver-port-changed")
+}
+
+func (b bindings) ctDslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "ct-dsl-port-changed")
 }
 
 // realKind is the CT-HIGH real-side fork gate (plan 20260606-1356). It

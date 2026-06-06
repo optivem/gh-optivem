@@ -77,9 +77,10 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"test-outcome",
 		"expected-test-result",
 		"fix-on-failure-enabled",
-		"dsl-port-changed",
-		"system-driver-port-changed",
-		"external-driver-port-changed",
+		"at-dsl-port-changed",
+		"at-system-driver-port-changed",
+		"at-external-driver-port-changed",
+		"ct-dsl-port-changed",
 		"real-kind",
 		"refactor-type-choice",
 		"approval-outcome",
@@ -479,7 +480,7 @@ func TestFixOnFailureEnabled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// dsl-port-changed / system-driver-port-changed / external-driver-port-changed
+// at-/ct- cascade-namespaced port-changed verdicts (plan 20260606-1525)
 // ---------------------------------------------------------------------------
 
 func TestDriverPortChangedGates(t *testing.T) {
@@ -488,9 +489,10 @@ func TestDriverPortChangedGates(t *testing.T) {
 		invoke func(b bindings, ctx *statemachine.Context) statemachine.Outcome
 	}
 	gates := []gateCase{
-		{key: "dsl-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.dslPortChanged(ctx) }},
-		{key: "system-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.systemDriverPortChanged(ctx) }},
-		{key: "external-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.externalDriverPortChanged(ctx) }},
+		{key: "at-dsl-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.atDslPortChanged(ctx) }},
+		{key: "at-system-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.atSystemDriverPortChanged(ctx) }},
+		{key: "at-external-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.atExternalDriverPortChanged(ctx) }},
+		{key: "ct-dsl-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.ctDslPortChanged(ctx) }},
 	}
 	for _, g := range gates {
 		t.Run(g.key+"/true", func(t *testing.T) {

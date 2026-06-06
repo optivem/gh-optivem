@@ -1132,7 +1132,13 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 			return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 		}
 		for k, v := range flattened {
-			ctx.Set(k, v)
+			// Cascade-namespace the port-changed verdicts (plan
+			// 20260606-1525): the agent emits the bare key, but it lands
+			// under an `at-`/`ct-` key chosen by the active `tests` cascade
+			// so the nested contract excursion can't clobber the acceptance
+			// cascade's verdict. landingStateKey is the identity for every
+			// other output.
+			ctx.Set(landingStateKey(k, ctx.Params["tests"]), v)
 		}
 	}
 
@@ -1148,7 +1154,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// the same flag is correct and untouched. `tests` reaches here via the
 	// wrapCallActivity param-merge from the IMPLEMENT_AND_VERIFY_DSL call site.
 	if ctx.Params["tests"] == "contract" {
-		if changed, _ := ctx.State["system-driver-port-changed"].(bool); changed {
+		if changed, _ := ctx.State["ct-system-driver-port-changed"].(bool); changed {
 			return statemachine.Outcome{Err: fmt.Errorf(
 				"validate-outputs-and-scopes: CT-path dsl-implementer must not touch the System Driver port; contract tests stimulate the External-System Driver only (set system-driver-port-changed=false on the tests=contract path)")}
 		}
@@ -1161,7 +1167,11 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		if spec.Optional {
 			continue
 		}
-		if _, ok := ctx.State[spec.Key]; !ok {
+		// Check the cascade-namespaced landing key (plan 20260606-1525):
+		// the port-changed verdicts are flattened under their `at-`/`ct-`
+		// key, so the presence check must look there, not under the bare
+		// declared key. The agent-facing diagnostic still names the bare key.
+		if _, ok := ctx.State[landingStateKey(spec.Key, ctx.Params["tests"])]; !ok {
 			missing = append(missing, spec.Key)
 		}
 	}
@@ -1248,6 +1258,40 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	ctx.Unset("scope-violating-paths")
 	ctx.Set("outputs-and-scopes-valid", true)
 	return statemachine.Outcome{}
+}
+
+// portChangedOutputKeys are the three bare verdict outputs the writing
+// agents emit (dsl-port-changed by the test-code writers; the two
+// driver-port flags by the DSL implementer). The landing layer rewrites
+// each to a cascade-namespaced key so the nested contract excursion can't
+// clobber the acceptance cascade's verdict (plan 20260606-1525).
+var portChangedOutputKeys = map[string]bool{
+	"dsl-port-changed":             true,
+	"system-driver-port-changed":   true,
+	"external-driver-port-changed": true,
+}
+
+// landingStateKey returns the ctx.State key a flattened agent output lands
+// under (plan 20260606-1525). The three port-changed verdicts are namespaced
+// by the active `tests` cascade — acceptance → `at-`, contract → `ct-` — so
+// the nested contract excursion writes only `ct-*` and can't overwrite the
+// acceptance cascade's `at-*` verdict the parent re-gates read. Every other
+// output is the identity. In production the three emitters always carry a
+// `tests` cascade (threaded at their call sites); an unrecognised cascade
+// falls back to the bare key, where the gate's strict "not set" check
+// surfaces the wiring bug loudly rather than mis-routing.
+func landingStateKey(key, tests string) string {
+	if !portChangedOutputKeys[key] {
+		return key
+	}
+	switch tests {
+	case "acceptance":
+		return "at-" + key
+	case "contract":
+		return "ct-" + key
+	default:
+		return key
+	}
 }
 
 // phaseTaskName returns the writing-agent MID name to look up scope by.
