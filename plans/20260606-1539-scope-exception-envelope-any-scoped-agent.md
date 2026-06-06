@@ -1,5 +1,12 @@
 # Plan: Seed the scope-exception envelope for any non-`none`-scope dispatch
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-06T13:53:09Z`
+
+## TL;DR
+
+**Why:** The write-time output allow-list seeds the `scope-exception-*` envelope by `category == "prod-agent"`, so three MIDs with a real `write:` scope — `refactor-tests` and the two `fix-unexpected-*-tests` agents — can't emit the envelope; an out-of-scope need there fails validation → FIX → burns the 2-attempt cap and halts at `AGENT_FIX_EXHAUSTED` instead of the clean `STOP_SCOPE_VIOLATION`.
+**End result:** the seeding gates on whether the dispatch has a non-`none` scope (via `Engine.IsScopeNone`), not on category, so every scoped agent can raise the honest Layer-1 halt; `scope: none` dispatches (`refine-acceptance-criteria`) stay exempt; the doctrine prose and tests match.
+
 > **DECISION MADE (2026-06-06):** the universal `scope-exception-*` envelope is seeded for **every
 > dispatch whose MID has a non-`none` scope**, not only `category: prod-agent`. This lets
 > `refactor-tests` and the two `fix-unexpected-*-tests` agents raise the honest Layer-1 scope-violation
