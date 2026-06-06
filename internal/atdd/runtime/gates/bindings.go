@@ -407,11 +407,21 @@ func (b bindings) ctDslPortChanged(ctx *statemachine.Context) statemachine.Outco
 //     routes on the caller-pinned expected-test-result verbatim — the change
 //     cascade is uniformly red and greened by implement-and-verify-system,
 //     exactly as before this plan.
+//   - verify-mode == "none" (compile-only layer, plan 20260606-2330): the
+//     caller skips the suite-polarity assertion entirely; the gate returns
+//     "none" and the process routes straight to COMMIT_LAYER, so neither
+//     VERIFY_TESTS_* node runs and expected-test-result is never consulted.
+//     Used by the CT-HIGH DSL/port step, whose contract-suite red/green is
+//     owned solely by PROBE_CONTRACT_REAL post-adapters — the DSL layer only
+//     changes the port, ensures it compiles, and commits.
 //
-// Returns success|failure so the existing verify-gate edges (now
-// `at-verify-expectation == success|failure`) and their
+// Returns success|failure|none so the existing verify-gate edges (now
+// `at-verify-expectation == success|failure|none`) and their
 // UNKNOWN_EXPECTED_TEST_RESULT catch-all are unchanged.
 func (b bindings) atVerifyExpectation(ctx *statemachine.Context) statemachine.Outcome {
+	if strings.TrimSpace(ctx.Params["verify-mode"]) == "none" {
+		return statemachine.Outcome{Value: "none"}
+	}
 	if strings.TrimSpace(ctx.Params["verify-mode"]) == "green-when-complete" {
 		pending, err := plumbingPending(ctx)
 		if err != nil {

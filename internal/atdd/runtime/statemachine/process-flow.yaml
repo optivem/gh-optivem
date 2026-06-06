@@ -758,8 +758,9 @@ processes:
       # adapter step. The CT-HIGH is a superset — it writes+verifies the
       # contract test (real, then stub) AND implements the external adapter.
       # It is self-contained: it pins its own expected results internally
-      # (write-contract-tests → success; contract-real pass; contract-stub
-      # fail-then-pass) and sources `${test-names}` from write-contract-tests'
+      # (write-contract-tests → success; contract-real/stub are outcome-probed
+      # post-adapters, plan 20260606-1943 — no pinned polarity) and sources
+      # `${test-names}` from write-contract-tests'
       # output. The one caller param it needs is the cascade tag (plan
       # 20260606-1525): `tests: contract` makes the whole excursion namespace
       # its port-changed verdicts under `ct-*`, so its inner test-code writer
@@ -772,12 +773,15 @@ processes:
         name: "Implement and Verify External-System Driver Adapters Contract Tests"
         params:
           tests: contract
-          # The CT-HIGH is self-contained and pins its own expected results
-          # internally (contract-real/stub), so it must run its inner verify
-          # gates in `red` mode regardless of the enclosing cover run — pin it
-          # here so the green-when-complete cover mode does not inherit into the
-          # contract excursion's IMPLEMENT_AND_VERIFY_DSL → implement-test-layer
-          # gate (plan 20260606-1518).
+          # Default the CT-HIGH inner verify gates away from the enclosing
+          # cover run: pin `red` here so the green-when-complete cover mode
+          # cannot inherit into the contract excursion's
+          # IMPLEMENT_AND_VERIFY_DSL → implement-test-layer gate (plan
+          # 20260606-1518). That inner DSL step now overrides this to
+          # `verify-mode: none` (compile-only; contract-real red/green is
+          # deferred to PROBE_CONTRACT_REAL, plan 20260606-2330) — the `red`
+          # default remains as the barrier for any other inner
+          # implement-test-layer consumer.
           verify-mode: red
 
       - id: GATE_AT_TERMINAL_GREEN
@@ -1052,12 +1056,31 @@ processes:
         binding: ct-dsl-port-changed
         name: "DSL Port Changed?"
 
+      # Compile-only DSL/port layer (plan 20260606-2330). The DSL/port layer's
+      # real work is "change the port, ensure it compiles, commit" — it does NOT
+      # green the contract suite, because the External-System Driver adapters
+      # that actually green `contract-real` are still throwing-TODO stubs until
+      # IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS runs next. So `contract-real`
+      # red/green is owned SOLELY by PROBE_CONTRACT_REAL (outcome-driven,
+      # post-adapters, plan 20260606-1943). `verify-mode: none` routes the inner
+      # GATE_EXPECTED_TEST_RESULT straight to commit, skipping the suite-polarity
+      # assertion — this stops `fix-unexpected-failing-tests` from firing on the
+      # pre-adapter contract red and front-running the dedicated
+      # external-system-driver-adapter-implementer. Overrides the `verify-mode:
+      # red` inherited from the shared-contract CT-HIGH wrapper (node params win
+      # over inherited, run.go); it flows down into implement-and-verify-dsl →
+      # implement-test-layer's verify gate.
       - id: IMPLEMENT_AND_VERIFY_DSL
         type: call-activity
         process: implement-and-verify-dsl
         name: "Implement and Verify DSL"
         params:
           task-name: implement-dsl
+          verify-mode: none
+          # Inert on the none path (no agent prompt consumes them; the gate
+          # skips before reading expected-test-result). Retained so the strict
+          # ExpandParams in implement-and-verify-dsl → implement-test-layer still
+          # resolves the inner ${expected-test-result}/${suite} references.
           expected-test-result: success
           tests: contract
           suite: contract-real
@@ -1412,7 +1435,13 @@ processes:
       # (verify-pending-on: drivers) and the system-driver adapter layer
       # (verify-pending-on: none). Change path (verify-mode red/unset) routes on
       # the pinned expected-test-result verbatim; cover path returns success iff
-      # this layer's plumbing scope reports nothing pending.
+      # this layer's plumbing scope reports nothing pending. Compile-only path
+      # (verify-mode: none, plan 20260606-2330) returns `none` and routes
+      # straight to COMMIT_LAYER — neither VERIFY_TESTS_* node runs, so the
+      # layer's suite polarity is never asserted here (the CT-HIGH DSL/port step
+      # defers contract-real red/green to PROBE_CONTRACT_REAL, post-adapters).
+      # START_SYSTEM still ran above on the none path — intentional: it is
+      # idempotent and warms the system for the downstream adapter-impl + PROBE.
       - id: GATE_EXPECTED_TEST_RESULT
         type: gateway
         binding: at-verify-expectation
@@ -1457,6 +1486,9 @@ processes:
       - {from: START_SYSTEM,      to: GATE_EXPECTED_TEST_RESULT}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_PASS_FILTERED, when: "at-verify-expectation == success"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: VERIFY_TESTS_FAIL_FILTERED, when: "at-verify-expectation == failure"}
+      # Compile-only layer (plan 20260606-2330): skip both VERIFY_TESTS_* nodes
+      # and commit directly. The suite's red/green is asserted elsewhere.
+      - {from: GATE_EXPECTED_TEST_RESULT, to: COMMIT_LAYER, when: "at-verify-expectation == none"}
       - {from: GATE_EXPECTED_TEST_RESULT, to: UNKNOWN_EXPECTED_TEST_RESULT}
       - {from: VERIFY_TESTS_PASS_FILTERED, to: COMMIT_LAYER}
       - {from: VERIFY_TESTS_FAIL_FILTERED, to: COMMIT_LAYER}

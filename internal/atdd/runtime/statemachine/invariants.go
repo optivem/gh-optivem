@@ -80,6 +80,16 @@ func CheckInvariants(eng *Engine) []Violation {
 // nodes (gateways, events) to the nearest dispatching ancestors; each of those
 // must be a verify-tests-* call-activity. Grounds on COMMIT_TEST_CODE /
 // COMMIT_SYSTEM / COMMIT_TESTS / COMMIT_LAYER.
+//
+// Exception — the compile-only commit (plan 20260606-2330). A layer reached
+// through the `at-verify-expectation == none` skip edge commits without a
+// suite verify on purpose: it changed the port, COMPILE_TESTS confirmed it
+// builds, and the suite's red/green is deferred to a downstream PROBE rather
+// than asserted here. On that route the dispatching predecessor is the
+// idempotent start-system (warming the system for the downstream probe), so it
+// is accepted iff COMPILE_TESTS forward-reaches the commit — COMPILE_TESTS is
+// the meaningful gate that stands in for the verify. See
+// isCompileOnlyVerifiedCommit.
 func ruleCommitIsVerified(eng *Engine) []Violation {
 	const rule = "commit-is-verified"
 	var out []Violation
@@ -88,6 +98,7 @@ func ruleCommitIsVerified(eng *Engine) []Violation {
 			if !isCallTo(node, "commit") {
 				continue
 			}
+			compileOnly := isCompileOnlyVerifiedCommit(proc, node.ID)
 			preds := dispatchingPredecessors(proc, node.ID)
 			if len(preds) == 0 {
 				out = append(out, Violation{
@@ -101,6 +112,12 @@ func ruleCommitIsVerified(eng *Engine) []Violation {
 				if isCallTo(pn, "verify-tests-pass") || isCallTo(pn, "verify-tests-fail") {
 					continue
 				}
+				// Compile-only route: the idempotent system-start (or the
+				// compile step itself) is a legitimate predecessor when
+				// COMPILE_TESTS gates the commit instead of a verify.
+				if compileOnly && (isCallTo(pn, "start-system") || isCallTo(pn, "start-system-restart") || isCallTo(pn, "compile-tests")) {
+					continue
+				}
 				out = append(out, Violation{
 					Process: proc.ID, Node: node.ID, Rule: rule,
 					Message: fmt.Sprintf("commit's dispatching predecessor %q (process %q) is not a verify-tests-* call-activity", pred, pn.Raw.Process),
@@ -109,6 +126,31 @@ func ruleCommitIsVerified(eng *Engine) []Violation {
 		}
 	}
 	return out
+}
+
+// isCompileOnlyVerifiedCommit reports whether commitID is the compile-only
+// commit of plan 20260606-2330: it must be reached through the
+// `at-verify-expectation == none` skip edge AND have a compile-tests
+// call-activity that forward-reaches it (so the build was checked even though
+// no suite verify ran). Both conditions are required so the carve-out cannot
+// excuse an ordinary commit that merely happens to sit after a start-system.
+func isCompileOnlyVerifiedCommit(proc *Process, commitID string) bool {
+	hasNoneSkip := false
+	for _, e := range proc.Edges {
+		if e.To == commitID && strings.TrimSpace(e.Predicate) == "at-verify-expectation == none" {
+			hasNoneSkip = true
+			break
+		}
+	}
+	if !hasNoneSkip {
+		return false
+	}
+	for _, n := range proc.Nodes {
+		if isCallTo(n, "compile-tests") && reaches(proc, n.ID, commitID) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

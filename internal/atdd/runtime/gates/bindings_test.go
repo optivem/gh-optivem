@@ -569,6 +569,13 @@ func TestAtVerifyExpectation(t *testing.T) {
 		{name: "red/failure", mode: "red", expected: "failure", wantValue: "failure"},
 		{name: "unset_defaults_red", expected: "failure", wantValue: "failure"},
 		{name: "red/empty_halts", mode: "red", wantErr: true},
+		// compile-only path (plan 20260606-2330) — short-circuits to "none"
+		// before consulting plumbingPending or expected-test-result. The
+		// contradictory expected-test-result (would yield "failure" on the
+		// change path) and the unscoped verify-pending-on (would HALT on the
+		// green path) both prove the early return fires first.
+		{name: "none/short-circuits-expected", mode: "none", expected: "failure", wantValue: "none"},
+		{name: "none/ignores-pending-scope", mode: "none", pendingOn: "drivers", wantValue: "none"},
 		// case A — test-code layer, no DSL change: greens at the code layer.
 		{name: "green/dsl/not-pending", mode: "green-when-complete", pendingOn: "dsl",
 			state: map[string]any{"at-dsl-port-changed": false}, wantValue: "success"},

@@ -709,6 +709,62 @@ func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
 	}
 }
 
+// TestContractDSL_CompileOnly_VerifyModeNone locks plan 20260606-2330: the
+// CT-HIGH DSL/port layer compiles + commits only and never asserts the contract
+// suite's polarity, so the generic fix-unexpected-failing-tests can't fire on
+// the pre-adapter contract red and front-run the dedicated
+// external-system-driver-adapter-implementer. These assertions FAIL on HEAD
+// before the plan lands (no `none` edge, no verify-mode pin) — proof the change
+// bites — and pass after Items 1–3.
+func TestContractDSL_CompileOnly_VerifyModeNone(t *testing.T) {
+	eng := loadSnapshot(t)
+
+	// 1. implement-test-layer gains the compile-only skip edge: a `none`
+	//    outcome routes straight to commit, bypassing both VERIFY_TESTS_* nodes.
+	itl, ok := eng.Processes["implement-test-layer"]
+	if !ok {
+		t.Fatalf("process implement-test-layer missing")
+	}
+	wantEdge(t, itl, "GATE_EXPECTED_TEST_RESULT", "COMMIT_LAYER", "at-verify-expectation == none")
+
+	// The predicate evaluator agrees: at-verify-expectation == none lands on
+	// COMMIT_LAYER, NOT VERIFY_TESTS_PASS_FILTERED / VERIFY_TESTS_FAIL_FILTERED.
+	ctx := NewContext()
+	ctx.Set("at-verify-expectation", "none")
+	to, err := eng.NextEdge("implement-test-layer", "GATE_EXPECTED_TEST_RESULT", ctx)
+	if err != nil {
+		t.Fatalf("NextEdge(GATE_EXPECTED_TEST_RESULT, none): %v", err)
+	}
+	if to != "COMMIT_LAYER" {
+		t.Errorf("none outcome routes to %q, want COMMIT_LAYER (no contract-suite verify between DSL impl and adapter impl)", to)
+	}
+
+	// 2. The CT-HIGH DSL/port step pins verify-mode: none, overriding the
+	//    verify-mode: red inherited from the shared-contract CT-HIGH wrapper, so
+	//    no contract-suite verify sits between the DSL impl and
+	//    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS.
+	ct, ok := eng.Processes["implement-and-verify-external-system-driver-adapters-contract-tests"]
+	if !ok {
+		t.Fatalf("CT-HIGH process missing")
+	}
+	if got := ct.Nodes["IMPLEMENT_AND_VERIFY_DSL"].Raw.Params["verify-mode"]; got != "none" {
+		t.Errorf("CT-HIGH DSL caller verify-mode = %q, want none", got)
+	}
+	// The DSL impl is immediately followed by the dedicated adapter implementer
+	// (no verify node interposed in the topology).
+	wantEdge(t, ct, "IMPLEMENT_AND_VERIFY_DSL", "IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "")
+
+	// 3. Regression guard: the success/failure edges other callers rely on are
+	//    untouched, so this change is additive — only `none` is new.
+	successCtx := NewContext()
+	successCtx.Set("at-verify-expectation", "success")
+	if got, err := eng.NextEdge("implement-test-layer", "GATE_EXPECTED_TEST_RESULT", successCtx); err != nil {
+		t.Fatalf("NextEdge(success): %v", err)
+	} else if got != "VERIFY_TESTS_PASS_FILTERED" {
+		t.Errorf("success outcome routes to %q, want VERIFY_TESTS_PASS_FILTERED (unchanged)", got)
+	}
+}
+
 // TestImplementTicket_TwoAxisRouting asserts the wired two-axis ticket
 // gateway (plan 20260606-1637): with the bindings emitting bare `task` on the
 // kind axis and the bare subtype on the subtype axis, a task ticket routes
