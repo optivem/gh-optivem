@@ -82,9 +82,18 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 		printSummary(results)
 	}()
 
+	// Track executed-test counts across the suites that opted into the count
+	// guard (TestCountPath set). A selection that runs every suite to a clean
+	// exit yet executes zero tests is the empty-selection hole: the filter
+	// resolved to nothing, so a verify would green (or spin a fixer) without
+	// exercising a single test. We fail the run below so it routes to the same
+	// infra halt as the non-zero-exit runners.
+	anyCounted := false
+	totalExecuted := 0
+
 	for _, suite := range suites {
 		start := time.Now()
-		err := runOneSuite(suite, tests.TestFilter, tests.TestFilterJoin, testsCwd, opts)
+		executed, counted, err := runOneSuite(suite, tests.TestFilter, tests.TestFilterJoin, testsCwd, opts)
 		dur := time.Since(start)
 		status := "PASSED"
 		if err != nil {
@@ -98,6 +107,14 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 		if err != nil {
 			return fmt.Errorf("suite %s: %w", suite.Name, err)
 		}
+		if counted {
+			anyCounted = true
+			totalExecuted += executed
+		}
+	}
+
+	if anyCounted && totalExecuted == 0 {
+		return fmt.Errorf("0 tests executed for the given selection — the suite/test filter matched nothing on any selected suite; check --suite / --test against the available tests")
 	}
 	return nil
 }
@@ -142,7 +159,12 @@ func selectSuites(tests *TestsConfig, suiteIDs []string) ([]Suite, error) {
 	return picked, nil
 }
 
-func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestOptions) error {
+// runOneSuite runs a single suite. It returns the number of tests that
+// executed and whether that count is meaningful (counted): counted is true
+// only when the suite declares a TestCountPath and the run exited cleanly, so
+// the caller can distinguish "ran zero tests" from "opted out of counting".
+// On any error, it returns (0, false, err).
+func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestOptions) (executed int, counted bool, err error) {
 	suiteDir := cwd
 	if suite.Path != "" && suite.Path != "." {
 		suiteDir = filepath.Join(cwd, suite.Path)
@@ -151,7 +173,7 @@ func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestO
 	for _, ic := range suite.TestInstallCommands {
 		fmt.Fprintf(os.Stdout, "Installing test dependencies: %s\n", ic)
 		if err := runShell(ic, suiteDir, nil); err != nil {
-			return fmt.Errorf("install %q: %w", ic, err)
+			return 0, false, fmt.Errorf("install %q: %w", ic, err)
 		}
 	}
 
@@ -165,12 +187,19 @@ func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestO
 				fmt.Fprintf(os.Stdout, "Test report: %s\n", report)
 			}
 		}
-		return err
+		return 0, false, err
 	}
 	if suite.TestReportPath != "" {
 		fmt.Fprintf(os.Stdout, "Test report: %s\n", filepath.Join(suiteDir, suite.TestReportPath))
 	}
-	return nil
+	if suite.TestCountPath != "" {
+		n, err := countExecutedTests(filepath.Join(suiteDir, suite.TestCountPath))
+		if err != nil {
+			return 0, false, fmt.Errorf("counting executed tests: %w", err)
+		}
+		return n, true, nil
+	}
+	return 0, false, nil
 }
 
 func pickFilterValue(suite Suite, opts TestOptions) []string {

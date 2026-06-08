@@ -146,6 +146,15 @@ func TestClassifyShellErr(t *testing.T) {
 			wantClass: classInfra,
 			wantLabel: "empty test selection",
 		},
+		{
+			// The runner's own zero-executed guard (plan 20260608-1502): catches
+			// the exit-0-on-empty runners (dotnet) the per-tool patterns can't see.
+			name:      "runner zero tests executed marker",
+			stderr:    "Error: 0 tests executed for the given selection — the suite/test filter matched nothing on any selected suite; check --suite / --test against the available tests",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "empty test selection",
+		},
 		// ---- red: tests ran, at least one failed --------------------------
 		{
 			name: "jest reports failures",

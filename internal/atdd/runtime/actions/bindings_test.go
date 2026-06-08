@@ -730,6 +730,15 @@ func TestRunCommand_RunTestsClassifiesInfraFailure(t *testing.T) {
 			stderr:    "No tests found for given includes: [com.example.AcceptanceTest.method](filter.includeTestsMatching)",
 			wantLabel: "empty test selection",
 		},
+		{
+			// The runner's own zero-executed guard (plan 20260608-1502) catches
+			// dotnet, which exits 0 on a zero-match --filter — so the per-tool
+			// "no tests …" patterns never fire. RunTests fails the run with this
+			// marker instead, dropping the empty case into the same infra halt.
+			name:      "empty test selection (runner zero-executed marker)",
+			stderr:    "Error: 0 tests executed for the given selection — the suite/test filter matched nothing on any selected suite",
+			wantLabel: "empty test selection",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sh := &fakeShell{stderr: []byte(tc.stderr), exitCode: 1, err: errors.New("exit 1")}

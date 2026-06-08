@@ -1,5 +1,7 @@
 # Plan: close the empty-test-selection guard for runners that exit 0 ({20260608-1502})
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-08T18:02:01Z`
+
 Follow-up to `plans/20260608-1240-empty-test-selection-guard.md` (committed as
 `02b09bc` + `b392149`). That plan closed the empty-selection hole for runners
 that **exit non-zero** on a zero-match filter (Gradle, Maven `failIfNoTests`,
@@ -54,75 +56,65 @@ prints no error, so the marker (if any) lands only in the live stream
 
 ---
 
-## Recommended approach (resolve before encoding)
+## Resolved approach (decided 2026-06-08)
 
-Two strategies were considered; **Strategy A is recommended** — it unifies all
-runners under one mechanism and removes reliance on each tool's idiosyncratic
-"no tests" wording.
+**Strategy A chosen** — runner owns the "zero executed is not a success"
+invariant; it's the cleanest long-term home (single point of truth for every
+caller of `gh optivem test run`, count-based not string-based, no per-tool
+wording drift). Decision confirmed with operator.
 
-**Strategy A — runner-side "zero executed" → non-zero exit (recommended).**
-Make `gh optivem test run` itself fail when zero tests executed across the
-selected suites. The runner already knows each suite's report path
-(`internal/runner/tests.go:162-171`, `suite.TestReportPath`); after a suite
-exits 0, parse the report's executed-test count and, if the total across all
-selected suites is 0, return an error with a uniform gh-optivem marker (e.g.
-`ERROR: 0 tests executed for the given selection`). This drops the empty case
-into the existing non-zero path, where one classifier row matching the
-gh-optivem marker catches it cross-runner — no per-tool string matching, dotnet
-included. The 1240 per-tool stderr patterns become a redundant safety net.
+**Ground-truth correction to the original premise.** The original Item 1 assumed
+each suite's `TestReportPath` was a machine-readable report (JUnit XML / TRX /
+JSON) it could parse for a count. It is **not**: across all three real configs
+(`shop/system-test/{java,dotnet,typescript}/tests.yaml`), `testReportPath` is the
+**HTML** report (`index.html` / `testResults.html`). So Strategy A needs a
+*separate* machine-readable path, not `TestReportPath`.
 
-**Strategy B — scan-on-success for the empty marker (lighter, not recommended).**
-Add a narrow check in `runCommand` that, even on `succeeded`, scans
-`result.Stdout`+`result.Stderr` for the empty-selection marker family and, on a
-match, overrides `test-outcome` to `infra`. Cheaper (no report parsing) but
-keeps the brittle per-tool string dependency the recommended approach removes,
-and must be carefully scoped so only the empty-selection family — never the
-launch-failure patterns — can override a success.
+**Scope correction.** Only **dotnet** actually exits 0 on a zero-match filter.
+Gradle/Maven and Playwright already exit **non-zero** on empty → the 1240 guard
+catches them today. So the real gap is dotnet alone, and dotnet already emits a
+machine-readable **TRX** (`--logger 'trx;LogFileName=testResults.trx'` →
+`TestResults\testResults.trx`). The minimum clean fix is: add an explicit
+machine-readable count-path field, parse the executed count, and fail the run
+when the aggregate is 0. JUnit-XML and Playwright-JSON parsers are
+belt-and-suspenders for any future runner configured to pass-on-empty
+(`failIfNoTests=false`, `--passWithNoTests`).
+
+**Rollout shape.** The guard is **opt-in per suite** via the new count-path
+field: a suite that doesn't declare it keeps today's behaviour (no count guard),
+so merging the gh-optivem change alone changes no observable behaviour until the
+`shop` configs add the field. This makes the exit-contract change safe to land
+and reversible by config.
+
+(Strategy B — scan `runCommand`'s stdout on success for the empty marker — was
+rejected: it only protects the verify path, not direct/CI callers, and keeps the
+brittle per-tool string dependency.)
 
 ---
 
 ## Items
 
-### 1. [internal/runner] Detect zero-executed tests and fail the run
+### 3. [audit + shop config] Enumerate exit-0-on-empty runners and opt them in
 
-**Where:** `internal/runner/tests.go` — the per-suite run path (~`:155-174`) and
-the suite-summary aggregation (~`:300-313`).
+**Where:** the per-language suite definitions in the **`shop` repo**
+(`shop/system-test/{java,dotnet,typescript}/tests.yaml`) and Item 1's count
+path.
 
-**Change (Strategy A):** after a suite's command exits 0, parse its
-`TestReportPath` for the executed-test count. Aggregate across all selected
-suites; if the total is 0, return an error carrying a uniform, gh-optivem-owned
-marker string. Report formats span the supported languages — JUnit XML
-(Gradle/Maven), TRX (dotnet), JSON (Playwright/Jest); confirm each suite
-declares a `TestReportPath` and pick a parse path per format.
+**Change:**
+- Confirm which supported runners exit 0 on a zero-match filter. Established so
+  far: **dotnet** is the only one (Gradle/Maven and Playwright exit non-zero →
+  already covered by the 1240 guard). Re-confirm before adding the field
+  anywhere else.
+- Add `testCountPath: SystemTests\TestResults\testResults.trx` to the **dotnet**
+  suites in `shop/system-test/dotnet/tests.yaml` (cross-repo commit). This is
+  what actually arms the guard for the real gap.
+- (Optional / future) if a Gradle/Playwright suite is ever reconfigured to
+  pass-on-empty, add its JUnit-XML / JSON count path too; Playwright needs a
+  JSON reporter wired into its command first (none today).
 
-**Blast radius:** changes the exit-code contract of `gh optivem test run` (now
-fails on zero-executed). Audit any non-verify caller of `test run` that might
-legitimately select zero. **Gate for review.**
-
-### 2. [actions/verify_classify.go] Match the uniform zero-executed marker
-
-**Where:** `internal/atdd/runtime/actions/verify_classify.go` — the
-`infraPatterns` table (the 1240 `"empty test selection"` row).
-
-**Change:** add (or fold into the existing row) a pattern matching the
-gh-optivem marker from Item 1, so the now-non-zero empty run classifies `infra`
-exactly as the Gradle case does today. Add a `verify_classify_test.go` case and
-a `bindings_test.go` `runCommand` wiring case mirroring the 1240 pair.
-
-**Blast radius:** one classifier row + tests. Inherits the existing
-`test-outcome == infra → TESTS_INFRA_HALT` routing — no BPMN change (confirmed
-in 1240 Item 3 that every verify site already carries the infra branch).
-
-### 3. [audit] Enumerate exit-0-on-empty runners and confirm coverage
-
-**Where:** the per-language suite definitions / runner configs and Item 1's
-report-count path.
-
-**Change:** confirm which supported runners exit 0 on a zero-match filter
-(dotnet confirmed; verify Maven without `failIfNoTests`, Jest `--passWithNoTests`,
-Playwright). Confirm Item 1's report-count detection fires for each, and that no
-suite legitimately runs zero tests by design. Expectation: dotnet is the primary
-gap; the count-based check should cover all of them uniformly.
+**Note:** this item commits to a **separate repo** (`shop`), so it gets its own
+commit via `--repo shop`. **Gate for review** — it's the step that actually
+changes observable `test run` behaviour in the academy.
 
 ---
 

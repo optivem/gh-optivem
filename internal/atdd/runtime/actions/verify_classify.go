@@ -135,6 +135,19 @@ var infraPatterns = []infraPattern{
 		label: "empty test selection",
 		re:    regexp.MustCompile(`(?i)\bno tests? (found|were executed|match(es)? the given)`),
 	},
+	{
+		// The runner itself counted zero executed tests across the selected
+		// suites and failed the run with its own marker (runner.RunTests, plan
+		// 20260608-1502). This closes the empty-selection hole for runners that
+		// exit 0 on a zero-match filter (dotnet), which the per-tool "no tests …"
+		// patterns above can't see — on a zero exit cobra prints no error, so
+		// the tool's own warning never reaches this classifier. The runner's
+		// report-count guard turns that silent success into this explicit marker.
+		// Same outcome as its siblings: an empty selection is never a valid
+		// result on either polarity, so route it to the infra halt.
+		label: "empty test selection",
+		re:    regexp.MustCompile(`(?i)\b0 tests executed for the given selection`),
+	},
 }
 
 // classifyShellErr is the pure-function entry point. It takes the

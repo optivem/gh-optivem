@@ -119,6 +119,15 @@ type Suite struct {
 	Env                 map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
 	Path                string            `json:"path" yaml:"path"`
 	TestReportPath      string            `json:"testReportPath" yaml:"testReportPath"`
+	// TestCountPath, when set, is a machine-readable test report (TRX,
+	// JUnit XML — a file or a directory of *.xml — or Playwright JSON) the
+	// runner parses ONLY to count executed tests. It is distinct from the
+	// human-facing HTML TestReportPath. When a run's selected suites declare
+	// it and together execute zero tests, RunTests fails the run rather than
+	// reporting a hollow success — closing the empty-selection hole for
+	// runners that exit 0 on a zero-match filter (dotnet). Empty disables the
+	// count guard for that suite, preserving prior behaviour.
+	TestCountPath       string            `json:"testCountPath" yaml:"testCountPath"`
 	SampleTest          string            `json:"sampleTest,omitempty" yaml:"sampleTest,omitempty"`
 	TestInstallCommands []string          `json:"testInstallCommands,omitempty" yaml:"testInstallCommands,omitempty"`
 }

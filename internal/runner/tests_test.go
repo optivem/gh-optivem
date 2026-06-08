@@ -1,6 +1,8 @@
 package runner
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -270,6 +272,45 @@ func TestRunTestsNilSystemSkipsProbe(t *testing.T) {
 	tests := &TestsConfig{Suites: []Suite{{ID: "noop", Name: "noop", Command: "go version", Path: "."}}}
 	if err := RunTests(nil, tests, ".", ".", TestOptions{}); err != nil {
 		t.Fatalf("nil sys should skip the probe, got %v", err)
+	}
+}
+
+// TestRunTestsZeroExecutedFailsRun asserts the empty-selection guard: a suite
+// that exits cleanly but whose TestCountPath reports zero executed tests fails
+// the run with the marker the verify classifier matches (plan 20260608-1502).
+func TestRunTestsZeroExecutedFailsRun(t *testing.T) {
+	dir := t.TempDir()
+	trxZero := `<TestRun><ResultSummary><Counters total="0" executed="0"/></ResultSummary></TestRun>`
+	if err := os.WriteFile(filepath.Join(dir, "results.trx"), []byte(trxZero), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := &TestsConfig{Suites: []Suite{{
+		ID: "noop", Name: "noop", Command: "go version", Path: ".",
+		TestCountPath: "results.trx",
+	}}}
+	err := RunTests(nil, tests, dir, dir, TestOptions{})
+	if err == nil {
+		t.Fatal("want error when zero tests executed")
+	}
+	if !strings.Contains(err.Error(), "0 tests executed for the given selection") {
+		t.Fatalf("want the empty-selection marker, got: %v", err)
+	}
+}
+
+// TestRunTestsNonZeroExecutedSucceeds is the negative-space guard: a counted
+// suite that actually executed tests must not trip the empty-selection marker.
+func TestRunTestsNonZeroExecutedSucceeds(t *testing.T) {
+	dir := t.TempDir()
+	trxOne := `<TestRun><ResultSummary><Counters total="1" executed="1"/></ResultSummary></TestRun>`
+	if err := os.WriteFile(filepath.Join(dir, "results.trx"), []byte(trxOne), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := &TestsConfig{Suites: []Suite{{
+		ID: "noop", Name: "noop", Command: "go version", Path: ".",
+		TestCountPath: "results.trx",
+	}}}
+	if err := RunTests(nil, tests, dir, dir, TestOptions{}); err != nil {
+		t.Fatalf("a suite that executed tests must succeed, got: %v", err)
 	}
 }
 
