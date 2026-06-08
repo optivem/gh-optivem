@@ -719,6 +719,17 @@ func TestRunCommand_RunTestsClassifiesInfraFailure(t *testing.T) {
 			stderr:    "error during connect: this error may indicate that the docker daemon is not running",
 			wantLabel: "docker daemon unreachable",
 		},
+		{
+			// The suite/test-names filter selected zero tests (the shop #72
+			// rehearsal: a contract method under --suite=acceptance matched
+			// nothing). Gradle's "No tests found …" arrives in result.Stderr
+			// via the runner's wrapped error tail; classifying it infra (not
+			// the default "fail") is what stops a fail-expecting verify from
+			// greening without exercising a single test (plan 20260608-1240).
+			name:      "empty test selection (gradle no tests found)",
+			stderr:    "No tests found for given includes: [com.example.AcceptanceTest.method](filter.includeTestsMatching)",
+			wantLabel: "empty test selection",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			sh := &fakeShell{stderr: []byte(tc.stderr), exitCode: 1, err: errors.New("exit 1")}
