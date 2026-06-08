@@ -117,6 +117,35 @@ func TestClassifyShellErr(t *testing.T) {
 			wantClass: classInfra,
 			wantLabel: "invalid runner invocation",
 		},
+		// ---- infra: filter selected zero tests (empty selection) ----------
+		{
+			name:      "gradle no tests found for given includes",
+			stderr:    "No tests found for given includes: [com.example.AcceptanceTest.someMethod](filter.includeTestsMatching)",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "empty test selection",
+		},
+		{
+			name:      "maven no tests were executed",
+			stderr:    "[INFO] No tests were executed!  (Set -DfailIfNoTests=false to ignore this error.)",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "empty test selection",
+		},
+		{
+			name:      "playwright no tests found",
+			stderr:    "Error: No tests found.\nMake sure that arguments are regular expressions matching test files.",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "empty test selection",
+		},
+		{
+			name:      "dotnet no test matches the given filter",
+			stderr:    "No test matches the given testcase filter `FullyQualifiedName~SomeMethod` in /app/bin/Tests.dll",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "empty test selection",
+		},
 		// ---- red: tests ran, at least one failed --------------------------
 		{
 			name: "jest reports failures",

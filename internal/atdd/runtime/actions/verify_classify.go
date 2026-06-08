@@ -118,6 +118,23 @@ var infraPatterns = []infraPattern{
 		label: "invalid runner invocation",
 		re:    regexp.MustCompile(`(?i)unknown (flag|shorthand flag|command)`),
 	},
+	{
+		// The runner started but the `suite`/`test-names` filter selected
+		// ZERO tests, so the language tool exited non-zero without running
+		// anything (Gradle "No tests found for given includes: …", Maven
+		// "No tests were executed", Playwright "Error: No tests found",
+		// dotnet "No test matches the given testcase filter"). A fail-
+		// expecting verify (verify-tests-fail / VERIFY_TESTS_FAIL_FILTERED)
+		// would otherwise read this non-zero exit as a satisfied failure and
+		// green WITHOUT exercising a single test — the silent hole plan
+		// 20260608-1240 closes. An empty selection is never a valid result on
+		// either polarity: it means the suite/test-names pair was mis-resolved
+		// upstream, so route it to the infra halt for a human (same as the
+		// "unknown test suite" sibling above). Matches the tools' fixed "no
+		// tests …" wording, not the echoed filter, per the table's guidance.
+		label: "empty test selection",
+		re:    regexp.MustCompile(`(?i)\bno tests? (found|were executed|match(es)? the given)`),
+	},
 }
 
 // classifyShellErr is the pure-function entry point. It takes the
