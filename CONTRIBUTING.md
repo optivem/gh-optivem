@@ -88,6 +88,18 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 72 --config gh-optivem-monolith-jav
 >
 > **Known coverage gap:** with `erp`/`clock` pinned to `real-kind: simulator`, the `real-kind == test-instance` branch of the contract-test flow (collapse to a single contract-real pass-verify, no real-sim authoring) is never exercised by any shop rehearsal. The simulator path is the superset, so this is fine functionally — noted as a gap until some external system is declared `test-instance`.
 
+For bug fix - reproduce then fix
+
+**Issue [#76 — Order cancellation blackout on Dec 31 ends at 22:30 instead of 23:00](https://github.com/optivem/shop/issues/76)** (bug-fix flow: a failing acceptance test reproduces the defect, then the fix turns it green):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 76 --config gh-optivem-monolith-java.yaml --auto --headless
+```
+
+> **#76 is the only bug-fix rehearsal in this corpus.** Every other story (#61, #65, #68–#72) adds new behavior, so its acceptance test starts red because the feature is absent. #76 starts red against a defect that already exists in the system: `cancelOrder` blocks the Dec 31 cancellation blackout only for 22:00–22:30, while its own validation message states the policy is 22:00–23:00. The fix is a pure behavioral write-flow change (extend the window end to 23:00) — no DSL or driver-port change, reusing the existing cancel + clock-control DSL steps.
+
 ## Contents
 
 - [Prerequisites](#prerequisites)
