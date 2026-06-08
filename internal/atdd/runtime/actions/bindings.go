@@ -1146,31 +1146,32 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 			return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 		}
 		for k, v := range flattened {
-			// Cascade-namespace the port-changed verdicts (plan
-			// 20260606-1525): the agent emits the bare key, but it lands
-			// under an `at-`/`ct-` key chosen by the active `tests` cascade
-			// so the nested contract excursion can't clobber the acceptance
-			// cascade's verdict. landingStateKey is the identity for every
-			// other output.
-			ctx.Set(landingStateKey(k, ctx.Params["tests"]), v)
+			// Cascade-namespace the per-cascade outputs (plan 20260606-1525;
+			// test-names added by plan 20260608-1231): the agent emits the
+			// bare key, but namespacedLandingKeys members land under an
+			// `at-`/`ct-` key chosen by the active test-category so the nested
+			// contract excursion can't clobber the acceptance cascade's
+			// verdict or test-name list. landingStateKey is the identity for
+			// every other output.
+			ctx.Set(landingStateKey(k, ctx.Params["test-category"]), v)
 		}
 	}
 
 	// CT-path System-Driver fence (plan 20260527-1147 Item 4). A
-	// dsl-implementer dispatched on the contract-test path (tests=contract)
+	// dsl-implementer dispatched on the contract-test path (test-category=contract)
 	// stimulates the External-System Driver only — the System Driver port is
 	// conceptually out of scope. If it emits system-driver-port-changed=true,
 	// that flag leaks up into the AT cycle's system-driver-adapter gate and
 	// fires a spurious adapter cycle. This is a structural invariant
 	// violation, not a recoverable agent-output problem (no fix-* pass can
 	// correct "wrong test path"), so it halts with a diagnostic rather than
-	// routing to the soft fix loop. The AT path (tests=acceptance) emitting
-	// the same flag is correct and untouched. `tests` reaches here via the
+	// routing to the soft fix loop. The AT path (test-category=acceptance) emitting
+	// the same flag is correct and untouched. `test-category` reaches here via the
 	// wrapCallActivity param-merge from the IMPLEMENT_AND_VERIFY_DSL call site.
-	if ctx.Params["tests"] == "contract" {
+	if ctx.Params["test-category"] == "contract" {
 		if changed, _ := ctx.State["ct-system-driver-port-changed"].(bool); changed {
 			return statemachine.Outcome{Err: fmt.Errorf(
-				"validate-outputs-and-scopes: CT-path dsl-implementer must not touch the System Driver port; contract tests stimulate the External-System Driver only (set system-driver-port-changed=false on the tests=contract path)")}
+				"validate-outputs-and-scopes: CT-path dsl-implementer must not touch the System Driver port; contract tests stimulate the External-System Driver only (set system-driver-port-changed=false on the test-category=contract path)")}
 		}
 	}
 
@@ -1185,7 +1186,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		// the port-changed verdicts are flattened under their `at-`/`ct-`
 		// key, so the presence check must look there, not under the bare
 		// declared key. The agent-facing diagnostic still names the bare key.
-		if _, ok := ctx.State[landingStateKey(spec.Key, ctx.Params["tests"])]; !ok {
+		if _, ok := ctx.State[landingStateKey(spec.Key, ctx.Params["test-category"])]; !ok {
 			missing = append(missing, spec.Key)
 		}
 	}
@@ -1274,31 +1275,38 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	return statemachine.Outcome{}
 }
 
-// portChangedOutputKeys are the three bare verdict outputs the writing
-// agents emit (dsl-port-changed by the test-code writers; the two
-// driver-port flags by the DSL implementer). The landing layer rewrites
-// each to a cascade-namespaced key so the nested contract excursion can't
-// clobber the acceptance cascade's verdict (plan 20260606-1525).
-var portChangedOutputKeys = map[string]bool{
+// namespacedLandingKeys are the bare agent outputs the landing layer rewrites
+// to a cascade-namespaced key — an `at-`/`ct-` prefix chosen by the active
+// test-category — so a nested contract excursion can't clobber the acceptance
+// cascade's value (plan 20260606-1525; extended to test-names by plan
+// 20260608-1231). The three port-changed verdicts (dsl-port-changed by the
+// test-code writers; the two driver-port flags by the DSL implementer) gate
+// downstream re-reads; test-names is the per-cascade list the GREEN verify
+// selects on. The map's meaning is "outputs that namespace by cascade tag," so
+// any future per-cascade output joins this one set rather than growing a
+// second allowlist.
+var namespacedLandingKeys = map[string]bool{
 	"dsl-port-changed":             true,
 	"system-driver-port-changed":   true,
 	"external-driver-port-changed": true,
+	"test-names":                   true,
 }
 
 // landingStateKey returns the ctx.State key a flattened agent output lands
-// under (plan 20260606-1525). The three port-changed verdicts are namespaced
-// by the active `tests` cascade — acceptance → `at-`, contract → `ct-` — so
-// the nested contract excursion writes only `ct-*` and can't overwrite the
-// acceptance cascade's `at-*` verdict the parent re-gates read. Every other
-// output is the identity. In production the three emitters always carry a
-// `tests` cascade (threaded at their call sites); an unrecognised cascade
-// falls back to the bare key, where the gate's strict "not set" check
-// surfaces the wiring bug loudly rather than mis-routing.
-func landingStateKey(key, tests string) string {
-	if !portChangedOutputKeys[key] {
+// under (plan 20260606-1525; test-names added by plan 20260608-1231). The
+// namespacedLandingKeys outputs are prefixed by the active test-category —
+// acceptance → `at-`, contract → `ct-` — so the nested contract excursion
+// writes only `ct-*` and can't overwrite the acceptance cascade's `at-*`
+// value the parent re-gates / GREEN verify read. Every other output is the
+// identity. In production the emitters always carry a test-category (threaded
+// at their call sites); an unrecognised category falls back to the bare key,
+// where the gate's strict "not set" check surfaces the wiring bug loudly
+// rather than mis-routing.
+func landingStateKey(key, testCategory string) string {
+	if !namespacedLandingKeys[key] {
 		return key
 	}
-	switch tests {
+	switch testCategory {
 	case "acceptance":
 		return "at-" + key
 	case "contract":

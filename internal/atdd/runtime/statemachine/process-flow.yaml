@@ -445,10 +445,15 @@ processes:
           task-name: implement-system
           action: implement-system
           # Behavioral GREEN: verify ONLY the AT(s) the RED writer just
-          # produced. `test-names` is the writing-agent's declared output
-          # (process-flow.yaml:1331), already in ctx.State at this point.
+          # produced. Read the AT-cascade-namespaced `at-test-names` key
+          # (plan 20260608-1231), NOT a flat `test-names`: a nested contract
+          # excursion (shared-contract → external-driver CT-HIGH) runs between
+          # the AT writer and this read and re-emits `test-names`, so a flat
+          # key would resolve to the contract method here → false RED. The
+          # `at-`/`ct-` landing namespacing (plan 20260606-1525) isolates the
+          # AT writer's list under `at-test-names`.
           suite: acceptance
-          test-names: ${test-names}
+          test-names: ${at-test-names}
         name: "Implement System"
         tdd-stage: green
 
@@ -717,10 +722,11 @@ processes:
           acceptance-criteria: ${acceptance-criteria}
           expected-test-result: ${expected-test-result}
           # Cascade tag (plan 20260606-1525): the test-code writer emits
-          # `dsl-port-changed`; the landing layer namespaces it to
-          # `at-dsl-port-changed` from this tests context so the nested
-          # contract excursion can't clobber the acceptance verdict.
-          tests: acceptance
+          # `dsl-port-changed` and `test-names`; the landing layer namespaces
+          # them to `at-*` from this test-category so the nested contract
+          # excursion can't clobber the acceptance verdict or test-name list
+          # (test-names namespacing added by plan 20260608-1231).
+          test-category: acceptance
           # Cover-path plumbing scope (plan 20260606-1518): the test-code
           # layer's plumbing is complete unless the DSL port changed, so the
           # green-when-complete verify gate expects PASS iff at-dsl-port-changed
@@ -739,8 +745,15 @@ processes:
         params:
           task-name: implement-dsl
           expected-test-result: ${expected-test-result}
-          tests: acceptance
+          test-category: acceptance
           suite: acceptance
+          # AT-cascade test-name list (plan 20260608-1231): bind the namespaced
+          # `at-test-names` so the inner implement-test-layer change-path verify
+          # (VERIFY_TESTS_FAIL_FILTERED) selects the acceptance methods.
+          # implement-test-layer is intent-agnostic and reads a flat
+          # ${test-names} param; without this bind it falls through to the
+          # (now-namespaced-away) bare key and fails strict ExpandParams.
+          test-names: ${at-test-names}
           # Cover-path plumbing scope (plan 20260606-1518): after the DSL impl,
           # plumbing is still pending iff a system- or external-driver port
           # changed, so the green-when-complete verify gate expects PASS only
@@ -760,19 +773,20 @@ processes:
       # It is self-contained: it pins its own expected results internally
       # (write-contract-tests → success; contract-real/stub are outcome-probed
       # post-adapters, plan 20260606-1943 — no pinned polarity) and sources
-      # `${test-names}` from write-contract-tests'
+      # `${ct-test-names}` from write-contract-tests'
       # output. The one caller param it needs is the cascade tag (plan
-      # 20260606-1525): `tests: contract` makes the whole excursion namespace
-      # its port-changed verdicts under `ct-*`, so its inner test-code writer
-      # (write-contract-tests) and DSL impl cannot clobber the parent AT
-      # cascade's `at-*` verdicts. The inner IMPLEMENT_AND_VERIFY_DSL re-pins
-      # `tests: contract` locally (harmless — same value).
+      # 20260606-1525): `test-category: contract` makes the whole excursion
+      # namespace its port-changed verdicts AND test-name list under `ct-*`, so
+      # its inner test-code writer (write-contract-tests) and DSL impl cannot
+      # clobber the parent AT cascade's `at-*` keys. The inner
+      # IMPLEMENT_AND_VERIFY_DSL re-pins `test-category: contract` locally
+      # (harmless — same value).
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
         type: call-activity
         process: implement-and-verify-external-system-driver-adapters-contract-tests
         name: "Implement and Verify External-System Driver Adapters Contract Tests"
         params:
-          tests: contract
+          test-category: contract
           # Default the CT-HIGH inner verify gates away from the enclosing
           # cover run: pin `red` here so the green-when-complete cover mode
           # cannot inherit into the contract excursion's
@@ -807,7 +821,11 @@ processes:
         name: "Verify Acceptance Tests Pass"
         params:
           suite: acceptance
-          test-names: ${test-names}
+          # AT-cascade-namespaced (plan 20260608-1231): this terminal AT-green
+          # runs AFTER the external-driver CT-HIGH, which re-emits `test-names`
+          # under `ct-*`. Read `at-test-names` so the cover-path verify selects
+          # the acceptance methods, not the contract method.
+          test-names: ${at-test-names}
 
       - id: SHARED_CONTRACT_END
         type: end-event
@@ -881,8 +899,15 @@ processes:
         params:
           task-name: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
-          tests: acceptance
+          test-category: acceptance
           suite: acceptance
+          # AT-cascade test-name list (plan 20260608-1231): bind the namespaced
+          # `at-test-names` explicitly so the inner implement-test-layer filtered
+          # verify (VERIFY_TESTS_FAIL_FILTERED) selects the acceptance methods.
+          # Without it the read inherits the (now-namespaced-away) flat
+          # `test-names`, yielding an empty selection that a fail-expecting
+          # verify accepts as GREEN → false GREEN (the second reported bug).
+          test-names: ${at-test-names}
           # Cover-path plumbing scope (plan 20260606-1518): the system-driver
           # adapter layer is the terminal AT-plumbing step, so nothing is
           # pending after it — the green-when-complete verify gate always
@@ -946,7 +971,10 @@ processes:
         name: "Verify Acceptance Tests Pass"
         params:
           suite: acceptance
-          test-names: ${test-names}
+          # AT-cascade-namespaced (plan 20260608-1231): the AT writer now lands
+          # its list under `at-test-names`, never the bare key, so this leaf
+          # read must name it explicitly or strict ExpandParams fails.
+          test-names: ${at-test-names}
 
       - id: VERIFY_TESTS_FAIL_ACCEPTANCE
         type: call-activity
@@ -954,7 +982,9 @@ processes:
         name: "Verify Acceptance Tests Fail"
         params:
           suite: acceptance
-          test-names: ${test-names}
+          # AT-cascade-namespaced (plan 20260608-1231): see VERIFY_TESTS_PASS_
+          # ACCEPTANCE above — the AT writer lands under `at-test-names`.
+          test-names: ${at-test-names}
 
       - id: COMMIT_TEST_CODE
         type: call-activity
@@ -996,7 +1026,7 @@ processes:
           task-name: implement-dsl
           action: implement-dsl
           expected-test-result: ${expected-test-result}
-          tests: ${tests}
+          test-category: ${test-category}
           suite: ${suite}
           layer: "DSL"
 
@@ -1019,7 +1049,7 @@ processes:
           task-name: implement-system-driver-adapters
           action: implement-system-driver-adapters
           expected-test-result: ${expected-test-result}
-          tests: ${tests}
+          test-category: ${test-category}
           suite: ${suite}
           layer: "SYSTEM DRIVER ADAPTERS"
 
@@ -1031,7 +1061,7 @@ processes:
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_SYS_DRIVER_END}
 
   # Contract-test variant of the external driver-adapter impl. Mirrors the
-  # AT-side cascade but with `tests: contract` semantics and the
+  # AT-side cascade but with `test-category: contract` semantics and the
   # contract-real / contract-stub outcome-probe split (plan 20260606-1943).
   # Absorbs the pre-refactor diagram #8 (contract-test-sub-process).
   #
@@ -1082,7 +1112,7 @@ processes:
           # ExpandParams in implement-and-verify-dsl → implement-test-layer still
           # resolves the inner ${expected-test-result}/${suite} references.
           expected-test-result: success
-          tests: contract
+          test-category: contract
           suite: contract-real
 
       - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
@@ -1135,7 +1165,9 @@ processes:
         name: "Probe Contract Tests Against the Real System"
         params:
           suite: contract-real
-          test-names: ${test-names}
+          # CT-cascade-namespaced (plan 20260608-1231): write-contract-tests
+          # lands its list under `ct-test-names`.
+          test-names: ${ct-test-names}
 
       - id: GATE_CONTRACT_REAL_OUTCOME
         type: gateway
@@ -1169,7 +1201,7 @@ processes:
         name: "Verify Contract Tests Pass Against the Real Simulator"
         params:
           suite: contract-real
-          test-names: ${test-names}
+          test-names: ${ct-test-names}
 
       # No preceding impl, but the stub system needs to be up for the
       # probe to actually run. `system start` is idempotent.
@@ -1191,7 +1223,7 @@ processes:
         name: "Probe Contract Tests Against the Stub"
         params:
           suite: contract-stub
-          test-names: ${test-names}
+          test-names: ${ct-test-names}
 
       - id: GATE_CONTRACT_STUB_OUTCOME
         type: gateway
@@ -1221,7 +1253,7 @@ processes:
         name: "Verify Contract Tests Pass Against the Stub"
         params:
           suite: contract-stub
-          test-names: ${test-names}
+          test-names: ${ct-test-names}
 
       - id: IMPL_EXT_DRIVER_CT_END
         type: end-event

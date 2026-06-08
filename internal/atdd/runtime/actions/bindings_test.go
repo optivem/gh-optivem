@@ -1257,7 +1257,7 @@ func TestValidateOutputsAndScopes_AllClean_IsValid(t *testing.T) {
 }
 
 // CT-path System-Driver fence (plan 20260527-1147 Item 4). A dsl-implementer
-// dispatched with tests=contract that emits system-driver-port-changed=true
+// dispatched with test-category=contract that emits system-driver-port-changed=true
 // must HALT — the flag would otherwise leak up into the AT cycle's
 // system-driver-adapter gate. The fence is a hard Outcome.Err (structural
 // invariant, no fix-* recovery), and it fires before the presence/scope
@@ -1266,7 +1266,7 @@ func TestValidateOutputsAndScopes_CTPath_SystemDriverPortChanged_Halts(t *testin
 	a := newActions(Deps{Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
-	ctx.Params["tests"] = "contract"
+	ctx.Params["test-category"] = "contract"
 	// On the contract cascade the verdict lands namespaced (plan 20260606-1525);
 	// the fence reads the ct- key.
 	ctx.Set("ct-system-driver-port-changed", true)
@@ -1279,8 +1279,8 @@ func TestValidateOutputsAndScopes_CTPath_SystemDriverPortChanged_Halts(t *testin
 	}
 }
 
-// The AT path (tests=acceptance) emitting system-driver-port-changed=true is
-// correct and must pass cleanly — the fence is CT-only.
+// The AT path (test-category=acceptance) emitting system-driver-port-changed=true
+// is correct and must pass cleanly — the fence is CT-only.
 func TestValidateOutputsAndScopes_ATPath_SystemDriverPortChanged_Allowed(t *testing.T) {
 	repoPath := t.TempDir()
 	cfg := writePhaseScopeTestConfig(t, repoPath)
@@ -1290,7 +1290,7 @@ func TestValidateOutputsAndScopes_ATPath_SystemDriverPortChanged_Allowed(t *test
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
-	ctx.Params["tests"] = "acceptance"
+	ctx.Params["test-category"] = "acceptance"
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	// On the acceptance cascade the verdicts land namespaced (plan 20260606-1525).
 	ctx.Set("at-system-driver-port-changed", true)
@@ -1304,13 +1304,13 @@ func TestValidateOutputsAndScopes_ATPath_SystemDriverPortChanged_Allowed(t *test
 	}
 }
 
-// landingStateKey namespaces the three port-changed verdicts by cascade so
-// the nested contract excursion can't clobber the acceptance cascade's
-// verdict (plan 20260606-1525). Every other output, and any unrecognised
-// cascade, is the identity.
+// landingStateKey namespaces the port-changed verdicts AND test-names by
+// cascade so the nested contract excursion can't clobber the acceptance
+// cascade's value (plan 20260606-1525; test-names added by plan 20260608-1231).
+// Every other output, and any unrecognised cascade, is the identity.
 func TestLandingStateKey_CascadeNamespacing(t *testing.T) {
 	cases := []struct {
-		key, tests, want string
+		key, testCategory, want string
 	}{
 		{"dsl-port-changed", "acceptance", "at-dsl-port-changed"},
 		{"dsl-port-changed", "contract", "ct-dsl-port-changed"},
@@ -1318,8 +1318,10 @@ func TestLandingStateKey_CascadeNamespacing(t *testing.T) {
 		{"system-driver-port-changed", "contract", "ct-system-driver-port-changed"},
 		{"external-driver-port-changed", "acceptance", "at-external-driver-port-changed"},
 		{"external-driver-port-changed", "contract", "ct-external-driver-port-changed"},
-		// Non-port-changed outputs are never namespaced.
-		{"test-names", "acceptance", "test-names"},
+		// test-names is namespaced too (plan 20260608-1231).
+		{"test-names", "acceptance", "at-test-names"},
+		{"test-names", "contract", "ct-test-names"},
+		// Genuinely non-namespaced outputs are the identity.
 		{"scope-exception-reason", "contract", "scope-exception-reason"},
 		// Unrecognised / absent cascade falls back to the bare key (the
 		// downstream gate's strict "not set" check surfaces the wiring bug).
@@ -1327,8 +1329,8 @@ func TestLandingStateKey_CascadeNamespacing(t *testing.T) {
 		{"system-driver-port-changed", "nonsense", "system-driver-port-changed"},
 	}
 	for _, c := range cases {
-		if got := landingStateKey(c.key, c.tests); got != c.want {
-			t.Errorf("landingStateKey(%q, %q) = %q, want %q", c.key, c.tests, got, c.want)
+		if got := landingStateKey(c.key, c.testCategory); got != c.want {
+			t.Errorf("landingStateKey(%q, %q) = %q, want %q", c.key, c.testCategory, got, c.want)
 		}
 	}
 }
@@ -1349,7 +1351,7 @@ func TestValidateOutputsAndScopes_PortChangedVerdicts_CascadeNamespaced(t *testi
 	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
-	ctx.Params["tests"] = "acceptance"
+	ctx.Params["test-category"] = "acceptance"
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	ctx.State["output-file-path"] = jsonl
 

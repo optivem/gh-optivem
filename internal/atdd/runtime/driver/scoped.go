@@ -137,14 +137,14 @@ func resolveScopedEntry(target Target, channel string, cfg *projectconfig.Config
 	// Slice params (Item 2b / 3). expected-test-result is the per-slice gate;
 	// the channel-split slices additionally need the params the per-channel
 	// unrolls (channels.go) bind on their cloned nodes — channel/common/suite/
-	// tests — since a direct RunProcess enters the callee without traversing the
-	// unrolled anchor that would otherwise push them.
+	// test-category — since a direct RunProcess enters the callee without traversing
+	// the unrolled anchor that would otherwise push them.
 	if etr, ok := target.ExpectedTestResult(); ok {
 		sCtx.Params["expected-test-result"] = etr
 	}
 	if requiresChannel {
 		sCtx.Params["channel"] = channel
-		sCtx.Params["tests"] = "acceptance"
+		sCtx.Params["test-category"] = "acceptance"
 		if target == TargetSystem {
 			// D-common option b: the FIRST channel carries the channel-agnostic
 			// common layer; later channels are common:false deltas. Same

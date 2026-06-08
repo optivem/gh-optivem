@@ -175,7 +175,7 @@ func TestResolveScopedEntry_DriverAdapter_BlockedUntilSharedContract(t *testing.
 		if proc != "implement-and-verify-system-driver-adapters" {
 			t.Errorf("process = %q", proc)
 		}
-		if sCtx.Params["channel"] != "api" || sCtx.Params["tests"] != "acceptance" || sCtx.Params["expected-test-result"] != "failure" {
+		if sCtx.Params["channel"] != "api" || sCtx.Params["test-category"] != "acceptance" || sCtx.Params["expected-test-result"] != "failure" {
 			t.Errorf("params = %#v", sCtx.Params)
 		}
 	})

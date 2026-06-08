@@ -7,9 +7,9 @@ effort: medium
 
 Replace every `TODO: DSL` prototype in the DSL Core (`${dsl-core}`) with real logic. If new port-side behaviour is needed, you may add methods to the driver ports or add/change fields on the DTOs they carry.
 
-This dispatch implements DSL for the **`${tests}`** test layer.
+This dispatch implements DSL for the **`${test-category}`** test layer.
 
-> **CT-path guard.** If you are implementing CT-side DSL (`tests=contract`), the System Driver port (`${system-driver-port}`) will **not** legitimately need new methods — do **not** add System Driver prototypes there and do **not** emit `system-driver-port-changed=true`. Contract tests stimulate the External-System Driver only (`${external-system-driver-port}`). On the AT path (`tests=acceptance`) System Driver prototypes are fine.
+> **CT-path guard.** If you are implementing CT-side DSL (`test-category=contract`), the System Driver port (`${system-driver-port}`) will **not** legitimately need new methods — do **not** add System Driver prototypes there and do **not** emit `system-driver-port-changed=true`. Contract tests stimulate the External-System Driver only (`${external-system-driver-port}`). On the AT path (`test-category=acceptance`) System Driver prototypes are fine.
 
 ## Inputs
 

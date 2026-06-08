@@ -401,12 +401,12 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 		t.Errorf("external-driver node process = %q, want the CT-HIGH", got)
 	}
 	// The CT-HIGH is self-contained except for the cascade tag (plan
-	// 20260606-1525): it binds `tests: contract` so its inner writers
+	// 20260606-1525): it binds `test-category: contract` so its inner writers
 	// namespace their port-changed verdicts under `ct-*` and can't clobber
 	// the parent AT cascade's `at-*` verdicts. It still forwards none of the
 	// other caller params the retired thin step used to.
-	if got := node.Raw.Params["tests"]; got != "contract" {
-		t.Errorf("external-driver node should bind tests: contract (cascade tag), got %q", got)
+	if got := node.Raw.Params["test-category"]; got != "contract" {
+		t.Errorf("external-driver node should bind test-category: contract (cascade tag), got %q", got)
 	}
 	for _, p := range []string{"expected-test-result", "task-name"} {
 		if v, set := node.Raw.Params[p]; set {
@@ -469,9 +469,9 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	wantEdge(t, ct, "START_SYSTEM_BEFORE_STUB_PROBE", "PROBE_CONTRACT_STUB", "")
 
 	// 5. The CT-HIGH's nested DSL step verifies against suite `contract-real`,
-	//    decoupled from the `tests: contract` path discriminator. Guards the
-	//    bare-`--suite=contract` regression: `tests` (the AT/CT path fence)
-	//    and `suite` (the runner selector) must stay independent, so the
+	//    decoupled from the `test-category: contract` path discriminator. Guards
+	//    the bare-`--suite=contract` regression: `test-category` (the AT/CT path
+	//    fence) and `suite` (the runner selector) must stay independent, so the
 	//    filtered verify never copies the unregistered `contract` value.
 	dslCaller, ok := ct.Nodes["IMPLEMENT_AND_VERIFY_DSL"]
 	if !ok {
@@ -480,11 +480,11 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	if got := dslCaller.Raw.Params["suite"]; got != "contract-real" {
 		t.Errorf("CT-HIGH DSL caller suite = %q, want contract-real", got)
 	}
-	if got := dslCaller.Raw.Params["tests"]; got != "contract" {
-		t.Errorf("CT-HIGH DSL caller tests = %q, want contract (path discriminator unchanged)", got)
+	if got := dslCaller.Raw.Params["test-category"]; got != "contract" {
+		t.Errorf("CT-HIGH DSL caller test-category = %q, want contract (path discriminator unchanged)", got)
 	}
-	// The nested implement-and-verify-dsl threads ${suite} (not ${tests}) into
-	// its filtered verify, so the caller's contract-real reaches the runner.
+	// The nested implement-and-verify-dsl threads ${suite} (not ${test-category})
+	// into its filtered verify, so the caller's contract-real reaches the runner.
 	dsl, ok := eng.Processes["implement-and-verify-dsl"]
 	if !ok {
 		t.Fatalf("process implement-and-verify-dsl missing")
@@ -501,7 +501,7 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	if vf, ok := itlProc.Nodes["VERIFY_TESTS_PASS_FILTERED"]; !ok {
 		t.Fatalf("implement-test-layer: VERIFY_TESTS_PASS_FILTERED node missing")
 	} else if got := vf.Raw.Params["suite"]; got != "${suite}" {
-		t.Errorf("VERIFY_TESTS_PASS_FILTERED suite = %q, want ${suite} (decoupled from ${tests})", got)
+		t.Errorf("VERIFY_TESTS_PASS_FILTERED suite = %q, want ${suite} (decoupled from ${test-category})", got)
 	}
 }
 

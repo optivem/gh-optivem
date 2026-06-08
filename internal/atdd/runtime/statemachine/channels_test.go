@@ -44,11 +44,13 @@ func TestUnrollSystemChannels_TwoChannels(t *testing.T) {
 	checkParam(t, ui, "suite", "acceptance-ui")
 
 	// Params inherited verbatim from the template anchor — including the
-	// unexpanded ${test-names} placeholder (expansion happens at dispatch).
+	// unexpanded ${at-test-names} placeholder (expansion happens at dispatch).
+	// The behavioral GREEN reads the AT-cascade-namespaced key so a nested
+	// contract excursion can't clobber the selection (plan 20260608-1231).
 	for _, n := range []Node{api, ui} {
 		checkParam(t, n, "action", "implement-system")
 		checkParam(t, n, "task-name", "implement-system")
-		checkParam(t, n, "test-names", "${test-names}")
+		checkParam(t, n, "test-names", "${at-test-names}")
 	}
 
 	// Linear chain: WRITE → API → UI → REFACTOR, no loopback.
@@ -166,7 +168,7 @@ func TestUnrollSystemDriverAdapterChannels_TwoChannels(t *testing.T) {
 	// unexpanded ${expected-test-result} placeholder — expansion is at dispatch).
 	for _, n := range []Node{api, ui} {
 		checkParam(t, n, "task-name", "implement-system-driver-adapters")
-		checkParam(t, n, "tests", "acceptance")
+		checkParam(t, n, "test-category", "acceptance")
 		checkParam(t, n, "expected-test-result", "${expected-test-result}")
 	}
 
