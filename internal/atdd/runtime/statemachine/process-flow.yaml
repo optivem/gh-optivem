@@ -296,7 +296,7 @@ processes:
       - id: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE
         type: call-activity
         process: redesign-external-system-structure
-        name: "Redesign External-System Structure"
+        name: "Redesign External System Structure"
 
       - id: REFACTOR_SYSTEM_STRUCTURE
         type: call-activity
@@ -388,7 +388,7 @@ processes:
       - id: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE
         type: call-activity
         process: redesign-external-system-structure
-        name: "Redesign External-System Structure"
+        name: "Redesign External System Structure"
 
       - id: REFACTOR_TOP_END
         type: end-event
@@ -553,13 +553,13 @@ processes:
   # Verb-split note (plan 20260526-1448 Item 10): the redesign call sites
   # dispatch `update-*` variants (Checklist-driven reshape).
   redesign-external-system-structure:
-    name: "Redesign External-System Structure"
+    name: "Redesign External System Structure"
     start: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
     nodes:
       - id: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: update-external-system-driver-adapters
-        name: "Update External-System Driver Adapters"
+        name: "Update External System Driver Adapters"
         tdd-stage: red
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
@@ -703,7 +703,7 @@ processes:
   # is channel-shaped and owned by each channel team — D-adapter-ownership
   # option A).
   shared-contract:
-    name: "Shared Contract"
+    name: "Write and Verify Channel-Shared Acceptance Tests"
     start: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
     nodes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
@@ -784,7 +784,7 @@ processes:
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
         type: call-activity
         process: implement-and-verify-external-system-driver-adapters-contract-tests
-        name: "Implement and Verify External-System Driver Adapters Contract Tests"
+        name: "Implement and Verify External System Driver Adapters Contract Tests"
         params:
           test-category: contract
           # Default the CT-HIGH inner verify gates away from the enclosing
@@ -829,7 +829,7 @@ processes:
 
       - id: SHARED_CONTRACT_END
         type: end-event
-        name: "Shared Contract Verified"
+        name: "Channel-Shared Acceptance Tests Verified"
 
     sequence-flows:
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: GATE_DSL_PORT_CHANGED}
@@ -874,7 +874,7 @@ processes:
       - id: SHARED_CONTRACT
         type: call-activity
         process: shared-contract
-        name: "Shared Contract"
+        name: "Write and Verify Channel-Shared Acceptance Tests"
         params:
           expected-test-result: ${expected-test-result}
 
@@ -1071,13 +1071,13 @@ processes:
   # driver gate fires this CT-HIGH as a sub-step between AT-red and AT-green,
   # so the contract test certifies the stub before the AT goes green.
   implement-and-verify-external-system-driver-adapters-contract-tests:
-    name: "Implement and Verify External-System Driver Adapters Contract Tests"
+    name: "Implement and Verify External System Driver Adapters Contract Tests"
     start: WRITE_CONTRACT_TESTS
     nodes:
       - id: WRITE_CONTRACT_TESTS
         type: call-activity
         process: write-contract-tests
-        name: "Write Contract Tests"
+        name: "Write External System Contract Tests"
         params:
           expected-test-result: success
 
@@ -1088,7 +1088,7 @@ processes:
 
       # Compile-only DSL/port layer (plan 20260606-2330). The DSL/port layer's
       # real work is "change the port, ensure it compiles, commit" — it does NOT
-      # green the contract suite, because the External-System Driver adapters
+      # green the contract suite, because the External System Driver adapters
       # that actually green `contract-real` are still throwing-TODO stubs until
       # IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS runs next. So `contract-real`
       # red/green is owned SOLELY by PROBE_CONTRACT_REAL (outcome-driven,
@@ -1118,7 +1118,7 @@ processes:
       - id: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: implement-external-system-driver-adapters
-        name: "Implement External-System Driver Adapters"
+        name: "Implement External System Driver Adapters"
 
       # Resolve which external system this cycle targets from the driver-
       # adapter files the step above just wrote (the external-system-driver-
@@ -1162,7 +1162,7 @@ processes:
       - id: PROBE_CONTRACT_REAL
         type: call-activity
         process: run-tests
-        name: "Probe Contract Tests Against the Real System"
+        name: "Probe External System Contract Tests Against the Real System"
         params:
           suite: contract-real
           # CT-cascade-namespaced (plan 20260608-1231): write-contract-tests
@@ -1182,7 +1182,7 @@ processes:
       - id: IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR
         type: call-activity
         process: implement-external-system-real-simulator
-        name: "Implement External-System Real Simulator"
+        name: "Implement External System Real Simulator"
 
       # GREEN-shape: impl edited simulator source → rebuild and restart.
       - id: BUILD_SYSTEM_AFTER_SIMULATOR
@@ -1198,7 +1198,7 @@ processes:
       - id: VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR
         type: call-activity
         process: verify-tests-pass
-        name: "Verify Contract Tests Pass Against the Real Simulator"
+        name: "Verify External System Contract Tests Pass Against the Real Simulator"
         params:
           suite: contract-real
           test-names: ${ct-test-names}
@@ -1220,7 +1220,7 @@ processes:
       - id: PROBE_CONTRACT_STUB
         type: call-activity
         process: run-tests
-        name: "Probe Contract Tests Against the Stub"
+        name: "Probe External System Contract Tests Against the Stub"
         params:
           suite: contract-stub
           test-names: ${ct-test-names}
@@ -1233,7 +1233,7 @@ processes:
       - id: IMPLEMENT_EXTERNAL_SYSTEM_STUBS
         type: call-activity
         process: implement-external-system-stubs
-        name: "Implement External-System Stubs"
+        name: "Implement External System Stubs"
 
       # GREEN-shape: impl edited system source → rebuild and restart
       # before verifying.
@@ -1250,7 +1250,7 @@ processes:
       - id: VERIFY_TESTS_PASS_CONTRACT_STUB
         type: call-activity
         process: verify-tests-pass
-        name: "Verify Contract Tests Pass Against the Stub"
+        name: "Verify External System Contract Tests Pass Against the Stub"
         params:
           suite: contract-stub
           test-names: ${ct-test-names}
@@ -1694,7 +1694,7 @@ processes:
       - {from: EXECUTE_AGENT, to: WAT_END}
 
   write-contract-tests:
-    name: "Write Contract Tests"
+    name: "Write External System Contract Tests"
     start: EXECUTE_AGENT
     outputs:
       - key: dsl-port-changed
@@ -1727,7 +1727,7 @@ processes:
 
       - id: WCT_END
         type: end-event
-        name: "Contract Tests Written"
+        name: "External System Contract Tests Written"
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: WCT_END}
@@ -1910,7 +1910,7 @@ processes:
 
   # Same asymmetry as implement-system-driver-adapters (external side).
   implement-external-system-driver-adapters:
-    name: "Implement External-System Driver Adapters"
+    name: "Implement External System Driver Adapters"
     start: EXECUTE_AGENT
     nodes:
       - id: EXECUTE_AGENT
@@ -1942,7 +1942,7 @@ processes:
   # the implement variant — external-system-driver-port is read-only
   # here; reshape writes land in external-system-driver-adapter.
   update-external-system-driver-adapters:
-    name: "Update External-System Driver Adapters"
+    name: "Update External System Driver Adapters"
     start: EXECUTE_AGENT
     nodes:
       - id: EXECUTE_AGENT
@@ -1965,7 +1965,7 @@ processes:
       - {from: EXECUTE_AGENT, to: UPDATE_EXT_DA_END}
 
   implement-external-system-stubs:
-    name: "Implement External-System Stubs"
+    name: "Implement External System Stubs"
     start: EXECUTE_AGENT
     nodes:
       - id: EXECUTE_AGENT
@@ -1997,7 +1997,7 @@ processes:
   # understands Family B path keys, and a faithful mirror of the stub MID
   # writes there.
   implement-external-system-real-simulator:
-    name: "Implement External-System Real Simulator"
+    name: "Implement External System Real Simulator"
     start: EXECUTE_AGENT
     nodes:
       - id: EXECUTE_AGENT

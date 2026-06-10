@@ -59,9 +59,9 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    END(( ))
-    IMPLEMENT_TICKET[Implement Ticket]
     START(( ))
+    IMPLEMENT_TICKET[Implement Ticket]
+    END(( ))
 
     START --> IMPLEMENT_TICKET
     IMPLEMENT_TICKET --> END
@@ -72,8 +72,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     MARK_IN_REFINEMENT[[Mark IN REFINEMENT]]
-    MARK_READY[[Mark READY]]
     REFINE_BACKLOG_ITEM[Refine Backlog Item]
+    MARK_READY[[Mark READY]]
     REFINE_TICKET_END(( ))
 
     MARK_IN_REFINEMENT --> REFINE_BACKLOG_ITEM
@@ -88,20 +88,20 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CHANGE_SYSTEM_BEHAVIOR[Change System Behavior]
-    COVER_SYSTEM_BEHAVIOR[Cover System Behavior]
-    GATE_TASK_SUBTYPE{Task Subtype?}
-    GATE_TICKET_KIND{Ticket Kind?}
-    IMPLEMENT_TICKET_END(( ))
-    MARK_IN_ACCEPTANCE[[Mark IN ACCEPTANCE]]
     MARK_IN_PROGRESS[[Mark IN PROGRESS]]
     PARSE_TICKET[[Parse Ticket]]
-    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure]
+    GATE_TICKET_KIND{Ticket Kind?}
+    CHANGE_SYSTEM_BEHAVIOR[Change System Behavior]
+    GATE_TASK_SUBTYPE{Task Subtype?}
+    UNKNOWN_TICKET_KIND((⚡))
+    MARK_IN_ACCEPTANCE[[Mark IN ACCEPTANCE]]
+    COVER_SYSTEM_BEHAVIOR[Cover System Behavior]
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
     UNKNOWN_TASK_SUBTYPE((⚡))
-    UNKNOWN_TICKET_KIND((⚡))
+    IMPLEMENT_TICKET_END(( ))
 
     MARK_IN_PROGRESS --> PARSE_TICKET
     PARSE_TICKET --> GATE_TICKET_KIND
@@ -135,10 +135,10 @@ flowchart TD
 ```mermaid
 flowchart TD
     GATE_REFACTOR_TYPE_CHOICE{Refactor Type?}
-    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External-System Structure]
-    REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REFACTOR_SYSTEM_STRUCTURE[Refactor System Structure]
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
+    REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External System Structure]
     REFACTOR_TOP_END(( ))
 
     GATE_REFACTOR_TYPE_CHOICE -- Refactor System Structure --> REFACTOR_SYSTEM_STRUCTURE
@@ -166,10 +166,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    CHANGE_SYSTEM_BEHAVIOR_END(( ))
-    IMPLEMENT_AND_VERIFY_SYSTEM[Implement System — see § implement-and-verify-system]
-    REFACTOR_OPPORTUNISTICALLY["Opportunistic Refactor (Loopable) — see § refactor"]
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL[Write Failing Acceptance Tests — see § write-and-verify-acceptance-tests-fail]
+    IMPLEMENT_AND_VERIFY_SYSTEM["Implement System — see § implement-and-verify-system<br/>action = implement-system<br/>suite = acceptance<br/>task-name = implement-system"]
+    REFACTOR_OPPORTUNISTICALLY["Opportunistic Refactor (Loopable) — see § refactor"]
+    CHANGE_SYSTEM_BEHAVIOR_END(( ))
 
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REFACTOR_OPPORTUNISTICALLY
@@ -189,8 +189,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COVER_END(( ))
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS[Write Passing Acceptance Tests — see § write-and-verify-acceptance-tests-pass]
+    COVER_END(( ))
 
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS --> COVER_END
 
@@ -202,9 +202,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
-    REDESIGN_END(( ))
     UPDATE_SYSTEM_DRIVER_ADAPTERS[Update System Driver Adapters]
+    IMPLEMENT_AND_VERIFY_SYSTEM["Update System — see § implement-and-verify-system<br/>action = update-system<br/>suite = <br/>task-name = update-system<br/>test-names = "]
+    REDESIGN_END(( ))
 
     UPDATE_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_END
@@ -220,7 +220,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    IMPLEMENT_AND_VERIFY_SYSTEM[Refactor System — see § implement-and-verify-system]
+    IMPLEMENT_AND_VERIFY_SYSTEM["Refactor System — see § implement-and-verify-system<br/>action = refactor-system<br/>suite = <br/>task-name = refactor-system<br/>test-names = "]
     REFACTOR_SYSTEM_STRUCTURE_END(( ))
 
     IMPLEMENT_AND_VERIFY_SYSTEM --> REFACTOR_SYSTEM_STRUCTURE_END
@@ -233,7 +233,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    REFACTOR_AND_VERIFY_TESTS[Refactor and Verify Tests]
+    REFACTOR_AND_VERIFY_TESTS["Refactor and Verify Tests<br/>task-name = refactor-tests"]
     REFACTOR_TEST_STRUCTURE_END(( ))
 
     REFACTOR_AND_VERIFY_TESTS --> REFACTOR_TEST_STRUCTURE_END
@@ -246,8 +246,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    WRITE_AND_VERIFY_ACCEPTANCE_TESTS["Write and Verify Acceptance Tests<br/>expected-test-result = failure"]
     WAV_AT_FAIL_END(( ))
-    WRITE_AND_VERIFY_ACCEPTANCE_TESTS[Write and Verify Acceptance Tests]
 
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS --> WAV_AT_FAIL_END
 ```
@@ -256,8 +256,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    WRITE_AND_VERIFY_ACCEPTANCE_TESTS["Write and Verify Acceptance Tests<br/>expected-test-result = success<br/>verify-mode = green-when-complete"]
     WAV_AT_PASS_END(( ))
-    WRITE_AND_VERIFY_ACCEPTANCE_TESTS[Write and Verify Acceptance Tests]
 
     WRITE_AND_VERIFY_ACCEPTANCE_TESTS --> WAV_AT_PASS_END
 ```
@@ -266,11 +266,11 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    SHARED_CONTRACT[Write and Verify Channel-Shared Acceptance Tests]
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
     GATE_SYSTEM_DRIVER_PORTS_CHANGED{System Driver Ports Changed?}
-    IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS[Implement and Verify System Driver Adapters]
-    SHARED_CONTRACT[Shared Contract]
     WAV_AT_END(( ))
+    IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS["Implement and Verify System Driver Adapters<br/>suite = acceptance<br/>task-name = implement-system-driver-adapters<br/>test-category = acceptance<br/>verify-pending-on = none"]
 
     SHARED_CONTRACT --> GATE_DSL_PORT_CHANGED
     GATE_DSL_PORT_CHANGED -- Yes --> GATE_SYSTEM_DRIVER_PORTS_CHANGED
@@ -280,19 +280,19 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS --> WAV_AT_END
 ```
 
-## Shared Contract
+## Write and Verify Channel-Shared Acceptance Tests
 
 ```mermaid
 flowchart TD
-    GATE_AT_TERMINAL_GREEN{Cover Run Needs Terminal AT-Green?}
+    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
-    GATE_EXTERNAL_DRIVER_PORTS_CHANGED{External Driver Ports Changed?}
-    IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
-    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS[Implement and Verify External-System Driver Adapters Contract Tests]
+    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = drivers"]
     SHARED_CONTRACT_END(( ))
+    GATE_EXTERNAL_DRIVER_PORTS_CHANGED{External Driver Ports Changed?}
+    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS["Implement and Verify External System Driver Adapters Contract Tests<br/>test-category = contract<br/>verify-mode = red"]
+    GATE_AT_TERMINAL_GREEN{Cover Run Needs Terminal AT-Green?}
     START_SYSTEM_AT_TERMINAL[Start System]
-    VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL[Verify Acceptance Tests Pass — see § verify-tests-pass]
-    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE[Write and Verify Acceptance Test Code]
+    VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL["Verify Acceptance Tests Pass — see § verify-tests-pass<br/>suite = acceptance"]
 
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE --> GATE_DSL_PORT_CHANGED
     GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
@@ -311,15 +311,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMMIT_TEST_CODE[Commit Test Code — see § commit]
-    COMPILE_TESTS[Compile Tests]
-    GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
-    START_SYSTEM[Start System]
-    UNKNOWN_EXPECTED_TEST_RESULT((⚡))
-    VERIFY_TESTS_FAIL_ACCEPTANCE[Verify Acceptance Tests Fail — see § verify-tests-fail]
-    VERIFY_TESTS_PASS_ACCEPTANCE[Verify Acceptance Tests Pass — see § verify-tests-pass]
-    WAV_AT_CODE_END(( ))
     WRITE_ACCEPTANCE_TESTS[Write Acceptance Tests]
+    COMPILE_TESTS[Compile Tests]
+    START_SYSTEM[Start System]
+    GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
+    VERIFY_TESTS_PASS_ACCEPTANCE["Verify Acceptance Tests Pass — see § verify-tests-pass<br/>suite = acceptance"]
+    VERIFY_TESTS_FAIL_ACCEPTANCE["Verify Acceptance Tests Fail — see § verify-tests-fail<br/>suite = acceptance"]
+    UNKNOWN_EXPECTED_TEST_RESULT((⚡))
+    COMMIT_TEST_CODE["Commit Test Code — see § commit<br/>category = test-commit<br/>layer = ACCEPTANCE TESTS"]
+    WAV_AT_CODE_END(( ))
 
     WRITE_ACCEPTANCE_TESTS --> COMPILE_TESTS
     COMPILE_TESTS --> START_SYSTEM
@@ -339,7 +339,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    IMPLEMENT_TEST_LAYER[Implement DSL Layer — see § implement-test-layer]
+    IMPLEMENT_TEST_LAYER["Implement DSL Layer — see § implement-test-layer<br/>action = implement-dsl<br/>layer = DSL<br/>task-name = implement-dsl"]
     IMPL_DSL_END(( ))
 
     IMPLEMENT_TEST_LAYER --> IMPL_DSL_END
@@ -349,41 +349,41 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    IMPLEMENT_TEST_LAYER[Implement System Driver Adapter Layer — see § implement-test-layer]
+    IMPLEMENT_TEST_LAYER["Implement System Driver Adapter Layer — see § implement-test-layer<br/>action = implement-system-driver-adapters<br/>layer = SYSTEM DRIVER ADAPTERS<br/>task-name = implement-system-driver-adapters"]
     IMPL_SYS_DRIVER_END(( ))
 
     IMPLEMENT_TEST_LAYER --> IMPL_SYS_DRIVER_END
 ```
 
-## Implement and Verify External-System Driver Adapters Contract Tests
+## Implement and Verify External System Driver Adapters Contract Tests
 
 ```mermaid
 flowchart TD
-    BUILD_SYSTEM_AFTER_DRIVER[Build System]
-    BUILD_SYSTEM_AFTER_SIMULATOR[Build System]
-    BUILD_SYSTEM_AFTER_STUBS[Build System]
-    CONTRACT_REAL_UPSTREAM_GAP_HALT((⚡))
-    GATE_CONTRACT_REAL_OUTCOME{Contract-Real Outcome?}
-    GATE_CONTRACT_REAL_RED_KIND{Real Kind?}
-    GATE_CONTRACT_STUB_OUTCOME{Contract-Stub Outcome?}
+    WRITE_CONTRACT_TESTS["Write External System Contract Tests<br/>expected-test-result = success"]
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
+    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
+    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External System Driver Adapters]
     IDENTIFY_EXTERNAL_SYSTEM[[Identify External System]]
-    IMPLEMENT_AND_VERIFY_DSL[Implement and Verify DSL]
-    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External-System Driver Adapters]
-    IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR[Implement External-System Real Simulator]
-    IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External-System Stubs]
-    IMPL_EXT_DRIVER_CT_END(( ))
-    PROBE_CONTRACT_REAL[Probe Contract Tests Against the Real System — see § run-tests]
-    PROBE_CONTRACT_STUB[Probe Contract Tests Against the Stub — see § run-tests]
+    BUILD_SYSTEM_AFTER_DRIVER[Build System]
     START_SYSTEM_AFTER_DRIVER[Start System — see § start-system-restart]
-    START_SYSTEM_AFTER_SIMULATOR[Start System — see § start-system-restart]
-    START_SYSTEM_AFTER_STUBS[Start System — see § start-system-restart]
+    PROBE_CONTRACT_REAL["Probe External System Contract Tests Against the Real System — see § run-tests<br/>suite = contract-real"]
+    GATE_CONTRACT_REAL_OUTCOME{Contract-Real Outcome?}
     START_SYSTEM_BEFORE_STUB_PROBE[Start System]
+    GATE_CONTRACT_REAL_RED_KIND{Real Kind?}
     TESTS_INFRA_HALT((⚡))
     UNKNOWN_TESTS_OUTCOME((⚡))
-    VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR[Verify Contract Tests Pass Against the Real Simulator — see § verify-tests-pass]
-    VERIFY_TESTS_PASS_CONTRACT_STUB[Verify Contract Tests Pass Against the Stub — see § verify-tests-pass]
-    WRITE_CONTRACT_TESTS[Write Contract Tests]
+    PROBE_CONTRACT_STUB["Probe External System Contract Tests Against the Stub — see § run-tests<br/>suite = contract-stub"]
+    IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR[Implement External System Real Simulator]
+    CONTRACT_REAL_UPSTREAM_GAP_HALT((⚡))
+    GATE_CONTRACT_STUB_OUTCOME{Contract-Stub Outcome?}
+    BUILD_SYSTEM_AFTER_SIMULATOR[Build System]
+    IMPL_EXT_DRIVER_CT_END(( ))
+    IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External System Stubs]
+    START_SYSTEM_AFTER_SIMULATOR[Start System — see § start-system-restart]
+    BUILD_SYSTEM_AFTER_STUBS[Build System]
+    VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR["Verify External System Contract Tests Pass Against the Real Simulator — see § verify-tests-pass<br/>suite = contract-real"]
+    START_SYSTEM_AFTER_STUBS[Start System — see § start-system-restart]
+    VERIFY_TESTS_PASS_CONTRACT_STUB["Verify External System Contract Tests Pass Against the Stub — see § verify-tests-pass<br/>suite = contract-stub"]
 
     WRITE_CONTRACT_TESTS --> GATE_DSL_PORT_CHANGED
     GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
@@ -426,12 +426,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    BUILD_SYSTEM[Build the System — see § build-system]
-    COMMIT_SYSTEM[Commit System Changes — see § commit]
-    IMPL_AND_VERIFY_SYSTEM_END(( ))
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
+    BUILD_SYSTEM[Build the System — see § build-system]
     START_SYSTEM[Start the System — see § start-system-restart]
     VERIFY_TESTS_PASS[Verify Tests Pass]
+    COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = prod-commit<br/>layer = SYSTEM"]
+    IMPL_AND_VERIFY_SYSTEM_END(( ))
 
     RUN_ACTION --> BUILD_SYSTEM
     BUILD_SYSTEM --> START_SYSTEM
@@ -444,12 +444,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMMIT_TESTS[Commit Test Changes — see § commit]
-    COMPILE_TESTS[Compile Tests]
-    REFACTOR_AND_VERIFY_TESTS_END(( ))
     REFACTOR_TESTS[Refactor Tests]
+    COMPILE_TESTS[Compile Tests]
     START_SYSTEM[Start System]
-    VERIFY_TESTS_PASS[Verify Tests Pass]
+    VERIFY_TESTS_PASS["Verify Tests Pass<br/>suite = <br/>test-names = "]
+    COMMIT_TESTS["Commit Test Changes — see § commit<br/>category = test-commit<br/>layer = TESTS"]
+    REFACTOR_AND_VERIFY_TESTS_END(( ))
 
     REFACTOR_TESTS --> COMPILE_TESTS
     COMPILE_TESTS --> START_SYSTEM
@@ -462,15 +462,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    COMMIT_LAYER[Commit Layer Changes — see § commit]
-    COMPILE_TESTS[Compile Tests]
-    GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
-    IMPLEMENT_TEST_LAYER_END(( ))
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
+    COMPILE_TESTS[Compile Tests]
     START_SYSTEM[Start System]
-    UNKNOWN_EXPECTED_TEST_RESULT((⚡))
-    VERIFY_TESTS_FAIL_FILTERED[Verify Tests Fail]
+    GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
     VERIFY_TESTS_PASS_FILTERED[Verify Tests Pass]
+    VERIFY_TESTS_FAIL_FILTERED[Verify Tests Fail]
+    COMMIT_LAYER["Commit Layer Changes — see § commit<br/>category = test-commit"]
+    UNKNOWN_EXPECTED_TEST_RESULT((⚡))
+    IMPLEMENT_TEST_LAYER_END(( ))
 
     RUN_ACTION --> COMPILE_TESTS
     COMPILE_TESTS --> START_SYSTEM
@@ -491,13 +491,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    FIX_LOOP_EXHAUSTED((⚡))
-    FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
-    GATE_TESTS_OUTCOME{Test Outcome?}
     RUN_TESTS[Run Tests]
+    GATE_TESTS_OUTCOME{Test Outcome?}
+    VERIFY_PASS_END(( ))
+    FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
     TESTS_INFRA_HALT((⚡))
     UNKNOWN_TESTS_OUTCOME((⚡))
-    VERIFY_PASS_END(( ))
+    FIX_LOOP_EXHAUSTED((⚡))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
     GATE_TESTS_OUTCOME -- Pass --> VERIFY_PASS_END
@@ -514,13 +514,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    FIX_LOOP_EXHAUSTED((⚡))
-    FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
-    GATE_TESTS_OUTCOME{Test Outcome?}
     RUN_TESTS[Run Tests]
+    GATE_TESTS_OUTCOME{Test Outcome?}
+    FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
+    VERIFY_FAIL_END(( ))
     TESTS_INFRA_HALT((⚡))
     UNKNOWN_TESTS_OUTCOME((⚡))
-    VERIFY_FAIL_END(( ))
+    FIX_LOOP_EXHAUSTED((⚡))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
     GATE_TESTS_OUTCOME -- Pass --> FIX_UNEXPECTED_PASSING_TESTS
@@ -537,26 +537,26 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-test-writer<br/>category = test-agent<br/>task-name = write-acceptance-tests"]
     WAT_END(( ))
 
     EXECUTE_AGENT --> WAT_END
-    WRITE-ACCEPTANCE-TESTS_OUTPUTS[/dsl-port-changed: bool, test-names?: string-list, scope-exception-files?: string-list, scope-exception-reason?: string/]
+    WRITE-ACCEPTANCE-TESTS_OUTPUTS[/"dsl-port-changed: bool<br/>test-names?: string-list<br/>scope-exception-files?: string-list<br/>scope-exception-reason?: string"/]
     WAT_END -. produces .-> WRITE-ACCEPTANCE-TESTS_OUTPUTS
 
     classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
     class WRITE-ACCEPTANCE-TESTS_OUTPUTS outputNode
 ```
 
-## Write Contract Tests
+## Write External System Contract Tests
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = contract-test-writer<br/>category = test-agent<br/>task-name = write-contract-tests"]
     WCT_END(( ))
 
     EXECUTE_AGENT --> WCT_END
-    WRITE-CONTRACT-TESTS_OUTPUTS[/dsl-port-changed: bool, test-names?: string-list, scope-exception-files?: string-list, scope-exception-reason?: string/]
+    WRITE-CONTRACT-TESTS_OUTPUTS[/"dsl-port-changed: bool<br/>test-names?: string-list<br/>scope-exception-files?: string-list<br/>scope-exception-reason?: string"/]
     WCT_END -. produces .-> WRITE-CONTRACT-TESTS_OUTPUTS
 
     classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
@@ -567,11 +567,11 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = dsl-implementer<br/>category = prod-agent<br/>task-name = implement-dsl"]
     IMPL_DSL_END(( ))
 
     EXECUTE_AGENT --> IMPL_DSL_END
-    IMPLEMENT-DSL_OUTPUTS[/system-driver-port-changed: bool, external-driver-port-changed: bool, scope-exception-files?: string-list, scope-exception-reason?: string/]
+    IMPLEMENT-DSL_OUTPUTS[/"system-driver-port-changed: bool<br/>external-driver-port-changed: bool<br/>scope-exception-files?: string-list<br/>scope-exception-reason?: string"/]
     IMPL_DSL_END -. produces .-> IMPLEMENT-DSL_OUTPUTS
 
     classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
@@ -582,7 +582,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-implementer<br/>category = prod-agent<br/>task-name = implement-system"]
     IMPL_SYS_END(( ))
 
     EXECUTE_AGENT --> IMPL_SYS_END
@@ -592,27 +592,27 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-implementer<br/>category = prod-agent<br/>task-name = implement-system-driver-adapters"]
     IMPL_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> IMPL_SYS_DA_END
 ```
 
-## Implement External-System Driver Adapters
+## Implement External System Driver Adapters
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-driver-adapter-implementer<br/>category = prod-agent<br/>task-name = implement-external-system-driver-adapters"]
     IMPL_EXT_DA_END(( ))
 
     EXECUTE_AGENT --> IMPL_EXT_DA_END
 ```
 
-## Implement External-System Stubs
+## Implement External System Stubs
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-stub-implementer<br/>category = prod-agent<br/>task-name = implement-external-system-stubs"]
     IMPL_STUBS_END(( ))
 
     EXECUTE_AGENT --> IMPL_STUBS_END
@@ -622,7 +622,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = unexpected-passing-tests-fixer<br/>category = human<br/>task-name = fix-unexpected-passing-tests"]
     FIX_PASS_END(( ))
 
     EXECUTE_AGENT --> FIX_PASS_END
@@ -632,7 +632,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = unexpected-failing-tests-fixer<br/>category = human<br/>task-name = fix-unexpected-failing-tests"]
     FIX_FAIL_END(( ))
 
     EXECUTE_AGENT --> FIX_FAIL_END
@@ -642,7 +642,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = test-refactorer<br/>category = test-agent<br/>task-name = refactor-tests"]
     REFACTOR_TESTS_END(( ))
 
     EXECUTE_AGENT --> REFACTOR_TESTS_END
@@ -652,7 +652,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-refactorer<br/>category = prod-agent<br/>task-name = refactor-system"]
     REFACTOR_SYS_END(( ))
 
     EXECUTE_AGENT --> REFACTOR_SYS_END
@@ -662,7 +662,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-criteria-refiner<br/>category = human<br/>task-name = refine-acceptance-criteria"]
     REFINE_AC_END(( ))
 
     EXECUTE_AGENT --> REFINE_AC_END
@@ -672,8 +672,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test compile"]
     COMPILE_TESTS_END(( ))
-    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
 
     EXECUTE_COMMAND --> COMPILE_TESTS_END
 ```
@@ -682,8 +682,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system build"]
     BUILD_SYS_END(( ))
-    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
 
     EXECUTE_COMMAND --> BUILD_SYS_END
 ```
@@ -692,7 +692,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system start"]
     START_SYS_END(( ))
 
     EXECUTE_COMMAND --> START_SYS_END
@@ -702,8 +702,8 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked"]
     COMMIT_MID_END(( ))
-    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
 
     EXECUTE_COMMAND --> COMMIT_MID_END
 ```
@@ -712,7 +712,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test run<br/>fix-on-failure = false"]
     RUN_TESTS_END(( ))
 
     EXECUTE_COMMAND --> RUN_TESTS_END
@@ -722,10 +722,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    APPROVE_OK_END(( ))
-    APPROVE_REJECT_END(( ))
     ASK_HUMAN["${question}"]
     GATE_APPROVED{Approval Outcome?}
+    APPROVE_OK_END(( ))
+    APPROVE_REJECT_END(( ))
 
     ASK_HUMAN --> GATE_APPROVED
     GATE_APPROVED -- Approved --> APPROVE_OK_END
@@ -739,22 +739,22 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    AGENT_FIX_EXHAUSTED((⚡))
-    APPROVE_POST[Confirm Approval — see § approve]
     APPROVE_PRE[Request Approval — see § approve]
+    GATE_APPROVED_PRE{Approval Outcome?}
+    SNAPSHOT_WORKING_TREE[["Snapshot working tree (per-phase baseline)"]]
+    EXECUTE_AGENT_REJECTED_END(( ))
+    RUN_AGENT["Run agent ${agent} (task: ${task-name})"]
+    VALIDATE_OUTPUTS_AND_SCOPES[["Validate outputs & scopes"]]
+    GATE_SCOPE_EXCEPTION_REQUESTED{Scope Exception Requested?}
+    STOP_SCOPE_VIOLATION((⚡))
+    GATE_OUTPUTS_AND_SCOPES_VALID{Outputs and Scopes Valid?}
+    APPROVE_POST[Confirm Approval — see § approve]
+    GATE_FIX_ON_FAILURE{Fix on Failure Enabled?}
+    GATE_APPROVED_POST{Approval Outcome?}
+    FIX[Fix the Failure — see § fix]
     EXECUTE_AGENT_END(( ))
     EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡))
-    EXECUTE_AGENT_REJECTED_END(( ))
-    FIX[Fix the Failure — see § fix]
-    GATE_APPROVED_POST{Approval Outcome?}
-    GATE_APPROVED_PRE{Approval Outcome?}
-    GATE_FIX_ON_FAILURE{Fix on Failure Enabled?}
-    GATE_OUTPUTS_AND_SCOPES_VALID{Outputs and Scopes Valid?}
-    GATE_SCOPE_EXCEPTION_REQUESTED{Scope Exception Requested?}
-    RUN_AGENT["Run agent ${agent} (task: ${task-name})"]
-    SNAPSHOT_WORKING_TREE[["Snapshot working tree (per-phase baseline)"]]
-    STOP_SCOPE_VIOLATION((⚡))
-    VALIDATE_OUTPUTS_AND_SCOPES[["Validate outputs & scopes"]]
+    AGENT_FIX_EXHAUSTED((⚡))
 
     APPROVE_PRE --> GATE_APPROVED_PRE
     GATE_APPROVED_PRE -- Approved --> SNAPSHOT_WORKING_TREE
@@ -788,14 +788,14 @@ flowchart TD
 ```mermaid
 flowchart TD
     APPROVE_PRE[Request Approval — see § approve]
-    COMMAND_FIX_EXHAUSTED((⚡))
-    EXECUTE_COMMAND_END(( ))
-    EXECUTE_COMMAND_REJECTED_END(( ))
-    FIX[Fix the Failure — see § fix]
     GATE_APPROVED_PRE{Approval Outcome?}
-    GATE_COMMAND_SUCCEEDED{Command Succeeded?}
-    GATE_FIX_ON_FAILURE{Fix on Failure Enabled?}
     RUN_COMMAND[["Run command ${command}"]]
+    EXECUTE_COMMAND_REJECTED_END(( ))
+    GATE_COMMAND_SUCCEEDED{Command Succeeded?}
+    EXECUTE_COMMAND_END(( ))
+    GATE_FIX_ON_FAILURE{Fix on Failure Enabled?}
+    FIX[Fix the Failure — see § fix]
+    COMMAND_FIX_EXHAUSTED((⚡))
 
     APPROVE_PRE --> GATE_APPROVED_PRE
     GATE_APPROVED_PRE -- Approved --> RUN_COMMAND
@@ -818,11 +818,11 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    APPROVE_PRE[Request Approval — see § approve]
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
-    FIX_END(( ))
-    FIX_REJECTED_END((⚡))
+    APPROVE_PRE["Request Approval — see § approve<br/>category = human"]
     GATE_APPROVED_PRE{Approval Outcome?}
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>category = human<br/>fix-on-failure = false"]
+    FIX_REJECTED_END((⚡))
+    FIX_END(( ))
 
     APPROVE_PRE --> GATE_APPROVED_PRE
     GATE_APPROVED_PRE -- Approved --> EXECUTE_AGENT
@@ -833,23 +833,23 @@ flowchart TD
     class FIX_REJECTED_END errorEndNode
 ```
 
-## Implement External-System Real Simulator
+## Implement External System Real Simulator
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-real-simulator-implementer<br/>category = prod-agent<br/>task-name = implement-external-system-real-simulator"]
     IMPL_REAL_SIM_END(( ))
 
     EXECUTE_AGENT --> IMPL_REAL_SIM_END
 ```
 
-## Redesign External-System Structure
+## Redesign External System Structure
 
 ```mermaid
 flowchart TD
-    IMPLEMENT_AND_VERIFY_SYSTEM[Update System — see § implement-and-verify-system]
+    UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External System Driver Adapters]
+    IMPLEMENT_AND_VERIFY_SYSTEM["Update System — see § implement-and-verify-system<br/>action = update-system<br/>suite = <br/>task-name = update-system<br/>test-names = "]
     REDESIGN_EXTERNAL_END(( ))
-    UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External-System Driver Adapters]
 
     UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REDESIGN_EXTERNAL_END
@@ -865,17 +865,17 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND[Dispatch the Command — see § execute-command]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system start --restart"]
     START_SYS_RESTART_END(( ))
 
     EXECUTE_COMMAND --> START_SYS_RESTART_END
 ```
 
-## Update External-System Driver Adapters
+## Update External System Driver Adapters
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-driver-adapter-updater<br/>category = prod-agent<br/>task-name = update-external-system-driver-adapters"]
     UPDATE_EXT_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_EXT_DA_END
@@ -885,7 +885,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-updater<br/>category = prod-agent<br/>task-name = update-system"]
     UPDATE_SYS_END(( ))
 
     EXECUTE_AGENT --> UPDATE_SYS_END
@@ -895,7 +895,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT[Dispatch the Agent — see § execute-agent]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-updater<br/>category = prod-agent<br/>task-name = update-system-driver-adapters"]
     UPDATE_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_SYS_DA_END

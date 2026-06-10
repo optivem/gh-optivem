@@ -129,8 +129,9 @@ processes:
 	got := Render(eng)
 
 	for _, want := range []string{
-		// Renderer formats each spec as "key[?]: type", joined with ", ".
-		"SAMPLE_FLOW_OUTPUTS[/alpha: bool, beta?: string-list/]",
+		// Renderer formats each spec as "key[?]: type", one per line via
+		// <br/>; the <br/> forces mermaidLabel to quote the whole label.
+		`SAMPLE_FLOW_OUTPUTS[/"alpha: bool<br/>beta?: string-list"/]`,
 		"SAMPLE_END -. produces .-> SAMPLE_FLOW_OUTPUTS",
 		"classDef outputNode",
 		"class SAMPLE_FLOW_OUTPUTS outputNode",

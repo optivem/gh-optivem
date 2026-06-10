@@ -192,20 +192,62 @@ func orderedProcessNames(eng *statemachine.Engine) []string {
 	return append(out, extras...)
 }
 
+// flowOrderedNodeIDs returns process node IDs in breadth-first flow order
+// from process.Start, following process.Edges in declared order. Nodes
+// unreachable from Start (none expected in a well-formed process) are
+// appended in lexical order so output stays total and deterministic. The
+// edge list is the only order-preserving structure on Process (Nodes is a
+// map), so this is what reconstructs a readable top-down node listing.
+func flowOrderedNodeIDs(process *statemachine.Process) []string {
+	visited := make(map[string]bool, len(process.Nodes))
+	order := make([]string, 0, len(process.Nodes))
+	queue := make([]string, 0, len(process.Nodes))
+	if _, ok := process.Nodes[process.Start]; ok {
+		queue = append(queue, process.Start)
+	}
+	for len(queue) > 0 {
+		id := queue[0]
+		queue = queue[1:]
+		if visited[id] {
+			continue
+		}
+		if _, ok := process.Nodes[id]; !ok {
+			continue
+		}
+		visited[id] = true
+		order = append(order, id)
+		for _, e := range process.Edges {
+			if e.From == id && !visited[e.To] {
+				queue = append(queue, e.To)
+			}
+		}
+	}
+	rest := make([]string, 0)
+	for id := range process.Nodes {
+		if !visited[id] {
+			rest = append(rest, id)
+		}
+	}
+	sort.Strings(rest)
+	return append(order, rest...)
+}
+
 func writeProcessSection(b *strings.Builder, eng *statemachine.Engine, process *statemachine.Process) {
 	fmt.Fprintf(b, "## %s\n\n", process.Name)
 	b.WriteString("```mermaid\nflowchart TD\n")
 
-	// Stable node order: walk process.Nodes in YAML insertion order.
-	// statemachine.Process.Nodes is a map, so we sort by ID for
-	// deterministic output. (The YAML source order is lost at parse
-	// time; alphabetical is the next-best stable choice, and node
-	// rendering order does not affect Mermaid layout.)
-	ids := make([]string, 0, len(process.Nodes))
-	for id := range process.Nodes {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
+	// Node render order: flow order (breadth-first from Start along the
+	// declared edges), not alphabetical. statemachine.Process.Nodes is a
+	// map and the YAML source order is lost at parse time, but the edge
+	// list preserves declaration order — so a BFS reconstructs a stable,
+	// readable top-down walk where each gateway's branch targets appear in
+	// the order the edges were written (positive branch first, catch-all
+	// last; see edgeLabel / the positive-first convention note). This makes
+	// a fork like "Expected Test Result?" list its Pass node before Fail
+	// before the ⚡ catch-all, matching the reading order. Mermaid's TD
+	// layout still uses this as a heuristic, not a guarantee, so it nudges
+	// rather than pins left/right placement.
+	ids := flowOrderedNodeIDs(process)
 
 	// Partition nodes into ungrouped and a tree of nested groups
 	// keyed by slash-delimited `group:` paths (e.g. "structural" or
@@ -256,7 +298,12 @@ func writeOutputsBlock(b *strings.Builder, process *statemachine.Process) {
 	for _, o := range process.Outputs {
 		parts = append(parts, outputSpecLabel(o))
 	}
-	label := strings.Join(parts, ", ")
+	// One output per line (<br/> inside the data-object label) rather than a
+	// single comma-joined run — long output contracts (e.g. the writing-agent
+	// MIDs' four-key lists) are far easier to scan stacked, and it matches the
+	// per-line rendering of call-activity params. The <br/> forces mermaidLabel
+	// to quote the label.
+	label := strings.Join(parts, "<br/>")
 	fmt.Fprintf(b, "    %s[/%s/]\n", outputsNodeID, mermaidLabel(label))
 
 	endIDs := make([]string, 0)
@@ -439,14 +486,59 @@ func writeNode(b *strings.Builder, eng *statemachine.Engine, n statemachine.Node
 		} else {
 			full = fmt.Sprintf("%s — see § %s", label, target)
 		}
+		if lines := callActivityParamLines(n); len(lines) > 0 {
+			full = full + "<br/>" + strings.Join(lines, "<br/>")
+		}
 		fmt.Fprintf(b, "    %s[%s]\n", n.ID, mermaidLabel(full))
 	default:
 		fmt.Fprintf(b, "    %s[%s]\n", n.ID, mermaidLabel(label))
 	}
 }
 
+// callActivityParamLines renders a call-activity's pinned LITERAL params
+// as "key = value" lines for display under the node label. Only literals
+// are shown: `${…}` values are caller-forwarded variables (noise on the
+// diagram and identical across call sites), so they're skipped. This is
+// what makes otherwise-identical thin wrappers legible — e.g. the
+// write-and-verify-acceptance-tests-{fail,pass} wrappers differ only by a
+// pinned `expected-test-result`, and surfacing it stops the two diagrams
+// from looking like the same picture. Keys are sorted for deterministic
+// output (Params is a map). Non-call-activity nodes carry no params, so
+// callers gate on node kind.
+func callActivityParamLines(n statemachine.Node) []string {
+	if len(n.Raw.Params) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(n.Raw.Params))
+	for k := range n.Raw.Params {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	lines := make([]string, 0, len(keys))
+	for _, k := range keys {
+		v := n.Raw.Params[k]
+		if strings.Contains(v, "${") {
+			continue
+		}
+		lines = append(lines, k+" = "+v)
+	}
+	return lines
+}
+
 // writeEdge emits one Mermaid edge line. Edges with a `when:` predicate
 // get a labelled arrow; the label comes from translateWhen.
+//
+// Edges render in YAML declaration order (Process.Edges preserves it),
+// which both the runtime (first matching predicate wins) and this diagram
+// rely on. The authoring convention is positive branch first: for a
+// boolean gateway declare the `== true` (Yes) edge before `== false` (No),
+// and always leave the unguarded catch-all edge (the ⚡ error / fallback)
+// LAST — the runtime treats it as the always-true default, so reordering it
+// earlier would mis-route. Multi-value gateways follow the same "catch-all
+// last" rule. This keeps every fork reading Yes→No (and Pass→Fail→⚡) in
+// both the edge list and, via flowOrderedNodeIDs, the node listing. Note:
+// Mermaid's flowchart TD treats declaration order as a layout heuristic, so
+// it nudges Yes left / No right rather than guaranteeing it.
 func writeEdge(b *strings.Builder, e statemachine.Edge) {
 	if e.Predicate == "" {
 		fmt.Fprintf(b, "    %s --> %s\n", e.From, e.To)
