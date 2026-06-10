@@ -25,10 +25,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/internal/parse"
@@ -715,14 +717,86 @@ func (t *Tracker) lookupStatusOption(ctx context.Context, optionName string) (fi
 type execGh struct{}
 
 func (execGh) Run(ctx context.Context, args ...string) ([]byte, error) {
+	return ghWithRetry(args, func() {
+		// 1-2.5s jittered backoff so concurrent retriers don't re-collide,
+		// mirroring the one-shot 401-retry in internal/config/token_auth.go.
+		time.Sleep(time.Second + time.Duration(rand.IntN(1501))*time.Millisecond)
+	}, func() ([]byte, string, error) {
+		return runGhOnce(ctx, args...)
+	})
+}
+
+// runGhOnce shells out to `gh` once, returning stdout, the trimmed stderr
+// (empty unless the process exited non-zero), and the error.
+func runGhOnce(ctx context.Context, args ...string) ([]byte, string, error) {
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	out, err := cmd.Output()
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			return nil, fmt.Errorf("gh %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(ee.Stderr)))
-		}
-		return nil, fmt.Errorf("gh %s: %w", strings.Join(args, " "), err)
+	if err == nil {
+		return out, "", nil
 	}
-	return out, nil
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return nil, strings.TrimSpace(string(ee.Stderr)), err
+	}
+	return nil, "", err
+}
+
+// is401 reports whether a gh CLI failure looks like an HTTP 401 (the token
+// read was rejected). gh writes "Requires authentication (HTTP 401)" to
+// stderr for this case.
+func is401(stderr string) bool {
+	return strings.Contains(stderr, "HTTP 401") ||
+		strings.Contains(stderr, "Requires authentication")
+}
+
+// ghCmdSummary renders the leading non-flag verbs of a gh argv (e.g.
+// "api graphql", "issue view 123") and stops at the first flag. It exists so
+// the persistent-401 message can name the failing command without dumping the
+// `-f query=<...>` GraphQL payload — the raw-argv dump is exactly the wall of
+// text that made the original MARK_IN_PROGRESS crash unreadable.
+func ghCmdSummary(args []string) string {
+	var verbs []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			break
+		}
+		verbs = append(verbs, a)
+	}
+	if len(verbs) == 0 {
+		return "gh"
+	}
+	return strings.Join(verbs, " ")
+}
+
+// ghWithRetry runs do() and, when it fails with a transient-looking 401,
+// retries it exactly once after sleep(). A 401 from gh is usually a flaky
+// token read (keyring momentarily unavailable, or per-token throttling under
+// concurrent matrix jobs) rather than a genuinely missing/expired token — the
+// token is valid but the read missed. One retry makes that vanishingly rare.
+// A 401 that survives the retry is reported with an actionable message
+// instead of the raw GraphQL argv, so the operator sees how to fix it rather
+// than a wall of query text. sleep is injected so tests don't actually wait.
+func ghWithRetry(args []string, sleep func(), do func() ([]byte, string, error)) ([]byte, error) {
+	out, stderr, err := do()
+	if err == nil {
+		return out, nil
+	}
+	if is401(stderr) {
+		sleep()
+		out, stderr, err = do()
+		if err == nil {
+			return out, nil
+		}
+		if is401(stderr) {
+			return nil, fmt.Errorf("gh %s: GitHub auth unavailable (HTTP 401) after one retry — "+
+				"the gh token read keeps failing. The token may be expired/revoked, or the OS "+
+				"keyring is transiently unavailable.\n    "+
+				"Fix: gh auth status   (verify), then if needed: gh auth refresh -h github.com -s project   (or gh auth login)",
+				ghCmdSummary(args))
+		}
+	}
+	if stderr != "" {
+		return nil, fmt.Errorf("gh %s: %w: %s", strings.Join(args, " "), err, stderr)
+	}
+	return nil, fmt.Errorf("gh %s: %w", strings.Join(args, " "), err)
 }

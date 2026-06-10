@@ -580,6 +580,91 @@ func TestEncodeDecodeHandle_RoundTrip(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// execGh retry / 401-classification (the prevention for the transient
+// keyring 401 that crashed a rehearsal at MARK_IN_PROGRESS)
+// ---------------------------------------------------------------------------
+
+func TestIs401(t *testing.T) {
+	cases := map[string]bool{
+		"gh: Requires authentication (HTTP 401)": true,
+		"something HTTP 401 something":           true,
+		"HTTP 403 forbidden":                     false,
+		"GraphQL: Could not resolve to a node":   false,
+		"":                                       false,
+	}
+	for stderr, want := range cases {
+		if got := is401(stderr); got != want {
+			t.Errorf("is401(%q) = %v, want %v", stderr, got, want)
+		}
+	}
+}
+
+func TestGhWithRetry_Transient401ThenSuccess(t *testing.T) {
+	calls := 0
+	slept := 0
+	out, err := ghWithRetry([]string{"api", "graphql"}, func() { slept++ }, func() ([]byte, string, error) {
+		calls++
+		if calls == 1 {
+			return nil, "gh: Requires authentication (HTTP 401)", errors.New("exit status 1")
+		}
+		return []byte(`{"ok":true}`), "", nil
+	})
+	if err != nil {
+		t.Fatalf("expected success after retry, got %v", err)
+	}
+	if string(out) != `{"ok":true}` {
+		t.Errorf("out = %q, want the second-attempt payload", out)
+	}
+	if calls != 2 {
+		t.Errorf("calls = %d, want 2 (one 401 + one retry)", calls)
+	}
+	if slept != 1 {
+		t.Errorf("slept = %d, want exactly one backoff before the retry", slept)
+	}
+}
+
+func TestGhWithRetry_Persistent401IsActionable(t *testing.T) {
+	calls := 0
+	_, err := ghWithRetry([]string{"api", "graphql", "-f", "query=..."}, func() {}, func() ([]byte, string, error) {
+		calls++
+		return nil, "gh: Requires authentication (HTTP 401)", errors.New("exit status 1")
+	})
+	if err == nil {
+		t.Fatal("expected an error when 401 survives the retry")
+	}
+	if calls != 2 {
+		t.Errorf("calls = %d, want 2 (initial + one retry, then give up)", calls)
+	}
+	msg := err.Error()
+	// Actionable guidance, not the raw GraphQL argv dump.
+	if !strings.Contains(msg, "gh auth refresh") {
+		t.Errorf("error should tell the operator how to fix it, got: %s", msg)
+	}
+	if strings.Contains(msg, "query=...") {
+		t.Errorf("error should not dump the raw GraphQL query, got: %s", msg)
+	}
+}
+
+func TestGhWithRetry_NonAuthErrorIsNotRetried(t *testing.T) {
+	calls := 0
+	_, err := ghWithRetry([]string{"api", "graphql"}, func() {
+		t.Fatal("must not sleep/retry on a non-401 error")
+	}, func() ([]byte, string, error) {
+		calls++
+		return nil, "GraphQL: Could not resolve to a node", errors.New("exit status 1")
+	})
+	if err == nil {
+		t.Fatal("expected the non-401 error to surface")
+	}
+	if calls != 1 {
+		t.Errorf("calls = %d, want 1 (no retry on non-401)", calls)
+	}
+	if !strings.Contains(err.Error(), "Could not resolve to a node") {
+		t.Errorf("non-401 stderr should be preserved verbatim, got: %s", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
 
