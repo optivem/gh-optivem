@@ -296,8 +296,18 @@ cleanup() {
   if [[ ! -d "$WORKTREE_PATH" ]]; then
     return $rc
   fi
-  echo ""
-  if prompt_yn "Delete worktree $(display_path "$WORKTREE_PATH") and branch $BRANCH?"; then
+  # REHEARSAL_CLEANUP overrides the interactive prompt so unattended callers
+  # (e.g. atdd-rehearsal-loop.sh) never block on the EXIT trap:
+  #   yes → delete worktree+branch without asking
+  #   no  → keep without asking
+  #   ask / unset → prompt (the default, interactive behaviour)
+  local do_delete
+  case "${REHEARSAL_CLEANUP:-ask}" in
+    yes|y) do_delete=0 ;;
+    no|n)  do_delete=1 ;;
+    *)     echo ""; if prompt_yn "Delete worktree $(display_path "$WORKTREE_PATH") and branch $BRANCH?"; then do_delete=0; else do_delete=1; fi ;;
+  esac
+  if [[ $do_delete -eq 0 ]]; then
     git -C "$CONSUMER_ROOT" worktree remove --force "$WORKTREE_PATH" || true
     git -C "$CONSUMER_ROOT" branch -D "$BRANCH" 2>/dev/null || true
     # Drop any stale .git/worktrees/* entries (e.g. if remove --force

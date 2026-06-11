@@ -19,6 +19,20 @@ bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner
 
 Dev-loop ATDD rehearsal (see [Part 1](#part-1--dev-loop-local-gh-optivem-against-existing-shop) for details):
 
+Rehearse several tickets back-to-back, unattended:
+
+```bash
+cd ../shop
+
+# Full corpus (61 65 68 69 70 71 72 76), default java config:
+bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh
+
+# A subset, in the given order:
+bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh 68 69 76
+```
+
+`atdd-rehearsal-loop.sh` runs `atdd-rehearsal.sh` over each ticket serially (`--auto --headless`), auto-deleting each worktree on exit (the per-run `.log` is kept) and **stopping on the first failure**. Pass `--config <yaml>` to switch stacks for the whole run; run with `--help` for all options. To rehearse a single ticket, use `atdd-rehearsal.sh` directly:
+
 For structural change - UI Redesign
 
 **Issue [#61 — Redesigning New Order UI](https://github.com/optivem/shop/issues/61)**:
