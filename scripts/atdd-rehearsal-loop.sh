@@ -36,12 +36,19 @@ set -euo pipefail
 #   # Override the config for the full default corpus:
 #   bash atdd-rehearsal-loop.sh --config gh-optivem-multitier-java.yaml
 #
+#   # Keep the worktree of a failed run for inspection (delete passing ones):
+#   KEEP_WORKTREES=on-failure bash atdd-rehearsal-loop.sh
+#
+#   # Keep every worktree, pass or fail:
+#   KEEP_WORKTREES=always bash atdd-rehearsal-loop.sh 68 69
+#
 # Autonomous by contract:
 #   - Every rehearsal is invoked with --auto --headless (fully unattended).
-#   - REHEARSAL_CLEANUP=yes is exported so each rehearsal deletes its worktree
-#     + branch on exit WITHOUT prompting. The per-run .log file is always kept
-#     (atdd-rehearsal.sh writes it as a sibling of the worktree), so a torn-down
-#     run still leaves a postmortem record under <academy>/worktrees/.
+#   - REHEARSAL_CLEANUP is set per the KEEP_WORKTREES policy (see LOOP CONFIG)
+#     so each rehearsal handles its worktree on exit WITHOUT prompting. The
+#     per-run .log file is ALWAYS kept (atdd-rehearsal.sh writes it as a sibling
+#     of the worktree), so even a deleted run leaves a postmortem record under
+#     <academy>/worktrees/.
 #   - stdin is redirected from /dev/null per run so no stray read can block.
 #
 # Failure policy: STOP on the first ticket whose rehearsal exits non-zero. The
@@ -50,6 +57,17 @@ set -euo pipefail
 
 # === LOOP CONFIG === (edit these for your setup)
 DEFAULT_CONFIG="gh-optivem-monolith-java.yaml"
+# KEEP_WORKTREES — what to do with each rehearsal worktree+branch after its run.
+# The per-run .log file is ALWAYS kept regardless; this only controls the
+# worktree (and its branch):
+#   never       delete every worktree, pass or fail.            [default]
+#   on-failure  keep only a FAILED run's worktree (for inspection); delete the
+#               worktrees of runs that passed. Since the loop stops on the first
+#               failure, this leaves exactly the broken one behind.
+#   always      keep every worktree+branch, pass or fail.
+# Env-overridable without editing the file, e.g.:
+#   KEEP_WORKTREES=on-failure bash atdd-rehearsal-loop.sh
+KEEP_WORKTREES="${KEEP_WORKTREES:-never}"
 # The CONTRIBUTING.md rehearsal corpus, in document order. Only the leading
 # issue number is data — the loop forwards it to atdd-rehearsal.sh as-is; the
 # trailing comment (title · clickable issue URL · what the story exercises) is
@@ -103,7 +121,7 @@ TICKETS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
-      sed -n '9,49p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '9,56p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -c|--config)
@@ -129,9 +147,21 @@ if [[ ! -x "$REHEARSAL" && ! -f "$REHEARSAL" ]]; then
   exit 2
 fi
 
+# Map the human-facing KEEP_WORKTREES policy to the REHEARSAL_CLEANUP value
+# atdd-rehearsal.sh understands (yes = delete, no = keep, on-success = delete
+# only when the run passed).
+case "$KEEP_WORKTREES" in
+  never)      CLEANUP_MODE="yes" ;;
+  on-failure) CLEANUP_MODE="on-success" ;;
+  always)     CLEANUP_MODE="no" ;;
+  *)
+    echo "ERROR: KEEP_WORKTREES must be never|on-failure|always (got: $KEEP_WORKTREES)" >&2
+    exit 2 ;;
+esac
+
 log "Tickets: ${TICKETS[*]}"
 log "Config:  $CONFIG"
-log "Mode:    --auto --headless, auto-delete worktrees (logs kept), stop-on-failure"
+log "Mode:    --auto --headless, stop-on-failure, logs kept; worktrees: keep=$KEEP_WORKTREES"
 echo ""
 
 # Each iteration appends "<ticket> <PASS|FAIL>"; printed as a table at the end.
@@ -146,8 +176,8 @@ print_summary() {
 
 for ticket in "${TICKETS[@]}"; do
   log "${C_BOLD}=== Rehearsing #${ticket} ===${C_RESET}"
-  # Auto-delete the worktree, never prompt, never read stdin.
-  if REHEARSAL_CLEANUP=yes bash "$REHEARSAL" "$ticket" \
+  # Cleanup policy per KEEP_WORKTREES; never prompt, never read stdin.
+  if REHEARSAL_CLEANUP="$CLEANUP_MODE" bash "$REHEARSAL" "$ticket" \
         --config "$CONFIG" --auto --headless </dev/null; then
     RESULTS+=("#${ticket}  PASS")
     log "#${ticket} PASS"
