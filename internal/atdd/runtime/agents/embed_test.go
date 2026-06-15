@@ -71,7 +71,7 @@ func TestLoadTuning_AcceptanceTestWriter(t *testing.T) {
 	// doesn't silently drop the per-agent tuning back to session
 	// defaults (Opus + max effort) — which would re-introduce the cost
 	// spike the frontmatter was added to fix.
-	got, err := LoadTuning("acceptance-test-writer")
+	got, err := DefaultAgentSet().LoadTuning("acceptance-test-writer")
 	if err != nil {
 		t.Fatalf("LoadTuning: %v", err)
 	}
@@ -89,9 +89,9 @@ func TestLoadTuning_EveryAgentDeclaresTuning(t *testing.T) {
 	// silently inherit the operator's session default (typically Opus +
 	// max) — this test catches that at build time instead of at the
 	// first surprising bill.
-	for _, name := range Names() {
+	for _, name := range DefaultAgentSet().Names() {
 		t.Run(name, func(t *testing.T) {
-			tuning, err := LoadTuning(name)
+			tuning, err := DefaultAgentSet().LoadTuning(name)
 			if err != nil {
 				t.Fatalf("LoadTuning(%q): %v", name, err)
 			}
@@ -164,7 +164,7 @@ func TestFixKindAgentsExist(t *testing.T) {
 		"scope-diff",
 	}
 	names := map[string]bool{}
-	for _, n := range Names() {
+	for _, n := range DefaultAgentSet().Names() {
 		names[n] = true
 	}
 	for _, kind := range wantKinds {
@@ -183,9 +183,9 @@ func TestPrompt_FixerPreamble(t *testing.T) {
 	// re-validates after you exit"). Walking Names() keeps the assertion
 	// honest as agents are added: a new `*-fixer` is covered for free, and
 	// a non-fixer that accidentally grew the chunk fails here.
-	for _, name := range Names() {
+	for _, name := range DefaultAgentSet().Names() {
 		t.Run(name, func(t *testing.T) {
-			body, err := Prompt(name)
+			body, err := DefaultAgentSet().Prompt(name)
 			if err != nil {
 				t.Fatalf("Prompt: %v", err)
 			}
@@ -203,9 +203,9 @@ func TestPrompt_StripsFrontmatter(t *testing.T) {
 	// would confuse the agent (and waste tokens). Walk every embedded
 	// agent so a future prompt that adopts frontmatter is covered for
 	// free.
-	for _, name := range Names() {
+	for _, name := range DefaultAgentSet().Names() {
 		t.Run(name, func(t *testing.T) {
-			body, err := Prompt(name)
+			body, err := DefaultAgentSet().Prompt(name)
 			if err != nil {
 				t.Fatalf("Prompt: %v", err)
 			}

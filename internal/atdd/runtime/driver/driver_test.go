@@ -279,7 +279,7 @@ func buildEngineFrom(t *testing.T, opts Options, yamlSrc, nodeID string, cfg *pr
 		t.Fatalf("LoadBytes: %v", err)
 	}
 	agentReg := agents.New()
-	registerAgentDispatchers(agentReg)
+	registerAgentDispatchers(agentReg, nil)
 	eng.AgentFn = agentReg.Lookup
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
@@ -843,7 +843,7 @@ func TestEndToEnd_SubstitutionAndPromptLog(t *testing.T) {
 		t.Fatalf("LoadBytes: %v", err)
 	}
 	agentReg := agents.New()
-	registerAgentDispatchers(agentReg)
+	registerAgentDispatchers(agentReg, nil)
 	eng.AgentFn = agentReg.Lookup
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
@@ -1098,7 +1098,7 @@ func buildEngineFromApproveYAML(t *testing.T, opts Options, yamlSrc string) stat
 		t.Fatalf("LoadBytes: %v", err)
 	}
 	agentReg := agents.New()
-	registerAgentDispatchers(agentReg)
+	registerAgentDispatchers(agentReg, nil)
 	eng.AgentFn = agentReg.Lookup
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)
@@ -1370,7 +1370,7 @@ func buildEngineWithRunStateYAML(t *testing.T, opts Options, cfg *projectconfig.
 		t.Fatalf("LoadBytes: %v", err)
 	}
 	agentReg := agents.New()
-	registerAgentDispatchers(agentReg)
+	registerAgentDispatchers(agentReg, nil)
 	eng.AgentFn = agentReg.Lookup
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind: %v", err)

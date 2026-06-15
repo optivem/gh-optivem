@@ -184,6 +184,16 @@ type Options struct {
 	// zero-valued; clauderun falls back to real execClaude / execGit.
 	ClaudeRunDeps clauderun.Deps
 
+	// AgentSet binds the prompt directory every dispatch resolves agent
+	// bodies, tuning and suffixes from. nil → agents.DefaultAgentSet() (the
+	// built-in ATDD set), applied in withDefaults, so production and existing
+	// tests need not set it. Binding an alternate set here rebinds the agent
+	// layer for the whole run without touching process-flow.yaml — the
+	// agent-axis swap point. Threaded into registerAgentDispatchers (which
+	// names the dispatchers to register), the per-dispatch LoadTuning lookup,
+	// and clauderun.Options.AgentSet.
+	AgentSet *agents.AgentSet
+
 	// Stdout / Stderr are the diagnostic targets. nil → os.Stdout / os.Stderr.
 	// Stdout is the fallback writer when Out is nil (test paths that pre-date
 	// the level-tagged sink architecture); production paths populate Out via
@@ -291,7 +301,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	})
 
 	agentReg := agents.New()
-	registerAgentDispatchers(agentReg)
+	registerAgentDispatchers(agentReg, opts.AgentSet)
 
 	eng.GateFn = gateReg.Lookup
 	eng.ActionFn = actionReg.Lookup
@@ -737,6 +747,9 @@ func (o Options) withDefaults() Options {
 	if o.Out == nil {
 		o.Out = outlog.Default(o.Stdout)
 	}
+	if o.AgentSet == nil {
+		o.AgentSet = agents.DefaultAgentSet()
+	}
 	return o
 }
 
@@ -798,11 +811,14 @@ func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
 // wrapAgentDispatchers, which has access to per-node RawNode metadata
 // (description, agent). Adding a new agent is now: drop an agent
 // definition under internal/assets/runtime/agents/atdd/, recompile.
-func registerAgentDispatchers(r *agents.Registry) {
+func registerAgentDispatchers(r *agents.Registry, set *agents.AgentSet) {
+	if set == nil {
+		set = agents.DefaultAgentSet()
+	}
 	noop := func(ctx *statemachine.Context) statemachine.Outcome {
 		return statemachine.Outcome{}
 	}
-	for _, name := range agents.Names() {
+	for _, name := range set.Names() {
 		r.Register(name, noop)
 	}
 }
@@ -1025,7 +1041,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			}
 			nodeParams[k] = expanded
 		}
-		tuning, err := agents.LoadTuning(agentName)
+		tuning, err := opts.AgentSet.LoadTuning(agentName)
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: load tuning for %q: %w", agentName, err)}
 		}
@@ -1184,6 +1200,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		}
 		cOpts := clauderun.Options{
 			Agent:               agentName,
+			AgentSet:            opts.AgentSet,
 			NodeDescription:     nodeDescription,
 			IssueNum:            issueNum,
 			IssueTitle:          ctx.GetString("issue-title"),

@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	agentsDir             = "runtime/agents/atdd"
+	defaultAgentsDir      = "runtime/agents/atdd"
 	preamblePath          = "runtime/shared/preamble.md"
 	scopePath             = "runtime/shared/scope.md"
 	fixerPreamblePath     = "runtime/shared/fixer-preamble.md"
@@ -49,6 +49,35 @@ func mustReadAsset(path string) string {
 	return strings.TrimRight(string(data), "\n")
 }
 
+// AgentSet binds a concrete agent-prompt directory so an alternate set of
+// prompts can be supplied at load time instead of being fixed at package
+// init. The agent-set root — the embedded directory holding the per-agent
+// `<name>.md` prompt files — is instance state, which lets two sets coexist
+// side by side rather than one global root. Prompt, LoadTuning and Names
+// resolve against this root; the five shared chunks
+// (preamble/scope/fixer-preamble/the two suffixes) stay package-global
+// because they are dispatch-level doctrine and mode concerns every set must
+// honour, not per-set content — so InteractiveSuffix/HeadlessSuffix are
+// methods only for a uniform set-owned API, and return the global chunks
+// regardless of root.
+type AgentSet struct {
+	root string
+}
+
+// NewAgentSet binds an alternate agent set rooted at the given embedded
+// directory (a path into assets.FS holding `<name>.md` prompt files) — e.g.
+// a stub/fixture set in tests, or a third party's own prompt directory.
+func NewAgentSet(root string) *AgentSet {
+	return &AgentSet{root: root}
+}
+
+// DefaultAgentSet returns the built-in ATDD agent set — the zero-config
+// default rooted at "runtime/agents/atdd". Production callers use this;
+// only tests (and future alternate processes) bind a different root.
+func DefaultAgentSet() *AgentSet {
+	return NewAgentSet(defaultAgentsDir)
+}
+
 // Tuning is the per-agent claude-CLI tuning declared in the prompt's
 // YAML frontmatter. Both fields are mandatory — every embedded agent
 // must declare its model and effort explicitly so an operator can see
@@ -83,8 +112,8 @@ type Tuning struct {
 // ${name} substitution placeholders matching the YAML's ExpandParams
 // dialect — callers run statemachine.ExpandParams against the live
 // ticket context before passing the result to `claude -p`.
-func Prompt(name string) (string, error) {
-	data, err := assets.FS.ReadFile(agentsDir + "/" + name + ".md")
+func (s *AgentSet) Prompt(name string) (string, error) {
+	data, err := assets.FS.ReadFile(s.root + "/" + name + ".md")
 	if err != nil {
 		return "", fmt.Errorf("agents: no embedded prompt for %q", name)
 	}
@@ -112,7 +141,7 @@ func isFixer(name string) bool {
 // the agents package so the embedded asset has a single owner; the
 // dispatcher decides per-dispatch whether to append it based on
 // Options.Headless.
-func InteractiveSuffix() string { return interactiveSuffix }
+func (s *AgentSet) InteractiveSuffix() string { return interactiveSuffix }
 
 // HeadlessSuffix returns the no-`AskUserQuestion` block the dispatcher
 // appends to headless (`claude -p`) prompts — a headless run has no
@@ -120,7 +149,7 @@ func InteractiveSuffix() string { return interactiveSuffix }
 // proceed rather than ask. Symmetric counterpart to InteractiveSuffix;
 // the dispatcher decides per-dispatch which to append based on
 // Options.Headless.
-func HeadlessSuffix() string { return headlessSuffix }
+func (s *AgentSet) HeadlessSuffix() string { return headlessSuffix }
 
 // LoadTuning returns the model/effort tuning declared in the named
 // agent's prompt frontmatter. Every error path is fatal to dispatch:
@@ -135,8 +164,8 @@ func HeadlessSuffix() string { return headlessSuffix }
 // session default is typically Opus + max, and a forgotten frontmatter
 // on a mechanical-scaffolding agent is exactly the cost-spike class
 // this whole mechanism was added to prevent.
-func LoadTuning(name string) (Tuning, error) {
-	data, err := assets.FS.ReadFile(agentsDir + "/" + name + ".md")
+func (s *AgentSet) LoadTuning(name string) (Tuning, error) {
+	data, err := assets.FS.ReadFile(s.root + "/" + name + ".md")
 	if err != nil {
 		return Tuning{}, fmt.Errorf("agents: no embedded prompt for %q", name)
 	}
@@ -230,14 +259,14 @@ func indexLine(s, target string) int {
 // register a dispatcher per embedded prompt at startup, replacing the v1
 // hand-maintained agentNames slice. Adding a new agent is now: drop the
 // agent definition under internal/assets/runtime/agents/atdd/, recompile.
-func Names() []string {
-	entries, err := assets.FS.ReadDir(agentsDir)
+func (s *AgentSet) Names() []string {
+	entries, err := assets.FS.ReadDir(s.root)
 	if err != nil {
 		// assets.FS is built from a //go:embed directive; ReadDir on a
 		// declared subtree cannot fail in a built binary. Panic surfaces a
 		// build/embed-config bug rather than letting an empty registry
 		// silently bind a YAML referencing valid agents.
-		panic("agents: read embedded " + agentsDir + ": " + err.Error())
+		panic("agents: read embedded " + s.root + ": " + err.Error())
 	}
 	names := make([]string, 0, len(entries))
 	for _, e := range entries {

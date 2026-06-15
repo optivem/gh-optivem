@@ -2144,7 +2144,7 @@ func TestRenderPrompt_NoSnakePlaceholdersInRenderedOutput(t *testing.T) {
 		"system-refactorer",      // refactorer
 	} {
 		t.Run(agent, func(t *testing.T) {
-			if _, err := agents.Prompt(agent); err != nil {
+			if _, err := agents.DefaultAgentSet().Prompt(agent); err != nil {
 				t.Skipf("agent %q not embedded: %v", agent, err)
 			}
 			opts := newOpts()

@@ -53,6 +53,14 @@ type Options struct {
 	// Agent is the subagent name to launch (e.g. "write-acceptance-tests").
 	Agent string
 
+	// AgentSet binds the prompt directory the agent body, tuning and the
+	// two dispatch suffixes are resolved from. nil → agents.DefaultAgentSet()
+	// (the built-in ATDD set), so production and existing tests need not set
+	// it. An alternate set (e.g. a stub/fixture set) is bound here to swap
+	// the agent layer without touching the process flow — the agent-axis
+	// swap point.
+	AgentSet *agents.AgentSet
+
 	// NodeDescription is the YAML node's `name:` — surfaced in the
 	// prompt so the agent has the same context the operator would have read.
 	NodeDescription string
@@ -698,12 +706,16 @@ func writePromptLog(path, prompt string) error {
 // and appends opts.OverrideText (if any) as a trailing block. Public-ish for
 // the test file; not exported.
 func renderPrompt(opts Options) (string, error) {
+	set := opts.AgentSet
+	if set == nil {
+		set = agents.DefaultAgentSet()
+	}
 	var body string
 	if opts.PromptOverride != "" {
 		body = opts.PromptOverride
 	} else {
 		var err error
-		body, err = agents.Prompt(opts.Agent)
+		body, err = set.Prompt(opts.Agent)
 		if err != nil {
 			return "", err
 		}
@@ -868,7 +880,7 @@ func renderPrompt(opts Options) (string, error) {
 	// operator-facing hint only when !Headless keeps headless prompts
 	// uncluttered — the suffix would be a no-op without a REPL.
 	if !opts.Headless {
-		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + agents.InteractiveSuffix() + "\n"
+		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + set.InteractiveSuffix() + "\n"
 	}
 	// Headless dispatches (`claude -p`) have no operator to answer an
 	// AskUserQuestion, so any such call only ever auto-rejects and burns
@@ -876,7 +888,7 @@ func renderPrompt(opts Options) (string, error) {
 	// ambiguity itself and proceed — the symmetric counterpart to the
 	// interactive suffix above.
 	if opts.Headless {
-		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + agents.HeadlessSuffix() + "\n"
+		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + set.HeadlessSuffix() + "\n"
 	}
 	return rendered, nil
 }

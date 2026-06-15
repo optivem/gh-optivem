@@ -58,8 +58,9 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 		t.Fatalf("embedded YAML produced zero flows")
 	}
 
-	for _, name := range agents.Names() {
-		if _, err := agents.Prompt(name); err != nil {
+	set := agents.DefaultAgentSet()
+	for _, name := range set.Names() {
+		if _, err := set.Prompt(name); err != nil {
 			t.Errorf("agents.Prompt(%q) failed: %v", name, err)
 		}
 	}
@@ -80,7 +81,7 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 			if agent == "" || agent == "human" || strings.HasPrefix(agent, "${") {
 				continue
 			}
-			if _, err := agents.Prompt(agent); err != nil {
+			if _, err := set.Prompt(agent); err != nil {
 				t.Errorf("process %s node %s: agent %q has no embedded prompt: %v",
 					processName, nodeID, agent, err)
 			}
@@ -107,7 +108,7 @@ func TestEmbeddedYAML_BindsAfterPhaseD(t *testing.T) {
 	actionReg := actions.New()
 	actions.RegisterAll(actionReg, actions.Deps{})
 	agentReg := agents.New()
-	registerAgentDispatchers(agentReg)
+	registerAgentDispatchers(agentReg, nil)
 	eng.GateFn = gateReg.Lookup
 	eng.ActionFn = actionReg.Lookup
 	eng.AgentFn = agentReg.Lookup
@@ -163,7 +164,7 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	actionReg := actions.New()
 	actions.RegisterAll(actionReg, actions.Deps{})
 	agentReg := agents.New()
-	registerAgentDispatchers(agentReg)
+	registerAgentDispatchers(agentReg, nil)
 	eng.GateFn = gateReg.Lookup
 	eng.ActionFn = actionReg.Lookup
 	eng.AgentFn = agentReg.Lookup

@@ -261,7 +261,7 @@ func TestPhaseScopes_NodeScopeFieldShape(t *testing.T) {
 // process-flow.yaml (plan 20260526-1448 Item 9); reintroducing
 // `scope:` on the prompt body would re-fork the SSoT.
 func TestPromptFrontmatter_NoScopeField(t *testing.T) {
-	for _, name := range agents.Names() {
+	for _, name := range agents.DefaultAgentSet().Names() {
 		fm := readPromptFrontmatter(t, name)
 		if fm == "" {
 			continue
