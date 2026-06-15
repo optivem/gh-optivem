@@ -1,7 +1,5 @@
 # 2026-06-15 05:48:00 UTC — gh optivem modular-monolith decomposition (PARENT)
 
-🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-15T07:34:31Z`
-
 > **Parent plan.** Holds the vision, module map, dependency rules, and naming for decomposing `gh optivem`. Concrete execution lives in **child plans** (listed below). This file is the stable reference; children are independently executable and may be reordered, deferred, or dropped.
 
 ## TL;DR
@@ -73,8 +71,7 @@
 
 - **Use an isolated subagent per move.** Each module move (relocate packages + update import paths + `go build`/`go test`) should run in its own subagent so the heavy file-editing stays out of the main context; the subagent returns only a summary and the orchestrator commits via the commit skill. *(Subagents 529'd twice on 2026-06-15 — retry; fall back to inline only if they keep failing.)*
 - **Physical nesting** (`internal/<module>/`) is the agreed shape; pure moves only.
-- **Where we paused (2 of N done):** ✅ dev-workflow, ✅ architecture/diagrams. **Next mechanical moves (autonomous, in order): kernel → build → scaffolding.** Then **STOP** — seam #1 inversion (#6) and the engine/process carve-out (#7) are design changes, not moves, and need deliberate planning.
-- **Kernel move scope:** `log, shell, pathx, spinner, promptio, approval, cmdctx` → `internal/kernel/` — ~50 Go importers to update + 1 doc line (`CONTRIBUTING.md:491`); no subpackages. Update intra-kernel imports too (`shell→log/pathx/spinner`, `spinner→log`, `approval→promptio`, `cmdctx→approval`).
+- **Where we paused (5 mechanical moves done):** ✅ dev-workflow, ✅ architecture/diagrams, ✅ kernel (→ `internal/kernel/`: log, shell, pathx, spinner, promptio, approval, cmdctx), ✅ build (→ `internal/build/`: runner, compiler), ✅ scaffolding (→ `internal/scaffolding/`: steps, templates, files). **All autonomous mechanical moves are complete — STOP here.** Remaining work is design, not moves: seam #1 inversion (#6, `projectconfig → statemachine`) and the engine/process carve-out (#7) need deliberate planning in a fresh session. Still un-moved at root by design pending those: `config`, `configinit`, `projectconfig`, `version`, `expand`, `userstate`, `assets`, and the whole `atdd/` engine+process tree.
 - **Emitted-header exception (architecture/diagrams):** the 2 renderer header strings (`internal/diagrams/architecture/architecture.go:82`, `internal/diagrams/diagram/diagram.go:122`) are intentionally left at the old path — user decision, leave them; do not regenerate locally.
 
 ## Steps (parent-level)

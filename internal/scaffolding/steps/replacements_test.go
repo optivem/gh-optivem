@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/templates"
+	"github.com/optivem/gh-optivem/internal/scaffolding/templates"
 )
 
 // TestReplaceNamespacesAndSystemNameGeneric asserts that the generic

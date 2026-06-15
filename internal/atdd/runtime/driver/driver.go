@@ -47,7 +47,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
-	"github.com/optivem/gh-optivem/internal/files"
+	"github.com/optivem/gh-optivem/internal/scaffolding/files"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/userstate"
 

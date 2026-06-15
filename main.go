@@ -33,7 +33,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
-	"github.com/optivem/gh-optivem/internal/steps"
+	"github.com/optivem/gh-optivem/internal/scaffolding/steps"
 	"github.com/optivem/gh-optivem/internal/version"
 )
 

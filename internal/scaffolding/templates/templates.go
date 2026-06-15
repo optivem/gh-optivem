@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/files"
+	"github.com/optivem/gh-optivem/internal/scaffolding/files"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
