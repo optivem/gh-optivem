@@ -16,13 +16,13 @@ on:
     branches: [main]
     paths:
       - internal/atdd/runtime/statemachine/process-flow.yaml
-      - internal/atdd/runtime/diagram/**
+      - internal/diagrams/diagram/**
       - .github/workflows/regenerate-diagram.yml
   pull_request:
     branches: [main]
     paths:
       - internal/atdd/runtime/statemachine/process-flow.yaml
-      - internal/atdd/runtime/diagram/**
+      - internal/diagrams/diagram/**
   # Manual escape hatch: lets us re-run after fixing rendering bugs that
   # don't otherwise touch a path-filtered file (e.g. a CLI behaviour change
   # in `gh optivem process show`).

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 // routedAuthClient builds an http.Client whose fake transport dispatches by

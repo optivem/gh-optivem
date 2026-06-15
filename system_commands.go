@@ -17,8 +17,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/log"
-	"github.com/optivem/gh-optivem/internal/runner"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
+	"github.com/optivem/gh-optivem/internal/build/runner"
 )
 
 // newSystemCmd builds the `gh optivem system` parent. The parent has no Run,

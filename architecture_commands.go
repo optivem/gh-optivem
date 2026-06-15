@@ -17,7 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/architecture"
+	"github.com/optivem/gh-optivem/internal/diagrams/architecture"
 )
 
 // newArchitectureCmd builds the `gh optivem architecture` parent. The

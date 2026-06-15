@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
 

@@ -109,7 +109,7 @@ When the subprocess is rebuilt, these are the modules that needed updates at rem
 - `internal/atdd/runtime/clauderun/clauderun.go` — dispatch routing if `onboard-external-system` is referenced there.
 - `internal/atdd/runtime/clauderun/clauderun_test.go` — test cases.
 - `internal/atdd/runtime/statemachine/transitions_test.go` — fixture / transition assertions.
-- `internal/atdd/runtime/diagram/diagram.go` — only if there's a specific reference (likely just process-loading paths).
+- `internal/diagrams/diagram/diagram.go` — only if there's a specific reference (likely just process-loading paths).
 - `docs/process-diagram.md` — regenerated section.
 - `docs/images/process-diagram-4-implement-ticket.svg` — regenerated.
 - `docs/images/process-diagram-7-onboard-external-system.svg` — deleted at removal; regenerated when rebuilt.

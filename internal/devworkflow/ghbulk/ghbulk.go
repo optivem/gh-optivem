@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/log"
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 const (

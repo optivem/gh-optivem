@@ -36,7 +36,7 @@
 - **Scaffolding** — `steps`, `templates`, `files`. Command: `environment`. `steps → config, projectconfig, templates, files, shell, log, compiler, runner`.
 - **Config** — `config`, `configinit`, `projectconfig`. Commands: `config`, `compile`. `config → approval, cmdctx, log, projectconfig, version, shell`; `configinit → approval, config, files, projectconfig, steps`.
 - **Dev-workflow / GitHub** — `ghbulk`, `sonar`, `workspace`. Commands: `cross_repo`, `cleanup`. **Lowest coupling** (`ghbulk`/`sonar → shell, log` only; `workspace → projectconfig`).
-- **Architecture / diagrams** — `atdd/runtime/architecture` (command `architecture`) and `atdd/runtime/diagram` (`→ statemachine`, used by `process`). Read-only renderers over the engine model.
+- **Architecture / diagrams** — `diagrams/architecture` (command `architecture`) and `diagrams/diagram` (`→ statemachine`, used by `process`). Read-only renderers over the engine model. *(moved out of `atdd/runtime/` — done.)*
 - **Diagnostics / misc** — commands `doctor`, `system`, `cleanup`, `hooks`; package `version`. `doctor → promptio, userstate`.
 - **CLI / surface** — `main.go` + all `*_commands.go`; composes the modules.
 
@@ -67,9 +67,16 @@
 
 **Confirmed child order:** Dev-workflow → Architecture/diagrams → Diagnostics → Config → Scaffolding → *invert seam #1* → Process (Child 1).
 
+### Resume notes (for the fresh session — read first)
+
+- **Use an isolated subagent per move.** Each module move (relocate packages + update import paths + `go build`/`go test`) should run in its own subagent so the heavy file-editing stays out of the main context; the subagent returns only a summary and the orchestrator commits via the commit skill. *(Subagents 529'd twice on 2026-06-15 — retry; fall back to inline only if they keep failing.)*
+- **Physical nesting** (`internal/<module>/`) is the agreed shape; pure moves only.
+- **Where we paused (5 mechanical moves done):** ✅ dev-workflow, ✅ architecture/diagrams, ✅ kernel (→ `internal/kernel/`: log, shell, pathx, spinner, promptio, approval, cmdctx), ✅ build (→ `internal/build/`: runner, compiler), ✅ scaffolding (→ `internal/scaffolding/`: steps, templates, files). **All autonomous mechanical moves are complete — STOP here.** Remaining work is design, not moves: seam #1 inversion (#6, `projectconfig → statemachine`) and the engine/process carve-out (#7) need deliberate planning in a fresh session. Still un-moved at root by design pending those: `config`, `configinit`, `projectconfig`, `version`, `expand`, `userstate`, `assets`, and the whole `atdd/` engine+process tree.
+- **Emitted-header exception (architecture/diagrams):** the 2 renderer header strings (`internal/diagrams/architecture/architecture.go:82`, `internal/diagrams/diagram/diagram.go:122`) are intentionally left at the old path — user decision, leave them; do not regenerate locally.
+
 ## Steps (parent-level)
 
-- [ ] Step 3: **Spawn + execute children in the confirmed order** — one `/create-plan` per module, then `/execute-plan`, following *Confirmed child order* above. Dev-workflow first; the seam-#1 invert child before Child 1; Child 1 last.
+- [ ] Step 3: **Spawn + execute children in the confirmed order** — following *Confirmed child order* above, **one isolated subagent per move** (see Resume notes). The seam-#1 invert child and the engine carve-out are design work, not moves — pause for planning before them.
 - [ ] Step 4: **Keep parent and children in sync** — use `/coordinate-plans` as children land; update the module map as reality is discovered.
 
 ## Child plans
@@ -77,8 +84,8 @@
 Listed in execution order (only Child 1 is drafted; the rest are written just-in-time per Step 3):
 
 1. **Dev-workflow** (`ghbulk`, `sonar`, `workspace`) — ✅ **done** → moved to `internal/devworkflow/`; see `20260615-0706-module-devworkflow.md`.
-2. **Architecture / diagrams** (`atdd/runtime/{architecture,diagram}`). *(not drafted)*
-3. **Diagnostics / misc** (`doctor`, `system`, `version`). *(not drafted)*
+2. **Architecture / diagrams** — ✅ **done** → moved to `internal/diagrams/{architecture,diagram}` + updated CI workflows, agent defs, docs prose; see `20260615-0722-module-diagrams.md`. *(2 emitted renderer headers left at old path — see record.)*
+3. **Diagnostics / misc** (`doctor`, `system`, `version`) — **likely a no-op move**: the commands stay at root (CLI surface) and the only package, `version`, is really kernel. Reconsider whether this is a module at all (fold `version` into kernel). *(not drafted)*
 4. **Config** (`config`, `configinit`, `projectconfig`). *(not drafted)*
 5. **Scaffolding** (`steps`, `templates`, `files`) + the shared **build** module (`runner`, `compiler`). *(not drafted)*
 6. **Invert seam #1** — untangle `projectconfig → statemachine`. Prerequisite for Child 1. *(not drafted)*
