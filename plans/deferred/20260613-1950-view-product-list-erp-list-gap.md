@@ -11,6 +11,48 @@ correct and the fix lives **upstream of** `system-implementer`, in the test-kit.
 
 ---
 
+## Why stub `/products` if "no one calls it"? (the caller is production)
+
+A natural objection: today nothing calls `GET /erp/api/products`, so why stub it?
+Because **production calls it** — that's the whole feature. Walk the #65 chain:
+
+```
+AT: "shouldListAllProductsWhenProductsAreAvailable"
+   │
+   ▼
+HTTP GET /api/products        ← test hits MyShop's public API
+   │
+   ▼
+ProductApiController          (item 5 — new)
+   │
+   ▼
+ErpGateway.getProducts()      (item 4 — new) ──calls──►  GET /erp/api/products   ← HERE
+   │
+   ▼
+returns the list → rendered back to the test
+```
+
+The new production code (`ErpGateway.getProducts()`, items 4–5) issues `GET
+/erp/api/products`. It's the only way MyShop can answer "list all products":
+MyShop owns no products table (ERP owns the catalog; MyShop proxies). So the
+stub exists **because** production calls `/products` — no stub → that real
+production call hits an unstubbed endpoint → 404 → test fails.
+
+The framing is inverted from the objection:
+- **Not** "stub `/products` even though no one calls it."
+- But "**production calls `/products`** to fetch the list, therefore the test
+  must stub `/products` to back that call."
+
+This is exactly why the per-SKU style fails: it stubs `/products/A`,
+`/products/B`, but production's lister never calls those — it calls `/products`,
+which the per-SKU style leaves unstubbed. "No one calls `/products`" only *feels*
+true today because production has no lister yet; #65 is the story that
+**introduces** the caller. Stub and caller are added together red→green: stub
+`/products` (items 1–3) so the new production caller (items 4–5) has something to
+talk to.
+
+---
+
 ## TL;DR
 
 **Why:** "View product list" needs an *enumerable* product source. The real ERP
