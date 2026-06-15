@@ -19,7 +19,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
-	"github.com/optivem/gh-optivem/internal/runner"
+	"github.com/optivem/gh-optivem/internal/build/runner"
 )
 
 // newTestCmd builds the `gh optivem test` parent. The parent has no Run, so

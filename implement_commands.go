@@ -38,7 +38,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/runner"
+	"github.com/optivem/gh-optivem/internal/build/runner"
 )
 
 // newImplementCmd implements `gh optivem implement --issue N|URL`. The

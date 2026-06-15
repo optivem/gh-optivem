@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/compiler"
+	"github.com/optivem/gh-optivem/internal/build/compiler"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
-	"github.com/optivem/gh-optivem/internal/runner"
+	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
