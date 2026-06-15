@@ -1,5 +1,9 @@
 # Plan: close the empty-test-selection guard for runners that exit 0 ({20260608-1502})
 
+✅ **DONE** — gh-optivem runner side committed `c67bc34` (2026-06-08); Item 3
+shop config armed in `shop` `1c88d722` (2026-06-15). Operator verification
+(empty `--test=` on .NET halts as infra) still pending.
+
 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-08T18:02:01Z`
 
 Follow-up to `plans/20260608-1240-empty-test-selection-guard.md` (committed as
