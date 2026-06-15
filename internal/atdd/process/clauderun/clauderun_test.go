@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/assets"
+	"github.com/optivem/gh-optivem/internal/atdd/assets"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
@@ -2091,7 +2091,7 @@ func TestDispatch_ForwardsOutputChannelToRunner(t *testing.T) {
 var snakePlaceholderRe = regexp.MustCompile(`\$\{[a-z]+_[a-z]+[a-z_]*\}`)
 
 // TestNoSnakeCasePlaceholdersInPromptBodies walks every embedded prompt
-// asset under internal/assets/runtime/{agents,shared} and fails if any
+// asset under internal/atdd/assets/runtime/{agents,shared} and fails if any
 // snake-cased `${foo_bar}` placeholder survives. Path B aligned the
 // renderer registry and prompt bodies on kebab; this test is the drift
 // alarm that prevents a future agent file from sneaking a snake

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/assets"
+	"github.com/optivem/gh-optivem/internal/atdd/assets"
 	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
@@ -256,7 +256,7 @@ func TestPhaseScopes_NodeScopeFieldShape(t *testing.T) {
 }
 
 // TestPromptFrontmatter_NoScopeField rejects any `scope:` field in any
-// prompt's YAML frontmatter under internal/assets/runtime/agents/atdd/.
+// prompt's YAML frontmatter under internal/atdd/assets/runtime/agents/atdd/.
 // The single SSoT for per-phase scope is the EXECUTE_AGENT node in
 // process-flow.yaml (plan 20260526-1448 Item 9); reintroducing
 // `scope:` on the prompt body would re-fork the SSoT.

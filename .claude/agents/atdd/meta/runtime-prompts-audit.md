@@ -1,6 +1,6 @@
 ---
 name: runtime-prompts-audit
-description: Audits the ATDD runtime prompt bodies (`internal/assets/runtime/agents/atdd/*.md`) and the shared chunks they are concatenated with (`internal/assets/runtime/shared/*.md`) for tightening opportunities — restatement of preamble/scope rules, verbose `Why you were dispatched` framing, redundant Outputs-section key restatement, unresolved or unused `${placeholder}` references, TBD/placeholder bodies, and cross-prompt boilerplate duplication. Produces a plan file proposing edits — read-only on the prompts.
+description: Audits the ATDD runtime prompt bodies (`internal/atdd/assets/runtime/agents/atdd/*.md`) and the shared chunks they are concatenated with (`internal/atdd/assets/runtime/shared/*.md`) for tightening opportunities — restatement of preamble/scope rules, verbose `Why you were dispatched` framing, redundant Outputs-section key restatement, unresolved or unused `${placeholder}` references, TBD/placeholder bodies, and cross-prompt boilerplate duplication. Produces a plan file proposing edits — read-only on the prompts.
 tools: Read, Glob, Grep, Write, Bash
 model: opus
 ---
@@ -19,9 +19,9 @@ If you find content that is wrong, contradictory, or out-of-sync with the code, 
 
 The dispatcher (see `internal/atdd/runtime/agents/embed.go::Prompt`) assembles every per-phase prompt by concatenating, in order:
 
-1. `internal/assets/runtime/shared/preamble.md` (one-shot dispatch framing, anti-rediscovery rules, scope-bound reads, don't-commit-don't-summarise, edit cohesion).
-2. `internal/assets/runtime/shared/scope.md` (the scope-exception envelope mechanism). The dispatcher concatenates this unconditionally between preamble and body.
-3. The phase's body from `internal/assets/runtime/agents/atdd/<task-name>.md`, with `${...}` placeholders substituted from the dispatcher's context (scope block, parameters, expected outputs, architecture, etc.).
+1. `internal/atdd/assets/runtime/shared/preamble.md` (one-shot dispatch framing, anti-rediscovery rules, scope-bound reads, don't-commit-don't-summarise, edit cohesion).
+2. `internal/atdd/assets/runtime/shared/scope.md` (the scope-exception envelope mechanism). The dispatcher concatenates this unconditionally between preamble and body.
+3. The phase's body from `internal/atdd/assets/runtime/agents/atdd/<task-name>.md`, with `${...}` placeholders substituted from the dispatcher's context (scope block, parameters, expected outputs, architecture, etc.).
 
 So:
 
@@ -36,8 +36,8 @@ When estimating, use line count as a proxy (1 token ≈ 4 characters; line count
 
 ## Inputs (what you analyse)
 
-- `internal/assets/runtime/agents/atdd/*.md` — the per-phase prompt bodies the dispatcher substitutes and dispatches.
-- `internal/assets/runtime/shared/*.md` — the concatenated chunks (`preamble.md`, `scope.md`).
+- `internal/atdd/assets/runtime/agents/atdd/*.md` — the per-phase prompt bodies the dispatcher substitutes and dispatches.
+- `internal/atdd/assets/runtime/shared/*.md` — the concatenated chunks (`preamble.md`, `scope.md`).
 - For cross-reference only (do **not** propose edits to these): `internal/atdd/process/process-flow.yaml` (the BPMN MID nodes that declare each task's parameters, `scopes:`, and `outputs:`), and `internal/atdd/runtime/driver/driver.go` + `internal/atdd/process/clauderun/clauderun.go` (to confirm the substitution + concatenation contract).
 
 You MUST read every prompt body and every shared chunk in full before producing findings. Per the project consistency-check rule, never conclude "no findings" from a quick read — enumerate concretely first.
@@ -116,14 +116,14 @@ When the same sub-section appears verbatim (or near-verbatim) in three or more p
 - The "This is one of the closed `fix-*` failure-kinds:" bullet list, repeated in every `fix-*` body.
 - "Anti-patterns" bullets that recur across `fix-*` bodies (don't re-run yourself, don't bundle cleanup, don't widen scope, stay inside `${scope-block}`).
 
-For each such pattern, flag the duplication and propose extracting to a new shared chunk (e.g. `internal/assets/runtime/shared/fix-recovery.md`) that the dispatcher concatenates when the task name starts with `fix-`. Surface this as **needs-decision** — adding a new shared chunk is a dispatcher change, not a prompt-only edit, so the operator must approve the contract change before the executor wires it.
+For each such pattern, flag the duplication and propose extracting to a new shared chunk (e.g. `internal/atdd/assets/runtime/shared/fix-recovery.md`) that the dispatcher concatenates when the task name starts with `fix-`. Surface this as **needs-decision** — adding a new shared chunk is a dispatcher change, not a prompt-only edit, so the operator must approve the contract change before the executor wires it.
 
 ## Routing rule (decide where each finding lands)
 
 For every finding, place it in exactly one section of the plan:
 
-1. **Per-agent body edits** — concrete edits to `internal/assets/runtime/agents/atdd/<file>.md`: drop restated shared-chunk rules, compress `Why you were dispatched` paragraphs, prune duplicate anti-pattern bullets, delete Outputs-section restatement. Each item names the file, the lines, and the proposed replacement (or `DELETE`).
-2. **Shared-chunk edits** — concrete edits to `internal/assets/runtime/shared/<file>.md`: tighten wording (highest amplification — every dispatch pays). Hold to a higher bar; do not propose deleting framing that the per-agent bodies rely on.
+1. **Per-agent body edits** — concrete edits to `internal/atdd/assets/runtime/agents/atdd/<file>.md`: drop restated shared-chunk rules, compress `Why you were dispatched` paragraphs, prune duplicate anti-pattern bullets, delete Outputs-section restatement. Each item names the file, the lines, and the proposed replacement (or `DELETE`).
+2. **Shared-chunk edits** — concrete edits to `internal/atdd/assets/runtime/shared/<file>.md`: tighten wording (highest amplification — every dispatch pays). Hold to a higher bar; do not propose deleting framing that the per-agent bodies rely on.
 3. **Needs-decision** — tradeoffs the user (or sibling agent) should choose: unresolved/unused/wrong-case `${placeholder}` references (route to `architecture-sync`), TBD bodies, proposals to introduce a new shared chunk (dispatcher-contract change), duplication where both copies have drifted in wording (do not pick a winner silently).
 4. **Out-of-scope findings (route elsewhere)** — content that is wrong / contradictory / mis-aligned with the code rather than merely verbose. List with a one-line note suggesting `process-audit`, `architecture-sync`, or `token-usage-audit` as the right owner.
 
@@ -131,7 +131,7 @@ If your finding reads "this could be shorter, but I'm not sure it should be," it
 
 ## Workflow
 
-1. **Discover.** `Glob` `internal/assets/runtime/agents/atdd/*.md` and `internal/assets/runtime/shared/*.md` and `Read` each in full. Build a `body → placeholders` map by `Grep`ping `\$\{[a-z-]+\}` (kebab) and `\$\{[a-z_]+\}` (snake — for the wrong-case lens) in each body.
+1. **Discover.** `Glob` `internal/atdd/assets/runtime/agents/atdd/*.md` and `internal/atdd/assets/runtime/shared/*.md` and `Read` each in full. Build a `body → placeholders` map by `Grep`ping `\$\{[a-z-]+\}` (kebab) and `\$\{[a-z_]+\}` (snake — for the wrong-case lens) in each body.
 2. **Cross-reference (read-only).** `Read` `internal/atdd/process/process-flow.yaml` to find each task's MID node, its declared parameters, and its `outputs:` list. `Read` `internal/atdd/runtime/driver/driver.go` and `internal/atdd/process/clauderun/clauderun.go` only enough to confirm which placeholders the dispatcher substitutes. Do not propose edits to these files.
 3. **Measure.** Capture line counts per prompt body and per shared chunk. For shared chunks, multiply by the rough number of dispatched phases (use the count of per-agent bodies as a proxy) to estimate amplification.
 4. **Apply each lens** in order. Capture findings as you go, with file paths and line ranges. For each finding, estimate the savings in lines (and note the amplification, when relevant).
@@ -159,13 +159,13 @@ Estimated total savings: ~<lines> lines (rough, line-count proxy)
 1. [Shared-chunk edits #1] Compress `preamble.md` "Trust the orchestrator's context" prose — saves ~<n> lines × <m> dispatches per ticket.
 2. ...
 
-## Per-agent body edits — `internal/assets/runtime/agents/atdd/<file>.md`
+## Per-agent body edits — `internal/atdd/assets/runtime/agents/atdd/<file>.md`
 
 (Omit this section entirely if there are no items.)
 
 ### 1. [<file>.md] Drop restated anti-rediscovery rule (already in `preamble.md`)
 
-**File:** `internal/assets/runtime/agents/atdd/<file>.md:<line-range>`
+**File:** `internal/atdd/assets/runtime/agents/atdd/<file>.md:<line-range>`
 **Current:**
 > <existing prose>
 
@@ -181,13 +181,13 @@ Estimated total savings: ~<lines> lines (rough, line-count proxy)
 ### 2. [<file>.md] Compress `Why you were dispatched` paragraph
 ...
 
-## Shared-chunk edits — `internal/assets/runtime/shared/<file>.md`
+## Shared-chunk edits — `internal/atdd/assets/runtime/shared/<file>.md`
 
 (Omit this section entirely if there are no items.)
 
 ### 1. [preamble.md] Replace prose enumeration with bullet list
 
-**File:** `internal/assets/runtime/shared/preamble.md:<line-range>`
+**File:** `internal/atdd/assets/runtime/shared/preamble.md:<line-range>`
 **Current lines:** <range>
 **Proposed wording:**
 > <exact markdown to replace, in the chunk's existing tone>

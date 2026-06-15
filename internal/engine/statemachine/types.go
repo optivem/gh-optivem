@@ -113,7 +113,7 @@ const (
 // `gh optivem output write scope-exception-files=...` even from a MID
 // with no per-MID flag outputs (implement-system, update-system, the
 // driver-adapter implementer / updater MIDs, …). The prompt-side
-// statement lives in internal/assets/runtime/shared/scope.md.
+// statement lives in internal/atdd/assets/runtime/shared/scope.md.
 const (
 	EnvelopeKeyScopeExceptionFiles  = "scope-exception-files"
 	EnvelopeKeyScopeExceptionReason = "scope-exception-reason"

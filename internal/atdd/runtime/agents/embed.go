@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/assets"
+	"github.com/optivem/gh-optivem/internal/atdd/assets"
 	"gopkg.in/yaml.v3"
 )
 
@@ -276,7 +276,7 @@ func indexLine(s, target string) int {
 // Names returns every embedded agent name, sorted. The driver uses this to
 // register a dispatcher per embedded prompt at startup, replacing the v1
 // hand-maintained agentNames slice. Adding a new agent is now: drop the
-// agent definition under internal/assets/runtime/agents/atdd/, recompile.
+// agent definition under internal/atdd/assets/runtime/agents/atdd/, recompile.
 func (s *AgentSet) Names() []string {
 	entries, err := fs.ReadDir(s.fsys, s.root)
 	if err != nil {

@@ -23,7 +23,7 @@ Cross-reference (read as needed to verify a finding — do not assume, confirm):
 - `internal/atdd/runtime/driver/target.go` — the `--target` slice entry points (`targetSlices`).
 - `internal/atdd/runtime/driver/driver.go` — dispatch seeding (output-keys allow-list, envelope), scope-block resolution, channel unroll.
 - `internal/diagrams/diagram/diagram.go` — the render-ordering process list (orphan-box detection).
-- `internal/assets/runtime/agents/atdd/*.md` — the agent bodies referenced by MID `agent:` fields (existence + name match only; not their content).
+- `internal/atdd/assets/runtime/agents/atdd/*.md` — the agent bodies referenced by MID `agent:` fields (existence + name match only; not their content).
 
 You MUST read `process-flow.yaml` fully before producing findings. Per the project consistency-check rule, enumerate concretely first — never conclude "no findings" from a skim.
 
@@ -56,7 +56,7 @@ This is the highest-value lens. `wrapCallActivity` pushes/pops **Params** per ca
 
 ### 6. YAML ↔ Go cross-checks
 - Every gateway `binding:` has a registered binding in `gates/bindings.go`. Every service-task `action:` has a registered action in `actions/bindings.go`. Flag any binding/action named in the YAML with no Go registration (and any registered binding/action the YAML never uses — possible dead binding).
-- Every MID `agent:` resolves to an existing `internal/assets/runtime/agents/atdd/<agent>.md`. Every templated `agent: ${...}` / `process: ${...}` resolves for all values callers bind.
+- Every MID `agent:` resolves to an existing `internal/atdd/assets/runtime/agents/atdd/<agent>.md`. Every templated `agent: ${...}` / `process: ${...}` resolves for all values callers bind.
 - Every `targetSlices` process in `target.go` exists in the YAML (drift = build break). Every `diagram.go` ordering entry names a defined process.
 
 ### 7. Doc-block & comment drift

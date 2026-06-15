@@ -14,7 +14,7 @@ Your effective scope is the originating task's full scope (inherited from `${fai
 
 ### Parameters
 
-- `failing-task-name` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/assets/runtime/agents/atdd/<failing-task-name>.md` and its `outputs:` contract lives on the MID itself in `internal/atdd/process/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and which keys it had to emit.
+- `failing-task-name` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/atdd/assets/runtime/agents/atdd/<failing-task-name>.md` and its `outputs:` contract lives on the MID itself in `internal/atdd/process/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and which keys it had to emit.
 
   ```
   ${failing-task-name}
@@ -36,7 +36,7 @@ Your effective scope is the originating task's full scope (inherited from `${fai
 
 Your own dispatch IS the re-run of `${failing-task-name}` — redo its work here, do not re-dispatch it separately.
 
-1. **Read the failing agent's prompt.** Open `internal/assets/runtime/agents/atdd/${failing-task-name}.md` and locate the `## Outputs` section — the prompt names each declared key the MID required (the `${missing-outputs}` list) and what each one was supposed to signal. Treat the prompt as the contract for both *the work* and *the keys to emit*.
+1. **Read the failing agent's prompt.** Open `internal/atdd/assets/runtime/agents/atdd/${failing-task-name}.md` and locate the `## Outputs` section — the prompt names each declared key the MID required (the `${missing-outputs}` list) and what each one was supposed to signal. Treat the prompt as the contract for both *the work* and *the keys to emit*.
 
 2. **Inspect the diff for context, not for branching.** Walk `${changed-files}` against the `### Scope` write set to understand what the failing agent already did. This is informational — it shapes your diagnosis paragraph — but does not change the fix shape: you always redo + emit (see Step 4).
 

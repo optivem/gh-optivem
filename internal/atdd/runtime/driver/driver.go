@@ -11,7 +11,7 @@
 // Agent dispatch (v2): every user-task whose `agent:` value is something
 // other than `human` shells out to the `claude` CLI via the clauderun
 // package. clauderun reads the embedded per-agent definition (from
-// internal/assets/runtime/agents/atdd/), substitutes ${name} placeholders
+// internal/atdd/assets/runtime/agents/atdd/), substitutes ${name} placeholders
 // from the live Context, and hands the rendered string to `claude -p` as
 // the agent's full one-shot input — there is no parent-claude harness or
 // Task-tool indirection. Success is detected by HEAD diff (a fresh commit
@@ -810,7 +810,7 @@ func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
 // The substantive prompt-and-pause behaviour is layered on after Bind by
 // wrapAgentDispatchers, which has access to per-node RawNode metadata
 // (description, agent). Adding a new agent is now: drop an agent
-// definition under internal/assets/runtime/agents/atdd/, recompile.
+// definition under internal/atdd/assets/runtime/agents/atdd/, recompile.
 func registerAgentDispatchers(r *agents.Registry, set *agents.AgentSet) {
 	if set == nil {
 		set = agents.DefaultAgentSet()

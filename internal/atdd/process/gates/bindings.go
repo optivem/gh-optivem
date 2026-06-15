@@ -226,7 +226,7 @@ func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 // No prompt fallback: the gate fires after validate-outputs-and-scopes;
 // an absent value means "no exception was signalled" and routes to the
 // normal continuation. The shape contract (kebab keys flattened from
-// JSONL by the validator) lives in internal/assets/runtime/shared/scope.md.
+// JSONL by the validator) lives in internal/atdd/assets/runtime/shared/scope.md.
 func (b bindings) scopeExceptionRequested(ctx *statemachine.Context) statemachine.Outcome {
 	files, _ := ctx.Get("scope-exception-files").([]string)
 	return statemachine.Outcome{Bool: len(files) > 0}

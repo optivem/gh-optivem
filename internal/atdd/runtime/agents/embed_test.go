@@ -146,7 +146,7 @@ func TestFixKindAgentsExist(t *testing.T) {
 	// Pins the closed set of failure-kinds the YAML's
 	// `agent: "${failure-kind}-fixer"` template (process-flow.yaml,
 	// `fix` MID) resolves against. Every kind here must have a matching
-	// agent definition embedded under internal/assets/runtime/agents/atdd/.
+	// agent definition embedded under internal/atdd/assets/runtime/agents/atdd/.
 	//
 	// The bindings that emit `failure-kind` are wired —
 	// `actions.runCommand` (command-failed) and

@@ -1,4 +1,8 @@
-// Package assets exposes the single embedded asset tree for gh-optivem.
+// Package assets exposes the embedded asset tree for the ATDD process.
+//
+// It lives at internal/atdd/assets, alongside the ATDD process definition
+// (internal/atdd/process) and the Go engine that runs it
+// (internal/atdd/runtime). Every file here is an ATDD prompt asset.
 //
 // The tree is organized by delivery mechanism:
 //

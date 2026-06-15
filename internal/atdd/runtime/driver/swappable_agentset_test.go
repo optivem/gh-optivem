@@ -5,7 +5,7 @@
 // The stub set is built in memory from testing/fstest, mirroring the default
 // ATDD roster name-for-name but replacing every prompt body with a
 // recognizable marker. Building it in-memory (rather than embedding fixture
-// prompts under internal/assets/) keeps the stub out of the shipped binary —
+// prompts under internal/atdd/assets/) keeps the stub out of the shipped binary —
 // the agents.NewAgentSetFS filesystem seam exists precisely so an alternate
 // set need not live in gh-optivem's own asset tree.
 package driver

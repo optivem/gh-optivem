@@ -35,12 +35,12 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
-	"github.com/optivem/gh-optivem/internal/assets"
+	"github.com/optivem/gh-optivem/internal/atdd/assets"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/expand"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/userstate"
 )
 
