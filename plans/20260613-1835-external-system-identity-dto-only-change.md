@@ -76,29 +76,54 @@ normally. The only defect is the identity source.
 | 2287 | implementer: *"there are no `TODO: External System Driver` prototypes remaining under .../driver/adapter/external"* → no-op |
 | 2319 | `FAIL IDENTIFY_EXTERNAL_SYSTEM -> ... no external system identifiable ...` |
 
-## Fix — resolve identity from the external-driver-**port** change, not the adapter files
+## Fix — resolve identity SOLELY from the external-driver-**port** change (incl. DTOs)
 
-Identity must come from the **cycle trigger** — the external-driver-**port** change set
-— which is present and unambiguous on both method-changing and DTO-only changes. The
-adapter-file scan stays only as a secondary source so the existing method-changing path
-is unaffected.
+Identity is resolved from **one source only: the changed paths under the
+external-driver-port root**, `…/driver/port/external/<name>/**` — which covers the driver
+**interface** (port methods) **and its DTOs** (`…/<name>/dtos/…`). This is the
+**directory-keyed** principle (`feedback_port_changed_flags_directory_keyed.md`): identity
+keys on *any file under `port/external/<name>/**`*, not on "a method changed," so DTO-only
+changes are covered with no special-casing.
 
-**Recommended mechanism (deterministic, no new agent contract):** preserve the
-external-driver-port changed-path list at the moment the port-change verdict is landed,
-then have `IDENTIFY_EXTERNAL_SYSTEM` resolve the name from it (port first, adapter
-fallback).
+**The adapter files are NOT consulted at all** — not as a fallback, not as a union member.
+The original code's adapter scan was never a real second source; it was an accident of
+IDENTIFY reading `phase-changed-files`, which at that point happened to hold the adapter
+diff. The port change is the only source needed, because:
 
-- `validate-outputs-and-scopes` already computes `phase-changed-files` and lands the
-  agent's `external-driver-port-changed` verdict (`bindings.go` ~1244–1293). When it
-  lands that verdict **true**, it also resolves the `external-system-driver-port` root
-  (`ResolveLayerPaths`) and stashes the subset of `phase-changed-files` under that root
-  into a durable shared-state key (working name `external-driver-port-changed-paths`).
-- `identifyExternalSystem` derives `name` from the union of: that preserved
-  port-path list **and** the current adapter files under the
-  `external-system-driver-adapter` root. The existing `<root>/<name>/...` first-segment
-  extraction, the 0 / 1 / >1 switch, and the registry lookup (`cfg.ExternalSystems`,
-  setting `external-system-name` + `real-kind`) are reused verbatim. The
-  zero-names error remains as the genuine "no external system touched at all" stop.
+- The cycle's **sole entry** is `GATE_EXTERNAL_DRIVER_PORTS_CHANGED`
+  (`external-driver-port-changed`). Entering the cycle therefore **guarantees** at least one
+  changed file under `port/external/<name>/**`, so the preserved port-path set is **always
+  non-empty and always carries `<name>`** when IDENTIFY runs.
+- A **method** change lives *on the port interface*, so it is a port change too — the
+  adapter is merely downstream of it. A **DTO** change is a port change by definition. An
+  **adapter-only** change with no port change cannot enter the cycle (no routing path).
+  → the adapter scan covers **zero unique cases**; port paths cover all of them.
+
+The port change resolves identity for every shape, each via the same segment extraction:
+
+1. **Port interface method** changed under `port/external/<name>/**` → `<name>`.
+2. **Port DTO** changed under `port/external/<name>/dtos/**` → `<name>`.
+3. **Method + DTO mix** (same or different systems) → the corresponding name set
+   (one name collapses duplicates; two systems → the >1 error below).
+
+**Mechanism (deterministic, no new agent contract).** Port + DTO changes happen in the
+earlier AT-cascade DSL phase, so by IDENTIFY time `phase-changed-files` no longer carries
+them — they must be **preserved**:
+
+- **Preserve (Item 1).** `validate-outputs-and-scopes` already computes
+  `phase-changed-files` and lands the agent's `external-driver-port-changed` verdict
+  (`bindings.go` ~1244–1293). When it lands that verdict **true**, it also resolves the
+  `external-system-driver-port` root (`ResolveLayerPaths`) and stashes the subset of
+  `phase-changed-files` under that root into a durable shared-state key (working name
+  `external-driver-port-changed-paths`), guarded to write only when non-empty.
+- **Resolve (Item 2).** `identifyExternalSystem` builds the candidate `name` set from
+  **that preserved port-path set alone**, via the existing `<root>/<name>/...` first-segment
+  extraction. The 0 / 1 / >1 switch and the registry lookup (`cfg.ExternalSystems`, setting
+  `external-system-name` + `real-kind`) are reused verbatim. The adapter scan of
+  `phase-changed-files` is **removed**. The zero-names error remains the genuine "no external
+  system touched at all" stop; the >1-names error now correctly fires when a ticket touches
+  two systems' ports (e.g. a method on `erp` + a DTO on `clock`) instead of silently serving
+  only the one that happened to get an adapter file.
 
 **Why not the alternatives** (record the decision, don't reopen during execution):
 
@@ -111,6 +136,13 @@ fallback).
   paper but adds a new agent-output contract and depends on agent self-reporting, which
   `feedback_port_changed_flags_directory_keyed.md` shows is exactly what drifts.
   Path-derivation is deterministic and still validates against the registry.
+- *Keep the adapter-file scan as a union member / fallback alongside the port paths.*
+  Rejected — it covers **zero unique cases**. The cycle's sole entry gate
+  (`GATE_EXTERNAL_DRIVER_PORTS_CHANGED`) is port-keyed, so entering the cycle guarantees a
+  non-empty port-path set; method changes are themselves port changes; an adapter-only
+  change cannot route in. Unioning the adapter scan back in would just re-import the exact
+  accident that caused this bug (IDENTIFY reading `phase-changed-files`, empty on DTO-only
+  changes) under the name "backup." Identity is resolved **solely** from the port paths.
 
 ### One decision to confirm before coding
 
@@ -136,31 +168,44 @@ prefer flat unless the `bindings_test.go` namespacing invariants force otherwise
   `external-driver-port-changed-paths`), guarded to only write when non-empty. Add the
   doc-comment rationale (this plan) inline.
 
-- [ ] **2. Resolve identity from port paths first, adapter files as fallback.**
-  In `identifyExternalSystem` (`bindings.go:546`), build the candidate `name` set from
-  the union of the preserved port-path list (Item 1) and the existing
-  `external-system-driver-adapter` scan of `phase-changed-files`. Keep the
-  `<root>/<name>/...` segment extraction, the 0 / 1 / >1 switch, the registry lookup,
-  and the `external-system-name` + `real-kind` stamping unchanged. Refresh the
-  function's doc-comment (`bindings.go:533–545`) to state identity comes from the
-  port change (trigger), not the adapter artifact.
+- [ ] **2. Resolve identity SOLELY from the preserved external-driver-port paths; REMOVE the adapter scan.**
+  In `identifyExternalSystem` (`bindings.go:546`), build the candidate `name` set from the
+  preserved port-path set (Item 1) **alone**, via the existing `<root>/<name>/...`
+  first-segment extraction. **Delete** the current scan of `phase-changed-files` against the
+  `external-system-driver-adapter` root (`bindings.go:551–572`) — adapter files are no longer
+  a source. This covers (a) port interface method, (b) port DTO, (c) method+DTO mix, all via
+  the port change. Keep the 0 / 1 / >1 switch, the registry lookup, and the
+  `external-system-name` + `real-kind` stamping unchanged. Rewrite the function's doc-comment
+  (`bindings.go:525–545`) to state identity comes from the external-driver-**port** change
+  (trigger, incl. DTOs) — explicitly NOT from the adapter files — and that the cycle's
+  port-keyed entry gate guarantees that source is always present.
 
 - [ ] **3. Update / add unit tests.**
-  In `internal/atdd/runtime/actions/bindings_test.go`: add a case proving a **DTO-only**
-  external-driver-port change (port file changed under `driver/port/external/erp/**`,
-  **zero** adapter files) resolves `external-system-name=erp` + the registry
-  `real-kind`. Keep an existing case proving the method-changing path (adapter files
-  present) still resolves identically. Add a case proving the genuine
-  "no external system touched" path still yields the zero-names hard error, and that the
-  >1-system error still fires. Confirm the `namespacedLandingKeys` /
-  `external-driver-port-changed` namespacing invariants (lines ~1339–1394) still hold.
+  In `internal/atdd/runtime/actions/bindings_test.go`:
+  - **DTO-only port change** — port file changed under `driver/port/external/erp/dtos/**`,
+    **zero** adapter files → resolves `external-system-name=erp` + the registry `real-kind`.
+  - **Method port change** — port interface file changed under `driver/port/external/erp/**`
+    → resolves `erp` identically. (Adapter files, if any, are irrelevant — the test must
+    prove resolution works **with no adapter files in `phase-changed-files`**, since the
+    adapter scan is gone.)
+  - **Two systems** — port files changed under both `port/external/erp/**` and
+    `port/external/clock/**` → the **>1-system hard error** fires.
+  - **No external system touched** — empty preserved port-path set → the **zero-names hard
+    error** still fires.
+  - Rework/remove any existing case that relied on the **adapter** scan as the identity
+    source (it no longer exists). Confirm the `namespacedLandingKeys` /
+    `external-driver-port-changed` namespacing invariants (lines ~1339–1394) still hold.
 
 - [ ] **4. Doc-block / BPMN comment sync.**
   Update the `IDENTIFY_EXTERNAL_SYSTEM` node comment in
   `internal/atdd/runtime/statemachine/process-flow.yaml` (~1123–1135) so it states
-  identity is resolved from the external-driver-**port** change (robust to DTO-only
-  changes), not from "the driver-adapter files the step above just wrote." No
-  sequence-flow or node-shape change — content only.
+  identity is resolved **solely** from the external-driver-**port** change (robust to
+  DTO-only changes), not from "the driver-adapter files the step above just wrote." Note
+  that identity no longer depends on the adapter-impl phase's output, so the old "must run
+  AFTER the driver-adapter impl" ordering rationale (for identity) no longer applies —
+  but **do not move the node**; leave its sequence position unchanged (other GREEN-shape
+  steps still sequence around it). Content-only comment edit; no sequence-flow or
+  node-shape change.
 
 ## Verification
 
@@ -176,10 +221,13 @@ prefer flat unless the `bindings_test.go` namespacing invariants force otherwise
 
 ## Risks / notes
 
-- **Shared-state threading.** The fix relies on `ctx.State` persisting from the AT DSL
-  phase into the nested contract call-activity (it does — one `Context` per run; the
-  `at-`/`ct-` namespacing exists *because* state is shared). The non-empty-only guard
-  (Item 1) is what prevents the no-op CT DSL phase from clobbering the list.
+- **Shared-state threading is now the single source** (no adapter backup). The fix relies on
+  `ctx.State` persisting the preserved port-path set from the AT DSL phase into the nested
+  contract call-activity (it does — one `Context` per run; the `at-`/`ct-` namespacing exists
+  *because* state is shared). The non-empty-only guard (Item 1) prevents the no-op CT DSL
+  phase from clobbering the list. Because identity is resolved **solely** from this set,
+  failure to thread it would re-surface as a zero-names error — but the port-keyed entry gate
+  guarantees the set is populated whenever the cycle runs, so this is sound, not fragile.
 - **No diagram regen step** — the regenerate-diagram workflow auto-rebuilds
   `docs/process-diagram.md` on push (`feedback_plans_no_diagram_regen.md`). Item 4 only
   edits the YAML node comment.
