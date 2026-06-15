@@ -1,5 +1,5 @@
 // Bindings — Go implementations of every gateway `binding:` referenced in
-// internal/atdd/runtime/statemachine/process-flow.yaml.
+// internal/atdd/process/process-flow.yaml.
 //
 // Each binding is a `statemachine.NodeFn` that:
 //
@@ -33,7 +33,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
 	"github.com/optivem/gh-optivem/internal/kernel/promptio"

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // fixedClock returns a deterministic time so banner output is stable across

@@ -9,7 +9,7 @@
 // every YAML action has a binding the moment it's added.
 package actions
 
-import "github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+import "github.com/optivem/gh-optivem/internal/engine/statemachine"
 
 // Registry maps action names from the YAML to NodeFn implementations.
 type Registry struct {

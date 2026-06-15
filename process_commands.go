@@ -24,9 +24,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/diagrams/diagram"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
@@ -54,7 +55,7 @@ func newProcessShowCmd() *cobra.Command {
 		Example: `  gh optivem process show
   gh optivem process show > docs/process-diagram.md`,
 		Run: func(cmd *cobra.Command, args []string) {
-			eng, err := statemachine.LoadDefault()
+			eng, err := process.Load()
 			exitOnError(err)
 			fmt.Print(diagram.Render(eng))
 		},
@@ -95,7 +96,7 @@ func newProcessScopeCmd() *cobra.Command {
 // it out lets the test substitute an io.Writer and a config-path
 // argument without spawning a subprocess or touching os.Stdout / globals.
 func runProcessScope(out io.Writer, phaseArg, configPath string) error {
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		return fmt.Errorf("process scope: load process-flow: %w", err)
 	}

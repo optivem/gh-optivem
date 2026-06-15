@@ -13,7 +13,7 @@
 // later additions slot in without engine changes.
 package gates
 
-import "github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+import "github.com/optivem/gh-optivem/internal/engine/statemachine"
 
 // Registry maps binding names from the YAML to NodeFn evaluators.
 type Registry struct {

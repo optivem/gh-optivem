@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // treeDeps wires a TreeWriter that emits to buf while the live colored stream

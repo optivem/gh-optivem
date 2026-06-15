@@ -39,7 +39,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/mattn/go-isatty"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // GitRunner is the seam for `git show --name-only` lookups. Tests inject a

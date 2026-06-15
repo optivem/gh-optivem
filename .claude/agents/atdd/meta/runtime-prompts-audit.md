@@ -38,7 +38,7 @@ When estimating, use line count as a proxy (1 token ≈ 4 characters; line count
 
 - `internal/assets/runtime/agents/atdd/*.md` — the per-phase prompt bodies the dispatcher substitutes and dispatches.
 - `internal/assets/runtime/shared/*.md` — the concatenated chunks (`preamble.md`, `scope.md`).
-- For cross-reference only (do **not** propose edits to these): `internal/atdd/runtime/statemachine/process-flow.yaml` (the BPMN MID nodes that declare each task's parameters, `scopes:`, and `outputs:`), and `internal/atdd/runtime/driver/driver.go` + `internal/atdd/runtime/clauderun/clauderun.go` (to confirm the substitution + concatenation contract).
+- For cross-reference only (do **not** propose edits to these): `internal/atdd/process/process-flow.yaml` (the BPMN MID nodes that declare each task's parameters, `scopes:`, and `outputs:`), and `internal/atdd/runtime/driver/driver.go` + `internal/atdd/runtime/clauderun/clauderun.go` (to confirm the substitution + concatenation contract).
 
 You MUST read every prompt body and every shared chunk in full before producing findings. Per the project consistency-check rule, never conclude "no findings" from a quick read — enumerate concretely first.
 
@@ -132,7 +132,7 @@ If your finding reads "this could be shorter, but I'm not sure it should be," it
 ## Workflow
 
 1. **Discover.** `Glob` `internal/assets/runtime/agents/atdd/*.md` and `internal/assets/runtime/shared/*.md` and `Read` each in full. Build a `body → placeholders` map by `Grep`ping `\$\{[a-z-]+\}` (kebab) and `\$\{[a-z_]+\}` (snake — for the wrong-case lens) in each body.
-2. **Cross-reference (read-only).** `Read` `internal/atdd/runtime/statemachine/process-flow.yaml` to find each task's MID node, its declared parameters, and its `outputs:` list. `Read` `internal/atdd/runtime/driver/driver.go` and `internal/atdd/runtime/clauderun/clauderun.go` only enough to confirm which placeholders the dispatcher substitutes. Do not propose edits to these files.
+2. **Cross-reference (read-only).** `Read` `internal/atdd/process/process-flow.yaml` to find each task's MID node, its declared parameters, and its `outputs:` list. `Read` `internal/atdd/runtime/driver/driver.go` and `internal/atdd/runtime/clauderun/clauderun.go` only enough to confirm which placeholders the dispatcher substitutes. Do not propose edits to these files.
 3. **Measure.** Capture line counts per prompt body and per shared chunk. For shared chunks, multiply by the rough number of dispatched phases (use the count of per-agent bodies as a proxy) to estimate amplification.
 4. **Apply each lens** in order. Capture findings as you go, with file paths and line ranges. For each finding, estimate the savings in lines (and note the amplification, when relevant).
 5. **Classify** each finding using the routing rule above.

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // ---------------------------------------------------------------------------

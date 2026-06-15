@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/process"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
@@ -679,7 +680,7 @@ func TestRun_ScopeSweepCatchesBlankDbMigrationPath(t *testing.T) {
 	// resolver sweep is the layer this test exercises.)
 	cfg.System.DbMigrationPath = ""
 
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("load state machine: %v", err)
 	}
@@ -754,7 +755,7 @@ func TestRun_ScopeSweepSkippedWhenEngineNil(t *testing.T) {
 // error. Shared by the suite-existence cases below.
 func loadDefaultEngine(t *testing.T) *statemachine.Engine {
 	t.Helper()
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("load state machine: %v", err)
 	}

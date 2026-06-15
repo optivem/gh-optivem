@@ -1,7 +1,7 @@
 # BPMN process design
 
 Design rationale behind the five-level process model encoded in
-[`internal/atdd/runtime/statemachine/process-flow.yaml`](../internal/atdd/runtime/statemachine/process-flow.yaml)
+[`internal/atdd/process/process-flow.yaml`](../internal/atdd/process/process-flow.yaml)
 and rendered into [process-diagram.md](process-diagram.md). The YAML is the single
 source of truth for *what* the process does; this document records the *why* behind
 its shape, so the decisions survive even though the original design plan does not.

@@ -3,7 +3,7 @@ package driver
 import (
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 )
 
 // TestTargetSlices_ProcessesExistInEmbeddedYAML is the load-bearing
@@ -13,7 +13,7 @@ import (
 // drifts from targetSlices fails here rather than at an operator's first
 // `gh optivem implement --target …`.
 func TestTargetSlices_ProcessesExistInEmbeddedYAML(t *testing.T) {
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
 	}

@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
@@ -71,7 +71,7 @@ func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (
 	// MID's read/write scope and the BPMN-required test suites against cfg
 	// before any agent runs. The driver re-loads internally — process-flow.yaml
 	// is small enough that the second read is free.
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		return preflight.Options{}, fmt.Errorf("preflight: load state machine: %w", err)
 	}

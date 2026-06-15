@@ -110,7 +110,7 @@
 #     kind directly; the Q-late-5 dispatch path is not exercised for them.
 #
 #     Scope augmentation for `scope-diff`: the dispatcher (driver.go)
-#     appends `internal/atdd/runtime/statemachine/process-flow.yaml` to
+#     appends `internal/atdd/process/process-flow.yaml` to
 #     the scope_block when `failure-kind == scope-diff`, because the
 #     `scope-diff-fixer` may need to widen a call-site's `scopes:` list
 #     (the "scopes too narrow" mode). Every other failure-kind inherits

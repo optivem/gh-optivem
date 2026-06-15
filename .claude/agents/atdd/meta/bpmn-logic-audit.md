@@ -1,6 +1,6 @@
 ---
 name: bpmn-logic-audit
-description: Audits the ATDD BPMN orchestration (`internal/atdd/runtime/statemachine/process-flow.yaml`) for logical soundness — call-graph reachability and dead/orphan processes, gateway branch completeness, State-vs-Params data flow (clobber + upward-flow + strict-expand resolution), verify/expected-result coherence with the red-green model, scope/outputs/category consistency, YAML↔Go binding/action/agent cross-checks, and doc-block/comment drift. Produces a plan file proposing edits — read-only on the YAML and Go. Use when the user asks to review, audit, or logic-check the BPMN / process flow.
+description: Audits the ATDD BPMN orchestration (`internal/atdd/process/process-flow.yaml`) for logical soundness — call-graph reachability and dead/orphan processes, gateway branch completeness, State-vs-Params data flow (clobber + upward-flow + strict-expand resolution), verify/expected-result coherence with the red-green model, scope/outputs/category consistency, YAML↔Go binding/action/agent cross-checks, and doc-block/comment drift. Produces a plan file proposing edits — read-only on the YAML and Go. Use when the user asks to review, audit, or logic-check the BPMN / process flow.
 tools: Read, Glob, Grep, Write, Bash
 model: opus
 ---
@@ -12,12 +12,12 @@ You audit the *orchestration* (the five-level TOP/CYCLE/HIGH/MID/LOW process gra
 ## Inputs
 
 Primary (the SSoT you audit):
-- `internal/atdd/runtime/statemachine/process-flow.yaml` — the five-level process graph. Read it **in full** (it is long; page through it — never conclude from the header comment alone).
+- `internal/atdd/process/process-flow.yaml` — the five-level process graph. Read it **in full** (it is long; page through it — never conclude from the header comment alone).
 
 Cross-reference (read as needed to verify a finding — do not assume, confirm):
-- `internal/atdd/runtime/statemachine/load.go` — the parser / accepted node-types + fields (the real schema; the YAML header comment is documentation, not the schema).
-- `internal/atdd/runtime/statemachine/types.go` — `OutputSpec`, `EnvelopeOutputSpecs`, node-kind constants.
-- `internal/atdd/runtime/statemachine/run.go` — `wrapCallActivity` (Params push/pop vs State shared), `ExpandParams` strict-mode resolution, `maxDispatchesPerProcess`, `max-visits`/`on-max-visits`.
+- `internal/engine/statemachine/load.go` — the parser / accepted node-types + fields (the real schema; the YAML header comment is documentation, not the schema).
+- `internal/engine/statemachine/types.go` — `OutputSpec`, `EnvelopeOutputSpecs`, node-kind constants.
+- `internal/engine/statemachine/run.go` — `wrapCallActivity` (Params push/pop vs State shared), `ExpandParams` strict-mode resolution, `maxDispatchesPerProcess`, `max-visits`/`on-max-visits`.
 - `internal/atdd/runtime/gates/bindings.go` — registered gateway `binding:` functions.
 - `internal/atdd/runtime/actions/bindings.go` — registered service-task `action:` functions, output-JSONL landing, scope/outputs validation.
 - `internal/atdd/runtime/driver/target.go` — the `--target` slice entry points (`targetSlices`).
@@ -91,7 +91,7 @@ Directly executable by `/execute-plan`. Each actionable item names the exact fil
 ```markdown
 # Plan: BPMN logic audit ({YYYYMMDD-HHMM})
 
-Audited: internal/atdd/runtime/statemachine/process-flow.yaml (+ load.go, gates/bindings.go, actions/bindings.go, driver/target.go, diagram/diagram.go cross-refs)
+Audited: internal/atdd/process/process-flow.yaml (+ load.go, gates/bindings.go, actions/bindings.go, driver/target.go, diagram/diagram.go cross-refs)
 
 ## Flow & logic fixes
 
@@ -99,7 +99,7 @@ Audited: internal/atdd/runtime/statemachine/process-flow.yaml (+ load.go, gates/
 
 ### 1. [process-flow.yaml] <one-line summary>
 
-**Where:** `internal/atdd/runtime/statemachine/process-flow.yaml:<lines>` (`<process / node id>`)
+**Where:** `internal/atdd/process/process-flow.yaml:<lines>` (`<process / node id>`)
 
 **Change:** <exact edit — node/edge to add/remove/repoint, or comment to correct>
 

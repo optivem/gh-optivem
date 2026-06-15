@@ -1,6 +1,6 @@
 // Drift guards for the per-phase scope inline on every writing-agent
 // MID's EXECUTE_AGENT call-activity node in
-// internal/atdd/runtime/statemachine/process-flow.yaml. The previous
+// internal/atdd/process/process-flow.yaml. The previous
 // build-time guards used a sidecar SSoT (phase-scopes.yaml) joined with
 // process-flow.yaml; the fold made that join unnecessary, and these
 // guards now read scope directly via Engine.Scope.
@@ -11,14 +11,15 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/assets"
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 func loadEngine(t *testing.T) *statemachine.Engine {
 	t.Helper()
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("load embedded process-flow.yaml: %v", err)
 	}

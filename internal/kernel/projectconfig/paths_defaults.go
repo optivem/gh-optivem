@@ -20,7 +20,7 @@ const DefaultDbMigrationPath = "system/db/migrations"
 // given system-test language, root, and Java source package. The nine keys
 // match the doctrine referenced by the inline `read:` / `write:` scope
 // on writing-agent MID nodes in
-// `internal/atdd/runtime/statemachine/process-flow.yaml`: system-driver-port,
+// `internal/atdd/process/process-flow.yaml`: system-driver-port,
 // system-driver-adapter, external-system-driver-port,
 // external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test,
 // system-driver-adapter-shared.
@@ -68,7 +68,7 @@ const DefaultDbMigrationPath = "system/db/migrations"
 // See `internal/projectconfig/path-keys.md` for the
 // canonical-key vocabulary doc consumed by `gh-optivem.yaml paths:` and
 // by the inline per-phase scope on writing-agent MID nodes in
-// `internal/atdd/runtime/statemachine/process-flow.yaml`.
+// `internal/atdd/process/process-flow.yaml`.
 func DefaultPaths(testLang, systemTestRoot, javaPackage string) map[string]string {
 	if systemTestRoot == "" {
 		return nil
@@ -153,7 +153,7 @@ func titleFirst(s string) string {
 //
 // See `internal/projectconfig/path-keys.md` for the
 // vocabulary doc and
-// `internal/atdd/runtime/statemachine/process-flow.yaml` (the inline
+// `internal/atdd/process/process-flow.yaml` (the inline
 // `read:` / `write:` lists on writing-agent MID nodes) for the per-phase
 // scope assignment that consumes these keys.
 func CanonicalPathKeys() []string {

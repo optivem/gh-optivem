@@ -261,14 +261,6 @@ processes:
 	}
 }
 
-// TestLoadBytes_ApprovalCategory_ShippedYAMLLoads guards against regressing
-// the shipped process-flow.yaml's category coverage.
-func TestLoadBytes_ApprovalCategory_ShippedYAMLLoads(t *testing.T) {
-	if _, err := LoadDefault(); err != nil {
-		t.Fatalf("LoadDefault: %v", err)
-	}
-}
-
 // midWithScope returns a one-process YAML doc whose EXECUTE_AGENT
 // call-activity carries the caller-provided read/write/rationale lines
 // (each may be empty). Used to exercise Engine.ScopeRationale in
@@ -358,26 +350,5 @@ func TestEngine_ScopeRationale_UnknownProcess(t *testing.T) {
 	}
 	if _, ok := eng.ScopeRationale("nonexistent"); ok {
 		t.Errorf("Engine.ScopeRationale(nonexistent): want ok=false")
-	}
-}
-
-// TestEngine_ScopeRationale_ShippedYAML_TestWriters guards that the
-// shipped process-flow.yaml carries scope-rationale: on both test-writer
-// MIDs (plan 20260528-1038). Regressing this field would silently lose
-// the per-MID *why* the dispatcher renders into ${scope-block}.
-func TestEngine_ScopeRationale_ShippedYAML_TestWriters(t *testing.T) {
-	eng, err := LoadDefault()
-	if err != nil {
-		t.Fatalf("LoadDefault: %v", err)
-	}
-	for _, name := range []string{"write-acceptance-tests", "write-contract-tests"} {
-		got, ok := eng.ScopeRationale(name)
-		if !ok {
-			t.Errorf("Engine.ScopeRationale(%s): want ok=true", name)
-			continue
-		}
-		if !strings.Contains(got, "dsl-core") || !strings.Contains(got, "TODO: DSL") {
-			t.Errorf("Engine.ScopeRationale(%s) = %q, want substring about dsl-core / TODO: DSL", name, got)
-		}
 	}
 }

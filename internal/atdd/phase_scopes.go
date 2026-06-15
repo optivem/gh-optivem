@@ -1,7 +1,7 @@
 // Package atdd hosts ATDD doctrinal allowlists that sit outside the runtime
 // subtree. The per-phase scope SSoT itself lives inline on the
 // EXECUTE_AGENT call-activity nodes inside each writing-agent MID in
-// internal/atdd/runtime/statemachine/process-flow.yaml — see Engine.Scope
+// internal/atdd/process/process-flow.yaml — see Engine.Scope
 // for the accessor. This file retains the two layer-classification
 // allowlists that the scope-check actions and the build-time test guards
 // still consume.

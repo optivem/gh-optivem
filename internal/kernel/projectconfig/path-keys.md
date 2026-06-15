@@ -3,7 +3,7 @@
 This doc describes the canonical **path-key vocabulary** consumed by
 `gh-optivem.yaml system-test.paths:` (per-project, user-owned values)
 and the inline per-phase scope on writing-agent MID nodes in
-`internal/atdd/runtime/statemachine/process-flow.yaml` (per-phase scope
+`internal/atdd/process/process-flow.yaml` (per-phase scope
 assignment, doctrine owned by gh-optivem). It is the single place to
 look up which keys exist, what they mean, and what's reserved.
 
@@ -272,13 +272,13 @@ implementations.
 
 The vocabulary here is consumed by the inline `read:` and `write:` lists
 on each writing-agent MID's `EXECUTE_AGENT` call-activity node in
-`internal/atdd/runtime/statemachine/process-flow.yaml`, which name the
+`internal/atdd/process/process-flow.yaml`, which name the
 layers that MID's agent may read and modify. Layer names are joined
 with `gh-optivem.yaml system-test.paths:` values at runtime — by the
 `check_phase_scope` / `validate-outputs-and-scopes` actions (BPMN
 runtime) or the `gh optivem process scope` CLI query — to produce the
 per-phase resolved-path set. The accessor is `Engine.Scope(processName)`
-on `internal/atdd/runtime/statemachine`.
+on `internal/engine/statemachine`.
 
 For the scope rule itself ("only modify paths listed in the phase's
 scope; otherwise stop and alert the user"), see

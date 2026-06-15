@@ -19,11 +19,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // TestEmbeddedArtifacts_LoadInConsumerEmptyDir asserts the engine and
@@ -49,7 +50,7 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 		}
 	}
 
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
 	}
@@ -97,7 +98,7 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 // "binding X not registered" message — the same error the rehearsal
 // worktree would surface, but caught in CI.
 func TestEmbeddedYAML_BindsAfterPhaseD(t *testing.T) {
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
 	}
@@ -153,7 +154,7 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
 	opts.RepoPath = tempDir
 
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
 	}

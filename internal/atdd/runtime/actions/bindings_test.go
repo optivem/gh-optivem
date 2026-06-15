@@ -23,8 +23,9 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
@@ -103,7 +104,7 @@ func newActions(deps Deps) actions {
 // checkPhaseScope / validateOutputsAndScopes.
 func loadTestEngine(t *testing.T) *statemachine.Engine {
 	t.Helper()
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("load embedded process-flow.yaml: %v", err)
 	}

@@ -6,7 +6,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Execute the Process carve-out child plan (#7) — the last and hardest child.** Config (#4) is ✅ done; the Process module is the sole remaining child, and its plan is now **drafted + reconciled** (`20260615-0549-child1-modularize-gh-optivem-engine-process.md`). Run `/clear` then `/execute-plan plans/20260615-0549-child1-modularize-gh-optivem-engine-process.md` — execute the **child** directly, not the parent (the child holds the steps; the parent only delegates). **Scope is seams-first, contract-first** (resolved 2026-06-15): establish the engine↔definition + role→agent contracts and the directory layout, and move the clean wins; the deep untangling of the `atdd/runtime` internals is deferred to a follow-up — this child is the first pass, not the full physical carve in one shot. Context for the executor: scaffolding is its own peer module (not a layer inside Process); seam #1 is resolved (`internal/atdd/runtime/configcheck` holds the engine-backed rule, so `statemachine` is import-clean); the kernel/build/config modules already exist at `internal/kernel/**`, `internal/build/**`, `internal/config/**`, and the shared **build** module stays a separate dependency (not absorbed into the engine). Still un-moved at root by design, pending this: `expand`, `userstate`, `assets`, and the whole `atdd/` tree.
+**Process carve-out (#7) first pass is ✅ DONE — what remains is a deferred follow-up that needs drafting, not a mechanical edit. Switch to `/create-plan`.** As of 2026-06-15 the engine↔definition seam is broken: the generic engine lives at `internal/engine/statemachine` (exposes only `LoadBytes`, embeds no process), and the ATDD BPMN lives at `internal/atdd/process` (`Load()` wrapping `LoadBytes`). Build + full `go test ./...` green. **All seven children's first passes are now complete**, so the parent's mechanical work is finished. The remaining decomposition work is the **Process follow-up child**: make the agent set a separately-bound/swappable layer (Step 7), prove both swap axes (Step 8), document the reuse path (Step 9), and deep-untangle `actions`/`gates`/`verify`/`driver` out of `internal/atdd/runtime/` into a process-definition home (Step 10 remainder). That untangle needs an import-coupling analysis first — it is design work. Draft it with `/create-plan` (the seed Steps 7–10 live in `20260615-0549-child1-modularize-gh-optivem-engine-process.md`). Still un-moved at root by design pending that follow-up: `expand`, `userstate`, `assets`, and the `atdd/runtime` internals.
 
 ## TL;DR
 
@@ -36,7 +36,7 @@
 *Grounded in actual Go imports traced across every `*.go` (root command files + `internal/**`). Module path: `github.com/optivem/gh-optivem`.*
 
 - **Shared kernel** (infrastructure, NOT a bounded context) — `log`, `shell`, `pathx`, `spinner`, `promptio`, `approval`, `cmdctx`, `version`. Imported broadly; everything may depend on these. `shell → log, pathx, spinner`; `approval → promptio`. *(`version` folded in via child #3.)*
-- **Engine core** — `atdd/runtime/statemachine` is the center of gravity: nearly every `atdd/runtime/*` package imports it. This is the generic process model Child 1 extracts.
+- **Engine core** — ✅ **carved (child #7, first pass)** to `internal/engine/statemachine` (peer module). It is the center of gravity (nearly every `atdd/runtime/*` package imports it) and now exposes only the generic `LoadBytes` contract — it embeds no concrete process. The ATDD BPMN it used to bundle now lives in the process module at `internal/atdd/process`.
 - **Process module (ATDD)** — the bulk of `internal/`: `atdd`, `atdd/runtime/{agents, gates, actions, verify, diagram, override, repolocator, trace, driver, clauderun, release, preflight, tracker/**, intake, outlog, testselect}`, plus `expand`, `assets`, `userstate`. `driver` is the orchestrator that pulls the rest together. Commands: `process`, `run`, `implement`, `test`.
 - **Build/run helpers** — `runner` (`→ spinner, pathx`) and `compiler` (`→ projectconfig, shell`). Used by *both* Process (`preflight → runner`) and Scaffolding (`steps → compiler, runner`). Likely belongs to the engine/process side or a small shared "build" module — TBD.
 - **Scaffolding** — `steps`, `templates`, `files`. Command: `environment`. `steps → config, projectconfig, templates, files, shell, log, compiler, runner`.
@@ -71,7 +71,7 @@
 - **`scaffolding` (`steps`/`templates`/`files`) is its own module**, not a layer inside Process.
 - **Child ordering is difficulty-first**: Dev-workflow next; Process (Child 1) last.
 
-**Confirmed child order:** ~~Dev-workflow~~ ✅ → ~~Architecture/diagrams~~ ✅ → ~~Diagnostics~~ ✅ → ~~Config~~ ✅ → ~~Scaffolding~~ ✅ (moved) → ~~*invert seam #1*~~ ✅ → Process (Child 1). **Remaining: Process (#7) only.**
+**Confirmed child order:** ~~Dev-workflow~~ ✅ → ~~Architecture/diagrams~~ ✅ → ~~Diagnostics~~ ✅ → ~~Config~~ ✅ → ~~Scaffolding~~ ✅ (moved) → ~~*invert seam #1*~~ ✅ → ~~Process (Child 1) first pass~~ ✅. **All seven first passes done.** Remaining: the **Process follow-up** (swappable agent set + deep-untangle) — design work, draft via `/create-plan`.
 
 ### Resume notes (for the fresh session — read first)
 
@@ -95,7 +95,7 @@ Listed in execution order (only Child 1 is drafted; the rest are written just-in
 4. **Config** (`config`, `configinit`, `projectconfig`) — ✅ **done**: `projectconfig` demoted to the shared kernel (`internal/kernel/projectconfig`), `configinit` nested at `internal/config/configinit`, `config` unchanged at `internal/config`. `go build ./...` + `go test ./...` green. See `20260615-0933-module-config.md`.
 5. **Scaffolding** (`steps`, `templates`, `files`) + the shared **build** module (`runner`, `compiler`). *(not drafted)*
 6. **Invert seam #1** — untangle `projectconfig → statemachine`. ✅ **done** → rule relocated to `internal/atdd/runtime/configcheck`; `projectconfig` is now a leaf and kernel-eligible (seam #5 unblocked); see `20260615-0749-invert-seam1-projectconfig-engine.md`.
-7. **Process module: engine ↔ process definition ↔ agents** → `20260615-0549-child1-modularize-gh-optivem-engine-process.md` *(drafted; runs last — hardest, depends on #6)*
+7. **Process module: engine ↔ process definition ↔ agents** → `20260615-0549-child1-modularize-gh-optivem-engine-process.md` — ✅ **first pass done (2026-06-15)**: engine carved to `internal/engine/statemachine` (`LoadBytes` only), ATDD BPMN to `internal/atdd/process` (`Load()`); build + `go test ./...` green. **Follow-up deferred** (Steps 7–10 in the child): swappable agent set, prove swap axes, reuse doc, deep-untangle `actions`/`gates`/`verify`/`driver`.
 
 ## Open questions
 

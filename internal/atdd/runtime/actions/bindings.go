@@ -1,5 +1,5 @@
 // Bindings — Go implementations of every service-task `action:` referenced
-// in internal/atdd/runtime/statemachine/process-flow.yaml.
+// in internal/atdd/process/process-flow.yaml.
 //
 // Actions are the mechanical work of the pipeline: mark the picked ticket
 // through its status columns, enforce phase scope after the agent commits,
@@ -36,7 +36,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"

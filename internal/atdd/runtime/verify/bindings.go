@@ -20,7 +20,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // GitRunner is the seam for shell-outs to `git`. The default implementation

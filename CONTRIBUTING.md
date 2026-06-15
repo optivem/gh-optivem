@@ -270,7 +270,7 @@ Do not edit `docs/process-diagram.md` by hand — it is generated from the YAML.
 gh optivem process show > docs/process-diagram.md
 ```
 
-The `regenerate-diagram` workflow watches `internal/atdd/runtime/statemachine/process-flow.yaml` and `internal/diagrams/diagram/**`, but it behaves differently depending on the event:
+The `regenerate-diagram` workflow watches `internal/atdd/process/process-flow.yaml` and `internal/diagrams/diagram/**`, but it behaves differently depending on the event:
 
 - **Pull requests** — renders and **fails the PR** if the committed diagram is stale. It does *not* auto-fix the PR branch. So when you edit the YAML in a feature branch, run the command above and commit the result alongside your YAML change before opening the PR.
 - **Push to `main`** — regenerates and commits the updated diagram back to main as `github-actions[bot]`. Direct main pushes are the only path where you don't have to regenerate yourself.
@@ -484,7 +484,7 @@ All four fields are optional; absent means "use the embedded default." To experi
 
 See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` logic, setup steps, and verification levels.
 
-For the ATDD pipeline orchestration view, see the rendered [process diagram](docs/process-diagram.md). It is regenerated automatically whenever the canonical YAML at `internal/atdd/runtime/statemachine/process-flow.yaml` changes; do not edit the diagram by hand.
+For the ATDD pipeline orchestration view, see the rendered [process diagram](docs/process-diagram.md). It is regenerated automatically whenever the canonical YAML at `internal/atdd/process/process-flow.yaml` changes; do not edit the diagram by hand.
 
 ### Adding a y/n confirmation prompt
 

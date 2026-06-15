@@ -15,7 +15,7 @@ import (
 	"os"
 
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // Registry maps agent names from the YAML to NodeFn dispatchers.

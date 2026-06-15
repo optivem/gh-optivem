@@ -14,7 +14,7 @@ Your effective scope is the originating task's full scope (inherited from `${fai
 
 ### Parameters
 
-- `failing-task-name` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/assets/runtime/agents/atdd/<failing-task-name>.md` and its `outputs:` contract lives on the MID itself in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and which keys it had to emit.
+- `failing-task-name` — the writing-agent task whose run produced incomplete outputs (e.g. `write-acceptance-tests`, `implement-dsl`). Its prompt lives at `internal/assets/runtime/agents/atdd/<failing-task-name>.md` and its `outputs:` contract lives on the MID itself in `internal/atdd/process/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to do and which keys it had to emit.
 
   ```
   ${failing-task-name}

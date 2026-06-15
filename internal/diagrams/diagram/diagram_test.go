@@ -4,11 +4,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/process"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 func TestRender_AllProcessesAppearAsHeadings(t *testing.T) {
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("load default YAML: %v", err)
 	}
@@ -27,7 +28,7 @@ func TestRender_AllProcessesAppearAsHeadings(t *testing.T) {
 }
 
 func TestRender_CallActivityLinksToTargetProcess(t *testing.T) {
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("load default YAML: %v", err)
 	}
@@ -49,7 +50,7 @@ func TestRender_OutputIsDeterministic(t *testing.T) {
 	// Render twice and assert byte-equal output. Ordering bugs (map
 	// iteration leaking through) would surface as a random diff between
 	// the two runs.
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("load default YAML: %v", err)
 	}

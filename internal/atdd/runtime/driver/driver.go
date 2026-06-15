@@ -35,6 +35,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
@@ -42,11 +43,11 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/trace"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/kernel/gitignore"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
@@ -64,8 +65,8 @@ const DefaultProcessName = "main"
 // no overrides, real shell-outs.
 type Options struct {
 	// YAMLPath, when non-empty, points the driver at an on-disk YAML file
-	// instead of the canonical embedded document (statemachine.DefaultYAML).
-	// Empty → load the embedded YAML via statemachine.LoadDefault.
+	// instead of the canonical embedded document (process.DefaultYAML).
+	// Empty → load the embedded YAML via process.Load.
 	YAMLPath string
 
 	// ProcessName is the entry process. Empty → DefaultProcessName.
@@ -224,7 +225,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	var eng *statemachine.Engine
 	var err error
 	if opts.YAMLPath == "" {
-		eng, err = statemachine.LoadDefault()
+		eng, err = process.Load()
 		if err != nil {
 			return fmt.Errorf("driver: load embedded YAML: %w", err)
 		}
@@ -1317,7 +1318,7 @@ func encodeOutputKeysSpec(outs []statemachine.OutputSpec) string {
 // rule so a YAML reader sees the augmentation next to the dispatch
 // site.
 var fixScopeAugmentation = map[string][]string{
-	"scope-diff": {"internal/atdd/runtime/statemachine/process-flow.yaml"},
+	"scope-diff": {"internal/atdd/process/process-flow.yaml"},
 }
 
 // fixChangedFiles returns the working-tree dirty-file listing (one

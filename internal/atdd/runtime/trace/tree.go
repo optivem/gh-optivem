@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // TreeWriter renders the human-readable execution tree to flow.txt — the

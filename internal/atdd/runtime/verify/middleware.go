@@ -15,7 +15,7 @@
 package verify
 
 import (
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // PreFn runs before a NodeFn fires. Returning a non-nil error halts the

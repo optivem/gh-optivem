@@ -17,7 +17,7 @@
 package override
 
 import (
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
 // Reserved Context keys. These are consumed by the agent dispatcher in

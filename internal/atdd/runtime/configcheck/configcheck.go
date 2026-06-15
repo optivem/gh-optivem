@@ -23,7 +23,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/process"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
@@ -92,7 +93,7 @@ func ValidateTaskPrompts(cfg *projectconfig.Config) error {
 // process) are skipped: they resolve at runtime to a concrete MID that already
 // appears in this set via its own entry.
 func knownTaskNames() (map[string]bool, error) {
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		return nil, err
 	}

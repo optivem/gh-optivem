@@ -9,7 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
@@ -19,7 +19,7 @@ import (
 // gh-optivem.yaml is reachable. Uses a temp dir + explicit configPath
 // so the test never depends on the real cwd's project state.
 func TestProcessScope_AllPhases_NoProject(t *testing.T) {
-	eng, err := statemachine.LoadDefault()
+	eng, err := process.Load()
 	if err != nil {
 		t.Fatalf("LoadDefault: %v", err)
 	}
@@ -144,8 +144,8 @@ func minimalMonolithConfig(t *testing.T) *projectconfig.Config {
 				"at-test":                        "system-test/src/atdd/shop",
 				"dsl-port":                       "system-test/src/testkit/dsl/port/shop",
 				"dsl-core":                       "system-test/src/testkit/dsl/core/shop",
-				"system-driver-port":                    "system-test/src/testkit/driver/port/shop",
-				"system-driver-adapter":                 "system-test/src/testkit/driver/adapter/shop",
+				"system-driver-port":             "system-test/src/testkit/driver/port/shop",
+				"system-driver-adapter":          "system-test/src/testkit/driver/adapter/shop",
 				"external-system-driver-port":    "system-test/src/testkit/external/driver/port/shop",
 				"external-system-driver-adapter": "system-test/src/testkit/external/driver/adapter/shop",
 			},

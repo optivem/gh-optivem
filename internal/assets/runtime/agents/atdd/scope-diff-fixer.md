@@ -10,11 +10,11 @@ You are the `scope-diff-fixer` agent. The calling CYCLE dispatched `${failing-ta
 
 ${scope-block}
 
-Your effective scope includes `internal/atdd/runtime/statemachine/process-flow.yaml` (augmented by the dispatcher's `extra-scope` param for `failure-kind == scope-diff`) so you can widen the call-site's `scopes:` when the violation is "scopes too narrow."
+Your effective scope includes `internal/atdd/process/process-flow.yaml` (augmented by the dispatcher's `extra-scope` param for `failure-kind == scope-diff`) so you can widen the call-site's `scopes:` when the violation is "scopes too narrow."
 
 ### Parameters
 
-- `failing-task-name` — the writing-agent task whose diff violated scopes (e.g. `write-acceptance-tests`, `implement-system`). Its prompt lives at `internal/assets/runtime/agents/atdd/<failing-task-name>.md` and the call-site's `scopes:` contract lives in `internal/atdd/runtime/statemachine/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to touch.
+- `failing-task-name` — the writing-agent task whose diff violated scopes (e.g. `write-acceptance-tests`, `implement-system`). Its prompt lives at `internal/assets/runtime/agents/atdd/<failing-task-name>.md` and the call-site's `scopes:` contract lives in `internal/atdd/process/process-flow.yaml`. Read the prompt to confirm what the agent was supposed to touch.
 
   ```
   ${failing-task-name}
