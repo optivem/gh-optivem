@@ -15,12 +15,12 @@ on:
   push:
     branches: [main]
     paths:
-      - internal/atdd/runtime/architecture/**
+      - internal/diagrams/architecture/**
       - .github/workflows/regenerate-architecture-diagram.yml
   pull_request:
     branches: [main]
     paths:
-      - internal/atdd/runtime/architecture/**
+      - internal/diagrams/architecture/**
   # Manual escape hatch: lets us re-run after fixing rendering bugs that
   # don't otherwise touch a path-filtered file (e.g. a CLI behaviour change
   # in `gh optivem architecture show`).

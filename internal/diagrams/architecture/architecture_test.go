@@ -110,8 +110,8 @@ func TestRender_MatchesCommittedGolden(t *testing.T) {
 	got := Render(doc)
 
 	// Walk up to repo root: this file lives at
-	// internal/atdd/runtime/architecture/, four levels deep.
-	root := filepath.Join("..", "..", "..", "..")
+	// internal/diagrams/architecture/, three levels deep.
+	root := filepath.Join("..", "..", "..")
 	goldenPath := filepath.Join(root, "docs", "architecture-diagram.md")
 	want, err := os.ReadFile(goldenPath)
 	if err != nil {

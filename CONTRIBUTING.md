@@ -209,7 +209,7 @@ Off by default. Filing a quick issue yourself is usually clearer and keeps the s
 bash scripts/install.sh   # rebuilds gh-optivem.exe and links it as `gh optivem`
 ```
 
-Run this any time you edit CLI source (e.g. `implement_commands.go`, anything under `internal/atdd/runtime/diagram/`, etc.). Without rebuilding, `gh optivem …` keeps running the previously built binary and silently masks your changes — cobra falls through to help text for subcommands the old binary doesn't know about, and `>` redirects then clobber whatever file you piped into.
+Run this any time you edit CLI source (e.g. `implement_commands.go`, anything under `internal/diagrams/diagram/`, etc.). Without rebuilding, `gh optivem …` keeps running the previously built binary and silently masks your changes — cobra falls through to help text for subcommands the old binary doesn't know about, and `>` redirects then clobber whatever file you piped into.
 
 `--shop-ref` resolution for local builds: explicit flag wins; otherwise the latest `meta-v*` release of `optivem/shop`. Released binaries (`gh extension install optivem/gh-optivem`) pin the shop SHA baked in at release time and do **not** auto-upgrade. Pass `--shop-ref main` to test against unreleased shop changes.
 
@@ -270,7 +270,7 @@ Do not edit `docs/process-diagram.md` by hand — it is generated from the YAML.
 gh optivem process show > docs/process-diagram.md
 ```
 
-The `regenerate-diagram` workflow watches `internal/atdd/runtime/statemachine/process-flow.yaml` and `internal/atdd/runtime/diagram/**`, but it behaves differently depending on the event:
+The `regenerate-diagram` workflow watches `internal/atdd/runtime/statemachine/process-flow.yaml` and `internal/diagrams/diagram/**`, but it behaves differently depending on the event:
 
 - **Pull requests** — renders and **fails the PR** if the committed diagram is stale. It does *not* auto-fix the PR branch. So when you edit the YAML in a feature branch, run the command above and commit the result alongside your YAML change before opening the PR.
 - **Push to `main`** — regenerates and commits the updated diagram back to main as `github-actions[bot]`. Direct main pushes are the only path where you don't have to regenerate yourself.

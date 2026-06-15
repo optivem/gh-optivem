@@ -22,7 +22,7 @@ Cross-reference (read as needed to verify a finding — do not assume, confirm):
 - `internal/atdd/runtime/actions/bindings.go` — registered service-task `action:` functions, output-JSONL landing, scope/outputs validation.
 - `internal/atdd/runtime/driver/target.go` — the `--target` slice entry points (`targetSlices`).
 - `internal/atdd/runtime/driver/driver.go` — dispatch seeding (output-keys allow-list, envelope), scope-block resolution, channel unroll.
-- `internal/atdd/runtime/diagram/diagram.go` — the render-ordering process list (orphan-box detection).
+- `internal/diagrams/diagram/diagram.go` — the render-ordering process list (orphan-box detection).
 - `internal/assets/runtime/agents/atdd/*.md` — the agent bodies referenced by MID `agent:` fields (existence + name match only; not their content).
 
 You MUST read `process-flow.yaml` fully before producing findings. Per the project consistency-check rule, enumerate concretely first — never conclude "no findings" from a skim.

@@ -36,7 +36,7 @@
 - **Scaffolding** — `steps`, `templates`, `files`. Command: `environment`. `steps → config, projectconfig, templates, files, shell, log, compiler, runner`.
 - **Config** — `config`, `configinit`, `projectconfig`. Commands: `config`, `compile`. `config → approval, cmdctx, log, projectconfig, version, shell`; `configinit → approval, config, files, projectconfig, steps`.
 - **Dev-workflow / GitHub** — `ghbulk`, `sonar`, `workspace`. Commands: `cross_repo`, `cleanup`. **Lowest coupling** (`ghbulk`/`sonar → shell, log` only; `workspace → projectconfig`).
-- **Architecture / diagrams** — `atdd/runtime/architecture` (command `architecture`) and `atdd/runtime/diagram` (`→ statemachine`, used by `process`). Read-only renderers over the engine model.
+- **Architecture / diagrams** — `diagrams/architecture` (command `architecture`) and `diagrams/diagram` (`→ statemachine`, used by `process`). Read-only renderers over the engine model. *(moved out of `atdd/runtime/` — done.)*
 - **Diagnostics / misc** — commands `doctor`, `system`, `cleanup`, `hooks`; package `version`. `doctor → promptio, userstate`.
 - **CLI / surface** — `main.go` + all `*_commands.go`; composes the modules.
 
@@ -77,7 +77,7 @@
 Listed in execution order (only Child 1 is drafted; the rest are written just-in-time per Step 3):
 
 1. **Dev-workflow** (`ghbulk`, `sonar`, `workspace`) — ✅ **done** → moved to `internal/devworkflow/`; see `20260615-0706-module-devworkflow.md`.
-2. **Architecture / diagrams** (`atdd/runtime/{architecture,diagram}`). *(not drafted)*
+2. **Architecture / diagrams** — ✅ **done** → moved to `internal/diagrams/{architecture,diagram}` + updated CI workflows, agent defs, docs prose; see `20260615-0722-module-diagrams.md`. *(2 emitted renderer headers left at old path — see record.)*
 3. **Diagnostics / misc** (`doctor`, `system`, `version`). *(not drafted)*
 4. **Config** (`config`, `configinit`, `projectconfig`). *(not drafted)*
 5. **Scaffolding** (`steps`, `templates`, `files`) + the shared **build** module (`runner`, `compiler`). *(not drafted)*
