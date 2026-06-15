@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/configinit"
@@ -195,7 +196,7 @@ func runConfigValidate(yamlPath string) (string, error) {
 	if err := configinit.EnsureExists(yamlPath); err != nil {
 		return "", err
 	}
-	if _, err := projectconfig.LoadFromPath(yamlPath); err != nil {
+	if _, err := configcheck.LoadFromPath(yamlPath); err != nil {
 		return "", err
 	}
 	return yamlPath, nil
@@ -567,7 +568,7 @@ func runConfigPreflight(yamlPath string, optsFor func(*projectconfig.Config) (pr
 	if err := configinit.EnsureExists(yamlPath); err != nil {
 		return "", err
 	}
-	cfg, err := projectconfig.LoadFromPath(yamlPath)
+	cfg, err := configcheck.LoadFromPath(yamlPath)
 	if err != nil {
 		return "", err
 	}

@@ -418,25 +418,6 @@ func TestValidate_ProcessFlow_RejectsAbsolutePath(t *testing.T) {
 	}
 }
 
-// TestValidate_TaskPrompts_RejectsUnknownTask verifies typos in MID
-// task names surface at config-load, not deep inside the pipeline.
-func TestValidate_TaskPrompts_RejectsUnknownTask(t *testing.T) {
-	t.Parallel()
-	cfg := &Config{
-		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
-		TaskPrompts: map[string]string{
-			"not-a-real-task": "config/prompts/x.md",
-		},
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("expected error for unknown task name, got nil")
-	}
-	if !strings.Contains(err.Error(), "not-a-real-task") {
-		t.Fatalf("error should name the bad task, got: %v", err)
-	}
-}
-
 // TestValidate_TaskPrompts_RejectsAbsolutePath verifies values pass the
 // same path-validation as system/system-test paths.
 func TestValidate_TaskPrompts_RejectsAbsolutePath(t *testing.T) {

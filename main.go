@@ -25,6 +25,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
 	"github.com/optivem/gh-optivem/internal/config"
@@ -267,7 +268,7 @@ func loadProjectConfigForInit(flagPath string, f *config.RawFlags) (*projectconf
 		} else if err := configinit.EnsureExists(abs); err != nil {
 			return nil, "", err
 		}
-		pc, err := projectconfig.LoadFromPath(abs)
+		pc, err := configcheck.LoadFromPath(abs)
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil, "", projectconfig.MissingFileError(abs)
@@ -279,7 +280,7 @@ func loadProjectConfigForInit(flagPath string, f *config.RawFlags) (*projectconf
 
 	// Default path: respect a pre-existing CWD file (operator-authored input).
 	if _, statErr := os.Stat(abs); statErr == nil {
-		pc, err := projectconfig.LoadFromPath(abs)
+		pc, err := configcheck.LoadFromPath(abs)
 		if err != nil {
 			return nil, "", err
 		}

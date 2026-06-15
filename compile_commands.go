@@ -23,6 +23,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
 	"github.com/optivem/gh-optivem/internal/build/compiler"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
@@ -85,7 +86,7 @@ Use the noun-scoped forms to narrow to one tier:
 func loadProjectConfigOrExit() *projectconfig.Config {
 	path, _ := projectconfig.ResolvePath(projectConfigPath)
 	exitOnError(configinit.EnsureExists(path))
-	cfg, err := projectconfig.LoadFromPath(path)
+	cfg, err := configcheck.LoadFromPath(path)
 	exitOnError(err)
 	return cfg
 }

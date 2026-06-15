@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 
@@ -89,7 +90,7 @@ func loadProjectConfigForRunner() (*projectconfig.Config, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("resolve absolute path for %s: %w", path, err)
 	}
-	cfg, err := projectconfig.LoadFromPath(abs)
+	cfg, err := configcheck.LoadFromPath(abs)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, "", projectconfig.MissingFileError(abs)

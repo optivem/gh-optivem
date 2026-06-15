@@ -39,6 +39,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
@@ -553,13 +554,13 @@ func installLogFileMirror(opts *Options) (func(), error) {
 // to the legacy Load(repoPath) behaviour where absence returns nil.
 func loadDriverConfig(configPath, repoPath string) (*projectconfig.Config, error) {
 	if configPath == "" {
-		cfg, err := projectconfig.Load(repoPath)
+		cfg, err := configcheck.Load(repoPath)
 		if err != nil {
 			return nil, fmt.Errorf("driver: %w", err)
 		}
 		return cfg, nil
 	}
-	cfg, err := projectconfig.LoadFromPath(configPath)
+	cfg, err := configcheck.LoadFromPath(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("driver: %w", err)
 	}

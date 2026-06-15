@@ -33,8 +33,6 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 )
 
 // Path is the canonical relative location of the file inside a consumer
@@ -663,23 +661,14 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	// Rule 11: task-prompts. Keys must be known embedded MID task names
-	// (typos surface at config-load, not deep inside the pipeline); values
-	// pass validatePath. Sorted iteration so errors are deterministic.
-	// Post-1701 split: enumerate task-names from the embedded process-flow
-	// YAML rather than agents.Names() (which now returns agent nouns).
-	if len(c.TaskPrompts) > 0 {
-		known, err := knownTaskNames()
-		if err != nil {
-			return fmt.Errorf("config: task-prompts: enumerate MID task names: %w", err)
-		}
-		for _, name := range sortedKeys(c.TaskPrompts) {
-			if !known[name] {
-				return fmt.Errorf("config: task-prompts: %q is not a known embedded MID task", name)
-			}
-			if err := validatePath("task-prompts."+name, c.TaskPrompts[name]); err != nil {
-				return err
-			}
+	// Rule 11: task-prompts values pass validatePath. Sorted iteration so
+	// errors are deterministic. The keys-must-be-known-MID-task-names check
+	// is engine-derived and lives in internal/atdd/runtime/configcheck
+	// (enforced at the runtime entry points) — projectconfig stays a leaf and
+	// only validates its own shape here.
+	for _, name := range sortedKeys(c.TaskPrompts) {
+		if err := validatePath("task-prompts."+name, c.TaskPrompts[name]); err != nil {
+			return err
 		}
 	}
 
@@ -1002,35 +991,6 @@ func (c *Config) validateSonar() error {
 		return fmt.Errorf("config: system.architecture is set; system-test.sonar-project is required")
 	}
 	return nil
-}
-
-// knownTaskNames returns the set of MID task-name verbs declared on every
-// writing-agent EXECUTE_AGENT call-activity in the embedded process-flow
-// YAML. The validator for `task-prompts:` uses this to reject typo'd keys
-// at config-load. Post-plan-1701 split, task-names (verbs) and agent names
-// (nouns) diverged — the schema field is keyed by task-name, so this is
-// the right source. Templated task-names (e.g. "fix-${failure-kind}" on
-// the `fix` LOW process) are skipped: they resolve at runtime to a
-// concrete MID that already appears in this set via its own entry.
-func knownTaskNames() (map[string]bool, error) {
-	eng, err := statemachine.LoadDefault()
-	if err != nil {
-		return nil, err
-	}
-	out := map[string]bool{}
-	for _, proc := range eng.Processes {
-		for _, node := range proc.Nodes {
-			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
-				continue
-			}
-			name := node.Raw.Params["task-name"]
-			if name == "" || strings.Contains(name, "${") {
-				continue
-			}
-			out[name] = true
-		}
-	}
-	return out, nil
 }
 
 // sortedKeys returns the keys of m in lexicographic order. Used by

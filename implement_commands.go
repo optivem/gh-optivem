@@ -30,6 +30,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
@@ -286,7 +287,7 @@ func runImplementPreflight(configPath string, workspace string, manualAgents boo
 	if err := configinit.EnsureExists(configPath); err != nil {
 		return nil, err
 	}
-	cfg, err := projectconfig.LoadFromPath(configPath)
+	cfg, err := configcheck.LoadFromPath(configPath)
 	if err != nil {
 		return nil, err
 	}

@@ -42,11 +42,11 @@
 
 ### Cross-module seams (the hard cuts)
 
-1. **`projectconfig → atdd/runtime/statemachine`** — Config reaches *up* into the Engine. Backwards dependency; the biggest surprise. Must be inverted (engine should not be a dependency of config).
+1. **`projectconfig → atdd/runtime/statemachine`** — ✅ **resolved** (child #6, `20260615-0749`). The one engine-backed rule (task-prompts known-name check) was relocated to `internal/atdd/runtime/configcheck`; `projectconfig` now imports nothing from `internal/atdd/**` (build-level guard test in `import_guard_test.go` keeps it that way). Config no longer reaches up into the Engine.
 2. **`configinit → steps`** — Config reaches into Scaffolding.
 3. **`steps → compiler, runner`** — Scaffolding reaches into build/run helpers (Process side).
 4. **`preflight → runner`** — Process reaches into build/run helpers (expected if `runner` is engine-side).
-5. **`projectconfig` is imported by almost everything** — it's a near-kernel domain type, yet it also imports the engine (see #1), so it can't simply be demoted to the kernel until #1 is resolved.
+5. **`projectconfig` is imported by almost everything** — it's a near-kernel domain type. ✅ **unblocked**: with seam #1 resolved (child #6) it no longer imports the engine, so it is now kernel-eligible and can be demoted to the shared kernel.
 
 ### Cut difficulty
 
@@ -88,7 +88,7 @@ Listed in execution order (only Child 1 is drafted; the rest are written just-in
 3. **Diagnostics / misc** (`doctor`, `system`, `version`) — **likely a no-op move**: the commands stay at root (CLI surface) and the only package, `version`, is really kernel. Reconsider whether this is a module at all (fold `version` into kernel). *(not drafted)*
 4. **Config** (`config`, `configinit`, `projectconfig`). *(not drafted)*
 5. **Scaffolding** (`steps`, `templates`, `files`) + the shared **build** module (`runner`, `compiler`). *(not drafted)*
-6. **Invert seam #1** — untangle `projectconfig → statemachine`. Prerequisite for Child 1. *(not drafted)*
+6. **Invert seam #1** — untangle `projectconfig → statemachine`. ✅ **done** → rule relocated to `internal/atdd/runtime/configcheck`; `projectconfig` is now a leaf and kernel-eligible (seam #5 unblocked); see `20260615-0749-invert-seam1-projectconfig-engine.md`.
 7. **Process module: engine ↔ process definition ↔ agents** → `20260615-0549-child1-modularize-gh-optivem-engine-process.md` *(drafted; runs last — hardest, depends on #6)*
 
 ## Open questions

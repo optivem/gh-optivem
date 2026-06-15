@@ -391,6 +391,42 @@ func TestRunConfigValidate_NonDefaultFilename(t *testing.T) {
 	}
 }
 
+// TestRunConfigValidate_RejectsUnknownTaskPrompt is the end-to-end guard
+// that the engine-backed task-prompts known-name check still fires at an
+// enforcing entry point after the rule moved from projectconfig.Validate
+// into configcheck. A typo'd task-prompts: key must fail `config validate`
+// with the same wording it always did.
+func TestRunConfigValidate_RejectsUnknownTaskPrompt(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	yamlPath := filepath.Join(dir, projectconfig.Path)
+	f := monolithMonorepoFlags()
+	if _, err := configinit.Run(f, yamlPath, false); err != nil {
+		t.Fatalf("seed init: %v", err)
+	}
+	// Append a task-prompts block keyed by a non-existent MID task. The
+	// schema accepts the field (strict parse passes); only the engine-backed
+	// known-name check, wired via configcheck at this entry point, rejects it.
+	data, err := os.ReadFile(yamlPath)
+	if err != nil {
+		t.Fatalf("read seeded config: %v", err)
+	}
+	data = append(data, []byte("task-prompts:\n  not-a-real-task: config/prompts/x.md\n")...)
+	if err := os.WriteFile(yamlPath, data, 0o644); err != nil {
+		t.Fatalf("rewrite config: %v", err)
+	}
+	_, err = runConfigValidate(yamlPath)
+	if err == nil {
+		t.Fatal("want error for unknown task-prompts key, got nil")
+	}
+	if !strings.Contains(err.Error(), "not-a-real-task") {
+		t.Errorf("error should name the bad task, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "is not a known embedded MID task") {
+		t.Errorf("error should preserve the canonical wording, got: %v", err)
+	}
+}
+
 // TestRunConfigPreflight_Missing mirrors TestRunConfigValidate_Missing:
 // preflight's first gate is the same EnsureExists chain validate uses, so a
 // missing file surfaces the same hint pointing at `config init`.
