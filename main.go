@@ -29,12 +29,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/cmdctx"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/configinit"
+	"github.com/optivem/gh-optivem/internal/devworkflow/workspace"
 	"github.com/optivem/gh-optivem/internal/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/shell"
 	"github.com/optivem/gh-optivem/internal/steps"
 	"github.com/optivem/gh-optivem/internal/version"
-	"github.com/optivem/gh-optivem/internal/workspace"
 )
 
 // bugReportLogMaxBytes is the inline log budget for a filed issue body.
@@ -224,7 +224,7 @@ itself only takes per-invocation flags — verify-level, workdir, etc.
 If project.url is empty, init will auto-create the project board and write
 the URL back into gh-optivem.yaml.`,
 		Example: `  gh optivem init`,
-		Args: cobra.NoArgs,
+		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			runInit(cmd, f)
 		},
@@ -356,17 +356,17 @@ func runInit(cmd *cobra.Command, f *config.RawFlags) {
 
 // Phase labels — printed as section headers by executeSteps when the phase changes.
 const (
-	phasePrepare            = "Prepare"
-	phaseSetupRepo          = "Setup repository"
-	phaseApplyTemplate      = "Apply template"
-	phasePushScaffold       = "Push scaffold"
-	phaseLintScaffold       = "Lint scaffold"
-	phaseVerifyLocal        = "Verify local"
-	phaseVerifyCommit       = "Verify commit stage"
-	phaseVerifyAcceptance   = "Verify acceptance stage"
-	phaseVerifyQA           = "Verify QA stage"
-	phaseVerifyProduction   = "Verify production stage"
-	phaseFinalize           = "Finalize"
+	phasePrepare          = "Prepare"
+	phaseSetupRepo        = "Setup repository"
+	phaseApplyTemplate    = "Apply template"
+	phasePushScaffold     = "Push scaffold"
+	phaseLintScaffold     = "Lint scaffold"
+	phaseVerifyLocal      = "Verify local"
+	phaseVerifyCommit     = "Verify commit stage"
+	phaseVerifyAcceptance = "Verify acceptance stage"
+	phaseVerifyQA         = "Verify QA stage"
+	phaseVerifyProduction = "Verify production stage"
+	phaseFinalize         = "Finalize"
 )
 
 func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, sc *shell.SonarCloud, failureNote *string) []stepDef {

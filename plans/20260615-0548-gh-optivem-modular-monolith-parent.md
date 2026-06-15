@@ -76,7 +76,7 @@
 
 Listed in execution order (only Child 1 is drafted; the rest are written just-in-time per Step 3):
 
-1. **Dev-workflow** (`ghbulk`, `sonar`, `workspace`) — easiest cut, first. *(not drafted)*
+1. **Dev-workflow** (`ghbulk`, `sonar`, `workspace`) — ✅ **done** → moved to `internal/devworkflow/`; see `20260615-0706-module-devworkflow.md`.
 2. **Architecture / diagrams** (`atdd/runtime/{architecture,diagram}`). *(not drafted)*
 3. **Diagnostics / misc** (`doctor`, `system`, `version`). *(not drafted)*
 4. **Config** (`config`, `configinit`, `projectconfig`). *(not drafted)*

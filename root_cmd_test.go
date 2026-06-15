@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/approval"
-	"github.com/optivem/gh-optivem/internal/workspace"
+	"github.com/optivem/gh-optivem/internal/devworkflow/workspace"
 )
 
 // TestRootCmd_CrossRepoVerbsRegistered confirms the new root surface from

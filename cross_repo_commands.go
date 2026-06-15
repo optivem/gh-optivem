@@ -30,8 +30,8 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/approval"
 	"github.com/optivem/gh-optivem/internal/cmdctx"
+	"github.com/optivem/gh-optivem/internal/devworkflow/workspace"
 	"github.com/optivem/gh-optivem/internal/shell"
-	"github.com/optivem/gh-optivem/internal/workspace"
 )
 
 // workspaceFlagValue holds the --workspace persistent flag value. Bound
@@ -1172,7 +1172,7 @@ func stdinIsTTY() bool {
 }
 
 // shellQuote wraps s in single quotes, escaping any embedded single quotes
-// using the standard POSIX `'\''` dance. Used when constructing commands
+// using the standard POSIX `'\”` dance. Used when constructing commands
 // passed to internal/shell.RunCapture (which itself splits on spaces).
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"

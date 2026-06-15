@@ -18,8 +18,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/ghbulk"
-	"github.com/optivem/gh-optivem/internal/sonar"
+	"github.com/optivem/gh-optivem/internal/devworkflow/ghbulk"
+	"github.com/optivem/gh-optivem/internal/devworkflow/sonar"
 )
 
 const cleanupSeparator = "============================================"
