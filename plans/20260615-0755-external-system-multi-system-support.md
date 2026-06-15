@@ -1,13 +1,21 @@
 # Support a ticket that changes MORE THAN ONE external system's driver port
 
 **Date:** 2026-06-15 (local)
-**Status:** Proposed — design plan, key decisions flagged for `/refine-plan`.
+**Status:** Refined 2026-06-15 — design pinned; ready for `/execute-plan`.
 **Follow-up to:** `plans/20260613-1835-external-system-identity-dto-only-change.md`
 (the identity fix). That plan resolves identity **solely** from the preserved
 external-driver-port changed-paths and makes a **two-systems ticket a hard error**
 (`>1` names → stop). This plan replaces that hard stop with actual multi-system
 handling, reusing the same preserved `external-driver-port-changed-paths` set as the
 per-system selector.
+
+The refined design (below) goes further than the parent's slim-IDENTIFY assumption: the
+only **consumed** output of identification is `real-kind` (the contract-real probe-routing
+polarity, read by `GATE_CONTRACT_REAL_RED_KIND`) — `external-system-name` is stamped today
+but **never read** downstream. So identifying a system exists purely to resolve its
+`real-kind` (and, by the same name key, its config-declared stub/simulator paths). The
+design therefore **retires `identifyExternalSystem` entirely**, baking each system's name
+and `real-kind` into its unrolled clone at load time.
 
 ---
 
@@ -37,7 +45,7 @@ system**, each resolving its own `real-kind` and red→green independently.
 ## Background — the existing precedent is STATIC UNROLL, not a runtime loop
 
 The statemachine already solves "run this sub-cycle once per project-declared item" for
-**channels** (`internal/atdd/runtime/statemachine/channels.go`):
+**channels** (`internal/engine/statemachine/channels.go`):
 
 - `UnrollSystemChannels` / `UnrollSystemDriverAdapterChannels` take the project-declared
   channel set and, **at load time**, replace one template "anchor" call-activity node with
@@ -59,85 +67,158 @@ registered system on every ticket — wrong. So each unrolled per-system clone m
 **guarded** by a per-system "did *this* system's port change?" gate that **skips** the
 clone when the system is untouched.
 
-## Recommended approach — static unroll over the registry + per-system "changed" guard
+## Recommended approach — static unroll over the registry, per-system guard, identity+real-kind baked at load
 
-Mirror `UnrollSystemDriverAdapterChannels`, adding the per-system skip guard:
+The architecture is essentially **forced**: unroll runs at **load time** over config-known
+lists, but the touched-system subset is **runtime data** (computed by the DSL phase). You
+cannot unroll over the touched set — you don't know it yet. So you unroll over the
+**registry** (load-time-known, like channels) and **guard** each clone at runtime. The plan's
+original instinct was right; the refinements below come from *what identification is actually
+for*.
 
-1. **Unroll the external cycle per registered system.** A new
-   `UnrollExternalSystems(systems []string)` clones the
-   `IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS` anchor into one call-activity per entry
-   in `cfg.ExternalSystems`, injecting `external-system-name: <name>` into each clone's
-   `params:`. Iteration order is the registry's deterministic key order (mirrors channels).
-2. **Guard each clone with a per-system changed-gate.** Each clone is preceded by a gateway
-   that is `true` iff `<name>` appears in the preserved `external-driver-port-changed-paths`
-   set (parent plan). Untouched systems → the clone is skipped (routed past), so a ticket
-   touching only `erp` runs only the `erp` clone; a ticket touching `erp` + `clock` runs
-   both, sequentially.
-3. **IDENTIFY consumes the injected name instead of deriving it.** With the unroll supplying
-   `external-system-name`, `identifyExternalSystem` no longer needs to derive the name at all
-   for the multi-system path — it **validates** the injected name against `cfg.ExternalSystems`
-   and stamps `real-kind`. The `>1` detection moves **up** to the unroll/guard layer (which
-   sees the whole set); the parent plan's in-IDENTIFY `>1` hard error is thereby **retired**.
-   The zero-names / unregistered-name errors remain as genuine stops.
-4. **Per-system key isolation.** Each clone's `ct-*` namespaced verdicts and test-name lists
-   (`ct-test-names`, `ct-dsl-port-changed`, etc.) must not collide across systems. Channels
-   already solve the analogous per-channel key isolation; extend the same per-clone key
-   suffixing (or scope) to the per-system clones.
+What we established from the code:
+
+- The cycle's only **consumed** identity output is `real-kind` — read by
+  `GATE_CONTRACT_REAL_RED_KIND` (`internal/atdd/process/gates/bindings.go`), which routes the
+  contract-real probe (`simulator` → red→implement→green; `test-instance` → upstream-gap-halt).
+- `external-system-name` is stamped by `identifyExternalSystem`
+  (`internal/atdd/process/actions/bindings.go`) but **never read** by any non-test code.
+- Each `cfg.ExternalSystems[<name>]` entry is **fully self-describing**: `real-kind`, plus the
+  always-present `stub.{path,repo}` and (iff simulator) `simulator.{path,repo}`. Those paths
+  are already consumed by `preflight.go` (whole-registry existence checks) and the
+  `driver.go` config banner — no new config is needed for multi-system.
+
+So "run the cycle per system" exists to give each system **its own `real-kind` routing**, and
+the baked `<name>` is the registry lookup key for everything else (real-kind, stub/simulator
+paths). Mirror `UnrollSystemDriverAdapterChannels` (`internal/engine/statemachine/channels.go`),
+with these five points:
+
+1. **Unroll per *registered* system, baking the per-system config attributes.** A new
+   `UnrollExternalSystems` clones the `IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS` anchor
+   into one call-activity per `cfg.ExternalSystems` entry (deterministic key order, like
+   channels), baking `external-system-name: <name>` AND `real-kind: <cfg value>` into each
+   clone's `params:` at load time. (If the cycle's stub-writing steps consume the
+   stub/simulator path at runtime, bake those too — same registry entry, same mechanism;
+   see verify E.) Looking up `real-kind` at unroll makes it a static, analyzable value and
+   turns the enum check (`test-instance | simulator`) into a **load-time** validation.
+2. **Per-system entry guard replaces the boolean gate.** Today
+   `GATE_EXTERNAL_DRIVER_PORTS_CHANGED` ("did *any* port change?") gates the single cycle. Per
+   clone it becomes "is *my* baked `<name>` in the names-set derived from
+   `external-driver-port-changed-paths`?" Untouched system → the clone no-ops (routed past).
+   The membership check reuses the path→names-set logic factored out of the retired IDENTIFY
+   (point 3). A ticket touching only `erp` runs only the `erp` clone; `erp` + `clock` runs
+   both, sequentially (the unroll wires clones in a linear chain).
+3. **Retire `identifyExternalSystem` entirely** — not just its `>1` branch. Its only consumed
+   output (`real-kind`) is baked at unroll, so the whole action goes. Its port-path→names-set
+   derivation (the parent plan's #65 fix — identity from the port change, never adapter files)
+   is **preserved** by factoring it into a shared helper that the guard (2) and the
+   registration check (4) both call. The parent's in-IDENTIFY `>1` hard error retires: `>1`
+   now simply means `>1` guard fires, which is the whole point. The dead `external-system-name`
+   stamping is removed.
+4. **One upfront "all touched systems registered" validation**, before the unrolled clones.
+   Every name in the changed-set must correspond to a registered system (i.e. have a clone);
+   an unmatched name is a **hard error**. This is where the **no-silent-skip guarantee** (the
+   original #65-class bug the parent plan closed with its unregistered-name error) now lives —
+   it sees the whole changed-set against the whole registry. The zero-names case stays covered
+   by the existing entry gate (a port change is guaranteed whenever the cascade reaches here).
+5. **`GATE_CONTRACT_REAL_RED_KIND` reads the baked `real-kind`** from clone params (seeded to
+   `ctx.State` at sub-process entry, per the channel precedent) instead of from
+   IDENTIFY-stamped state. Pure state-reader, otherwise unchanged.
 
 ### Why not the alternatives (record, don't reopen)
 
 - *Runtime loop over the identified system set.* Rejected — the statemachine has no generic
   runtime loop and deadlocks / blows up RAM on loopback edges
   (`feedback_statemachine_test_loop_hazard.md`). Static unroll is the established idiom.
-- *Keep the `>1` hard error and force authors to split tickets.* This is the parent plan's
-  status quo. Acceptable as a stopgap, but it pushes a structural limitation onto every
-  multi-external-system story; the unroll removes it for the same project-declared-list cost
-  channels already pay.
+- *Unroll over only the touched systems.* Impossible — the touched subset is runtime data,
+  but unroll runs at load time over config-known lists. Hence unroll-over-registry + runtime
+  guard.
+- *Keep the `>1` hard error and force authors to split tickets.* The parent plan's status quo.
+  Pushes a structural limitation onto every multi-external-system story; the unroll removes it
+  for the same project-declared-list cost channels already pay.
+- *Slim IDENTIFY to validate+stamp the injected name (this plan's original draft).* Superseded
+  — once `real-kind` is baked at unroll, IDENTIFY has no surviving consumer, so deleting it is
+  cleaner than keeping a validate-only action. Identity/real-kind resolution moves to load
+  time, matching the statemachine's static-analysis philosophy.
 - *Static unroll over the full registry with NO guard.* Rejected — would run the full cycle
   (write-contract-tests, adapter impl, probe) for every registered external system on every
-  ticket, most hitting a no-op / zero-change path. The per-system changed-guard is what keeps
-  the cost proportional to what the ticket actually touched.
+  ticket, most hitting a no-op / zero-change path. The per-system changed-guard keeps the
+  cost proportional to what the ticket actually touched.
 
 ---
 
-## Open decisions to resolve in `/refine-plan`
+## Resolved decisions (refined 2026-06-15)
 
-1. **Per-system changed-gate binding.** New gate `binding:` that reads "is `<name>` in
-   `external-driver-port-changed-paths`?" — confirm where it lives (gates `bindings.go`) and
-   how the clone's `<name>` reaches the binding (param vs unroll-baked literal).
-2. **Key-namespacing scheme for per-system clones.** Channel clones suffix per-channel keys;
-   decide the exact per-system suffix/scope for `ct-test-names`, `ct-dsl-port-changed`, and
-   the contract-real probe outcome so two systems can't clobber each other. Pin against the
-   channels precedent.
-3. **Interaction with channel unroll.** The external cycle sits inside the AT cascade, which
-   is itself channel-unrolled in places. Confirm the external-system unroll and channel
-   unroll compose (order of unroll passes in the load pipeline) without producing an N×M node
-   explosion where it isn't wanted.
-4. **`shared` external adapter code.** Decide whether the per-system clones need any
-   shared/common external layer handling (analogous to channels' `common: "true"` on the
-   first clone), or whether each external system is fully independent (no common layer).
+1. **Per-system changed-gate binding → RESOLVED.** The unroll bakes `external-system-name`
+   into each clone's `params:`; the guard reads that baked name and checks membership in the
+   names-set derived from `external-driver-port-changed-paths`. The derivation is factored out
+   of the (retired) `identifyExternalSystem` into a shared helper. The gate binding lives in
+   `internal/atdd/process/gates/bindings.go` (where the `real-kind` gate already lives); the
+   changed-paths set is stashed by the actions binding in
+   `internal/atdd/process/actions/bindings.go`.
+2. **`real-kind` baked at load → RESOLVED.** Looked up from `cfg.ExternalSystems[<name>].RealKind`
+   at unroll time and baked into each clone; `GATE_CONTRACT_REAL_RED_KIND` becomes a reader of
+   the baked param. `identifyExternalSystem` is retired entirely (its only consumed output was
+   `real-kind`).
+3. **Stub/simulator paths → already in config, no new mechanism.** Each
+   `cfg.ExternalSystems[<name>]` declares `stub.{path,repo}` and (iff simulator)
+   `simulator.{path,repo}`, already validated whole-registry by `preflight.go`. The baked
+   `<name>` is the lookup key; bake the path into the clone only if the cycle's writing steps
+   consume it at runtime (verify E).
 
-## Items (agent work — to be finalized after the decisions above)
+## Still to confirm during execution (verify, don't redesign)
 
-- [ ] **1. Add `UnrollExternalSystems` in `channels.go`** (or a sibling file), cloning the
-  `IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS` anchor once per `cfg.ExternalSystems` entry,
-  injecting `external-system-name`, following the `unrollAnchor` pattern. Wire it into the
-  load-time unroll pipeline alongside the channel unrolls.
-- [ ] **2. Add the per-system changed-guard gate** (binding in gates `bindings.go`) that is
-  `true` iff the clone's `<name>` is in the preserved `external-driver-port-changed-paths`
-  set; route a false verdict past the clone.
-- [ ] **3. Retire the in-IDENTIFY `>1` hard error; consume the injected name.** Update
-  `identifyExternalSystem` to validate+resolve `real-kind` for the injected
-  `external-system-name`; remove the `>1` branch (now handled by unroll+guard). Keep the
-  zero-names and unregistered-name errors.
-- [ ] **4. Per-system key namespacing** for the cloned cycle's `ct-*` verdicts and test-name
-  lists, per decision (2) above.
-- [ ] **5. Unit tests** (`statemachine` + `actions`): single-system ticket runs exactly one
-  clone; two-system ticket runs both clones with independent `real-kind`; an untouched
-  registered system's clone is skipped; key isolation holds across two systems.
-- [ ] **6. BPMN doc-block / node-comment sync** for the unrolled anchor and the new guard.
-  Content-only; **no diagram-regeneration step** (the regenerate-diagram workflow rebuilds
-  `docs/process-diagram.md` on push, `feedback_plans_no_diagram_regen.md`).
+A. **Params → `ctx.State` seeding.** Confirm the channel precedent's mechanism for making a
+   baked call-activity `params:` value readable by a downstream gate/binding, and that
+   `real-kind` reaches `GATE_CONTRACT_REAL_RED_KIND` the same way.
+B. **Per-system key isolation.** Clones run in a **sequential** chain (`unrollChannelAnchor`
+   re-stitches pred→clone0→…→succ), so each completes red→green before the next starts.
+   Default: **no per-system suffixing** of `ct-*` verdicts / test-name lists — shared state is
+   overwritten per-clone, not clobbered concurrently. Add suffixing ONLY if a step aggregates
+   across systems; check why channels suffix before deciding.
+C. **Interaction with channel unroll.** The external cycle sits inside the AT cascade, which is
+   itself channel-unrolled in places. Confirm the external-system unroll and channel unroll
+   compose in the load pipeline (order of unroll passes) without an unwanted N×M node
+   explosion.
+D. **`shared` external layer.** Decide whether per-system clones need any common layer
+   (analogous to channels' `common: "true"` on the first clone), or are fully independent.
+   Lean independent unless a shared external layer exists in the template.
+E. **Stub/simulator path flow to writing steps.** Confirm whether the cycle's stub-writing
+   steps need the per-system `stub.path` / `simulator.path` threaded in (bake into the clone,
+   per resolved decision 3) or already resolve it from config another way.
+
+## Items (agent work)
+
+- [ ] **1. Add `UnrollExternalSystems`** in `internal/engine/statemachine/channels.go` (or a
+  sibling file), cloning the `IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS` anchor once per
+  `cfg.ExternalSystems` entry via the `unrollChannelAnchor` pattern, baking
+  `external-system-name: <name>` and `real-kind: <cfg value>` into each clone's `params:`.
+  Wire it into the load-time unroll pipeline alongside the channel unrolls (confirm pass
+  order — verify C).
+- [ ] **2. Per-system entry guard.** Replace/augment the cycle's boolean entry gate so each
+  clone runs iff its baked `<name>` is in the names-set from `external-driver-port-changed-paths`;
+  route a false verdict past the clone. Factor the path→names-set derivation out of
+  `identifyExternalSystem` into a shared helper.
+- [ ] **3. Upfront "all touched systems registered" validation.** Before the unrolled clones,
+  hard-error if any name in the changed-set is not a registered system (preserves the
+  no-silent-skip guarantee). Uses the shared names-set helper from Item 2 against
+  `cfg.ExternalSystems`.
+- [ ] **4. Retire `identifyExternalSystem`.** Delete the action and its registration from
+  `internal/atdd/process/actions/bindings.go`; point `GATE_CONTRACT_REAL_RED_KIND` at the
+  baked `real-kind` param (verify A). Remove the now-dead `external-system-name` stamping. The
+  `>1` / unregistered-name / zero-name error cases are absorbed by Items 2–3 and the existing
+  entry gate.
+- [ ] **5. Per-system key namespacing — conditional on verify B.** If a cross-system read
+  exists, add per-clone suffixing for the cloned cycle's `ct-*` verdicts / test-name lists;
+  otherwise this item is dropped.
+- [ ] **6. Unit tests** (`statemachine` + `actions`/`gates`): single-system ticket runs
+  exactly one clone; two-system ticket runs both clones, each with its own baked `real-kind`;
+  an untouched registered system's clone is skipped; an unregistered touched system
+  hard-errors upfront; (if Item 5 applies) key isolation holds.
+- [ ] **7. BPMN doc-block / node-comment sync** for the unrolled anchor, the per-system guard,
+  the upfront registration check, and the retired IDENTIFY. Content-only; **no
+  diagram-regeneration step** (the regenerate-diagram workflow rebuilds `docs/process-diagram.md`
+  on push, `feedback_plans_no_diagram_regen.md`).
 
 ## Verification (user-driven — not agent Items)
 
@@ -147,14 +228,23 @@ Mirror `UnrollSystemDriverAdapterChannels`, adding the per-system skip guard:
   (`feedback_statemachine_test_loop_hazard.md`); kill on memory climb.
 - [ ] Rehearsal: a story that changes two external systems' ports runs the contract cycle for
   **both** (each resolving its own `real-kind`), instead of erroring at `IDENTIFY`.
+- [ ] Rehearsal with two systems of **different** `real-kind` (one `simulator`, one
+  `test-instance`) — confirms each clone routes its own `GATE_CONTRACT_REAL_RED_KIND`
+  independently (the case the per-system split exists for; note the `test-instance` branch has
+  no shop coverage today per `project_bpmn_full_coverage_story_and_realkind_gap.md`).
 - [ ] A single-system story (e.g. `#65`-class) still runs exactly one cycle, unchanged.
 
 ## Risks / notes
 
-- **Depends on the parent plan landing first.** This plan reuses
-  `external-driver-port-changed-paths`; the identity fix
-  (`20260613-1835-...`) must be implemented before this one.
+- **Parent plan has landed.** This plan reuses `external-driver-port-changed-paths`; the
+  identity fix (`20260613-1835-...`) is confirmed implemented (the set is stashed in
+  `internal/atdd/process/actions/bindings.go`).
+- **Retiring IDENTIFY is a delete right after the parent added it.** The parent plan
+  (`20260613-1835`) created `identifyExternalSystem`; this plan deletes it. Not churn — its
+  port-path→names-set logic (the #65 fix) is preserved as the shared helper; only the runtime
+  action wrapper, the `>1` collapse, and the dead `external-system-name` stamping go.
 - **Node-count growth.** One clone per registered external system (guarded). Keep the
   registry small; the guard keeps runtime cost proportional to systems actually touched.
 - **Scope discipline.** This is a multiplicity change to the external cycle only; do not fold
-  in real-kind reshaping or unrelated routing changes.
+  in real-kind reshaping or unrelated routing changes. Baking `real-kind` at load is a
+  *relocation* of the existing lookup, not a reshape.
