@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // FillRawFlagsFromYAML populates RawFlags's YAML-affecting fields from a

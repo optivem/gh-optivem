@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // happyAuthClient returns an http.Client whose fake transport answers every

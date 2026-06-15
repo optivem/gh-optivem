@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // fakeShell records every Run invocation and returns canned errors keyed

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // WriteOptivemYAMLToFilePath renders cfg as a projectconfig.Config and writes

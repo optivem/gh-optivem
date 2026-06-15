@@ -16,7 +16,7 @@ import (
 
 	"github.com/mattn/go-isatty"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // EnsureExistsOrBuild is the in-memory variant of EnsureExists for the

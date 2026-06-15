@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // scoped.go implements scoped `gh optivem implement --target <slice>` entry

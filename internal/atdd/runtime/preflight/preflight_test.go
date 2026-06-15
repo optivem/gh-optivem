@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // makeFakeRepo creates dir as a fake git repo (empty `.git` directory)

@@ -19,7 +19,7 @@ import (
 	"path/filepath"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 const errorFormat = "ERROR: %v\n"

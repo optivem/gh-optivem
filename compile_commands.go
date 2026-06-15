@@ -25,9 +25,9 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
 	"github.com/optivem/gh-optivem/internal/build/compiler"
-	"github.com/optivem/gh-optivem/internal/configinit"
+	"github.com/optivem/gh-optivem/internal/config/configinit"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // newCompileCmd builds the bare `compile` verb. Unlike most top-level

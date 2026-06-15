@@ -3,7 +3,7 @@ package config
 import (
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // TestCompilerChecksFor covers the dispatcher in isolation; the underlying

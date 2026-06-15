@@ -17,7 +17,7 @@ import (
 
 	"github.com/fatih/color"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // compileSummary collects rows during the compile sweep and prints a single

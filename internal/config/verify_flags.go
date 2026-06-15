@@ -10,7 +10,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // ValidateVerifyFlags checks the --lang and --deploy values passed to

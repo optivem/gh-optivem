@@ -6,7 +6,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Execute the Config child plan (#4) — `plans/20260615-0933-module-config.md`.** Drafted and committed; all three design decisions are resolved (projectconfig → `internal/kernel/projectconfig`; configinit → `internal/config/configinit`; config stays put). This is now mechanical: run `/clear` then `/execute-plan plans/20260615-0933-module-config.md`. Three pure moves, one isolated subagent each, `go build ./...` && `go test ./...` green, commit per move; its Step 3 updates this parent. **Unblocks:** Process carve-out (#7) — the last and hardest child.
+**Draft the Process carve-out child plan (#7) — the last and hardest child.** Config (#4) is ✅ done; the Process module is the sole remaining child. This is **design work, not a mechanical move** — switch to `/create-plan` (or `/refine-plan` on the existing draft `20260615-0549-child1-modularize-gh-optivem-engine-process.md`). The draft predates several decisions and must be reconciled: scaffolding is now its own module (not a layer inside Process), seam #1 is resolved (`configcheck` holds the engine-backed rule), and the kernel/build/config modules already exist at `internal/kernel/**`, `internal/build/**`, `internal/config/**`. Scope: carve the engine (`atdd/runtime/statemachine` + the `atdd/runtime/*` packages) and process definition + agents into a Process module with a clean public surface, no behavior change. Still un-moved at root by design, pending this: `expand`, `userstate`, `assets`, and the whole `atdd/` tree.
 
 ## TL;DR
 
@@ -40,7 +40,7 @@
 - **Process module (ATDD)** — the bulk of `internal/`: `atdd`, `atdd/runtime/{agents, gates, actions, verify, diagram, override, repolocator, trace, driver, clauderun, release, preflight, tracker/**, intake, outlog, testselect}`, plus `expand`, `assets`, `userstate`. `driver` is the orchestrator that pulls the rest together. Commands: `process`, `run`, `implement`, `test`.
 - **Build/run helpers** — `runner` (`→ spinner, pathx`) and `compiler` (`→ projectconfig, shell`). Used by *both* Process (`preflight → runner`) and Scaffolding (`steps → compiler, runner`). Likely belongs to the engine/process side or a small shared "build" module — TBD.
 - **Scaffolding** — `steps`, `templates`, `files`. Command: `environment`. `steps → config, projectconfig, templates, files, shell, log, compiler, runner`.
-- **Config** — `config`, `configinit`, `projectconfig`. Commands: `config`, `compile`. `config → approval, cmdctx, log, projectconfig, version, shell`; `configinit → approval, config, files, projectconfig, steps`.
+- **Config** — `internal/config/**` (`config` at `internal/config`; `configinit` at `internal/config/configinit`; `optivemyaml` at `internal/config/optivemyaml`) + `projectconfig` demoted to the shared kernel at `internal/kernel/projectconfig`. ✅ **done (child #4)**. Commands: `config`, `compile`.
 - **Dev-workflow / GitHub** — `ghbulk`, `sonar`, `workspace`. Commands: `cross_repo`, `cleanup`. **Lowest coupling** (`ghbulk`/`sonar → shell, log` only; `workspace → projectconfig`).
 - **Architecture / diagrams** — `diagrams/architecture` (command `architecture`) and `diagrams/diagram` (`→ statemachine`, used by `process`). Read-only renderers over the engine model. *(moved out of `atdd/runtime/` — done.)*
 - **Diagnostics / misc** — *not a module* (resolved, child #3): commands `doctor`, `system`, `cleanup`, `hooks` stay at the root CLI surface; the lone package `version` was folded into the shared kernel (`internal/kernel/version`). `doctor → promptio, userstate`.
@@ -52,14 +52,14 @@
 2. **`configinit → steps, files`** — ✅ **resolved**. The optivem.yaml builder (`BuildOptivemYAML` + the two `WriteOptivemYAMLToFilePath*` wrappers) moved to the config-side leaf `internal/config/optivemyaml`; the generic `.gitignore` helper (`EnsureGitignoreLine`, shared with the Process driver) moved to the kernel as `internal/kernel/gitignore.EnsureLine` rather than the config side, to avoid a Process→Config edge. `configinit`/`config` now import nothing from `internal/scaffolding/**` — build-level guards in `internal/configinit/import_guard_test.go` and `internal/config/import_guard_test.go` keep it that way.
 3. **`steps → compiler, runner`** — Scaffolding reaches into build/run helpers (Process side).
 4. **`preflight → runner`** — Process reaches into build/run helpers (expected if `runner` is engine-side).
-5. **`projectconfig` is imported by almost everything** — it's a near-kernel domain type. ✅ **unblocked**: with seam #1 resolved (child #6) it no longer imports the engine, so it is now kernel-eligible and can be demoted to the shared kernel.
+5. **`projectconfig` is imported by almost everything** — it's a near-kernel domain type. ✅ **resolved** (child #4): demoted to the shared kernel at `internal/kernel/projectconfig`. Its ~50 cross-module importers are now legal downward edges; its `import_guard_test.go` moved with it and still asserts no `internal/atdd/**` import.
 
 ### Cut difficulty
 
 - **Dev-workflow** — *easy*. Only kernel + `projectconfig`. Best next child after Child 1.
 - **Architecture/diagrams** — *medium*. Read-only over `statemachine`; needs the engine to expose a stable public model.
 - **Diagnostics/misc** — *medium*. Small, but `doctor` touches `userstate`/`promptio`.
-- **Config** — *hard*. Seams #1 and #2 both ✅ inverted; the carve-out (child #4) is now unblocked.
+- **Config** — *hard*. ✅ **done (child #4)**. Seams #1 and #2 inverted; `projectconfig` demoted to kernel; `configinit` nested under `internal/config/`.
 - **Scaffolding** — *hard*. Seam #3 couples it to build/run helpers.
 - **Process (Child 1)** — *hard/largest*. The whole engine + definition + agents; resolving seam #1 is a prerequisite.
 
@@ -71,13 +71,13 @@
 - **`scaffolding` (`steps`/`templates`/`files`) is its own module**, not a layer inside Process.
 - **Child ordering is difficulty-first**: Dev-workflow next; Process (Child 1) last.
 
-**Confirmed child order:** ~~Dev-workflow~~ ✅ → ~~Architecture/diagrams~~ ✅ → ~~Diagnostics~~ ✅ → Config → ~~Scaffolding~~ ✅ (moved) → ~~*invert seam #1*~~ ✅ → Process (Child 1). **Remaining: Config (#4), then Process (#7).**
+**Confirmed child order:** ~~Dev-workflow~~ ✅ → ~~Architecture/diagrams~~ ✅ → ~~Diagnostics~~ ✅ → ~~Config~~ ✅ → ~~Scaffolding~~ ✅ (moved) → ~~*invert seam #1*~~ ✅ → Process (Child 1). **Remaining: Process (#7) only.**
 
 ### Resume notes (for the fresh session — read first)
 
 - **Use an isolated subagent per move.** Each module move (relocate packages + update import paths + `go build`/`go test`) should run in its own subagent so the heavy file-editing stays out of the main context; the subagent returns only a summary and the orchestrator commits via the commit skill. *(Subagents 529'd twice on 2026-06-15 — retry; fall back to inline only if they keep failing.)*
 - **Physical nesting** (`internal/<module>/`) is the agreed shape; pure moves only.
-- **Where we paused (mechanical moves done):** ✅ dev-workflow, ✅ architecture/diagrams, ✅ kernel (→ `internal/kernel/`: log, shell, pathx, spinner, promptio, approval, cmdctx, **version**), ✅ build (→ `internal/build/`: runner, compiler), ✅ scaffolding (→ `internal/scaffolding/`: steps, templates, files), ✅ diagnostics child #3 (`version` folded into kernel; commands stay at root). Remaining work is design, not pure moves: the engine/process carve-out (#7) needs deliberate planning in a fresh session, and Config (#4) is still to draft. Still un-moved at root by design pending those: `config`, `configinit`, `projectconfig`, `expand`, `userstate`, `assets`, and the whole `atdd/` engine+process tree.
+- **Where we paused (mechanical moves done):** ✅ dev-workflow, ✅ architecture/diagrams, ✅ kernel (→ `internal/kernel/`: log, shell, pathx, spinner, promptio, approval, cmdctx, **version**, **projectconfig**), ✅ build (→ `internal/build/`: runner, compiler), ✅ scaffolding (→ `internal/scaffolding/`: steps, templates, files), ✅ diagnostics child #3 (`version` folded into kernel; commands stay at root), ✅ config child #4 (`projectconfig` → kernel; `configinit` → `internal/config/configinit`; `config` unchanged). Remaining work is design, not a pure move: only the engine/process carve-out (#7) is left, and it needs deliberate planning in a fresh session. Still un-moved at root by design pending that: `expand`, `userstate`, `assets`, and the whole `atdd/` engine+process tree.
 - **Emitted-header exception (architecture/diagrams):** the 2 renderer header strings (`internal/diagrams/architecture/architecture.go:82`, `internal/diagrams/diagram/diagram.go:122`) are intentionally left at the old path — user decision, leave them; do not regenerate locally.
 
 ## Steps (parent-level)
@@ -92,7 +92,7 @@ Listed in execution order (only Child 1 is drafted; the rest are written just-in
 1. **Dev-workflow** (`ghbulk`, `sonar`, `workspace`) — ✅ **done** → moved to `internal/devworkflow/`; see `20260615-0706-module-devworkflow.md`.
 2. **Architecture / diagrams** — ✅ **done** → moved to `internal/diagrams/{architecture,diagram}` + updated CI workflows, agent defs, docs prose; see `20260615-0722-module-diagrams.md`. *(2 emitted renderer headers left at old path — see record.)*
 3. **Diagnostics / misc** (`doctor`, `system`, `version`) — ✅ **done**: confirmed *not a module*. Commands stay at the root CLI surface; `version` folded into the shared kernel (`internal/version` → `internal/kernel/version`, importers + `.goreleaser.yml` + `scripts/install.sh` ldflags paths updated). `go build ./...` + kernel/config tests green.
-4. **Config** (`config`, `configinit`, `projectconfig`) → `20260615-0933-module-config.md` *(drafted; decisions resolved: projectconfig → `internal/kernel/projectconfig`, configinit → `internal/config/configinit`, config stays. Ready to execute.)*
+4. **Config** (`config`, `configinit`, `projectconfig`) — ✅ **done**: `projectconfig` demoted to the shared kernel (`internal/kernel/projectconfig`), `configinit` nested at `internal/config/configinit`, `config` unchanged at `internal/config`. `go build ./...` + `go test ./...` green. See `20260615-0933-module-config.md`.
 5. **Scaffolding** (`steps`, `templates`, `files`) + the shared **build** module (`runner`, `compiler`). *(not drafted)*
 6. **Invert seam #1** — untangle `projectconfig → statemachine`. ✅ **done** → rule relocated to `internal/atdd/runtime/configcheck`; `projectconfig` is now a leaf and kernel-eligible (seam #5 unblocked); see `20260615-0749-invert-seam1-projectconfig-engine.md`.
 7. **Process module: engine ↔ process definition ↔ agents** → `20260615-0549-child1-modularize-gh-optivem-engine-process.md` *(drafted; runs last — hardest, depends on #6)*

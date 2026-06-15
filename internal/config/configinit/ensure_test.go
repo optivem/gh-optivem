@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // TestEnsureExists_ExistingFileNil — when the file is present, EnsureExists

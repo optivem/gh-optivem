@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // TestValidateVerifyFlags covers the --lang / --deploy rejection paths the

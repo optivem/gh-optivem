@@ -28,7 +28,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // EnvVar names the environment variable that pins the workspace root when

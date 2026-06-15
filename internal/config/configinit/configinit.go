@@ -28,7 +28,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/config/optivemyaml"
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/kernel/gitignore"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // pkgApproval holds the resolved auto-approve policy for the whole

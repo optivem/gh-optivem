@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // TestLoadProjectConfigForInit_DefaultPathFlagsMissingFileBuildsInMemory
