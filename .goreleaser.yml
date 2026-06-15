@@ -5,9 +5,9 @@ builds:
     main: .
     ldflags:
       - -s -w
-      - -X github.com/optivem/gh-optivem/internal/version.Version={{.Tag}}
-      - -X github.com/optivem/gh-optivem/internal/version.ShopRef={{.Env.SHOP_SHA}}
-      - -X github.com/optivem/gh-optivem/internal/version.ShopTag={{.Env.SHOP_TAG}}
+      - -X github.com/optivem/gh-optivem/internal/kernel/version.Version={{.Tag}}
+      - -X github.com/optivem/gh-optivem/internal/kernel/version.ShopRef={{.Env.SHOP_SHA}}
+      - -X github.com/optivem/gh-optivem/internal/kernel/version.ShopTag={{.Env.SHOP_TAG}}
     goos:
       - linux
       - darwin

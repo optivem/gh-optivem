@@ -3,16 +3,16 @@ package version
 
 import "fmt"
 
-// Version is set at build time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.Version=v1.0.0"
+// Version is set at build time via -ldflags "-X github.com/optivem/gh-optivem/internal/kernel/version.Version=v1.0.0"
 var Version = "dev"
 
 // ShopRef is the optivem/shop commit SHA baked into this build.
-// Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.ShopRef=<40-char SHA>"
+// Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/kernel/version.ShopRef=<40-char SHA>"
 // Empty in dev builds — resolveShopRef() falls back to the latest meta-v* release.
 var ShopRef = ""
 
 // ShopTag is an optional human-readable tag (e.g. "v1.0.7-rc.26") pointing at ShopRef.
-// Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/version.ShopTag=<tag>"
+// Set at release time via -ldflags "-X github.com/optivem/gh-optivem/internal/kernel/version.ShopTag=<tag>"
 // May be empty if no tag points at the verified SHA.
 var ShopTag = ""
 

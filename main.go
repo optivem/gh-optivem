@@ -35,7 +35,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 	"github.com/optivem/gh-optivem/internal/scaffolding/steps"
-	"github.com/optivem/gh-optivem/internal/version"
+	"github.com/optivem/gh-optivem/internal/kernel/version"
 )
 
 // bugReportLogMaxBytes is the inline log budget for a filed issue body.

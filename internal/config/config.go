@@ -18,7 +18,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/version"
+	"github.com/optivem/gh-optivem/internal/kernel/version"
 )
 
 // RawInputs captures the raw CLI flag values before any resolution/defaulting.

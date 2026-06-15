@@ -29,7 +29,7 @@
 
 *Grounded in actual Go imports traced across every `*.go` (root command files + `internal/**`). Module path: `github.com/optivem/gh-optivem`.*
 
-- **Shared kernel** (infrastructure, NOT a bounded context) — `log`, `shell`, `pathx`, `spinner`, `promptio`, `approval`, `cmdctx`. Imported broadly; everything may depend on these. `shell → log, pathx, spinner`; `approval → promptio`.
+- **Shared kernel** (infrastructure, NOT a bounded context) — `log`, `shell`, `pathx`, `spinner`, `promptio`, `approval`, `cmdctx`, `version`. Imported broadly; everything may depend on these. `shell → log, pathx, spinner`; `approval → promptio`. *(`version` folded in via child #3.)*
 - **Engine core** — `atdd/runtime/statemachine` is the center of gravity: nearly every `atdd/runtime/*` package imports it. This is the generic process model Child 1 extracts.
 - **Process module (ATDD)** — the bulk of `internal/`: `atdd`, `atdd/runtime/{agents, gates, actions, verify, diagram, override, repolocator, trace, driver, clauderun, release, preflight, tracker/**, intake, outlog, testselect}`, plus `expand`, `assets`, `userstate`. `driver` is the orchestrator that pulls the rest together. Commands: `process`, `run`, `implement`, `test`.
 - **Build/run helpers** — `runner` (`→ spinner, pathx`) and `compiler` (`→ projectconfig, shell`). Used by *both* Process (`preflight → runner`) and Scaffolding (`steps → compiler, runner`). Likely belongs to the engine/process side or a small shared "build" module — TBD.
@@ -37,7 +37,7 @@
 - **Config** — `config`, `configinit`, `projectconfig`. Commands: `config`, `compile`. `config → approval, cmdctx, log, projectconfig, version, shell`; `configinit → approval, config, files, projectconfig, steps`.
 - **Dev-workflow / GitHub** — `ghbulk`, `sonar`, `workspace`. Commands: `cross_repo`, `cleanup`. **Lowest coupling** (`ghbulk`/`sonar → shell, log` only; `workspace → projectconfig`).
 - **Architecture / diagrams** — `diagrams/architecture` (command `architecture`) and `diagrams/diagram` (`→ statemachine`, used by `process`). Read-only renderers over the engine model. *(moved out of `atdd/runtime/` — done.)*
-- **Diagnostics / misc** — commands `doctor`, `system`, `cleanup`, `hooks`; package `version`. `doctor → promptio, userstate`.
+- **Diagnostics / misc** — *not a module* (resolved, child #3): commands `doctor`, `system`, `cleanup`, `hooks` stay at the root CLI surface; the lone package `version` was folded into the shared kernel (`internal/kernel/version`). `doctor → promptio, userstate`.
 - **CLI / surface** — `main.go` + all `*_commands.go`; composes the modules.
 
 ### Cross-module seams (the hard cuts)
@@ -65,13 +65,13 @@
 - **`scaffolding` (`steps`/`templates`/`files`) is its own module**, not a layer inside Process.
 - **Child ordering is difficulty-first**: Dev-workflow next; Process (Child 1) last.
 
-**Confirmed child order:** Dev-workflow → Architecture/diagrams → Diagnostics → Config → Scaffolding → *invert seam #1* → Process (Child 1).
+**Confirmed child order:** ~~Dev-workflow~~ ✅ → ~~Architecture/diagrams~~ ✅ → ~~Diagnostics~~ ✅ → Config → ~~Scaffolding~~ ✅ (moved) → ~~*invert seam #1*~~ ✅ → Process (Child 1). **Remaining: Config (#4), then Process (#7).**
 
 ### Resume notes (for the fresh session — read first)
 
 - **Use an isolated subagent per move.** Each module move (relocate packages + update import paths + `go build`/`go test`) should run in its own subagent so the heavy file-editing stays out of the main context; the subagent returns only a summary and the orchestrator commits via the commit skill. *(Subagents 529'd twice on 2026-06-15 — retry; fall back to inline only if they keep failing.)*
 - **Physical nesting** (`internal/<module>/`) is the agreed shape; pure moves only.
-- **Where we paused (5 mechanical moves done):** ✅ dev-workflow, ✅ architecture/diagrams, ✅ kernel (→ `internal/kernel/`: log, shell, pathx, spinner, promptio, approval, cmdctx), ✅ build (→ `internal/build/`: runner, compiler), ✅ scaffolding (→ `internal/scaffolding/`: steps, templates, files). **All autonomous mechanical moves are complete — STOP here.** Remaining work is design, not moves: seam #1 inversion (#6, `projectconfig → statemachine`) and the engine/process carve-out (#7) need deliberate planning in a fresh session. Still un-moved at root by design pending those: `config`, `configinit`, `projectconfig`, `version`, `expand`, `userstate`, `assets`, and the whole `atdd/` engine+process tree.
+- **Where we paused (mechanical moves done):** ✅ dev-workflow, ✅ architecture/diagrams, ✅ kernel (→ `internal/kernel/`: log, shell, pathx, spinner, promptio, approval, cmdctx, **version**), ✅ build (→ `internal/build/`: runner, compiler), ✅ scaffolding (→ `internal/scaffolding/`: steps, templates, files), ✅ diagnostics child #3 (`version` folded into kernel; commands stay at root). Remaining work is design, not pure moves: the engine/process carve-out (#7) needs deliberate planning in a fresh session, and Config (#4) is still to draft. Still un-moved at root by design pending those: `config`, `configinit`, `projectconfig`, `expand`, `userstate`, `assets`, and the whole `atdd/` engine+process tree.
 - **Emitted-header exception (architecture/diagrams):** the 2 renderer header strings (`internal/diagrams/architecture/architecture.go:82`, `internal/diagrams/diagram/diagram.go:122`) are intentionally left at the old path — user decision, leave them; do not regenerate locally.
 
 ## Steps (parent-level)
@@ -85,7 +85,7 @@ Listed in execution order (only Child 1 is drafted; the rest are written just-in
 
 1. **Dev-workflow** (`ghbulk`, `sonar`, `workspace`) — ✅ **done** → moved to `internal/devworkflow/`; see `20260615-0706-module-devworkflow.md`.
 2. **Architecture / diagrams** — ✅ **done** → moved to `internal/diagrams/{architecture,diagram}` + updated CI workflows, agent defs, docs prose; see `20260615-0722-module-diagrams.md`. *(2 emitted renderer headers left at old path — see record.)*
-3. **Diagnostics / misc** (`doctor`, `system`, `version`) — **likely a no-op move**: the commands stay at root (CLI surface) and the only package, `version`, is really kernel. Reconsider whether this is a module at all (fold `version` into kernel). *(not drafted)*
+3. **Diagnostics / misc** (`doctor`, `system`, `version`) — ✅ **done**: confirmed *not a module*. Commands stay at the root CLI surface; `version` folded into the shared kernel (`internal/version` → `internal/kernel/version`, importers + `.goreleaser.yml` + `scripts/install.sh` ldflags paths updated). `go build ./...` + kernel/config tests green.
 4. **Config** (`config`, `configinit`, `projectconfig`). *(not drafted)*
 5. **Scaffolding** (`steps`, `templates`, `files`) + the shared **build** module (`runner`, `compiler`). *(not drafted)*
 6. **Invert seam #1** — untangle `projectconfig → statemachine`. ✅ **done** → rule relocated to `internal/atdd/runtime/configcheck`; `projectconfig` is now a leaf and kernel-eligible (seam #5 unblocked); see `20260615-0749-invert-seam1-projectconfig-engine.md`.

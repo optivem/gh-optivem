@@ -42,7 +42,7 @@ if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; th
 fi
 DEV_VERSION="dev-${SHA}"
 log "go build -o gh-optivem.exe . (version=${DEV_VERSION})"
-go build -ldflags "-X github.com/optivem/gh-optivem/internal/version.Version=${DEV_VERSION}" -o gh-optivem.exe .
+go build -ldflags "-X github.com/optivem/gh-optivem/internal/kernel/version.Version=${DEV_VERSION}" -o gh-optivem.exe .
 
 log "gh extension install (remove first if already installed)"
 gh extension remove optivem 2>/dev/null || true
