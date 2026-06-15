@@ -1,9 +1,4 @@
-// Package statemachine implements the ATDD pipeline orchestrator: a hand-coded,
-// BPMN-shaped graph traversal that walks a process-flow YAML node-by-node,
-// dispatching service tasks and user-task agents in turn.
-//
-// The engine has three job-shaped types: Outcome, NodeFn, and Process. Everything
-// else (gates, actions, agents) plugs in through registries.
+// The package doc — including the LoadBytes reuse contract — lives in doc.go.
 package statemachine
 
 // NodeKind enumerates the BPMN-shaped node types supported by the YAML schema.
