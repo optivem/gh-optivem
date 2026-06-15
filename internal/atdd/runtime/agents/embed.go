@@ -2,6 +2,7 @@ package agents
 
 import (
 	"fmt"
+	"io/fs"
 	"sort"
 	"strings"
 
@@ -51,29 +52,46 @@ func mustReadAsset(path string) string {
 
 // AgentSet binds a concrete agent-prompt directory so an alternate set of
 // prompts can be supplied at load time instead of being fixed at package
-// init. The agent-set root — the embedded directory holding the per-agent
-// `<name>.md` prompt files — is instance state, which lets two sets coexist
-// side by side rather than one global root. Prompt, LoadTuning and Names
-// resolve against this root; the five shared chunks
+// init. Two pieces of instance state — the filesystem (fsys) and the root
+// directory within it holding the per-agent `<name>.md` prompt files — let
+// two sets coexist side by side rather than one global root. Prompt,
+// LoadTuning and Names resolve against (fsys, root); the five shared chunks
 // (preamble/scope/fixer-preamble/the two suffixes) stay package-global
 // because they are dispatch-level doctrine and mode concerns every set must
 // honour, not per-set content — so InteractiveSuffix/HeadlessSuffix are
 // methods only for a uniform set-owned API, and return the global chunks
-// regardless of root.
+// regardless of binding.
+//
+// The default set reads from the built-in assets.FS; a third party bringing
+// their own agents (or a test binding a stub set) supplies their own fs.FS
+// via NewAgentSetFS — the "bring your own agents" swap point.
 type AgentSet struct {
+	fsys fs.FS
 	root string
 }
 
-// NewAgentSet binds an alternate agent set rooted at the given embedded
-// directory (a path into assets.FS holding `<name>.md` prompt files) — e.g.
-// a stub/fixture set in tests, or a third party's own prompt directory.
+// NewAgentSet binds an alternate agent set rooted at the given directory
+// within the built-in assets.FS (a path holding `<name>.md` prompt files).
+// To bind a set from a different filesystem — a third party's own embed.FS,
+// or a test fixture FS — use NewAgentSetFS.
 func NewAgentSet(root string) *AgentSet {
-	return &AgentSet{root: root}
+	return NewAgentSetFS(assets.FS, root)
+}
+
+// NewAgentSetFS binds an agent set rooted at `root` within an arbitrary
+// fs.FS. This is the filesystem swap point: a reusing process supplies its
+// own embed.FS of `<name>.md` prompts (each with the mandatory model/effort
+// frontmatter), and tests supply a stub/fixture FS, without shipping those
+// prompts in gh-optivem's own assets tree. The shared dispatch chunks still
+// come from the global assets.FS regardless.
+func NewAgentSetFS(fsys fs.FS, root string) *AgentSet {
+	return &AgentSet{fsys: fsys, root: root}
 }
 
 // DefaultAgentSet returns the built-in ATDD agent set — the zero-config
-// default rooted at "runtime/agents/atdd". Production callers use this;
-// only tests (and future alternate processes) bind a different root.
+// default rooted at "runtime/agents/atdd" within assets.FS. Production
+// callers use this; only tests (and future alternate processes) bind a
+// different set.
 func DefaultAgentSet() *AgentSet {
 	return NewAgentSet(defaultAgentsDir)
 }
@@ -113,7 +131,7 @@ type Tuning struct {
 // dialect — callers run statemachine.ExpandParams against the live
 // ticket context before passing the result to `claude -p`.
 func (s *AgentSet) Prompt(name string) (string, error) {
-	data, err := assets.FS.ReadFile(s.root + "/" + name + ".md")
+	data, err := fs.ReadFile(s.fsys, s.root+"/"+name+".md")
 	if err != nil {
 		return "", fmt.Errorf("agents: no embedded prompt for %q", name)
 	}
@@ -165,7 +183,7 @@ func (s *AgentSet) HeadlessSuffix() string { return headlessSuffix }
 // on a mechanical-scaffolding agent is exactly the cost-spike class
 // this whole mechanism was added to prevent.
 func (s *AgentSet) LoadTuning(name string) (Tuning, error) {
-	data, err := assets.FS.ReadFile(s.root + "/" + name + ".md")
+	data, err := fs.ReadFile(s.fsys, s.root+"/"+name+".md")
 	if err != nil {
 		return Tuning{}, fmt.Errorf("agents: no embedded prompt for %q", name)
 	}
@@ -260,12 +278,13 @@ func indexLine(s, target string) int {
 // hand-maintained agentNames slice. Adding a new agent is now: drop the
 // agent definition under internal/assets/runtime/agents/atdd/, recompile.
 func (s *AgentSet) Names() []string {
-	entries, err := assets.FS.ReadDir(s.root)
+	entries, err := fs.ReadDir(s.fsys, s.root)
 	if err != nil {
-		// assets.FS is built from a //go:embed directive; ReadDir on a
-		// declared subtree cannot fail in a built binary. Panic surfaces a
-		// build/embed-config bug rather than letting an empty registry
-		// silently bind a YAML referencing valid agents.
+		// The default set's assets.FS is built from a //go:embed directive;
+		// ReadDir on a declared subtree cannot fail in a built binary. Panic
+		// surfaces a build/embed-config bug (or a misbound alternate set)
+		// rather than letting an empty registry silently bind a YAML
+		// referencing valid agents.
 		panic("agents: read embedded " + s.root + ": " + err.Error())
 	}
 	names := make([]string, 0, len(entries))
