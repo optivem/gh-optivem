@@ -4,7 +4,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**This is now design/planning work, not a mechanical edit — switch to `/create-plan`.** The first-pass carve (engine↔definition seam) is complete and committed. What remains is a **follow-up child** covering: (Step 7) make the agent set a separately-bound, swappable layer — parameterise the hardcoded `runtime/agents/atdd` dir in `internal/atdd/runtime/agents/embed.go`; (Step 8) prove both swap axes end-to-end; (Step 9) document the reuse path; (Step 10 remainder) deep-untangle `actions`/`gates`/`verify`/`driver` out of `internal/atdd/runtime/` into a process-definition home. Draft that follow-up with `/create-plan` (or refine this file's Steps 7–10 into it). Nothing here is a ready-to-execute mechanical move — the deep-untangle needs an import-coupling analysis first (see Open questions).
+**The follow-up is now drafted as child #8 — execute it there: `/execute-plan plans/20260615-1047-child8-process-swappable-agents-untangle.md`.** The first-pass carve (engine↔definition seam) is complete and committed. The deferred Steps 7–10 below were the seed; they are now drafted (with decisions locked) into child #8 (`20260615-1047`): (Step 7) bound `AgentSet` struct parameterising the hardcoded `runtime/agents/atdd` dir in `internal/atdd/runtime/agents/embed.go`; (Step 8) prove both swap axes end-to-end; (Step 9) `doc.go` reuse path; (Step 10) coupling-analysis-then-move of `actions`/`gates`/`verify`/`driver`. This file is now historical — the executable work lives in child #8.
 
 ## TL;DR
 
