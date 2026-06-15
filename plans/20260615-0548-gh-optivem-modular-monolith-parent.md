@@ -6,14 +6,14 @@
 
 ## ▶ Next executable step (resume here)
 
-**Invert seam #2 — `configinit → scaffolding`.** Config currently reaches up into Scaffolding; remove the coupling so `configinit`/`config` import nothing from `internal/scaffolding/**`.
+**Draft the Config child plan (#4) — this is design work, not a mechanical move.** Both prerequisite seams are now inverted (#1 ✅, #2 ✅), so the Config module (`config`, `configinit`, `projectconfig`) no longer reaches up into the Engine or into Scaffolding. Switch to `/create-plan` and write `plans/<ts>-module-config.md`.
 
-- **The cut (4 config-domain symbols currently living in scaffolding):** `steps.BuildOptivemYAML`, `steps.WriteOptivemYAMLToFilePath`, `steps.WriteOptivemYAMLToFilePathWithBanner`, `files.EnsureGitignoreLine` — all write `optivem.yaml` / its gitignore line, which is config's own data, so they belong on the config side.
-- **How:** relocate them to a config-side leaf, mirroring seam #1's resolution (a `configcheck`-style leaf + a build-level `import_guard_test.go` that asserts `configinit`/`config` import nothing from `internal/scaffolding/**`).
-- **Verify first:** confirm those symbols have no callers that legitimately belong in scaffolding. If any are genuinely shared, **stop and ask** (move vs. thin wrapper).
-- **Prove it:** `go build ./...` && `go test ./...` green.
-- **Finish:** mark seam #2 ✅ resolved (here, in *Cross-module seams*, and in *Cut difficulty*), then commit via `/commit`. Recommended mode: **batch-then-review** (small, well-precedented cut).
-- **Unblocks:** Config child (#4) — the last prerequisite before the Process carve-out (#7).
+- **Decisions the child must make (not yet decided — that's why this is design):**
+  - **Physical nesting.** `config` already sits at `internal/config/` (with the new `internal/config/optivemyaml` leaf from seam #2). Decide whether `configinit` and `projectconfig` move under `internal/config/**` too, or stay flat. Pure moves only, mirroring the other module carve-outs.
+  - **`projectconfig` → kernel?** Seam #5 is unblocked: with seam #1 resolved, `projectconfig` is a near-kernel domain leaf and is kernel-eligible. The child decides move-to-kernel vs. keep-in-config-module (it's imported by almost everything).
+  - **Public surface** of the Config module once nested.
+- **Then execute** with one isolated subagent per move (see *Resume notes*), `go build ./...` && `go test ./...` green, commit per move.
+- **Unblocks:** Process carve-out (#7) — the last child, hardest, depends on a clean Config module.
 
 ## TL;DR
 
@@ -56,7 +56,7 @@
 ### Cross-module seams (the hard cuts)
 
 1. **`projectconfig → atdd/runtime/statemachine`** — ✅ **resolved** (child #6, `20260615-0749`). The one engine-backed rule (task-prompts known-name check) was relocated to `internal/atdd/runtime/configcheck`; `projectconfig` now imports nothing from `internal/atdd/**` (build-level guard test in `import_guard_test.go` keeps it that way). Config no longer reaches up into the Engine.
-2. **`configinit → steps`** — Config reaches into Scaffolding.
+2. **`configinit → steps, files`** — ✅ **resolved**. The optivem.yaml builder (`BuildOptivemYAML` + the two `WriteOptivemYAMLToFilePath*` wrappers) moved to the config-side leaf `internal/config/optivemyaml`; the generic `.gitignore` helper (`EnsureGitignoreLine`, shared with the Process driver) moved to the kernel as `internal/kernel/gitignore.EnsureLine` rather than the config side, to avoid a Process→Config edge. `configinit`/`config` now import nothing from `internal/scaffolding/**` — build-level guards in `internal/configinit/import_guard_test.go` and `internal/config/import_guard_test.go` keep it that way.
 3. **`steps → compiler, runner`** — Scaffolding reaches into build/run helpers (Process side).
 4. **`preflight → runner`** — Process reaches into build/run helpers (expected if `runner` is engine-side).
 5. **`projectconfig` is imported by almost everything** — it's a near-kernel domain type. ✅ **unblocked**: with seam #1 resolved (child #6) it no longer imports the engine, so it is now kernel-eligible and can be demoted to the shared kernel.
@@ -66,7 +66,7 @@
 - **Dev-workflow** — *easy*. Only kernel + `projectconfig`. Best next child after Child 1.
 - **Architecture/diagrams** — *medium*. Read-only over `statemachine`; needs the engine to expose a stable public model.
 - **Diagnostics/misc** — *medium*. Small, but `doctor` touches `userstate`/`promptio`.
-- **Config** — *hard*. Seams #1 and #2 must be inverted first.
+- **Config** — *hard*. Seams #1 and #2 both ✅ inverted; the carve-out (child #4) is now unblocked.
 - **Scaffolding** — *hard*. Seam #3 couples it to build/run helpers.
 - **Process (Child 1)** — *hard/largest*. The whole engine + definition + agents; resolving seam #1 is a prerequisite.
 
@@ -99,7 +99,7 @@ Listed in execution order (only Child 1 is drafted; the rest are written just-in
 1. **Dev-workflow** (`ghbulk`, `sonar`, `workspace`) — ✅ **done** → moved to `internal/devworkflow/`; see `20260615-0706-module-devworkflow.md`.
 2. **Architecture / diagrams** — ✅ **done** → moved to `internal/diagrams/{architecture,diagram}` + updated CI workflows, agent defs, docs prose; see `20260615-0722-module-diagrams.md`. *(2 emitted renderer headers left at old path — see record.)*
 3. **Diagnostics / misc** (`doctor`, `system`, `version`) — ✅ **done**: confirmed *not a module*. Commands stay at the root CLI surface; `version` folded into the shared kernel (`internal/version` → `internal/kernel/version`, importers + `.goreleaser.yml` + `scripts/install.sh` ldflags paths updated). `go build ./...` + kernel/config tests green.
-4. **Config** (`config`, `configinit`, `projectconfig`). *(not drafted)*
+4. **Config** (`config`, `configinit`, `projectconfig`). *(not drafted — now unblocked: both prerequisite seams inverted. The `internal/config/optivemyaml` leaf already exists from seam #2; `projectconfig` is kernel-eligible per seam #5.)*
 5. **Scaffolding** (`steps`, `templates`, `files`) + the shared **build** module (`runner`, `compiler`). *(not drafted)*
 6. **Invert seam #1** — untangle `projectconfig → statemachine`. ✅ **done** → rule relocated to `internal/atdd/runtime/configcheck`; `projectconfig` is now a leaf and kernel-eligible (seam #5 unblocked); see `20260615-0749-invert-seam1-projectconfig-engine.md`.
 7. **Process module: engine ↔ process definition ↔ agents** → `20260615-0549-child1-modularize-gh-optivem-engine-process.md` *(drafted; runs last — hardest, depends on #6)*

@@ -24,11 +24,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/scaffolding/files"
+	"github.com/optivem/gh-optivem/internal/config/optivemyaml"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/gitignore"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/scaffolding/steps"
 )
 
 // pkgApproval holds the resolved auto-approve policy for the whole
@@ -94,7 +94,7 @@ func BuildConfig(f *config.RawFlags) (*projectconfig.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	return steps.BuildOptivemYAML(cfg), nil
+	return optivemyaml.BuildOptivemYAML(cfg), nil
 }
 
 // RunWithBanner is Run plus a comment block prepended to the YAML. Used
@@ -116,15 +116,15 @@ func runWithBanner(f *config.RawFlags, yamlPath string, force bool, banner strin
 		return "", fmt.Errorf("%s already exists; pass --force to overwrite", yamlPath)
 	}
 	if banner == "" {
-		if err := steps.WriteOptivemYAMLToFilePath(cfg, yamlPath); err != nil {
+		if err := optivemyaml.WriteOptivemYAMLToFilePath(cfg, yamlPath); err != nil {
 			return "", err
 		}
 	} else {
-		if err := steps.WriteOptivemYAMLToFilePathWithBanner(cfg, yamlPath, banner); err != nil {
+		if err := optivemyaml.WriteOptivemYAMLToFilePathWithBanner(cfg, yamlPath, banner); err != nil {
 			return "", err
 		}
 	}
-	if err := files.EnsureGitignoreLine(filepath.Dir(yamlPath), ".gh-optivem/"); err != nil {
+	if err := gitignore.EnsureLine(filepath.Dir(yamlPath), ".gh-optivem/"); err != nil {
 		return "", fmt.Errorf("ensure .gitignore: %w", err)
 	}
 	return yamlPath, nil

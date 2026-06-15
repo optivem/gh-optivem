@@ -35,7 +35,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
@@ -48,7 +47,8 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/verify"
-	"github.com/optivem/gh-optivem/internal/scaffolding/files"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/gitignore"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/userstate"
 
@@ -1928,5 +1928,5 @@ func headCommitSHA(repoPath string) string {
 // missing. Used by both driver.Run (upgrade path for repos that pre-date
 // this guardrail) and `gh optivem config init` (fresh consumer setup).
 func ensureGhOptivemGitignore(repoPath string) error {
-	return files.EnsureGitignoreLine(repoPath, ".gh-optivem/")
+	return gitignore.EnsureLine(repoPath, ".gh-optivem/")
 }
