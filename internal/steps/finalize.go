@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 // WriteLicense writes a LICENSE file to the scaffolded repo(s) using the

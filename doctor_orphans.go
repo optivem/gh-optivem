@@ -19,7 +19,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/promptio"
+	"github.com/optivem/gh-optivem/internal/kernel/promptio"
 	"github.com/optivem/gh-optivem/internal/userstate"
 )
 

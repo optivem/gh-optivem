@@ -32,11 +32,11 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
-	"github.com/optivem/gh-optivem/internal/promptio"
+	"github.com/optivem/gh-optivem/internal/kernel/promptio"
 )
 
 // Deps bundles the side-effecting collaborators every binding may need.

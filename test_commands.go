@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/runner"
 )
 

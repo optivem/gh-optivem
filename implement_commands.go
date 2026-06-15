@@ -29,13 +29,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
-	"github.com/optivem/gh-optivem/internal/cmdctx"
+	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
 	"github.com/optivem/gh-optivem/internal/configinit"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 	"github.com/optivem/gh-optivem/internal/runner"

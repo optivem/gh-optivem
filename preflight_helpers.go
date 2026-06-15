@@ -22,7 +22,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 // defaultPreflightOptions returns preflight.Options wired to the real

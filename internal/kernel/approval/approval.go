@@ -18,7 +18,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/promptio"
+	"github.com/optivem/gh-optivem/internal/kernel/promptio"
 )
 
 // Category names a tier in the approval-policy ladder. Tiers are

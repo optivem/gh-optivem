@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/pathx"
+	"github.com/optivem/gh-optivem/internal/kernel/pathx"
 )
 
 // TestOptions narrows or modifies a tests run.

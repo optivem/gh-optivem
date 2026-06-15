@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/files"
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 const (

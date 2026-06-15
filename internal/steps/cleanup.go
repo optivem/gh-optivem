@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 // Cleanup deletes the local scaffold dir(s) on success so the user is left with

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 // fakeRoundTripper routes every outgoing request to a single test handler,

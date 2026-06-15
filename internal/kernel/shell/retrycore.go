@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 // defaultRetryAttempts and defaultRetryDelays are the canonical backoff

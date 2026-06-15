@@ -7,7 +7,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 )
 
 // RawNode mirrors the YAML node schema 1:1, preserving every field for both

@@ -30,9 +30,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
-	"github.com/optivem/gh-optivem/internal/promptio"
+	"github.com/optivem/gh-optivem/internal/kernel/promptio"
 )
 
 // Confirmer asks the user to approve a destructive action. Implementations

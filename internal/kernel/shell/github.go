@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/log"
-	"github.com/optivem/gh-optivem/internal/pathx"
-	"github.com/optivem/gh-optivem/internal/spinner"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
+	"github.com/optivem/gh-optivem/internal/kernel/pathx"
+	"github.com/optivem/gh-optivem/internal/kernel/spinner"
 )
 
 const (

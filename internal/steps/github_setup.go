@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/log"
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 func logCreated(fullRepo string) {

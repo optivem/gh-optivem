@@ -26,7 +26,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/projectconfig"
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 // Shell abstracts subprocess execution so tests can capture invocations

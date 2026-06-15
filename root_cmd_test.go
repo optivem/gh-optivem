@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/devworkflow/workspace"
 )
 

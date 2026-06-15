@@ -14,9 +14,9 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/compiler"
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/runner"
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 const (

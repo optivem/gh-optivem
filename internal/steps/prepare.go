@@ -2,7 +2,7 @@ package steps
 
 import (
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 // CloneShopTemplate clones the optivem/shop template repository pinned to

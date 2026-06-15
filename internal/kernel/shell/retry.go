@@ -4,7 +4,7 @@ import (
 	"errors"
 	"regexp"
 
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 // Unified retry policy for any external-service shell call (gh CLI, sonarcloud

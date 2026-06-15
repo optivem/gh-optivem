@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 // DefaultBaseURL is the public SonarCloud API root. Tests and the

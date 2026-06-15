@@ -25,7 +25,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/compiler"
 	"github.com/optivem/gh-optivem/internal/configinit"
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/projectconfig"
 )
 

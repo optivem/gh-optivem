@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 const registrationDivider = "------------------------------------------"

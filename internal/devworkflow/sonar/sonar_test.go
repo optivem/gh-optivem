@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/shell"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 func TestNewClientDefaults(t *testing.T) {

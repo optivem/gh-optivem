@@ -22,7 +22,7 @@ import (
 
 	libspinner "github.com/briandowns/spinner"
 
-	"github.com/optivem/gh-optivem/internal/log"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 const frameInterval = 100 * time.Millisecond

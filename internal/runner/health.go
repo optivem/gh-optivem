@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/spinner"
+	"github.com/optivem/gh-optivem/internal/kernel/spinner"
 )
 
 // Default polling parameters for health checks. Mirrors the PS1 runner's

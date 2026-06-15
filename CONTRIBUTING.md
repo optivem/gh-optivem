@@ -488,7 +488,7 @@ For the ATDD pipeline orchestration view, see the rendered [process diagram](doc
 
 ### Adding a y/n confirmation prompt
 
-Every new yes/no confirmation must go through `internal/approval` with a category tag, not through `promptio.ConfirmYN` directly:
+Every new yes/no confirmation must go through `internal/kernel/approval` with a category tag, not through `promptio.ConfirmYN` directly:
 
 ```go
 ok, err := approval.Confirm(cmdctx.Approval(cmd), approval.CategoryPrompt, os.Stdin, os.Stdout, "Proceed?")
