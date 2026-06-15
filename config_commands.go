@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
+	"github.com/optivem/gh-optivem/internal/atdd/process/configcheck"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/config/configinit"

@@ -663,7 +663,7 @@ func (c *Config) Validate() error {
 
 	// Rule 11: task-prompts values pass validatePath. Sorted iteration so
 	// errors are deterministic. The keys-must-be-known-MID-task-names check
-	// is engine-derived and lives in internal/atdd/runtime/configcheck
+	// is engine-derived and lives in internal/atdd/process/configcheck
 	// (enforced at the runtime entry points) — projectconfig stays a leaf and
 	// only validates its own shape here.
 	for _, name := range sortedKeys(c.TaskPrompts) {

@@ -18,8 +18,8 @@ Cross-reference (read as needed to verify a finding — do not assume, confirm):
 - `internal/engine/statemachine/load.go` — the parser / accepted node-types + fields (the real schema; the YAML header comment is documentation, not the schema).
 - `internal/engine/statemachine/types.go` — `OutputSpec`, `EnvelopeOutputSpecs`, node-kind constants.
 - `internal/engine/statemachine/run.go` — `wrapCallActivity` (Params push/pop vs State shared), `ExpandParams` strict-mode resolution, `maxDispatchesPerProcess`, `max-visits`/`on-max-visits`.
-- `internal/atdd/runtime/gates/bindings.go` — registered gateway `binding:` functions.
-- `internal/atdd/runtime/actions/bindings.go` — registered service-task `action:` functions, output-JSONL landing, scope/outputs validation.
+- `internal/atdd/process/gates/bindings.go` — registered gateway `binding:` functions.
+- `internal/atdd/process/actions/bindings.go` — registered service-task `action:` functions, output-JSONL landing, scope/outputs validation.
 - `internal/atdd/runtime/driver/target.go` — the `--target` slice entry points (`targetSlices`).
 - `internal/atdd/runtime/driver/driver.go` — dispatch seeding (output-keys allow-list, envelope), scope-block resolution, channel unroll.
 - `internal/diagrams/diagram/diagram.go` — the render-ordering process list (orphan-box detection).

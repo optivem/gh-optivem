@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/optivem/gh-optivem/internal/atdd/process/clauderun"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"

@@ -223,7 +223,7 @@ bash scripts/test.sh ./internal/atdd/...      # wrapper: caps -p (default 2), re
 bash scripts/test.sh --all ./...              # opt in to a repo-wide run (still capped)
 ```
 
-While you're iterating in one package, run just that package: `go test ./internal/atdd/runtime/clauderun`. Save `./...` for pre-push and CI.
+While you're iterating in one package, run just that package: `go test ./internal/atdd/process/clauderun`. Save `./...` for pre-push and CI.
 
 A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`, `GHCR_TOKEN`, `WORKFLOW_TOKEN` in env):
 

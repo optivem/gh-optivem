@@ -23,7 +23,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
+	"github.com/optivem/gh-optivem/internal/atdd/process/configcheck"
 	"github.com/optivem/gh-optivem/internal/build/compiler"
 	"github.com/optivem/gh-optivem/internal/config/configinit"
 	"github.com/optivem/gh-optivem/internal/kernel/log"

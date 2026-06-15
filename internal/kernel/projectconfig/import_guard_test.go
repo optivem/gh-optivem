@@ -13,7 +13,7 @@ import (
 // 20260615-0749): projectconfig is a near-kernel domain leaf and must not
 // reach up into the ATDD engine/runtime. The one rule that needed engine
 // knowledge — the task-prompts known-name check — was relocated to
-// internal/atdd/runtime/configcheck. This guard fails loudly if any file in
+// internal/atdd/process/configcheck. This guard fails loudly if any file in
 // this package re-introduces an internal/atdd/** import, so the backwards
 // edge can't silently return.
 func TestNoUpwardEngineImport(t *testing.T) {
@@ -35,7 +35,7 @@ func TestNoUpwardEngineImport(t *testing.T) {
 			}
 			if strings.Contains(path, "github.com/optivem/gh-optivem/internal/atdd/") {
 				t.Errorf("%s imports %q: projectconfig must not depend on the ATDD engine/runtime (seam #1). "+
-					"Engine-derived rules belong in internal/atdd/runtime/configcheck, not here.", file, path)
+					"Engine-derived rules belong in internal/atdd/process/configcheck, not here.", file, path)
 			}
 		}
 	}

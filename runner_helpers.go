@@ -18,7 +18,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
+	"github.com/optivem/gh-optivem/internal/atdd/process/configcheck"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 

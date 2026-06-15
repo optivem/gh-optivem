@@ -38,7 +38,7 @@ When estimating, use line count as a proxy (1 token ≈ 4 characters; line count
 
 - `internal/assets/runtime/agents/atdd/*.md` — the per-phase prompt bodies the dispatcher substitutes and dispatches.
 - `internal/assets/runtime/shared/*.md` — the concatenated chunks (`preamble.md`, `scope.md`).
-- For cross-reference only (do **not** propose edits to these): `internal/atdd/process/process-flow.yaml` (the BPMN MID nodes that declare each task's parameters, `scopes:`, and `outputs:`), and `internal/atdd/runtime/driver/driver.go` + `internal/atdd/runtime/clauderun/clauderun.go` (to confirm the substitution + concatenation contract).
+- For cross-reference only (do **not** propose edits to these): `internal/atdd/process/process-flow.yaml` (the BPMN MID nodes that declare each task's parameters, `scopes:`, and `outputs:`), and `internal/atdd/runtime/driver/driver.go` + `internal/atdd/process/clauderun/clauderun.go` (to confirm the substitution + concatenation contract).
 
 You MUST read every prompt body and every shared chunk in full before producing findings. Per the project consistency-check rule, never conclude "no findings" from a quick read — enumerate concretely first.
 
@@ -99,7 +99,7 @@ Propose either deletion or a one-line cross-reference to `${expected-outputs}` (
 
 For every `${...}` reference in a per-agent body:
 
-- **Unresolved placeholders.** Cross-check against the MID node's parameter list in `process-flow.yaml` and the substitution code paths in `internal/atdd/runtime/driver/driver.go` + `internal/atdd/runtime/clauderun/clauderun.go`. If the placeholder is not substituted by either path, the dispatcher will leave the literal `${name}` in the dispatched prompt. Flag every occurrence as **needs-decision** (route to `architecture-sync`) — do not propose silent renames; the parameter contract is BPMN-owned.
+- **Unresolved placeholders.** Cross-check against the MID node's parameter list in `process-flow.yaml` and the substitution code paths in `internal/atdd/runtime/driver/driver.go` + `internal/atdd/process/clauderun/clauderun.go`. If the placeholder is not substituted by either path, the dispatcher will leave the literal `${name}` in the dispatched prompt. Flag every occurrence as **needs-decision** (route to `architecture-sync`) — do not propose silent renames; the parameter contract is BPMN-owned.
 - **Unused placeholders.** If a parameter is declared on the MID but never referenced in the prompt body, the substitution effort is wasted. Flag as **needs-decision** (route to `architecture-sync`) — the unused parameter may be load-bearing for the gate, not the prompt.
 - **Wrong-case placeholders.** The repo recently migrated parameter names from snake_case to kebab-case (see commits `962fa15`, `a4e7cd0`, `4d8c38f`, `145349a`). Any remaining `${snake_case}` reference in a prompt body is a likely stale name. Flag as a concrete edit when the kebab-case equivalent exists in the MID, as **needs-decision** otherwise.
 - **Restating-the-placeholder prose.** A prompt body that says "the `${scope-block}` placeholder below contains the scope" pays per-dispatch tokens to explain what the substituted value already shows. Propose deletion of the explanatory prose; the substituted value is self-evident.
@@ -132,7 +132,7 @@ If your finding reads "this could be shorter, but I'm not sure it should be," it
 ## Workflow
 
 1. **Discover.** `Glob` `internal/assets/runtime/agents/atdd/*.md` and `internal/assets/runtime/shared/*.md` and `Read` each in full. Build a `body → placeholders` map by `Grep`ping `\$\{[a-z-]+\}` (kebab) and `\$\{[a-z_]+\}` (snake — for the wrong-case lens) in each body.
-2. **Cross-reference (read-only).** `Read` `internal/atdd/process/process-flow.yaml` to find each task's MID node, its declared parameters, and its `outputs:` list. `Read` `internal/atdd/runtime/driver/driver.go` and `internal/atdd/runtime/clauderun/clauderun.go` only enough to confirm which placeholders the dispatcher substitutes. Do not propose edits to these files.
+2. **Cross-reference (read-only).** `Read` `internal/atdd/process/process-flow.yaml` to find each task's MID node, its declared parameters, and its `outputs:` list. `Read` `internal/atdd/runtime/driver/driver.go` and `internal/atdd/process/clauderun/clauderun.go` only enough to confirm which placeholders the dispatcher substitutes. Do not propose edits to these files.
 3. **Measure.** Capture line counts per prompt body and per shared chunk. For shared chunks, multiply by the rough number of dispatched phases (use the count of per-agent bodies as a proxy) to estimate amplification.
 4. **Apply each lens** in order. Capture findings as you go, with file paths and line ranges. For each finding, estimate the savings in lines (and note the amplification, when relevant).
 5. **Classify** each finding using the routing rule above.

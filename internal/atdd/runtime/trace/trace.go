@@ -448,7 +448,7 @@ func outcomeDetail(ev *Event) (label string, attr color.Attribute, detail, delta
 // shared ctx.State at the moment TESTS_INFRA_HALT fired:
 //
 //   - test-infra-label  set by runCommand on infra classification
-//                       (see internal/atdd/runtime/actions/bindings.go)
+//                       (see internal/atdd/process/actions/bindings.go)
 //   - command-line      set by runCommand on the failing test-run shell-out
 //   - command-stderr-tail  ditto; the last N lines of the runner's stderr
 //

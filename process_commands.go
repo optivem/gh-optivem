@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/atdd/process"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
+	"github.com/optivem/gh-optivem/internal/atdd/process/configcheck"
 	"github.com/optivem/gh-optivem/internal/diagrams/diagram"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"

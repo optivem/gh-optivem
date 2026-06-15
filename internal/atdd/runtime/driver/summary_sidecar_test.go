@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
+	"github.com/optivem/gh-optivem/internal/atdd/process/clauderun"
 )
 
 // TestSummarySidecar_RoundTrip seeds three synthetic records (mixed
@@ -540,4 +540,3 @@ func TestWriteRunDigest_EmptyPathIsNoOp(t *testing.T) {
 		t.Errorf("empty path must be a no-op, got %v", err)
 	}
 }
-

@@ -304,7 +304,7 @@ func (b bindings) commandSucceeded(ctx *statemachine.Context) statemachine.Outco
 //
 // The "infra" value signals "the runner could not start" (binary
 // missing, docker down, permission denied — see
-// internal/atdd/runtime/actions/verify_classify.go). Both verify-tests-*
+// internal/atdd/process/actions/verify_classify.go). Both verify-tests-*
 // processes route it to TESTS_INFRA_HALT — neither the pass nor fail
 // fixer is appropriate because the runner produced no test report.
 func (b bindings) testOutcome(ctx *statemachine.Context) statemachine.Outcome {

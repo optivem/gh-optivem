@@ -13,7 +13,7 @@ import (
 
 // fakeShell records every Run invocation and returns canned errors keyed
 // by call index. Mirrors the fake-shell pattern used in
-// internal/atdd/runtime/actions/bindings_test.go (fakeShell), tightened to
+// internal/atdd/process/actions/bindings_test.go (fakeShell), tightened to
 // also capture cwd because Compile dispatches into per-tier directories.
 type fakeShell struct {
 	calls []shellCall

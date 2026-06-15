@@ -32,12 +32,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
+	"github.com/optivem/gh-optivem/internal/atdd/process/actions"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/repolocator"
-	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
-	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 	"github.com/optivem/gh-optivem/internal/build/runner"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // Options bundles the optional inputs to Run. All four remote-check

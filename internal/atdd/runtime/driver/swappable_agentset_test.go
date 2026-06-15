@@ -16,10 +16,10 @@ import (
 	"testing/fstest"
 
 	"github.com/optivem/gh-optivem/internal/atdd/process"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/actions"
+	"github.com/optivem/gh-optivem/internal/atdd/process/actions"
+	"github.com/optivem/gh-optivem/internal/atdd/process/clauderun"
+	"github.com/optivem/gh-optivem/internal/atdd/process/gates"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/gates"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 

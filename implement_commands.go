@@ -29,17 +29,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
+	"github.com/optivem/gh-optivem/internal/atdd/process/configcheck"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/driver"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/override"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
-	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
-	"github.com/optivem/gh-optivem/internal/config/configinit"
-	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 	"github.com/optivem/gh-optivem/internal/build/runner"
+	"github.com/optivem/gh-optivem/internal/config/configinit"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // newImplementCmd implements `gh optivem implement --issue N|URL`. The

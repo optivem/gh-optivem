@@ -26,7 +26,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/clauderun"
+	"github.com/optivem/gh-optivem/internal/atdd/process/clauderun"
 )
 
 // dispatchRecordJSON is the on-disk shape of one dispatch row in

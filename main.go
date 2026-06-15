@@ -25,17 +25,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/configcheck"
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
-	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
+	"github.com/optivem/gh-optivem/internal/atdd/process/configcheck"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/config/configinit"
 	"github.com/optivem/gh-optivem/internal/devworkflow/workspace"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
-	"github.com/optivem/gh-optivem/internal/scaffolding/steps"
 	"github.com/optivem/gh-optivem/internal/kernel/version"
+	"github.com/optivem/gh-optivem/internal/scaffolding/steps"
 )
 
 // bugReportLogMaxBytes is the inline log budget for a filed issue body.
