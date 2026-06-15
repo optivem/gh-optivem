@@ -2,6 +2,19 @@
 
 > **Parent plan.** Holds the vision, module map, dependency rules, and naming for decomposing `gh optivem`. Concrete execution lives in **child plans** (listed below). This file is the stable reference; children are independently executable and may be reordered, deferred, or dropped.
 
+> **Resume contract.** This plan is meant to be resumed by running `/clear` then `/execute-plan plans/20260615-0548-gh-optivem-modular-monolith-parent.md` — **no custom prompt needed.** The **▶ Next executable step** block below always names the single next concrete, executable unit of work, fully grounded so a fresh agent can act without re-deriving it. **Whenever that unit is completed, replace the block with the next one.** If only design/planning remains (not a mechanical move), the block must say so explicitly and point at the child plan to draft/refine — so the agent knows to switch to `/create-plan` or `/refine-plan` rather than hunt for edits.
+
+## ▶ Next executable step (resume here)
+
+**Invert seam #2 — `configinit → scaffolding`.** Config currently reaches up into Scaffolding; remove the coupling so `configinit`/`config` import nothing from `internal/scaffolding/**`.
+
+- **The cut (4 config-domain symbols currently living in scaffolding):** `steps.BuildOptivemYAML`, `steps.WriteOptivemYAMLToFilePath`, `steps.WriteOptivemYAMLToFilePathWithBanner`, `files.EnsureGitignoreLine` — all write `optivem.yaml` / its gitignore line, which is config's own data, so they belong on the config side.
+- **How:** relocate them to a config-side leaf, mirroring seam #1's resolution (a `configcheck`-style leaf + a build-level `import_guard_test.go` that asserts `configinit`/`config` import nothing from `internal/scaffolding/**`).
+- **Verify first:** confirm those symbols have no callers that legitimately belong in scaffolding. If any are genuinely shared, **stop and ask** (move vs. thin wrapper).
+- **Prove it:** `go build ./...` && `go test ./...` green.
+- **Finish:** mark seam #2 ✅ resolved (here, in *Cross-module seams*, and in *Cut difficulty*), then commit via `/commit`. Recommended mode: **batch-then-review** (small, well-precedented cut).
+- **Unblocks:** Config child (#4) — the last prerequisite before the Process carve-out (#7).
+
 ## TL;DR
 
 **Why:** `gh optivem` has grown into a "big ball of mud" — a generic process engine, one specific ATDD/BPMN process, its agents, project scaffolding, dev-workflow tooling (commit/sync/actions), and architecture/diagram tooling are all tangled in one binary. Concerns can't be reused, swapped, or reasoned about independently.
@@ -76,7 +89,7 @@
 
 ## Steps (parent-level)
 
-- [ ] Step 3: **Spawn + execute children in the confirmed order** — following *Confirmed child order* above, **one isolated subagent per move** (see Resume notes). The seam-#1 invert child and the engine carve-out are design work, not moves — pause for planning before them.
+- [ ] Step 3: **Spawn + execute children in the confirmed order** — following *Confirmed child order* above, **one isolated subagent per move** (see Resume notes). The single next concrete unit is always spelled out in the **▶ Next executable step** block at the top — execute that. The seam-invert children and the engine carve-out are design work, not moves — pause for planning before them.
 - [ ] Step 4: **Keep parent and children in sync** — use `/coordinate-plans` as children land; update the module map as reality is discovered.
 
 ## Child plans
