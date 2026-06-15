@@ -44,7 +44,7 @@
 
 ## Child plans
 
-- **Child 1 — Process module: engine ↔ process definition ↔ agents ↔ scaffolding** → `20260615-0549-modularize-gh-optivem-engine-process.md` *(drafted; the hardest and most valuable module)*
+- **Child 1 — Process module: engine ↔ process definition ↔ agents ↔ scaffolding** → `20260615-0549-child1-modularize-gh-optivem-engine-process.md` *(drafted; the hardest and most valuable module)*
 - *Child 2+ — dev-workflow, architecture/diagrams, CLI surface — written after the Step-1 inventory.*
 
 ## Open questions
