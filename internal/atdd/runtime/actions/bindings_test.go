@@ -1474,6 +1474,61 @@ func TestValidateOutputsAndScopes_AllInScope_StashesChangedFiles(t *testing.T) {
 	}
 }
 
+func TestValidateOutputsAndScopes_ExternalDriverPortChange_PreservesPortPaths(t *testing.T) {
+	// Plan 20260613-1835: on a true external-driver-port-changed verdict, the
+	// under-port-root subset of the delta is preserved into
+	// external-driver-port-changed-paths so IDENTIFY_EXTERNAL_SYSTEM resolves the
+	// system name SOLELY from the port change — covering a DTO-only change that
+	// writes ZERO adapter files (the #65 crash). Only the port-root path is
+	// preserved; the unrelated in-scope dsl-core edit is excluded.
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte("?? driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts\n?? dsl/typescript/src/core/Logic.ts\n"), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
+	ctx.Params["test-category"] = "acceptance"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	// AT-cascade landed verdict (the meaningful port change).
+	ctx.Set("at-external-driver-port-changed", true)
+	ctx.Set("at-system-driver-port-changed", false)
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	want := "driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts"
+	if got := ctx.GetString("external-driver-port-changed-paths"); got != want {
+		t.Errorf("external-driver-port-changed-paths: got %q, want %q (only the under-port-root subset)", got, want)
+	}
+}
+
+func TestValidateOutputsAndScopes_NoPortChange_DoesNotPreservePortPaths(t *testing.T) {
+	// The guard: when the external-driver-port-changed verdict is false, the
+	// preserved key must NOT be written — so a compile-only CT DSL phase (which
+	// does not re-change the port) cannot clobber the AT phase's list.
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"},
+		[]byte("?? dsl/typescript/src/core/Logic.ts\n"), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+	ctx := statemachine.NewContext()
+	ctx.Params["task-name"] = "implement-dsl"
+	ctx.Params["test-category"] = "acceptance"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	ctx.Set("at-external-driver-port-changed", false)
+	ctx.Set("at-system-driver-port-changed", false)
+	out := a.validateOutputsAndScopes(ctx)
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if _, set := ctx.State["external-driver-port-changed-paths"]; set {
+		t.Errorf("external-driver-port-changed-paths must not be set when the verdict is false")
+	}
+}
+
 func TestValidateOutputsAndScopes_MissingOutputWins_OverScopeDiff(t *testing.T) {
 	// Both failure conditions hold; missing-output is prioritised (the
 	// agent must first emit the flag — there is nothing to validate
@@ -2272,11 +2327,13 @@ func TestSnapshotWorkingTreeAction_GitFailureIsHardError(t *testing.T) {
 // identifyExternalSystem — CT-HIGH real-side identity (plan 20260606-1356)
 // ---------------------------------------------------------------------------
 
-// writeIdentifyTestConfig writes a config whose external-system-driver-adapter
-// root is `driver/typescript/src/external-adapter` and whose external-systems
+// writeIdentifyTestConfig writes a config whose external-system-driver-PORT
+// root is `driver/typescript/src/external-port` and whose external-systems
 // registry holds `warehouse` (simulator) + `payments` (test-instance), so the
 // IDENTIFY tests can exercise both real-kind values plus the unknown/ambiguous
-// error paths.
+// error paths. Identity is resolved from the external-driver-port change
+// (plan 20260613-1835), so the tests seed external-driver-port-changed-paths —
+// never the adapter files.
 func writeIdentifyTestConfig(t *testing.T, repoPath string) *projectconfig.Config {
 	t.Helper()
 	body := `project:
@@ -2337,13 +2394,34 @@ external-systems:
 	return cfg
 }
 
-func TestIdentifyExternalSystem_StampsNameAndRealKind_Simulator(t *testing.T) {
+func TestIdentifyExternalSystem_DTOOnlyPortChange_StampsNameAndRealKind_Simulator(t *testing.T) {
+	// The #65 regression: a DTO-only external-driver-port change (a DTO under
+	// the port root, ZERO adapter files) must still resolve identity. Identity
+	// comes from the preserved external-driver-port-changed-paths, so a DTO
+	// file under `<port-root>/warehouse/dtos/...` is sufficient.
 	cfg := writeIdentifyTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
 	ctx := statemachine.NewContext()
-	// The driver-adapter impl just wrote a warehouse file; phase-changed-files
-	// carries it (root + `/warehouse/...`).
-	ctx.Set("phase-changed-files", "driver/typescript/src/external-adapter/warehouse/WarehouseClient.ts")
+	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
+	if out := a.identifyExternalSystem(ctx); out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got := ctx.GetString("external-system-name"); got != "warehouse" {
+		t.Errorf("external-system-name: got %q, want warehouse", got)
+	}
+	if got := ctx.GetString("real-kind"); got != "simulator" {
+		t.Errorf("real-kind: got %q, want simulator", got)
+	}
+}
+
+func TestIdentifyExternalSystem_MethodPortChange_NoAdapterFiles_StampsName(t *testing.T) {
+	// A port-interface (method) change with NO adapter files present must
+	// resolve identically — proving the adapter scan is gone and identity
+	// depends only on the port change.
+	cfg := writeIdentifyTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/warehouse/WarehousePort.ts")
 	if out := a.identifyExternalSystem(ctx); out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
@@ -2359,7 +2437,7 @@ func TestIdentifyExternalSystem_StampsRealKind_TestInstance(t *testing.T) {
 	cfg := writeIdentifyTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
 	ctx := statemachine.NewContext()
-	ctx.Set("phase-changed-files", "driver/typescript/src/external-adapter/payments/PaymentsClient.ts")
+	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/payments/dtos/ChargeRequest.ts")
 	if out := a.identifyExternalSystem(ctx); out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
@@ -2372,15 +2450,15 @@ func TestIdentifyExternalSystem_StampsRealKind_TestInstance(t *testing.T) {
 }
 
 func TestIdentifyExternalSystem_IgnoresSharedResidual(t *testing.T) {
-	// A file directly under the adapter root (no `<name>/` segment) is
-	// residual `shared` code and must not be mistaken for a system name; the
-	// per-system warehouse file is the only identifiable system.
+	// A file directly under the port root (no `<name>/` segment) is residual
+	// `shared` code and must not be mistaken for a system name; the per-system
+	// warehouse file is the only identifiable system.
 	cfg := writeIdentifyTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
 	ctx := statemachine.NewContext()
-	ctx.Set("phase-changed-files",
-		"driver/typescript/src/external-adapter/SharedBase.ts\n"+
-			"driver/typescript/src/external-adapter/warehouse/WarehouseClient.ts")
+	ctx.Set("external-driver-port-changed-paths",
+		"driver/typescript/src/external-port/SharedBase.ts\n"+
+			"driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
 	if out := a.identifyExternalSystem(ctx); out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
@@ -2393,7 +2471,7 @@ func TestIdentifyExternalSystem_UnknownName_HardErrors(t *testing.T) {
 	cfg := writeIdentifyTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
 	ctx := statemachine.NewContext()
-	ctx.Set("phase-changed-files", "driver/typescript/src/external-adapter/shipping/ShippingClient.ts")
+	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/shipping/dtos/ShipRequest.ts")
 	out := a.identifyExternalSystem(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected hard error on unregistered system, got nil")
@@ -2406,33 +2484,38 @@ func TestIdentifyExternalSystem_UnknownName_HardErrors(t *testing.T) {
 	}
 }
 
-func TestIdentifyExternalSystem_NoPerSystemFiles_HardErrors(t *testing.T) {
-	// Only shared / out-of-root paths changed — nothing identifies a system.
+func TestIdentifyExternalSystem_NoExternalSystemTouched_HardErrors(t *testing.T) {
+	// The preserved port-path set is empty (no external-driver-port change at
+	// all) — the genuine "no external system touched" stop.
 	cfg := writeIdentifyTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
 	ctx := statemachine.NewContext()
-	ctx.Set("phase-changed-files",
-		"driver/typescript/src/external-adapter/SharedBase.ts\n"+
+	// Nothing seeded into external-driver-port-changed-paths; a stray shared /
+	// out-of-root path must not identify a system either.
+	ctx.Set("external-driver-port-changed-paths",
+		"driver/typescript/src/external-port/SharedBase.ts\n"+
 			"some/other/layer/File.ts")
 	out := a.identifyExternalSystem(ctx)
 	if out.Err == nil {
-		t.Fatalf("expected hard error when no per-system files changed, got nil")
+		t.Fatalf("expected hard error when no external system was touched, got nil")
 	}
 	if !strings.Contains(out.Err.Error(), "no external system identifiable") {
 		t.Errorf("error should explain nothing was identifiable: %v", out.Err)
 	}
 }
 
-func TestIdentifyExternalSystem_AmbiguousMultipleSystems_HardErrors(t *testing.T) {
+func TestIdentifyExternalSystem_TwoSystems_HardErrors(t *testing.T) {
+	// A ticket touching two external systems' PORTS (e.g. a method on one and
+	// a DTO on the other) is the >1 case — a CT-HIGH cycle targets exactly one.
 	cfg := writeIdentifyTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
 	ctx := statemachine.NewContext()
-	ctx.Set("phase-changed-files",
-		"driver/typescript/src/external-adapter/warehouse/WarehouseClient.ts\n"+
-			"driver/typescript/src/external-adapter/payments/PaymentsClient.ts")
+	ctx.Set("external-driver-port-changed-paths",
+		"driver/typescript/src/external-port/warehouse/WarehousePort.ts\n"+
+			"driver/typescript/src/external-port/payments/dtos/ChargeRequest.ts")
 	out := a.identifyExternalSystem(ctx)
 	if out.Err == nil {
-		t.Fatalf("expected hard error on ambiguous multi-system diff, got nil")
+		t.Fatalf("expected hard error when the port change spans two systems, got nil")
 	}
 	// Both names surface, deterministically ordered.
 	if !strings.Contains(out.Err.Error(), "payments, warehouse") {
@@ -2443,7 +2526,7 @@ func TestIdentifyExternalSystem_AmbiguousMultipleSystems_HardErrors(t *testing.T
 func TestIdentifyExternalSystem_NilConfig_HardErrors(t *testing.T) {
 	a := newActions(Deps{}) // no Config
 	ctx := statemachine.NewContext()
-	ctx.Set("phase-changed-files", "driver/typescript/src/external-adapter/warehouse/WarehouseClient.ts")
+	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
 	out := a.identifyExternalSystem(ctx)
 	if out.Err == nil || !strings.Contains(out.Err.Error(), "gh-optivem.yaml not loaded") {
 		t.Fatalf("expected nil-config wiring error, got %v", out.Err)

@@ -522,18 +522,25 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 }
 
 // identifyExternalSystem resolves which external system the current CT-HIGH
-// cycle targets from the driver-adapter files the preceding
-// IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS dispatch just wrote, and promotes
-// that system's real-kind into ctx.State for the GATE_CONTRACT_REAL_RED_KIND gateway.
+// cycle targets SOLELY from the external-driver-PORT change (the cycle's
+// trigger), and promotes that system's real-kind into ctx.State for the
+// GATE_CONTRACT_REAL_RED_KIND gateway.
 //
-// The external-system-driver-adapter layer root ends at the `external`
-// segment; each system's files live under `<root>/<name>/...`, so <name> is
-// the first path segment of every changed path relative to the root. Residual
-// `shared` adapter code sits directly under the root (no `<name>/` segment)
-// and is ignored. The changed-file source is ctx.State["phase-changed-files"],
-// stamped by the preceding dispatch's validate-outputs-and-scopes — which is
-// why IDENTIFY must run after the driver-adapter impl, not before it (plan
-// 20260606-1356).
+// Identity comes from the external-driver-port change — interface methods AND
+// its DTOs — never from the driver-adapter files (plan 20260613-1835). The
+// adapter files are legitimately empty on a DTO-only port change, which used
+// to crash IDENTIFY (#65 view-product-list); and the cycle's sole entry gate
+// (GATE_EXTERNAL_DRIVER_PORTS_CHANGED) is port-keyed, so a non-empty port
+// change is guaranteed whenever this runs. The source is the preserved
+// ctx.State["external-driver-port-changed-paths"] set, stashed by
+// validate-outputs-and-scopes when the AT-cascade DSL phase landed
+// external-driver-port-changed=true (the live phase-changed-files no longer
+// carries the port change by the time IDENTIFY runs).
+//
+// The external-system-driver-port layer root ends at the `external` segment;
+// each system's files live under `<root>/<name>/...`, so <name> is the first
+// path segment of every changed path relative to the root. Residual `shared`
+// code directly under the root (no `<name>/` segment) is ignored.
 //
 // Resolution is deterministic — no agent. Stamps
 // ctx.State["external-system-name"] and ctx.State["real-kind"]. The real-kind
@@ -548,22 +555,22 @@ func (a actions) identifyExternalSystem(ctx *statemachine.Context) statemachine.
 	if cfg == nil {
 		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
-	roots, err := ResolveLayerPaths([]string{"external-system-driver-adapter"}, cfg)
+	roots, err := ResolveLayerPaths([]string{"external-system-driver-port"}, cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: %w", err)}
 	}
 	root := roots[0]
 
 	names := map[string]struct{}{}
-	for _, p := range strings.Split(ctx.GetString("phase-changed-files"), "\n") {
+	for _, p := range strings.Split(ctx.GetString("external-driver-port-changed-paths"), "\n") {
 		p = strings.TrimSpace(p)
 		if !strings.HasPrefix(p, root+"/") {
 			continue
 		}
 		rel := strings.TrimPrefix(p, root+"/")
 		// First segment is the system name; a path with no further separator
-		// is residual `shared` adapter code directly under the root, not a
-		// per-system file.
+		// is residual `shared` code directly under the root, not a per-system
+		// file.
 		slash := strings.IndexByte(rel, '/')
 		if slash <= 0 {
 			continue
@@ -573,11 +580,11 @@ func (a actions) identifyExternalSystem(ctx *statemachine.Context) statemachine.
 
 	switch len(names) {
 	case 0:
-		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: no external system identifiable from the changed driver-adapter files under %q — the implement step wrote no per-system files. Onboard the external system (which declares its real-kind) and re-run", root)}
+		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: no external system identifiable from the external-driver-port change — expected a changed file under %q/<name>/… . Onboard the external system (which declares its real-kind) and re-run", root)}
 	case 1:
 		// resolved below
 	default:
-		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: changed driver-adapter files under %q span %d external systems (%s); a CT-HIGH cycle targets exactly one", root, len(names), strings.Join(sortedSetKeys(names), ", "))}
+		return statemachine.Outcome{Err: fmt.Errorf("identify-external-system: the external-driver-port change spans %d external systems (%s); a CT-HIGH cycle targets exactly one", len(names), strings.Join(sortedSetKeys(names), ", "))}
 	}
 	name := sortedSetKeys(names)[0]
 	sys, ok := cfg.ExternalSystems[name]
@@ -1242,6 +1249,33 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// no WRITE-phase changes — staged-and-committed paths drop out of
 	// `git status` immediately).
 	ctx.Set("phase-changed-files", strings.Join(modified, "\n"))
+
+	// Preserve the external-driver-PORT changed-path subset for
+	// IDENTIFY_EXTERNAL_SYSTEM (plan 20260613-1835). Identity is resolved
+	// SOLELY from the external-driver-port change (interface methods AND its
+	// DTOs) — never from the adapter files the impl step writes, which are
+	// legitimately empty on a DTO-only change and crashed #65. The port
+	// change happens in this (AT-cascade DSL) phase, so phase-changed-files
+	// carries it now but is overwritten before IDENTIFY runs; stash the
+	// under-port-root subset into a durable flat key. Guarded to write only
+	// when the landed verdict is true AND the subset is non-empty, so the
+	// compile-only CT DSL phase (which does not re-change the port) cannot
+	// clobber the AT phase's list.
+	if portChanged, _ := ctx.State[landingStateKey("external-driver-port-changed", ctx.Params["test-category"])].(bool); portChanged {
+		if portRoots, perr := ResolveLayerPaths([]string{"external-system-driver-port"}, cfg); perr == nil && len(portRoots) > 0 {
+			portRoot := portRoots[0]
+			var portPaths []string
+			for _, m := range modified {
+				if strings.HasPrefix(m, portRoot+"/") {
+					portPaths = append(portPaths, m)
+				}
+			}
+			if len(portPaths) > 0 {
+				ctx.Set("external-driver-port-changed-paths", strings.Join(portPaths, "\n"))
+			}
+		}
+	}
+
 	var violating []string
 	for _, m := range modified {
 		if !pathInScope(m, allowed) {

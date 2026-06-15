@@ -1120,14 +1120,22 @@ processes:
         process: implement-external-system-driver-adapters
         name: "Implement External System Driver Adapters"
 
-      # Resolve which external system this cycle targets from the driver-
-      # adapter files the step above just wrote (the external-system-driver-
-      # adapter layer root → first path segment = <name>). Stamps
-      # external-system-name + real-kind into ctx.State for the gate below;
-      # an unrecognized / ambiguous name is a hard stop pointing at onboarding
-      # (where real-kind is declared). Must run AFTER the driver-adapter impl
-      # so phase-changed-files carries the per-system paths (plan 20260606-1356,
-      # IDENTIFY ordering).
+      # Resolve which external system this cycle targets SOLELY from the
+      # external-driver-PORT change — interface methods AND its DTOs (the
+      # external-system-driver-port layer root → first path segment = <name>),
+      # NOT from the driver-adapter files the step above wrote. Those adapter
+      # files are legitimately empty on a DTO-only port change, which used to
+      # crash IDENTIFY (#65 view-product-list); the port change is the cycle's
+      # trigger and is always present (this cycle's entry gate,
+      # GATE_EXTERNAL_DRIVER_PORTS_CHANGED, is port-keyed). The source is the
+      # preserved external-driver-port-changed-paths set, stashed by
+      # validate-outputs-and-scopes when the AT-cascade DSL phase landed the
+      # port-changed verdict (plan 20260613-1835). Stamps external-system-name +
+      # real-kind into ctx.State for the gate below; an unrecognized / ambiguous
+      # name is a hard stop pointing at onboarding (where real-kind is declared).
+      # Identity no longer depends on the adapter-impl phase's output, so the
+      # old "must run AFTER the driver-adapter impl" rationale (plan 20260606-1356)
+      # no longer applies — the node's position is left unchanged regardless.
       - id: IDENTIFY_EXTERNAL_SYSTEM
         type: service-task
         action: identify-external-system

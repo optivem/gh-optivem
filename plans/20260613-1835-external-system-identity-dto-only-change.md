@@ -160,52 +160,9 @@ prefer flat unless the `bindings_test.go` namespacing invariants force otherwise
 
 ## Items
 
-- [ ] **1. Preserve the external-driver-port changed-path subset on a true verdict.**
-  In `validateOutputsAndScopes` (`internal/atdd/runtime/actions/bindings.go`), when the
-  landed `external-driver-port-changed` verdict is `true`, resolve the
-  `external-system-driver-port` root via `ResolveLayerPaths` and stash the subset of
-  `phase-changed-files` under that root into shared state (working key
-  `external-driver-port-changed-paths`), guarded to only write when non-empty. Add the
-  doc-comment rationale (this plan) inline.
-
-- [ ] **2. Resolve identity SOLELY from the preserved external-driver-port paths; REMOVE the adapter scan.**
-  In `identifyExternalSystem` (`bindings.go:546`), build the candidate `name` set from the
-  preserved port-path set (Item 1) **alone**, via the existing `<root>/<name>/...`
-  first-segment extraction. **Delete** the current scan of `phase-changed-files` against the
-  `external-system-driver-adapter` root (`bindings.go:551–572`) — adapter files are no longer
-  a source. This covers (a) port interface method, (b) port DTO, (c) method+DTO mix, all via
-  the port change. Keep the 0 / 1 / >1 switch, the registry lookup, and the
-  `external-system-name` + `real-kind` stamping unchanged. Rewrite the function's doc-comment
-  (`bindings.go:525–545`) to state identity comes from the external-driver-**port** change
-  (trigger, incl. DTOs) — explicitly NOT from the adapter files — and that the cycle's
-  port-keyed entry gate guarantees that source is always present.
-
-- [ ] **3. Update / add unit tests.**
-  In `internal/atdd/runtime/actions/bindings_test.go`:
-  - **DTO-only port change** — port file changed under `driver/port/external/erp/dtos/**`,
-    **zero** adapter files → resolves `external-system-name=erp` + the registry `real-kind`.
-  - **Method port change** — port interface file changed under `driver/port/external/erp/**`
-    → resolves `erp` identically. (Adapter files, if any, are irrelevant — the test must
-    prove resolution works **with no adapter files in `phase-changed-files`**, since the
-    adapter scan is gone.)
-  - **Two systems** — port files changed under both `port/external/erp/**` and
-    `port/external/clock/**` → the **>1-system hard error** fires.
-  - **No external system touched** — empty preserved port-path set → the **zero-names hard
-    error** still fires.
-  - Rework/remove any existing case that relied on the **adapter** scan as the identity
-    source (it no longer exists). Confirm the `namespacedLandingKeys` /
-    `external-driver-port-changed` namespacing invariants (lines ~1339–1394) still hold.
-
-- [ ] **4. Doc-block / BPMN comment sync.**
-  Update the `IDENTIFY_EXTERNAL_SYSTEM` node comment in
-  `internal/atdd/runtime/statemachine/process-flow.yaml` (~1123–1135) so it states
-  identity is resolved **solely** from the external-driver-**port** change (robust to
-  DTO-only changes), not from "the driver-adapter files the step above just wrote." Note
-  that identity no longer depends on the adapter-impl phase's output, so the old "must run
-  AFTER the driver-adapter impl" ordering rationale (for identity) no longer applies —
-  but **do not move the node**; leave its sequence position unchanged (other GREEN-shape
-  steps still sequence around it). Content-only comment edit; no sequence-flow or
-  node-shape change.
+_All agent items (1–4) implemented and committed (`go test -p 2` green for
+`internal/atdd/runtime/actions/...` + `.../statemachine/...`; full `go build ./...` clean).
+The user-driven Verification below remains._
 
 ## Verification
 
