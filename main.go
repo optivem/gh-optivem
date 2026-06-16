@@ -91,6 +91,20 @@ func main() {
 		}
 	}
 
+	// Load the user-level .env before Cobra parses flags or any subcommand
+	// reads os.Getenv for credentials. A real exported env var always wins
+	// (LoadEnvFile only fills empty keys), so this is purely additive — it
+	// lets an operator carry the credential set in one portable file with no
+	// terminal restart, without changing behaviour when the vars are already
+	// exported. Runs after the --version short-circuit to keep --version
+	// side-effect-free. Absent file is a silent no-op; a read error (e.g.
+	// permissions) is a non-fatal stderr note since log isn't initialised yet.
+	if path, err := config.UserEnvFilePath(); err == nil {
+		if _, err := config.LoadEnvFile(path); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not read %s: %v\n", path, err)
+		}
+	}
+
 	// Show subcommands in registration order (workflow order), not alphabetical.
 	// e.g. `config` lists init → validate → preflight, the sequence a user runs.
 	cobra.EnableCommandSorting = false

@@ -225,7 +225,7 @@ bash scripts/test.sh --all ./...              # opt in to a repo-wide run (still
 
 While you're iterating in one package, run just that package: `go test ./internal/atdd/process/clauderun`. Save `./...` for pre-push and CI.
 
-A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`, `GHCR_TOKEN`, `WORKFLOW_TOKEN` in env):
+A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`, `GHCR_TOKEN`, `WORKFLOW_TOKEN` in env). Export them in your shell, or — for the credential vars the scaffolder binary reads — drop them in the user-level `.env` (see [Environment Variables](README.md#environment-variables)); the built binary the harness runs loads that file at startup, so no terminal restart is needed when you rotate a token:
 
 ```bash
 go test -tags=system ./internal/config/ -v -timeout 2h \
@@ -298,7 +298,7 @@ Fast iteration on the driver. **Local working copy of gh-optivem** + **existing 
 
 ##### Quick path
 
-`scripts/atdd-rehearsal.sh` does **everything** end-to-end: runs `scripts/install.sh` (which `go build`s `gh-optivem.exe` from your working copy and re-installs the `gh optivem` extension), creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit. Docker state cleanup is no longer part of this script — if you want a fresh state (volumes + locally-built images dropped, per the current config's `systems.yaml`), run `bash ../gh-optivem/scripts/atdd-clean.sh [--config <yaml>]` first.
+`scripts/atdd-rehearsal.sh` does **everything** end-to-end: runs `scripts/install.sh` (which `go build`s `gh-optivem.exe` from your working copy and re-installs the `gh optivem` extension), creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit. The script relies on the ambient shell environment for credentials; since the binary now loads the user-level `.env` at startup (see [Environment Variables](README.md#environment-variables)), the same portable file covers rehearsals too — no need to re-export tokens per shell. Docker state cleanup is no longer part of this script — if you want a fresh state (volumes + locally-built images dropped, per the current config's `systems.yaml`), run `bash ../gh-optivem/scripts/atdd-clean.sh [--config <yaml>]` first.
 
 ```bash
 # Step 1 — go to shop

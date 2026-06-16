@@ -61,7 +61,12 @@ set are reported as "NOT SET".
 
 This is purely informational — no live calls are made and the command always
 exits 0. Use 'gh optivem environment verify' to confirm each token is also
-accepted by its provider.`,
+accepted by its provider.
+
+Provide these via your shell, or via the user-level .env file gh-optivem loads
+at startup ($GH_OPTIVEM_ENV_FILE if set, else <user-config-dir>/gh-optivem/.env).
+A real exported variable always wins; the file only fills ones that are unset,
+so editing it takes effect on the next run with no terminal restart.`,
 		Example: `  gh optivem environment show`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {

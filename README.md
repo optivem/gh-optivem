@@ -83,7 +83,17 @@ gh extension remove optivem
 
 ## Environment Variables
 
-Create these environment variables on your local machine. After setting them, restart your IDE / terminal for the changes to take effect.
+Provide these credentials one of two ways:
+
+- **OS environment variables** — set them on your machine the usual way. After setting them, restart your IDE / terminal for the changes to take effect (the env snapshot is taken when the process launches).
+- **A portable `.env` file** (no restart needed) — copy [`.env.example`](.env.example), fill in the values, and drop it at the user-level path `gh optivem` loads at startup:
+  - Windows: `%AppData%\gh-optivem\.env`
+  - Linux/macOS: `~/.config/gh-optivem/.env`
+  - Or keep it in a synced folder (Dropbox/OneDrive) and point at it with `GH_OPTIVEM_ENV_FILE=/abs/path/to/.env`.
+
+  Edit the file any time — already-open shells pick up the new values on the next `gh optivem` run, with no terminal restart. A real exported environment variable always wins; the file only fills variables that are currently unset. Your filled-in copy is never committed (`.env` is gitignored; only the `.env.example` template is tracked).
+
+The credentials, either way:
 
 - `DOCKERHUB_USERNAME` — your Docker Hub username.
 - `DOCKERHUB_TOKEN` — Docker Hub Personal Access Token (read-only scope is enough). Create at https://app.docker.com/settings/personal-access-tokens.
