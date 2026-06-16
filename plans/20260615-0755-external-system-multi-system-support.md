@@ -172,26 +172,59 @@ with these five points:
    `<name>` is the lookup key; bake the path into the clone only if the cycle's writing steps
    consume it at runtime (verify E).
 
-## Still to confirm during execution (verify, don't redesign)
+## Proposed answers to A–E — ⏳ PENDING CONFIRMATION (VJ, 2026-06-16)
 
-A. **Params → `ctx.State` seeding.** Confirm the channel precedent's mechanism for making a
-   baked call-activity `params:` value readable by a downstream gate/binding, and that
-   `real-kind` reaches `GATE_CONTRACT_REAL_RED_KIND` the same way.
-B. **Per-external-system key isolation.** Clones run in a **sequential** chain (`unrollChannelAnchor`
-   re-stitches pred→clone0→…→succ), so each completes red→green before the next starts.
-   Default: **no per-external-system suffixing** of `ct-*` verdicts / test-name lists — shared state is
-   overwritten per-clone, not clobbered concurrently. Add suffixing ONLY if a step aggregates
-   across external systems; check why channels suffix before deciding.
-C. **Interaction with channel unroll.** The external cycle sits inside the AT cascade, which is
-   itself channel-unrolled in places. Confirm the external-system unroll and channel unroll
-   compose in the load pipeline (order of unroll passes) without an unwanted N×M node
-   explosion.
-D. **`shared` external layer.** Decide whether per-external-system clones need any common layer
-   (analogous to channels' `common: "true"` on the first clone), or are fully independent.
-   Lean independent unless a shared external layer exists in the template.
-E. **Stub/simulator path flow to writing steps.** Confirm whether the cycle's stub-writing
-   steps need the per-external-system `stub.path` / `simulator.path` threaded in (bake into the clone,
-   per resolved decision 3) or already resolve it from config another way.
+> These are grounded recommendations written 2026-06-15 after reading the code. **Do not
+> promote to Resolved or edit the Items below until VJ confirms** (asked again 2026-06-16).
+> Each cites the evidence so confirmation is a quick read, not a re-investigation.
+
+A. **Params → `ctx.State` seeding → bake `real-kind` as a clone param; trivial shim only if
+   needed.** Channels prove a baked call-activity param reaches the *agent prompt* via the
+   param-push (`run.go` → NodeParams, `channels.go:41-43`). Not yet proven: that a baked param
+   reaches a *gate binding's* `ctx.State` read (how `GATE_CONTRACT_REAL_RED_KIND` reads
+   `real-kind`). **Proposed:** bake `real-kind` as a clone param; if the push seeds
+   gate-readable state, IDENTIFY is fully deleted and the gate is unchanged. If not, keep a
+   ~3-line "copy injected `real-kind` param → `ctx.State`" shim — still a near-total deletion
+   of IDENTIFY (no derivation, no `>1`, no name-resolution). **This is the one item to confirm
+   first during execution.**
+B. **Per-external-system key isolation → no suffixing. CONFIRMED.** The cycle's only namespaced
+   state is `${ct-test-names}` / `ct-dsl-port-changed`, produced by `write-contract-tests` at
+   the *start* of each clone and consumed within the same clone (`process-flow.yaml:1077,1178`).
+   Sequential clones regenerate before consuming — no cross-clone read. **Proposed:** drop
+   Item 5.
+C. **Channel-unroll composition → no N×M risk. CONFIRMED.** The channel unrolls target
+   `change-system-behavior` and `write-and-verify-acceptance-tests` (`channels.go:52,102`); the
+   external anchor `IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS` lives in **`shared-contract`**
+   (`process-flow.yaml:705,784`) — a different process they never touch. `shared-contract` is a
+   shared sub-process; unrolling external systems rewrites its single definition into N nodes
+   regardless of channel call-frequency. **Proposed:** add
+   `UnrollExternalSystems(cfg.ExternalSystemNames())` to the pre-`Bind()` block (`driver.go:318-331`),
+   guarded by `len(cfg.ExternalSystems) > 0`; order-independent of the channel unrolls.
+D. **`shared` external layer → fully independent clones, no `common:"true"`. CONFIRMED.** A
+   shared layer exists (`system-driver-adapter-shared`, read+write-scoped by all three writing
+   steps — `process-flow.yaml:1937,1991,2023`), but unlike the channel **common** layer (a
+   from-scratch build) it is a pre-existing transport foundation each step "may extend"
+   incrementally. **Proposed:** no first-clone ownership flag; each clone independent.
+E. **Stub/sim path flow → do NOT bake paths; bake `external-system-name` and thread it into the
+   writing agents' prompts. CONFIRMED.** The writing steps resolve their target via **layer
+   scope keys** (`external-system-driver-adapter`, `system-driver-adapter-shared` —
+   `process-flow.yaml:1937,1991,2023`), not `stub.path`/`simulator.path` (preflight + banner
+   only) and not `external-system-name` (currently unconsumed). Direct channel analog: the
+   channel agent "reads `${channel}` and writes only that channel's adapter" (`channels.go:89-92`).
+   **Proposed:** thread the baked `external-system-name` into the three writing agents' prompts
+   (`${external-system-name}`, like `${channel}`); keep layer-level scope; **do not** bake
+   config paths (kills the "bake the path" branch of resolved-decision 3).
+
+### Proposed Item changes (apply only after confirmation)
+
+- **Drop Item 5** (per B).
+- **Item 4** gains a sub-task: thread `external-system-name` into the prompts of
+  `implement-external-system-driver-adapters`, `implement-external-system-stubs`, and
+  `implement-external-system-real-simulator` (per E).
+- **Resolved-decision 3** loses its "bake the path into the clone" branch (per E): paths are
+  preflight/banner-only and never baked.
+- **Item 1** pass-order caveat (verify C) resolves to "order-independent; guard on non-empty
+  registry."
 
 ## Items (agent work)
 
