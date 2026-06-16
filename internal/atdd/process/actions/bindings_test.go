@@ -128,7 +128,8 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"run-command",
 		"validate-outputs-and-scopes",
 		"snapshot-working-tree",
-		"identify-external-system",
+		"validate-external-systems-registered",
+		"resolve-external-system",
 		"move-to-in-refinement",
 		"move-to-ready",
 		"move-to-in-progress",
@@ -729,7 +730,7 @@ func TestRunCommand_RunTestsClassifiesInfraFailure(t *testing.T) {
 			// greening without exercising a single test (plan 20260608-1240).
 			name:      "empty test selection (gradle no tests found)",
 			stderr:    "No tests found for given includes: [com.example.AcceptanceTest.method](filter.includeTestsMatching)",
-			wantLabel: "empty test selection",
+			wantLabel: "named tests not discoverable — did they compile / are the names correct?",
 		},
 		{
 			// The runner's own zero-executed guard (plan 20260608-1502) catches
@@ -738,7 +739,7 @@ func TestRunCommand_RunTestsClassifiesInfraFailure(t *testing.T) {
 			// marker instead, dropping the empty case into the same infra halt.
 			name:      "empty test selection (runner zero-executed marker)",
 			stderr:    "Error: 0 tests executed for the given selection — the suite/test filter matched nothing on any selected suite",
-			wantLabel: "empty test selection",
+			wantLabel: "named tests not discoverable — did they compile / are the names correct?",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -2325,17 +2326,21 @@ func TestSnapshotWorkingTreeAction_GitFailureIsHardError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// identifyExternalSystem — CT-HIGH real-side identity (plan 20260606-1356)
+// resolve-external-system + validate-external-systems-registered —
+// multi-external-system contract cycle (plan 20260615-0755). These replaced the
+// retired identify-external-system action: identity is now baked at load by
+// UnrollExternalSystems, so resolve-external-system only self-guards each clone
+// and copies the baked real-kind into state, and validate-external-systems-
+// registered runs once upfront over the whole changed-set.
 // ---------------------------------------------------------------------------
 
-// writeIdentifyTestConfig writes a config whose external-system-driver-PORT
+// writeExternalSystemsTestConfig writes a config whose external-system-driver-PORT
 // root is `driver/typescript/src/external-port` and whose external-systems
 // registry holds `warehouse` (simulator) + `payments` (test-instance), so the
-// IDENTIFY tests can exercise both real-kind values plus the unknown/ambiguous
-// error paths. Identity is resolved from the external-driver-port change
-// (plan 20260613-1835), so the tests seed external-driver-port-changed-paths —
-// never the adapter files.
-func writeIdentifyTestConfig(t *testing.T, repoPath string) *projectconfig.Config {
+// tests can exercise both real-kind values plus the unregistered-name error
+// path. The port→names-set derivation reads external-driver-port-changed-paths
+// (plan 20260613-1835), so the tests seed that — never the adapter files.
+func writeExternalSystemsTestConfig(t *testing.T, repoPath string) *projectconfig.Config {
 	t.Helper()
 	body := `project:
   provider: github
@@ -2395,140 +2400,154 @@ external-systems:
 	return cfg
 }
 
-func TestIdentifyExternalSystem_DTOOnlyPortChange_StampsNameAndRealKind_Simulator(t *testing.T) {
-	// The #65 regression: a DTO-only external-driver-port change (a DTO under
-	// the port root, ZERO adapter files) must still resolve identity. Identity
-	// comes from the preserved external-driver-port-changed-paths, so a DTO
-	// file under `<port-root>/warehouse/dtos/...` is sufficient.
-	cfg := writeIdentifyTestConfig(t, t.TempDir())
-	a := newActions(Deps{Config: cfg})
+// resolveExternalSystem bakes external-system-name + real-kind as CLONE PARAMS
+// (UnrollExternalSystems), so the tests seed ctx.Params, not ctx.State.
+func resolveCtx(name, realKind, changedPaths string) *statemachine.Context {
 	ctx := statemachine.NewContext()
-	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
-	if out := a.identifyExternalSystem(ctx); out.Err != nil {
+	ctx.Params = map[string]string{"external-system-name": name, "real-kind": realKind}
+	ctx.Set("external-driver-port-changed-paths", changedPaths)
+	return ctx
+}
+
+func TestResolveExternalSystem_Touched_DTOOnlyPortChange_Simulator(t *testing.T) {
+	// The #65-class case: a DTO-only external-driver-port change (a DTO under
+	// the port root, ZERO adapter files) still marks the clone touched. The
+	// names-set comes from external-driver-port-changed-paths.
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := resolveCtx("warehouse", "simulator",
+		"driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
+	if out := a.resolveExternalSystem(ctx); out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if got := ctx.GetString("external-system-name"); got != "warehouse" {
-		t.Errorf("external-system-name: got %q, want warehouse", got)
+	if got, _ := ctx.State["external-system-touched"].(bool); !got {
+		t.Errorf("external-system-touched: got %v, want true", ctx.State["external-system-touched"])
 	}
 	if got := ctx.GetString("real-kind"); got != "simulator" {
-		t.Errorf("real-kind: got %q, want simulator", got)
+		t.Errorf("real-kind: got %q, want simulator (copied from baked param)", got)
 	}
 }
 
-func TestIdentifyExternalSystem_MethodPortChange_NoAdapterFiles_StampsName(t *testing.T) {
-	// A port-interface (method) change with NO adapter files present must
-	// resolve identically — proving the adapter scan is gone and identity
-	// depends only on the port change.
-	cfg := writeIdentifyTestConfig(t, t.TempDir())
+func TestResolveExternalSystem_Touched_MethodPortChange_NoAdapterFiles(t *testing.T) {
+	// A port-interface (method) change with NO adapter files present marks the
+	// clone touched identically — membership depends only on the port change.
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
-	ctx := statemachine.NewContext()
-	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/warehouse/WarehousePort.ts")
-	if out := a.identifyExternalSystem(ctx); out.Err != nil {
+	ctx := resolveCtx("warehouse", "simulator",
+		"driver/typescript/src/external-port/warehouse/WarehousePort.ts")
+	if out := a.resolveExternalSystem(ctx); out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if got := ctx.GetString("external-system-name"); got != "warehouse" {
-		t.Errorf("external-system-name: got %q, want warehouse", got)
-	}
-	if got := ctx.GetString("real-kind"); got != "simulator" {
-		t.Errorf("real-kind: got %q, want simulator", got)
+	if got, _ := ctx.State["external-system-touched"].(bool); !got {
+		t.Errorf("external-system-touched: got %v, want true", ctx.State["external-system-touched"])
 	}
 }
 
-func TestIdentifyExternalSystem_StampsRealKind_TestInstance(t *testing.T) {
-	cfg := writeIdentifyTestConfig(t, t.TempDir())
+func TestResolveExternalSystem_CopiesRealKind_TestInstance(t *testing.T) {
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
-	ctx := statemachine.NewContext()
-	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/payments/dtos/ChargeRequest.ts")
-	if out := a.identifyExternalSystem(ctx); out.Err != nil {
+	ctx := resolveCtx("payments", "test-instance",
+		"driver/typescript/src/external-port/payments/dtos/ChargeRequest.ts")
+	if out := a.resolveExternalSystem(ctx); out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
-	}
-	if got := ctx.GetString("external-system-name"); got != "payments" {
-		t.Errorf("external-system-name: got %q, want payments", got)
 	}
 	if got := ctx.GetString("real-kind"); got != "test-instance" {
 		t.Errorf("real-kind: got %q, want test-instance", got)
 	}
 }
 
-func TestIdentifyExternalSystem_IgnoresSharedResidual(t *testing.T) {
-	// A file directly under the port root (no `<name>/` segment) is residual
-	// `shared` code and must not be mistaken for a system name; the per-system
-	// warehouse file is the only identifiable system.
-	cfg := writeIdentifyTestConfig(t, t.TempDir())
+func TestResolveExternalSystem_Untouched_RoutesPast(t *testing.T) {
+	// The clone's baked system (payments) is NOT in the change-set (only
+	// warehouse changed) → touched=false so GATE_EXTERNAL_SYSTEM_TOUCHED skips
+	// the cycle. real-kind is still copied (harmless — the gate is never
+	// reached after a skip).
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
-	ctx := statemachine.NewContext()
-	ctx.Set("external-driver-port-changed-paths",
-		"driver/typescript/src/external-port/SharedBase.ts\n"+
-			"driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
-	if out := a.identifyExternalSystem(ctx); out.Err != nil {
+	ctx := resolveCtx("payments", "test-instance",
+		"driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
+	if out := a.resolveExternalSystem(ctx); out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if got := ctx.GetString("external-system-name"); got != "warehouse" {
-		t.Errorf("external-system-name: got %q, want warehouse (shared residual ignored)", got)
+	if got, _ := ctx.State["external-system-touched"].(bool); got {
+		t.Errorf("external-system-touched: got true, want false (payments untouched)")
 	}
 }
 
-func TestIdentifyExternalSystem_UnknownName_HardErrors(t *testing.T) {
-	cfg := writeIdentifyTestConfig(t, t.TempDir())
+func TestResolveExternalSystem_IgnoresSharedResidual(t *testing.T) {
+	// A file directly under the port root (no `<name>/` segment) is residual
+	// `shared` code and must not be mistaken for a system name; only the
+	// per-system warehouse file counts toward the names-set.
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := resolveCtx("warehouse", "simulator",
+		"driver/typescript/src/external-port/SharedBase.ts\n"+
+			"driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
+	if out := a.resolveExternalSystem(ctx); out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got, _ := ctx.State["external-system-touched"].(bool); !got {
+		t.Errorf("external-system-touched: got false, want true (shared residual ignored)")
+	}
+}
+
+func TestResolveExternalSystem_MissingBakedName_HardErrors(t *testing.T) {
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext() // no baked external-system-name param
+	out := a.resolveExternalSystem(ctx)
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "external-system-name not baked") {
+		t.Fatalf("expected missing-baked-name error, got %v", out.Err)
+	}
+}
+
+func TestResolveExternalSystem_NilConfig_HardErrors(t *testing.T) {
+	a := newActions(Deps{}) // no Config
+	ctx := resolveCtx("warehouse", "simulator",
+		"driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
+	out := a.resolveExternalSystem(ctx)
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "gh-optivem.yaml not loaded") {
+		t.Fatalf("expected nil-config wiring error, got %v", out.Err)
+	}
+}
+
+func TestValidateExternalSystemsRegistered_AllRegistered_NoError(t *testing.T) {
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})
 	ctx := statemachine.NewContext()
-	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/shipping/dtos/ShipRequest.ts")
-	out := a.identifyExternalSystem(ctx)
+	// Both touched systems are registered (warehouse + payments).
+	ctx.Set("external-driver-port-changed-paths",
+		"driver/typescript/src/external-port/warehouse/WarehousePort.ts\n"+
+			"driver/typescript/src/external-port/payments/dtos/ChargeRequest.ts")
+	if out := a.validateExternalSystemsRegistered(ctx); out.Err != nil {
+		t.Fatalf("unexpected err for all-registered: %v", out.Err)
+	}
+}
+
+func TestValidateExternalSystemsRegistered_UnregisteredName_HardErrors(t *testing.T) {
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	// shipping is not in the registry — the no-silent-skip guard fires upfront.
+	ctx.Set("external-driver-port-changed-paths",
+		"driver/typescript/src/external-port/warehouse/WarehousePort.ts\n"+
+			"driver/typescript/src/external-port/shipping/dtos/ShipRequest.ts")
+	out := a.validateExternalSystemsRegistered(ctx)
 	if out.Err == nil {
 		t.Fatalf("expected hard error on unregistered system, got nil")
 	}
 	if !strings.Contains(out.Err.Error(), "shipping") || !strings.Contains(out.Err.Error(), "onboard") {
-		t.Errorf("error should name the unknown system and point at onboarding: %v", out.Err)
+		t.Errorf("error should name the unregistered system and point at onboarding: %v", out.Err)
 	}
-	if _, set := ctx.State["real-kind"]; set {
-		t.Errorf("real-kind must not be stamped on an unrecognised system")
-	}
-}
-
-func TestIdentifyExternalSystem_NoExternalSystemTouched_HardErrors(t *testing.T) {
-	// The preserved port-path set is empty (no external-driver-port change at
-	// all) — the genuine "no external system touched" stop.
-	cfg := writeIdentifyTestConfig(t, t.TempDir())
-	a := newActions(Deps{Config: cfg})
-	ctx := statemachine.NewContext()
-	// Nothing seeded into external-driver-port-changed-paths; a stray shared /
-	// out-of-root path must not identify a system either.
-	ctx.Set("external-driver-port-changed-paths",
-		"driver/typescript/src/external-port/SharedBase.ts\n"+
-			"some/other/layer/File.ts")
-	out := a.identifyExternalSystem(ctx)
-	if out.Err == nil {
-		t.Fatalf("expected hard error when no external system was touched, got nil")
-	}
-	if !strings.Contains(out.Err.Error(), "no external system identifiable") {
-		t.Errorf("error should explain nothing was identifiable: %v", out.Err)
+	if strings.Contains(out.Err.Error(), "warehouse") {
+		t.Errorf("error should not flag the registered system warehouse: %v", out.Err)
 	}
 }
 
-func TestIdentifyExternalSystem_TwoSystems_HardErrors(t *testing.T) {
-	// A ticket touching two external systems' PORTS (e.g. a method on one and
-	// a DTO on the other) is the >1 case — a CT-HIGH cycle targets exactly one.
-	cfg := writeIdentifyTestConfig(t, t.TempDir())
-	a := newActions(Deps{Config: cfg})
-	ctx := statemachine.NewContext()
-	ctx.Set("external-driver-port-changed-paths",
-		"driver/typescript/src/external-port/warehouse/WarehousePort.ts\n"+
-			"driver/typescript/src/external-port/payments/dtos/ChargeRequest.ts")
-	out := a.identifyExternalSystem(ctx)
-	if out.Err == nil {
-		t.Fatalf("expected hard error when the port change spans two systems, got nil")
-	}
-	// Both names surface, deterministically ordered.
-	if !strings.Contains(out.Err.Error(), "payments, warehouse") {
-		t.Errorf("error should list both systems in sorted order: %v", out.Err)
-	}
-}
-
-func TestIdentifyExternalSystem_NilConfig_HardErrors(t *testing.T) {
+func TestValidateExternalSystemsRegistered_NilConfig_HardErrors(t *testing.T) {
 	a := newActions(Deps{}) // no Config
 	ctx := statemachine.NewContext()
-	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/warehouse/dtos/ReturnsProductRequest.ts")
-	out := a.identifyExternalSystem(ctx)
+	ctx.Set("external-driver-port-changed-paths", "driver/typescript/src/external-port/warehouse/WarehousePort.ts")
+	out := a.validateExternalSystemsRegistered(ctx)
 	if out.Err == nil || !strings.Contains(out.Err.Error(), "gh-optivem.yaml not loaded") {
 		t.Fatalf("expected nil-config wiring error, got %v", out.Err)
 	}

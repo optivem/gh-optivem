@@ -1,7 +1,5 @@
 # Support a ticket that changes MORE THAN ONE external system's driver port
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-16T05:37:27Z`
-
 ## TL;DR
 
 **Why:** A ticket whose change touches two external systems' driver ports (e.g. a method on `erp` and a DTO on `clock`) cannot be served today — the parent identity fix turns `>1` external systems into a hard error, so the author must split the ticket by hand.
@@ -241,40 +239,7 @@ E. **Stub/sim path flow → do NOT bake paths; bake `external-system-name` and t
 
 ## Items (agent work)
 
-- [ ] **1. Add `UnrollExternalSystems`** in `internal/engine/statemachine/channels.go` (or a
-  sibling file), cloning the `IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS` anchor once per
-  `cfg.ExternalSystems` entry via the `unrollChannelAnchor` pattern, baking
-  `external-system-name: <name>` and `real-kind: <cfg value>` into each clone's `params:`.
-  Wire it into the pre-`Bind()` block (`driver.go:318-331`) alongside the channel unrolls,
-  guarded by `len(cfg.ExternalSystems) > 0`; order-independent of the channel unrolls (verify C
-  resolved).
-- [ ] **2. Per-external-system entry guard.** Replace/augment the cycle's boolean entry gate so each
-  clone runs iff its baked `<name>` is in the names-set from `external-driver-port-changed-paths`;
-  route a false verdict past the clone. Factor the path→names-set derivation out of
-  `identifyExternalSystem` into a shared helper.
-- [ ] **3. Upfront "all touched external systems registered" validation.** Before the unrolled clones,
-  hard-error if any name in the changed-set is not a registered external system (preserves the
-  no-silent-skip guarantee). Uses the shared names-set helper from Item 2 against
-  `cfg.ExternalSystems`.
-- [ ] **4. Retire `identifyExternalSystem`.** Delete the action and its registration from
-  `internal/atdd/process/actions/bindings.go`. Replace its `real-kind` stamp with a minimal
-  param→State shim that copies the baked clone param into gate-readable state before the gate
-  (`ctx.Set("real-kind", ctx.Params["real-kind"])`); `GATE_CONTRACT_REAL_RED_KIND` itself is
-  **unchanged** (still reads `ctx.State["real-kind"]`) — verify A confirmed baked params land in
-  `ctx.Params`, not `ctx.State`. Remove the now-dead `external-system-name` stamping. The
-  `>1` / unregistered-name / zero-name error cases are absorbed by Items 2–3 and the existing
-  entry gate. **Sub-task (per E):** thread the baked `external-system-name` into the prompts of
-  the three writing agents — `implement-external-system-driver-adapters`,
-  `implement-external-system-stubs`, and `implement-external-system-real-simulator`
-  (`${external-system-name}`, like `${channel}`); keep layer-level scope, do not bake config paths.
-- [ ] **5. Unit tests** (`statemachine` + `actions`/`gates`): single-external-system ticket runs
-  exactly one clone; two-external-system ticket runs both clones, each with its own baked `real-kind`;
-  an untouched registered external system's clone is skipped; an unregistered touched external system
-  hard-errors upfront.
-- [ ] **6. BPMN doc-block / node-comment sync** for the unrolled anchor, the per-external-system guard,
-  the upfront registration check, and the retired IDENTIFY. Content-only; **no
-  diagram-regeneration step** (the regenerate-diagram workflow rebuilds `docs/process-diagram.md`
-  on push, `feedback_plans_no_diagram_regen.md`).
+_All agent items complete (executed 2026-06-16). See git history. User-driven verification below remains._
 
 ## Verification (user-driven — not agent Items)
 

@@ -3,13 +3,17 @@
 model: sonnet
 effort: medium
 ---
-Implement the dockerized External System real simulator (`${external-system-driver-adapter}`) changes so all change-driven contract tests pass against the real system.
+Implement the dockerized `${external-system-name}` External System real simulator (`${external-system-driver-adapter}`) changes so all change-driven contract tests pass against the real system. Implement only the `${external-system-name}` external system's simulator and touch no other external system.
 
 ## Inputs
 
 ### Scope
 
 ${scope-block}
+
+### Parameters
+
+- `external-system-name` — the external system whose simulator this dispatch must implement. Implement only the `${external-system-name}` simulator (under `${external-system-driver-adapter}`) and modify no other external system's simulator.
 
 ## Steps
 

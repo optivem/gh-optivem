@@ -171,10 +171,17 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("at-verify-expectation", b.atVerifyExpectation)
 	r.Register("at-external-terminal-verify-needed", b.atExternalTerminalVerifyNeeded)
 	// CT-HIGH real-side fork (plan 20260606-1356). Routes contract-real on
-	// the identified external system's real-kind. The value is stamped by the
-	// upstream identify-external-system ACTION (which has Config access); this
-	// gate is a pure state-reader, like expectedTestResult / testOutcome.
+	// the active clone's real-kind. The value is copied into state by the
+	// upstream resolve-external-system ACTION from the clone's baked real-kind
+	// param (plan 20260615-0755); this gate is a pure state-reader, like
+	// expectedTestResult / testOutcome.
 	r.Register("real-kind", b.realKind)
+	// Per-external-system clone guard (plan 20260615-0755). Each unrolled
+	// external-system contract-cycle clone is guarded by this gate so it runs
+	// iff its baked external-system-name is in the names-set the port change
+	// touched. resolve-external-system stamps the bool (it has Config to derive
+	// the names-set); this gate is a pure state-reader.
+	r.Register("external-system-touched", b.externalSystemTouched)
 	r.Register("refactor-type-choice", b.refactorTypeChoice)
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
@@ -501,18 +508,19 @@ func boolState(ctx *statemachine.Context, key string) (bool, error) {
 }
 
 // realKind is the CT-HIGH real-side fork gate (plan 20260606-1356). It
-// routes contract-real on the identified external system's real-kind:
+// routes contract-real on the active clone's real-kind:
 // `test-instance` collapses to a single pass-verify (the vendor sandbox
 // already honors the contract); `simulator` takes the red→implement→green
-// branch. The value is stamped by the upstream identify-external-system
-// ACTION (promoted from cfg.ExternalSystems[name].RealKind), so this gate is
-// a pure state-reader — halt on unset (the action must have run) and on any
-// value outside the closed enum so a config/action drift surfaces loudly
-// instead of mis-routing.
+// branch. The value is baked into each clone at load by UnrollExternalSystems
+// (from cfg.ExternalSystems[name].RealKind) and copied into ctx.State by the
+// upstream resolve-external-system action (plan 20260615-0755), so this gate is
+// a pure state-reader — halt on unset (resolve must have run) and on any
+// value outside the closed enum so a config drift surfaces loudly instead of
+// mis-routing.
 func (b bindings) realKind(ctx *statemachine.Context) statemachine.Outcome {
 	v, ok := ctx.State["real-kind"]
 	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("real-kind: not set in Context — identify-external-system action must run before the gate")}
+		return statemachine.Outcome{Err: fmt.Errorf("real-kind: not set in Context — resolve-external-system action must run before the gate")}
 	}
 	s, ok := v.(string)
 	if !ok {
@@ -522,8 +530,19 @@ func (b bindings) realKind(ctx *statemachine.Context) statemachine.Outcome {
 	case "test-instance", "simulator":
 		return statemachine.Outcome{Value: s}
 	default:
-		return statemachine.Outcome{Err: fmt.Errorf("real-kind: unrecognised value %q (identify-external-system stamped a value the gate does not handle; expected test-instance | simulator)", s)}
+		return statemachine.Outcome{Err: fmt.Errorf("real-kind: unrecognised value %q (resolve-external-system copied a value the gate does not handle; expected test-instance | simulator)", s)}
 	}
+}
+
+// externalSystemTouched is the per-clone entry guard for the unrolled
+// external-system contract cycle (plan 20260615-0755). resolve-external-system
+// stamps ctx.State["external-system-touched"] = (this clone's baked name ∈ the
+// port-change names-set) at the start of every clone; this gate reads it back
+// and routes the clone into the cycle (true) or past it to the skip end-event
+// (false). Strict — a missing key means resolve-external-system did not run
+// before the gate, which is a wiring bug, not a default no.
+func (b bindings) externalSystemTouched(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "external-system-touched")
 }
 
 // boolStateGate is the shared body of the three driver-port-changed

@@ -375,7 +375,17 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	if !ok {
 		t.Fatalf("process shared-contract missing")
 	}
-	wantEdge(t, sc, "GATE_EXTERNAL_DRIVER_PORTS_CHANGED", "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "at-external-driver-port-changed == true")
+	// The true-branch now routes through the upfront registration check, then
+	// into the external-driver adapter anchor (plan 20260615-0755). On the
+	// snapshot graph the anchor is still the single template node (the unroll is
+	// an in-memory load-time rewrite the driver applies, not baked into the YAML).
+	wantEdge(t, sc, "GATE_EXTERNAL_DRIVER_PORTS_CHANGED", "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED", "at-external-driver-port-changed == true")
+	wantEdge(t, sc, "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED", "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "")
+	if vnode, ok := sc.Nodes["VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"]; !ok {
+		t.Errorf("shared-contract: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED node missing")
+	} else if got := vnode.Raw.Action; got != "validate-external-systems-registered" {
+		t.Errorf("VALIDATE action = %q, want validate-external-systems-registered", got)
+	}
 	node, ok := sc.Nodes["IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"]
 	if !ok {
 		t.Fatalf("shared-contract: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS node missing")
@@ -397,15 +407,18 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 		}
 	}
 
-	// 3. The CT-HIGH starts by dispatching write-contract-tests (the
-	//    contract-test-writer agent) — proving a contract test is written.
+	// 3. The CT-HIGH starts with the per-clone RESOLVE_EXTERNAL_SYSTEM +
+	//    GATE_EXTERNAL_SYSTEM_TOUCHED guard (plan 20260615-0755); a touched clone
+	//    routes into write-contract-tests (the contract-test-writer agent) —
+	//    proving a contract test is written.
 	ct, ok := eng.Processes["implement-and-verify-external-system-driver-adapters-contract-tests"]
 	if !ok {
 		t.Fatalf("CT-HIGH process missing")
 	}
-	if ct.Start != "WRITE_CONTRACT_TESTS" {
-		t.Errorf("CT-HIGH start = %q, want WRITE_CONTRACT_TESTS", ct.Start)
+	if ct.Start != "RESOLVE_EXTERNAL_SYSTEM" {
+		t.Errorf("CT-HIGH start = %q, want RESOLVE_EXTERNAL_SYSTEM", ct.Start)
 	}
+	wantEdge(t, ct, "GATE_EXTERNAL_SYSTEM_TOUCHED", "WRITE_CONTRACT_TESTS", "external-system-touched == true")
 	start, ok := ct.Nodes["WRITE_CONTRACT_TESTS"]
 	if !ok {
 		t.Fatalf("CT-HIGH: WRITE_CONTRACT_TESTS node missing")
@@ -504,18 +517,30 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 		t.Fatalf("CT-HIGH process missing")
 	}
 
-	// 1. IDENTIFY runs AFTER the driver-adapter impl (so phase-changed-files
-	//    carries the per-system paths) and is a deterministic service-task.
-	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "IDENTIFY_EXTERNAL_SYSTEM", "")
-	identify, ok := ct.Nodes["IDENTIFY_EXTERNAL_SYSTEM"]
+	// 1. IDENTIFY is retired (plan 20260615-0755): identity + real-kind are
+	//    baked at load by UnrollExternalSystems. The cycle starts with the
+	//    per-clone RESOLVE_EXTERNAL_SYSTEM service-task (copies the baked
+	//    real-kind into state + stamps external-system-touched), then the
+	//    GATE_EXTERNAL_SYSTEM_TOUCHED self-guard routes touched clones into the
+	//    cycle and untouched ones to the skip end-event.
+	if got := ct.Start; got != "RESOLVE_EXTERNAL_SYSTEM" {
+		t.Errorf("CT-HIGH start = %q, want RESOLVE_EXTERNAL_SYSTEM", got)
+	}
+	resolve, ok := ct.Nodes["RESOLVE_EXTERNAL_SYSTEM"]
 	if !ok {
-		t.Fatalf("CT-HIGH: IDENTIFY_EXTERNAL_SYSTEM node missing")
+		t.Fatalf("CT-HIGH: RESOLVE_EXTERNAL_SYSTEM node missing")
 	}
-	if got := identify.Raw.Action; got != "identify-external-system" {
-		t.Errorf("IDENTIFY action = %q, want identify-external-system", got)
+	if got := resolve.Raw.Action; got != "resolve-external-system" {
+		t.Errorf("RESOLVE action = %q, want resolve-external-system", got)
 	}
-	// Build/start happen between identity and the probe.
-	wantEdge(t, ct, "IDENTIFY_EXTERNAL_SYSTEM", "BUILD_SYSTEM_AFTER_DRIVER", "")
+	wantEdge(t, ct, "RESOLVE_EXTERNAL_SYSTEM", "GATE_EXTERNAL_SYSTEM_TOUCHED", "")
+	wantEdge(t, ct, "GATE_EXTERNAL_SYSTEM_TOUCHED", "WRITE_CONTRACT_TESTS", "external-system-touched == true")
+	wantEdge(t, ct, "GATE_EXTERNAL_SYSTEM_TOUCHED", "EXTERNAL_SYSTEM_SKIPPED", "external-system-touched == false")
+	if _, ok := ct.Nodes["IDENTIFY_EXTERNAL_SYSTEM"]; ok {
+		t.Errorf("CT-HIGH: IDENTIFY_EXTERNAL_SYSTEM should be retired")
+	}
+	// The driver-adapter impl now flows straight into build/start → probe.
+	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "BUILD_SYSTEM_AFTER_DRIVER", "")
 	wantEdge(t, ct, "START_SYSTEM_AFTER_DRIVER", "PROBE_CONTRACT_REAL", "")
 
 	// 2. The probe runs the suite via run-tests (no asserted polarity); the

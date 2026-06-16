@@ -82,6 +82,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"at-external-driver-port-changed",
 		"ct-dsl-port-changed",
 		"real-kind",
+		"external-system-touched",
 		"refactor-type-choice",
 		"approval-outcome",
 		"outputs-and-scopes-valid",
@@ -392,6 +393,45 @@ func TestRealKind(t *testing.T) {
 			}
 			if out.Value != tc.want {
 				t.Fatalf("Value: got %q, want %q", out.Value, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// external-system-touched — GATE_EXTERNAL_SYSTEM_TOUCHED (plan 20260615-0755)
+// ---------------------------------------------------------------------------
+
+func TestExternalSystemTouched(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		seed   any
+		seeded bool
+		want   bool
+		err    bool
+	}{
+		{name: "touched", seed: true, seeded: true, want: true},
+		{name: "untouched", seed: false, seeded: true, want: false},
+		{name: "unset_halts", seeded: false, err: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+			ctx := statemachine.NewContext()
+			if tc.seeded {
+				ctx.Set("external-system-touched", tc.seed)
+			}
+			out := b.externalSystemTouched(ctx)
+			if tc.err {
+				if out.Err == nil {
+					t.Fatalf("expected err, got %+v", out)
+				}
+				return
+			}
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if out.Bool != tc.want {
+				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)
 			}
 		})
 	}

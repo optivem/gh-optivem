@@ -128,16 +128,66 @@ func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 	)
 }
 
-// unrollChannelAnchor replaces a single template call-activity node (anchorID)
-// in process procName with one cloned call-activity per channel, stitched
-// linearly (pred → ch0 → ch1 → … → chN-1 → succ). The anchor must call
-// expectProcess and sit on a linear segment (exactly one edge in, one out).
+// UnrollExternalSystems statically unrolls the external-system driver-adapter
+// contract cycle (plan 20260615-0755). External systems are project-declared
+// (config `external-systems:`), so — exactly like channels — the single
+// IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS anchor in shared-contract is
+// replaced at load time by one cloned call-activity per registered external
+// system, each invoking the unchanged contract cycle with caller-bound params:
 //
-// perChannelParams builds each clone's params from the anchor's params and the
-// (index, channel); nameFor builds each clone's display name. Only the keys
-// perChannelParams overrides differ between callers — the rest of the rewrite
-// (clone, drift guards, edge re-stitching) is shared by the system and
-// driver-adapter unrolls.
+//   - external-system-name: the registry key (erp / clock) — threads through
+//     the call-activity param push (run.go) into the cycle, where the
+//     resolve-external-system service-task reads it to (a) self-guard the clone
+//     against the touched-system set and (b) drive the per-clone real-kind
+//     gate; it also reaches the three writing agents' prompts as
+//     ${external-system-name}.
+//   - real-kind: cfg.ExternalSystems[name].RealKind, baked at load time so the
+//     enum check is a static, analyzable value. resolve-external-system copies
+//     it into gate-readable state for GATE_CONTRACT_REAL_RED_KIND.
+//
+// Unlike channels — which are *always* exercised — a ticket touches only a
+// subset of external systems, so each clone is guarded INSIDE the cycle (by
+// resolve-external-system + GATE_EXTERNAL_SYSTEM_TOUCHED) rather than by a
+// per-clone gateway here: a gateway preceding the clone cannot read the clone's
+// baked params (call-activity params land in ctx.Params only at sub-process
+// entry, run.go). An untouched clone no-ops to its skip end-event; the linear
+// chain then advances to the next clone.
+//
+// realKind maps each name to its real-kind string; a missing entry bakes "" and
+// surfaces at the GATE_CONTRACT_REAL_RED_KIND enum check. The driver calls this
+// only when len(cfg.ExternalSystems) > 0, so the empty-list guard in unrollAnchor
+// is never reached here.
+func (e *Engine) UnrollExternalSystems(names []string, realKind map[string]string) error {
+	return e.unrollAnchor(
+		sharedContractProcess,
+		implementExternalDriverAdaptersAnchor,
+		implementAndVerifyExternalDriverAdaptersProc,
+		names,
+		func(_ int, name string, anchorParams map[string]string) map[string]string {
+			params := make(map[string]string, len(anchorParams)+2)
+			maps.Copy(params, anchorParams)
+			params["external-system-name"] = name
+			params["real-kind"] = realKind[name]
+			return params
+		},
+		func(name string) string {
+			return fmt.Sprintf("Implement and Verify External System Driver Adapters Contract Tests (%s)", name)
+		},
+	)
+}
+
+// unrollAnchor replaces a single template call-activity node (anchorID)
+// in process procName with one cloned call-activity per item, stitched
+// linearly (pred → c0 → c1 → … → cN-1 → succ). The anchor must call
+// expectProcess and sit on a linear segment (exactly one edge in, one out).
+// "item" is a channel for the channel unrolls and a registered external
+// system for UnrollExternalSystems — the rewrite is identical either way.
+//
+// perItemParams builds each clone's params from the anchor's params and the
+// (index, item); nameFor builds each clone's display name. Only the keys
+// perItemParams overrides differ between callers — the rest of the rewrite
+// (clone, drift guards, edge re-stitching) is shared by the channel and
+// external-system unrolls.
 //
 // Edge predicates are preserved at the seams: the incoming edge's `when:`
 // clause moves onto pred → ch0, and the outgoing edge's onto chN-1 → succ; the
@@ -151,29 +201,29 @@ func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 // present with exactly one incoming and one outgoing edge. Calling twice (the
 // anchor is gone after the first call) or against a process whose shape has
 // drifted returns an error rather than silently mis-rewriting. An empty
-// channel list is rejected — the driver only calls this when config declares a
-// non-empty `channels:`; the absent-channels path skips the call entirely and
-// keeps the single static node (today's `suite: acceptance` behaviour).
-func (e *Engine) unrollChannelAnchor(
+// item list is rejected — the driver only calls this when config declares a
+// non-empty `channels:` / `external-systems:`; the absent path skips the call
+// entirely and keeps the single static node.
+func (e *Engine) unrollAnchor(
 	procName, anchorID, expectProcess string,
-	channels []string,
-	perChannelParams func(i int, ch string, anchorParams map[string]string) map[string]string,
-	nameFor func(ch string) string,
+	items []string,
+	perItemParams func(i int, item string, anchorParams map[string]string) map[string]string,
+	nameFor func(item string) string,
 ) error {
-	if len(channels) == 0 {
-		return fmt.Errorf("unroll channels: empty channel list")
+	if len(items) == 0 {
+		return fmt.Errorf("unroll anchor: empty item list")
 	}
 	proc, ok := e.Processes[procName]
 	if !ok {
-		return fmt.Errorf("unroll channels: process %q not found", procName)
+		return fmt.Errorf("unroll anchor: process %q not found", procName)
 	}
 	anchor, ok := proc.Nodes[anchorID]
 	if !ok {
-		return fmt.Errorf("unroll channels: process %q has no %q node to unroll (already unrolled, or template drifted)",
+		return fmt.Errorf("unroll anchor: process %q has no %q node to unroll (already unrolled, or template drifted)",
 			procName, anchorID)
 	}
 	if anchor.Raw.Process != expectProcess {
-		return fmt.Errorf("unroll channels: anchor %q calls %q, expected %q",
+		return fmt.Errorf("unroll anchor: anchor %q calls %q, expected %q",
 			anchorID, anchor.Raw.Process, expectProcess)
 	}
 
@@ -182,34 +232,34 @@ func (e *Engine) unrollChannelAnchor(
 	// re-stitching assumptions no longer hold.
 	inEdge, outEdge, err := linearNeighbours(proc, anchorID)
 	if err != nil {
-		return fmt.Errorf("unroll channels: %w", err)
+		return fmt.Errorf("unroll anchor: %w", err)
 	}
 
-	// Build one call-activity per channel, cloning the anchor and overriding
-	// only the channel-specific params.
-	channelNodes := make([]Node, 0, len(channels))
-	for i, ch := range channels {
-		id := anchorID + "_" + strings.ToUpper(ch)
+	// Build one call-activity per item, cloning the anchor and overriding
+	// only the item-specific params.
+	itemNodes := make([]Node, 0, len(items))
+	for i, item := range items {
+		id := anchorID + "_" + strings.ToUpper(item)
 		if _, dup := proc.Nodes[id]; dup {
-			return fmt.Errorf("unroll channels: synthesized node id %q already exists", id)
+			return fmt.Errorf("unroll anchor: synthesized node id %q already exists", id)
 		}
 		raw := anchor.Raw
 		raw.ID = id
-		raw.Name = nameFor(ch)
-		raw.Params = perChannelParams(i, ch, anchor.Raw.Params)
-		channelNodes = append(channelNodes, Node{ID: id, Kind: CallActivity, Raw: raw})
+		raw.Name = nameFor(item)
+		raw.Params = perItemParams(i, item, anchor.Raw.Params)
+		itemNodes = append(itemNodes, Node{ID: id, Kind: CallActivity, Raw: raw})
 	}
 
-	// Swap the anchor out for the per-channel nodes.
+	// Swap the anchor out for the per-item nodes.
 	delete(proc.Nodes, anchorID)
-	for _, n := range channelNodes {
+	for _, n := range itemNodes {
 		proc.Nodes[n.ID] = n
 	}
 
 	// Re-stitch edges: drop the two edges that touched the anchor, then wire
-	// pred → ch0 → ch1 → … → chN-1 → succ in declared channel order, carrying
+	// pred → c0 → c1 → … → cN-1 → succ in declared item order, carrying
 	// the original seam predicates so any gateway guard on entry/exit survives.
-	rebuilt := make([]Edge, 0, len(proc.Edges)+len(channelNodes))
+	rebuilt := make([]Edge, 0, len(proc.Edges)+len(itemNodes))
 	for _, ed := range proc.Edges {
 		if ed.From == anchorID || ed.To == anchorID {
 			continue
@@ -217,7 +267,7 @@ func (e *Engine) unrollChannelAnchor(
 		rebuilt = append(rebuilt, ed)
 	}
 	prevID := inEdge.From
-	for i, n := range channelNodes {
+	for i, n := range itemNodes {
 		edge := Edge{From: prevID, To: n.ID}
 		if i == 0 {
 			edge.Predicate = inEdge.Predicate

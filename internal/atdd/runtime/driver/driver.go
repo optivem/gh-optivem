@@ -330,6 +330,27 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		}
 	}
 
+	// Statically unroll the external-system driver-adapter contract cycle from
+	// the project-declared `external-systems:` registry (plan 20260615-0755).
+	// Like channels, external systems are project-dependent, so the single
+	// IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS anchor in shared-contract is
+	// rewritten in memory into one guarded clone per registered system, each
+	// carrying its baked external-system-name + real-kind. Done before Bind so
+	// the synthesized clones get NodeFns resolved; order-independent of the
+	// channel unrolls (they target different processes). Guarded on a non-empty
+	// registry — a project with no external systems never reaches the anchor
+	// (its entry gate is port-keyed), so the single static node is harmless.
+	if cfg != nil && len(cfg.ExternalSystems) > 0 {
+		names := cfg.ExternalSystemNames()
+		realKind := make(map[string]string, len(names))
+		for _, name := range names {
+			realKind[name] = string(cfg.ExternalSystems[name].RealKind)
+		}
+		if err := eng.UnrollExternalSystems(names, realKind); err != nil {
+			return fmt.Errorf("driver: unroll external systems: %w", err)
+		}
+	}
+
 	if err := eng.Bind(); err != nil {
 		return fmt.Errorf("driver: bind engine: %w", err)
 	}

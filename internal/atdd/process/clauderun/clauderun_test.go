@@ -226,11 +226,15 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 		//   - ${test-category} — dsl-implementer's test-layer banner (acceptance/
 		//     contract); production fills it from the inherited call-activity
 		//     param scope (process-flow.yaml `test-category: acceptance|contract`).
+		//   - ${external-system-name} — the three external-system writing
+		//     implementers (driver-adapter / stub / real-simulator), bound per
+		//     external system by UnrollExternalSystems.
 		opts.NodeParams = map[string]string{
 			"touches-system-driver": "false",
 			"channel":               "api",
 			"common":                "true",
 			"test-category":         "acceptance",
+			"external-system-name":  "erp",
 		}
 
 		got, err := renderPrompt(opts)
@@ -260,6 +264,9 @@ func TestRenderPrompt_ExternalSystemRealSimulatorImplementer(t *testing.T) {
 	// Same Family B scope key as the stub MID (fork #2).
 	opts.ScopeRead = []string{"external-system-driver-adapter"}
 	opts.ScopeWrite = []string{"external-system-driver-adapter"}
+	// Body references ${external-system-name}, bound per external system by
+	// UnrollExternalSystems (plan 20260615-0755); supply it for the render.
+	opts.NodeParams = map[string]string{"external-system-name": "erp"}
 
 	got, err := renderPrompt(opts)
 	if err != nil {
@@ -645,6 +652,12 @@ func TestRenderPrompt_ReEntryPolicySubstitutes(t *testing.T) {
 			// call-activity param scope. Supply it directly for the render.
 			if agent == "dsl-implementer" {
 				opts.NodeParams = map[string]string{"test-category": "contract"}
+			}
+			// external-system-driver-adapter-implementer is per-external-system
+			// (plan 20260615-0755): its body references ${external-system-name},
+			// bound by UnrollExternalSystems. Supply it directly for the render.
+			if agent == "external-system-driver-adapter-implementer" {
+				opts.NodeParams = map[string]string{"external-system-name": "erp"}
 			}
 
 			got, err := renderPrompt(opts)

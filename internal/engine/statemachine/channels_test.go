@@ -253,6 +253,132 @@ func TestUnrollBothChannels_BindsEndToEnd(t *testing.T) {
 	}
 }
 
+// --- External-system unroll (plan 20260615-0755) -----------------------------
+//
+// Same transform as the channel unrolls, on the shared-contract external
+// driver-adapter contract anchor. Its predecessor is the upfront
+// VALIDATE_EXTERNAL_SYSTEMS_REGISTERED node (unconditional edge — the
+// GATE_EXTERNAL_DRIVER_PORTS_CHANGED true-branch predicate sits on GATE →
+// VALIDATE), so the seam into the first clone is unconditional. Each clone bakes
+// its own external-system-name + real-kind; the per-clone touched-guard lives
+// INSIDE the cycle, not here.
+
+const (
+	extAdapterAnchorERP   = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_ERP"
+	extAdapterAnchorCLOCK = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_CLOCK"
+	extValidateNode       = "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"
+	extTerminalGate       = "GATE_AT_TERMINAL_GREEN"
+)
+
+func TestUnrollExternalSystems_TwoSystems(t *testing.T) {
+	eng := loadSnapshot(t)
+	realKind := map[string]string{"erp": "simulator", "clock": "test-instance"}
+	if err := eng.UnrollExternalSystems([]string{"erp", "clock"}, realKind); err != nil {
+		t.Fatalf("UnrollExternalSystems: %v", err)
+	}
+	proc := eng.Processes[sharedContractProcess]
+	if proc == nil {
+		t.Fatalf("process %q missing", sharedContractProcess)
+	}
+	if _, ok := proc.Nodes[implementExternalDriverAdaptersAnchor]; ok {
+		t.Errorf("template anchor %q should be gone after unroll", implementExternalDriverAdaptersAnchor)
+	}
+
+	erp := requireNode(t, proc, extAdapterAnchorERP)
+	clock := requireNode(t, proc, extAdapterAnchorCLOCK)
+
+	if erp.Kind != CallActivity {
+		t.Errorf("ERP node kind = %v, want CallActivity", erp.Kind)
+	}
+	if erp.Raw.Process != implementAndVerifyExternalDriverAdaptersProc {
+		t.Errorf("ERP node calls %q, want %q", erp.Raw.Process, implementAndVerifyExternalDriverAdaptersProc)
+	}
+
+	// Per-system baked params: name + real-kind looked up at unroll.
+	checkParam(t, erp, "external-system-name", "erp")
+	checkParam(t, erp, "real-kind", "simulator")
+	checkParam(t, clock, "external-system-name", "clock")
+	checkParam(t, clock, "real-kind", "test-instance")
+
+	// Params inherited verbatim from the template anchor.
+	for _, n := range []Node{erp, clock} {
+		checkParam(t, n, "test-category", "contract")
+		checkParam(t, n, "verify-mode", "red")
+	}
+
+	// Seam into the first clone is unconditional (the entry predicate sits on
+	// GATE → VALIDATE, upstream of the anchor).
+	entry := findEdge(t, proc, extValidateNode, extAdapterAnchorERP)
+	if entry.Predicate != "" {
+		t.Errorf("validate → first-clone edge should be unconditional, got predicate %q", entry.Predicate)
+	}
+	// Linear chain erp → clock → terminal gate, no loopback.
+	chain := findEdge(t, proc, extAdapterAnchorERP, extAdapterAnchorCLOCK)
+	if chain.Predicate != "" {
+		t.Errorf("intermediate erp→clock edge should be unconditional, got predicate %q", chain.Predicate)
+	}
+	assertSingleEdge(t, proc, extAdapterAnchorERP, extAdapterAnchorCLOCK)
+	assertSingleEdge(t, proc, extAdapterAnchorCLOCK, extTerminalGate)
+}
+
+func TestUnrollExternalSystems_SingleSystem(t *testing.T) {
+	eng := loadSnapshot(t)
+	if err := eng.UnrollExternalSystems([]string{"erp"}, map[string]string{"erp": "simulator"}); err != nil {
+		t.Fatalf("UnrollExternalSystems: %v", err)
+	}
+	proc := eng.Processes[sharedContractProcess]
+	if _, ok := proc.Nodes[extAdapterAnchorCLOCK]; ok {
+		t.Error("no CLOCK node expected for a single-system [erp] project")
+	}
+	erp := requireNode(t, proc, extAdapterAnchorERP)
+	checkParam(t, erp, "external-system-name", "erp")
+	checkParam(t, erp, "real-kind", "simulator")
+	// Sole system stitches validate → clone → terminal gate.
+	assertSingleEdge(t, proc, extValidateNode, extAdapterAnchorERP)
+	assertSingleEdge(t, proc, extAdapterAnchorERP, extTerminalGate)
+}
+
+func TestUnrollExternalSystems_Guards(t *testing.T) {
+	t.Run("empty system list", func(t *testing.T) {
+		eng := loadSnapshot(t)
+		if err := eng.UnrollExternalSystems(nil, nil); err == nil {
+			t.Error("want error for an empty external-system list")
+		}
+	})
+
+	t.Run("double unroll", func(t *testing.T) {
+		eng := loadSnapshot(t)
+		rk := map[string]string{"erp": "simulator"}
+		if err := eng.UnrollExternalSystems([]string{"erp"}, rk); err != nil {
+			t.Fatalf("first unroll: %v", err)
+		}
+		if err := eng.UnrollExternalSystems([]string{"erp"}, rk); err == nil {
+			t.Error("second unroll should error — the template anchor is consumed by the first")
+		}
+	})
+}
+
+// TestUnrollExternalSystems_BindsEndToEnd proves the synthesized per-system
+// clones are valid CallActivity nodes the engine can bind, and that the
+// external unroll composes with the channel unrolls (different processes).
+func TestUnrollExternalSystems_BindsEndToEnd(t *testing.T) {
+	eng := loadSnapshot(t)
+	if err := eng.UnrollSystemChannels([]string{"api", "ui"}); err != nil {
+		t.Fatalf("UnrollSystemChannels: %v", err)
+	}
+	if err := eng.UnrollSystemDriverAdapterChannels([]string{"api", "ui"}); err != nil {
+		t.Fatalf("UnrollSystemDriverAdapterChannels: %v", err)
+	}
+	if err := eng.UnrollExternalSystems([]string{"erp", "clock"}, map[string]string{"erp": "simulator", "clock": "test-instance"}); err != nil {
+		t.Fatalf("UnrollExternalSystems: %v", err)
+	}
+	stub := func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.ActionFn, eng.AgentFn, eng.GateFn = stub, stub, stub
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind after all unrolls: %v — synthesized per-system clones should resolve", err)
+	}
+}
+
 func requireNode(t *testing.T, proc *Process, id string) Node {
 	t.Helper()
 	n, ok := proc.Nodes[id]
