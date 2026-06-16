@@ -235,3 +235,14 @@ func FixupAllTextFiles(repoDir string, replacements [][2]string) {
 		files.ReplaceInTree(repoDir, r[0], r[1], textExts)
 	}
 }
+
+// FixupSourceFiles applies replacements across compiled-source files (.java, .ts,
+// .tsx) that FixupAllTextFiles deliberately omits from its config-file allowlist.
+// Used for the Pact contracts-folder path, which lives only in source: the Java
+// provider's @PactFolder annotation and the React consumer's PactV3 dir literal.
+func FixupSourceFiles(repoDir string, replacements [][2]string) {
+	srcExts := []string{".java", ".ts", ".tsx"}
+	for _, r := range replacements {
+		files.ReplaceInTree(repoDir, r[0], r[1], srcExts)
+	}
+}

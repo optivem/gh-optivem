@@ -436,7 +436,9 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(repoDir, flywayPathReplacements())
 
 	// Pact contracts-folder path rewrite (flattened backend/ + frontend/).
-	templates.FixupAllTextFiles(repoDir, contractsPathReplacements())
+	// Targets source files (.java/.tsx) — the path lives in @PactFolder and the
+	// consumer's PactV3 dir, neither of which FixupAllTextFiles covers.
+	templates.FixupSourceFiles(repoDir, contractsPathReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -564,7 +566,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(bDir, systemTestSonarKeyReplacements())
 	templates.FixupAllTextFiles(bDir, flywayPathReplacements())
-	templates.FixupAllTextFiles(bDir, contractsPathReplacements())
+	templates.FixupSourceFiles(bDir, contractsPathReplacements())
 	log.Success("Applied backend repo template")
 
 	// Frontend repo: code + commit stage
@@ -600,7 +602,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupWorkflowContent(fDir, frontendReplacements)
 	templates.FixupAllTextFiles(fDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(fDir, systemTestSonarKeyReplacements())
-	templates.FixupAllTextFiles(fDir, contractsPathReplacements())
+	templates.FixupSourceFiles(fDir, contractsPathReplacements())
 	log.Success("Applied frontend repo template")
 }
 
@@ -874,8 +876,9 @@ func flywayPathReplacements() [][2]string {
 // contractsPathReplacements rewrites the Pact contracts-folder path from
 // ../../../contracts (shop layout: system/multitier/{backend,frontend}-* → up 3
 // → root → contracts) to ../contracts (scaffold layout: {backend,frontend}/ →
-// up 1 → repo root → contracts). Applied to all text files so one call covers
-// both the Java provider's @PactFolder and the React consumer's PactV3 dir.
+// up 1 → repo root → contracts). Applied via FixupSourceFiles so the rewrite
+// reaches the Java provider's @PactFolder and the React consumer's PactV3 dir,
+// both of which live in source files outside FixupAllTextFiles' allowlist.
 // No-op on monolith / .NET, which carry no Pact contract test today.
 func contractsPathReplacements() [][2]string {
 	return [][2]string{
