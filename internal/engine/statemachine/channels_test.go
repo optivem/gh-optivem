@@ -43,6 +43,12 @@ func TestUnrollSystemChannels_TwoChannels(t *testing.T) {
 	checkParam(t, ui, "common", "false") // later channels: adapter delta only
 	checkParam(t, ui, "suite", "acceptance-ui")
 
+	// Per-channel commit-label discriminator: each clone overrides the static
+	// "" default so its SYSTEM commit reads distinctly (" - SYSTEM (api)" /
+	// " - SYSTEM (ui)" after the consumer label appends ${layer-suffix}).
+	checkParam(t, api, "layer-suffix", " (api)")
+	checkParam(t, ui, "layer-suffix", " (ui)")
+
 	// Params inherited verbatim from the template anchor — including the
 	// unexpanded ${at-test-names} placeholder (expansion happens at dispatch).
 	// The behavioral GREEN reads the AT-cascade-namespaced key so a nested
@@ -163,6 +169,11 @@ func TestUnrollSystemDriverAdapterChannels_TwoChannels(t *testing.T) {
 	if _, ok := api.Raw.Params["common"]; ok {
 		t.Errorf("adapter node should not carry a common param, got %q", api.Raw.Params["common"])
 	}
+
+	// Per-channel commit-label discriminator, as for the system unroll: each
+	// clone's adapter commit reads "- SYSTEM DRIVER ADAPTERS (api)" / "(ui)".
+	checkParam(t, api, "layer-suffix", " (api)")
+	checkParam(t, ui, "layer-suffix", " (ui)")
 
 	// Params inherited verbatim from the template anchor (including the
 	// unexpanded ${expected-test-result} placeholder — expansion is at dispatch).
@@ -376,6 +387,81 @@ func TestUnrollExternalSystems_BindsEndToEnd(t *testing.T) {
 	eng.ActionFn, eng.AgentFn, eng.GateFn = stub, stub, stub
 	if err := eng.Bind(); err != nil {
 		t.Fatalf("Bind after all unrolls: %v — synthesized per-system clones should resolve", err)
+	}
+}
+
+// --- Commit-label discriminator (plan 20260616-1123) -------------------------
+
+// TestLayerSuffix_StaticBareDefaults is the no-channels / no-external
+// regression guard. Loaded straight from the snapshot (no unroll has run),
+// every static caller of the three layer sub-processes binds layer-suffix: ""
+// — except the external DSL caller, which binds the " (external: ...)"
+// discriminator in YAML. Together with the consumer labels embedding
+// ${layer-suffix}, this proves a full run with no channels: and no
+// external-systems: still commits bare "- SYSTEM" / "- DSL" labels (the ""
+// default), while the external DSL commit stays distinct.
+func TestLayerSuffix_StaticBareDefaults(t *testing.T) {
+	eng := loadSnapshot(t)
+
+	// Static callers default the discriminator to "" (no unroll has run).
+	for _, c := range []struct{ proc, node string }{
+		{changeSystemBehaviorProcess, implementAndVerifySystemAnchor},
+		{writeAndVerifyAcceptanceTestsProcess, implementSystemDriverAdaptersAnchor},
+		{sharedContractProcess, "IMPLEMENT_AND_VERIFY_DSL"},
+	} {
+		proc := eng.Processes[c.proc]
+		if proc == nil {
+			t.Fatalf("process %q missing", c.proc)
+		}
+		checkParam(t, requireNode(t, proc, c.node), "layer-suffix", "")
+	}
+
+	// The external DSL caller binds the external-system discriminator, resolved
+	// per clone against the baked external-system-name.
+	extProc := eng.Processes[implementAndVerifyExternalDriverAdaptersProc]
+	if extProc == nil {
+		t.Fatalf("process %q missing", implementAndVerifyExternalDriverAdaptersProc)
+	}
+	checkParam(t, requireNode(t, extProc, "IMPLEMENT_AND_VERIFY_DSL"),
+		"layer-suffix", " (external: ${external-system-name})")
+
+	// Consumer labels embed ${layer-suffix} so each caller's value lands in the
+	// commit message at COMMIT_SYSTEM / COMMIT_LAYER.
+	for _, c := range []struct{ proc, node, want string }{
+		{implementAndVerifySystemProcess, "COMMIT_SYSTEM", "SYSTEM${layer-suffix}"},
+		{"implement-and-verify-dsl", "IMPLEMENT_TEST_LAYER", "DSL${layer-suffix}"},
+		{implementAndVerifySystemDriverAdaptersProcess, "IMPLEMENT_TEST_LAYER", "SYSTEM DRIVER ADAPTERS${layer-suffix}"},
+	} {
+		proc := eng.Processes[c.proc]
+		if proc == nil {
+			t.Fatalf("process %q missing", c.proc)
+		}
+		checkParam(t, requireNode(t, proc, c.node), "layer", c.want)
+	}
+}
+
+// TestLayerSuffix_LabelComposition pins the actual string the commit message
+// carries once ${layer-suffix} expands: the "" default yields a bare label, a
+// channel/external suffix yields a distinct one. Guards the parens-and-leading-
+// space format against drift.
+func TestLayerSuffix_LabelComposition(t *testing.T) {
+	for _, c := range []struct{ name, template, suffix, want string }{
+		{"system bare", "SYSTEM${layer-suffix}", "", "SYSTEM"},
+		{"system api", "SYSTEM${layer-suffix}", " (api)", "SYSTEM (api)"},
+		{"system ui", "SYSTEM${layer-suffix}", " (ui)", "SYSTEM (ui)"},
+		{"adapter api", "SYSTEM DRIVER ADAPTERS${layer-suffix}", " (api)", "SYSTEM DRIVER ADAPTERS (api)"},
+		{"dsl bare", "DSL${layer-suffix}", "", "DSL"},
+		{"dsl external", "DSL${layer-suffix}", " (external: erp)", "DSL (external: erp)"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := ExpandParams(c.template, map[string]string{"layer-suffix": c.suffix}, nil)
+			if err != nil {
+				t.Fatalf("ExpandParams: %v", err)
+			}
+			if got != c.want {
+				t.Errorf("layer = %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 

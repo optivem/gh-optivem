@@ -66,11 +66,15 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 		implementAndVerifySystemProcess,
 		channels,
 		func(i int, ch string, anchorParams map[string]string) map[string]string {
-			params := make(map[string]string, len(anchorParams)+3)
+			params := make(map[string]string, len(anchorParams)+4)
 			maps.Copy(params, anchorParams)
 			params["channel"] = ch
 			params["common"] = boolParam(i == 0)
 			params["suite"] = "acceptance-" + ch
+			// Per-channel commit-label discriminator (e.g. " (api)") appended to
+			// the hard-coded "SYSTEM" label at COMMIT_SYSTEM, so each channel's
+			// system commit reads distinctly. The static anchor binds "".
+			params["layer-suffix"] = fmt.Sprintf(" (%s)", ch)
 			return params
 		},
 		func(ch string) string {
@@ -116,10 +120,14 @@ func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 		implementAndVerifySystemDriverAdaptersProcess,
 		channels,
 		func(_ int, ch string, anchorParams map[string]string) map[string]string {
-			params := make(map[string]string, len(anchorParams)+2)
+			params := make(map[string]string, len(anchorParams)+3)
 			maps.Copy(params, anchorParams)
 			params["channel"] = ch
 			params["suite"] = "acceptance-" + ch
+			// Per-channel commit-label discriminator (e.g. " (api)") appended to
+			// the hard-coded "SYSTEM DRIVER ADAPTERS" label, so each channel's
+			// adapter commit reads distinctly. The static anchor binds "".
+			params["layer-suffix"] = fmt.Sprintf(" (%s)", ch)
 			return params
 		},
 		func(ch string) string {
