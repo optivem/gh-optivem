@@ -113,23 +113,29 @@ type SetupCommand struct {
 // not interpolated into Command. TestInstallCommands run once before the
 // suite if non-empty (e.g. installing playwright browsers per-suite).
 type Suite struct {
-	ID                  string            `json:"id" yaml:"id"`
-	Name                string            `json:"name" yaml:"name"`
-	Command             string            `json:"command" yaml:"command"`
-	Env                 map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
-	Path                string            `json:"path" yaml:"path"`
-	TestReportPath      string            `json:"testReportPath" yaml:"testReportPath"`
+	ID             string            `json:"id" yaml:"id"`
+	Name           string            `json:"name" yaml:"name"`
+	Command        string            `json:"command" yaml:"command"`
+	Env            map[string]string `json:"env,omitempty" yaml:"env,omitempty"`
+	Path           string            `json:"path" yaml:"path"`
+	TestReportPath string            `json:"testReportPath" yaml:"testReportPath"`
 	// TestCountPath, when set, is a machine-readable test report (TRX,
 	// JUnit XML — a file or a directory of *.xml — or Playwright JSON) the
-	// runner parses ONLY to count executed tests. It is distinct from the
-	// human-facing HTML TestReportPath. When a run's selected suites declare
-	// it and together execute zero tests, RunTests fails the run rather than
-	// reporting a hollow success — closing the empty-selection hole for
-	// runners that exit 0 on a zero-match filter (dotnet). Empty disables the
-	// count guard for that suite, preserving prior behaviour.
-	TestCountPath       string            `json:"testCountPath" yaml:"testCountPath"`
-	SampleTest          string            `json:"sampleTest,omitempty" yaml:"sampleTest,omitempty"`
-	TestInstallCommands []string          `json:"testInstallCommands,omitempty" yaml:"testInstallCommands,omitempty"`
+	// runner parses for two checks, both distinct from the human-facing HTML
+	// TestReportPath:
+	//   - count: when a run's selected suites declare it and together execute
+	//     zero tests, RunTests fails rather than reporting a hollow success —
+	//     closing the empty-selection hole for runners that exit 0 on a
+	//     zero-match filter (dotnet).
+	//   - presence (named runs only): the executed method names are extracted
+	//     and unioned across the partitioned sub-suites so RunTests can assert
+	//     every requested --test ran somewhere (a named test lives only in the
+	//     partition matching its tags/channel, so per-suite empties are
+	//     expected and not failures). See executedTestNames.
+	// Empty disables both guards for that suite, preserving prior behaviour.
+	TestCountPath       string   `json:"testCountPath" yaml:"testCountPath"`
+	SampleTest          string   `json:"sampleTest,omitempty" yaml:"sampleTest,omitempty"`
+	TestInstallCommands []string `json:"testInstallCommands,omitempty" yaml:"testInstallCommands,omitempty"`
 }
 
 // LoadSystem reads and validates systems.{yaml,json} from path. The format is

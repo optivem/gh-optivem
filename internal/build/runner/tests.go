@@ -91,9 +91,21 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 	anyCounted := false
 	totalExecuted := 0
 
+	// Presence check for named verifies. A category like `acceptance` fans
+	// out to partitioned sub-suites (isolated vs non-isolated, API vs UI), and
+	// a named test lives in only the partition matching its tags/channel — so
+	// the other sub-suites legitimately match nothing. We therefore do NOT
+	// fail per-suite on an empty slice; instead we union the executed method
+	// names across all sub-suites and require every requested --test to have
+	// run somewhere. anyNamed gates this so a config with no TestCountPath
+	// can't false-fail (back-compat: no report source → no presence enforcement).
+	wantNames := len(opts.Test) > 0
+	anyNamed := false
+	executedNames := map[string]bool{}
+
 	for _, suite := range suites {
 		start := time.Now()
-		executed, counted, err := runOneSuite(suite, tests.TestFilter, tests.TestFilterJoin, testsCwd, opts)
+		executed, counted, names, err := runOneSuite(suite, tests.TestFilter, tests.TestFilterJoin, testsCwd, opts)
 		dur := time.Since(start)
 		status := "PASSED"
 		if err != nil {
@@ -111,12 +123,54 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 			anyCounted = true
 			totalExecuted += executed
 		}
+		if wantNames && suite.TestCountPath != "" {
+			anyNamed = true
+			for n := range names {
+				executedNames[n] = true
+			}
+		}
+	}
+
+	// For a named run with an observable report, the presence check subsumes
+	// the zero-count guard: if every requested name ran, tests executed by
+	// definition. A requested name that ran in NO partition is a wiring/typo/
+	// gated-off fault, not a red — surfaced with a fixed prefix the verify
+	// classifier routes to the infra halt.
+	if wantNames && anyNamed {
+		var missing []string
+		for _, want := range opts.Test {
+			if !nameExecuted(want, executedNames) {
+				missing = append(missing, want)
+			}
+		}
+		if len(missing) > 0 {
+			return fmt.Errorf("requested test(s) never executed: %s — not found in any selected suite; check the test name, that it compiled, and that it isn't gated off (e.g. GH_OPTIVEM_RUN_WIP_TESTS)", strings.Join(missing, ", "))
+		}
+		return nil
 	}
 
 	if anyCounted && totalExecuted == 0 {
 		return fmt.Errorf("0 tests executed for the given selection — the suite/test filter matched nothing on any selected suite; check --suite / --test against the available tests")
 	}
 	return nil
+}
+
+// nameExecuted reports whether a requested --test token ran. It is satisfied
+// by an exact method-name match or by the token appearing as a substring of an
+// executed name, mirroring the runners' own filter semantics (gradle matches
+// the bare method; dotnet `~` and playwright `--grep` are substring). The
+// tolerance keeps a manual partial filter (e.g. `--test=Cancel`) from
+// false-failing while still catching a token that matched nothing at all.
+func nameExecuted(requested string, executed map[string]bool) bool {
+	if executed[requested] {
+		return true
+	}
+	for e := range executed {
+		if strings.Contains(e, requested) {
+			return true
+		}
+	}
+	return false
 }
 
 // RunSetup runs every entry in tests.SetupCommands in testsCwd. Used by the
@@ -163,8 +217,12 @@ func selectSuites(tests *TestsConfig, suiteIDs []string) ([]Suite, error) {
 // executed and whether that count is meaningful (counted): counted is true
 // only when the suite declares a TestCountPath and the run exited cleanly, so
 // the caller can distinguish "ran zero tests" from "opted out of counting".
-// On any error, it returns (0, false, err).
-func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestOptions) (executed int, counted bool, err error) {
+// When a name filter is active (opts.Test non-empty) and the suite declares a
+// TestCountPath, names carries the bare method names that executed in this
+// suite, so RunTests can assert every requested test ran somewhere across the
+// partitioned sub-suites; otherwise names is nil. On any error, it returns
+// (0, false, nil, err).
+func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestOptions) (executed int, counted bool, names map[string]bool, err error) {
 	suiteDir := cwd
 	if suite.Path != "" && suite.Path != "." {
 		suiteDir = filepath.Join(cwd, suite.Path)
@@ -173,7 +231,7 @@ func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestO
 	for _, ic := range suite.TestInstallCommands {
 		fmt.Fprintf(os.Stdout, "Installing test dependencies: %s\n", ic)
 		if err := runShell(ic, suiteDir, nil); err != nil {
-			return 0, false, fmt.Errorf("install %q: %w", ic, err)
+			return 0, false, nil, fmt.Errorf("install %q: %w", ic, err)
 		}
 	}
 
@@ -187,19 +245,30 @@ func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestO
 				fmt.Fprintf(os.Stdout, "Test report: %s\n", report)
 			}
 		}
-		return 0, false, err
+		return 0, false, nil, err
 	}
 	if suite.TestReportPath != "" {
 		fmt.Fprintf(os.Stdout, "Test report: %s\n", filepath.Join(suiteDir, suite.TestReportPath))
 	}
 	if suite.TestCountPath != "" {
-		n, err := countExecutedTests(filepath.Join(suiteDir, suite.TestCountPath))
+		countPath := filepath.Join(suiteDir, suite.TestCountPath)
+		n, err := countExecutedTests(countPath)
 		if err != nil {
-			return 0, false, fmt.Errorf("counting executed tests: %w", err)
+			return 0, false, nil, fmt.Errorf("counting executed tests: %w", err)
 		}
-		return n, true, nil
+		// Collect executed method names from the same report only for named
+		// runs — the presence check is the sole consumer, and unfiltered runs
+		// would parse every report for nothing.
+		var nm map[string]bool
+		if len(opts.Test) > 0 {
+			nm, err = executedTestNames(countPath)
+			if err != nil {
+				return 0, false, nil, fmt.Errorf("reading executed test names: %w", err)
+			}
+		}
+		return n, true, nm, nil
 	}
-	return 0, false, nil
+	return 0, false, nil, nil
 }
 
 func pickFilterValue(suite Suite, opts TestOptions) []string {
