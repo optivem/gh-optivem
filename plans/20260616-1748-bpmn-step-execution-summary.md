@@ -18,16 +18,11 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-Design is settled (see Outcomes). The first mechanical unit is **Step 1**: introduce a `stepRecord` type + a step-timer wrapper that wraps *all* MID-level NodeFns (mirroring how `wrapPhaseBoundaries` already wraps TOP-process call-activities and how the agent dispatcher already times itself), so both agent and command steps accumulate `(name, kind, elapsed, err)` into `runState` in execution order.
+All code is implemented and committed (see git log: `step_summary.go` + driver/sidecar/run-command wiring + tests, all passing under `go test -p 2 ./internal/atdd/runtime/driver/`). Only **operator verification** remains (see `## Verification`) — run a real slice and eyeball the new `=== Step summary ===` table + `summary.md` "Steps executed" section. No further mechanical edits are queued; nothing for `/execute-plan` to do.
 
-## Steps
+## Verification (operator-run)
 
-- [ ] Step 1: Add a `stepRecord` type (name, kind: agent|command|human, elapsed, err) and a per-step timer wrapper that wraps every MID-level NodeFn — reuse the wrapping pattern in `wrapPhaseBoundaries()` (driver.go ~1594) and the `nowFn()` timing pattern already used in `newClaudeRunDispatcher()` (driver.go ~1346). Accumulate records into `runState` in execution order.
-- [ ] Step 2: Classify each step's kind. Agent steps are identifiable today (`node.Kind == UserTask && raw.Agent != "" && != "human"`); command steps run via the `runCommand` action (`internal/atdd/process/actions`); human-approval steps are `approve`. Decide the kind at wrap time, not at render time.
-- [ ] Step 3: Render the new step-execution table at run end. Add a `renderStepSummary()` alongside `renderAgentSummary()` (driver.go ~1875) and print it from a deferred tail in `Run()` (alongside `printAgentSummary`). Bottom row = total execution time (the run wall-clock already captured as `flowStart`/`WallClock`, driver.go ~410).
-- [ ] Step 4: Persist the step records to the run sidecar — a `steps.jsonl` (mirror `appendSummaryLine()` in `summary_sidecar.go`) and/or a new section in the Markdown digest (`renderRunDigest()` ~351). Wire `gh optivem run summary` replay (`PrintSummaryFile()` ~274) to render it.
-- [ ] Step 5: Tests — unit-test the renderer (ordering, kind labels, total row) with a fixed `nowFn`; verify command steps now appear. Scope to the driver package; never run unbounded `go test ./...` on Windows (use `-p 2` / `scripts/test.sh`).
-- [ ] Step 6: Verify on a real slice (e.g. shop #72, the full-coverage rehearsal story) that command steps are timed and the totals line up with the existing phase boundaries / wall-clock.
+- [ ] Run a real slice (e.g. shop #72, the full-coverage rehearsal story) and confirm: command steps now appear in the `=== Step summary ===` table with timing, the wall-clock total lines up with the existing `[phase]` boundaries, and `gh optivem run summary` + `--markdown` replay the step table from `steps.jsonl` / `summary.md`.
 
 ## Resolved decisions
 

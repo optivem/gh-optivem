@@ -57,8 +57,12 @@ Columns: agent, model, effort, elapsed, in / out tokens, $ cost. Rows
 whose dispatch ran in interactive mode (no stream-json envelope) show — for
 the token + cost columns.
 
+A step-execution table follows when steps.jsonl is present: every BPMN step
+that ran (agent or command), in execution order, with per-step elapsed and a
+total. Runs predating the feature omit it.
+
 --markdown prints the human run digest (summary.md) instead: the ticket
-header, overall verdict, and the same table fenced inside Markdown. It
+header, overall verdict, and the same tables fenced inside Markdown. It
 renders inline on github.com.`,
 		Example: `  gh optivem run summary
   gh optivem run summary 20260528-150000
@@ -101,6 +105,13 @@ renders inline on github.com.`,
 				exitOnError(fmt.Errorf("stat %s: %w", summaryPath, err))
 			}
 			exitOnError(driver.PrintSummaryFile(cmd.OutOrStdout(), summaryPath))
+			// Step-execution table (agents + commands, with per-step timing).
+			// Sibling sidecar; runs predating the feature have no steps.jsonl,
+			// so its absence is silent — the agent table above still prints.
+			stepsPath := filepath.Join(runDir, "steps.jsonl")
+			if _, err := os.Stat(stepsPath); err == nil {
+				exitOnError(driver.PrintStepSummaryFile(cmd.OutOrStdout(), stepsPath))
+			}
 		},
 	}
 	cmd.Flags().BoolVar(&markdown, "markdown", false, "Print the human run digest (summary.md) instead of the table")

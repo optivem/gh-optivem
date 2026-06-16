@@ -312,6 +312,11 @@ type runDigest struct {
 	result             error
 	commits            []commitInfo
 	compareURL         string
+	// steps + wallClock back the digest's "Steps executed" section — the
+	// agents-and-commands execution timeline rendered by renderStepSummary.
+	// Empty steps omits the table body (a "_No steps_" note instead).
+	steps     []stepRecord
+	wallClock time.Duration
 }
 
 // commitInfo is one row in the run digest's Commits section: the
@@ -417,6 +422,25 @@ func renderRunDigest(w io.Writer, d runDigest) {
 			fmt.Fprintf(w, "[Compare on GitHub](%s)\n", url)
 			fmt.Fprintln(w)
 		}
+	}
+
+	// Steps executed: the agents-and-commands timeline. Placed before the
+	// Agents section because that section returns early when no agents
+	// dispatched — putting Steps after it would drop the table on
+	// command-only runs.
+	fmt.Fprintln(w, "## Steps executed")
+	if len(d.steps) == 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "_No steps were executed._")
+		fmt.Fprintln(w)
+	} else {
+		// renderStepSummary leads with a blank line then the `=== Step
+		// summary ===` header; fencing keeps the monospace columns aligned
+		// when GitHub renders the Markdown.
+		fmt.Fprintln(w, "```")
+		renderStepSummary(w, d.steps, d.wallClock)
+		fmt.Fprintln(w, "```")
+		fmt.Fprintln(w)
 	}
 
 	fmt.Fprintln(w, "## Agents dispatched")

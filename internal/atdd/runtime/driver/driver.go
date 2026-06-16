@@ -391,12 +391,19 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		// produced between now and the final HEAD. Best-effort: empty when
 		// repoPath isn't a git repo — the digest just omits the section.
 		baseSHA: fullHeadSHA(repoPath),
+		// Wall-clock start for the step summary's headline total.
+		started: nowFn(),
 	}
 	// Print the per-agent summary table (model / effort / elapsed / tokens /
 	// cost) on every Run exit — success AND error. Deferred so a fix-loop
 	// dispatch that busts halfway still shows what ran before the bust.
 	// Registered AFTER `defer logClose()` so this fires first (LIFO) and
 	// the summary lands in the --log-file before the file is closed.
+	// Step-execution summary (agents + commands, with per-step timing and a
+	// wall-clock total). Registered BEFORE the agent-summary defer so it runs
+	// AFTER it (LIFO): the agent cost table prints first, then the step
+	// timeline. Same "always print, success and error" policy.
+	defer func() { runState.printStepSummary(opts.Out.Phase) }()
 	defer func() { runState.printAgentSummary(opts.Out.Phase) }()
 
 	// Live execution-flow tree (plan 20260604-1632): the decolored, readable
@@ -497,6 +504,12 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// `[trace …] > / OK …` pair for the same call-activity. Applied last
 	// so its wrap is the outermost layer on the targeted nodes.
 	wrapPhaseBoundaries(eng, opts.Out.Phase)
+	// Step-summary command capture: wrap every LOW execute-command
+	// run-command service task so each shell command is timed and recorded
+	// as a step. Agent steps are recorded at dispatch time in
+	// newClaudeRunDispatcher; together they populate runState.steps in
+	// execution order. See step_summary.go.
+	wrapStepRecorders(eng, runState, opts.Stderr)
 	printConfig(opts.Out.Phase, opts, cfg, repoPath)
 
 	sCtx := statemachine.NewContext()
@@ -529,6 +542,8 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 			result:             runErr,
 			commits:            commits,
 			compareURL:         compareURL(repoPath, runState.baseSHA, len(commits)),
+			steps:              runState.snapshotSteps(),
+			wallClock:          runState.wallClock(),
 		}); err != nil {
 			fmt.Fprintf(opts.Stderr, "driver: warning: write run digest: %v\n", err)
 		} else if digestPath != "" {
@@ -1369,6 +1384,16 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		if err := appendSummaryLine(rs.summaryPath(), record); err != nil {
 			fmt.Fprintf(opts.Stderr, "driver: warning: append summary sidecar: %v\n", err)
 		}
+		// Agent half of the step-execution summary. scopeKey is the MID
+		// task-name (originating-task-name for fix-* recovery, agent noun for
+		// no-MID test fixtures) — the same "BPMN step" identity the scope
+		// lookup uses. The command half is recorded by wrapStepRecorders.
+		rs.recordStep(stepRecord{
+			name:    scopeKey,
+			kind:    stepKindAgent,
+			elapsed: elapsed,
+			err:     runErr,
+		}, opts.Stderr)
 		if runErr != nil {
 			return statemachine.Outcome{Err: runErr}
 		}
@@ -1675,12 +1700,24 @@ type runState struct {
 	mu      sync.Mutex
 	records []dispatchRecord
 
+	// steps accumulates one stepRecord per executed MID-level atomic step
+	// (agent dispatch or shell command), in execution order, for the
+	// end-of-run step-execution summary. Guarded by mu alongside records.
+	// See step_summary.go.
+	steps []stepRecord
+
 	// result is the overall run verdict — the error RunProcess returned
 	// (nil on success). Stamped by Run's deferred tail before the digest
 	// is written, so renderRunDigest can front the summary table with a
 	// ✅/❌ line. Guarded by mu alongside records (same theoretical-
 	// concurrency rationale).
 	result error
+
+	// started is the wall-clock instant Run began, stamped at construction.
+	// The step summary's headline "Total execution time (wall-clock)" is
+	// nowFn().Sub(started). Zero in test fixtures that build runState
+	// directly without this field.
+	started time.Time
 }
 
 // dispatchRecord is one row in the end-of-run summary: which agent ran
