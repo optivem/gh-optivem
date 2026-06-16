@@ -148,6 +148,19 @@ var infraPatterns = []infraPattern{
 		label: "named tests not discoverable — did they compile / are the names correct?",
 		re:    regexp.MustCompile(`(?i)\b0 tests executed for the given selection`),
 	},
+	{
+		// The runner ran every selected sub-suite but a specifically requested
+		// --test name executed in NONE of them (runner.RunTests presence check).
+		// Unlike the "no tests found" siblings, a per-partition empty slice is
+		// now expected (a named test lives only in the partition matching its
+		// tags/channel), so the runner no longer fails per-suite — it fails only
+		// when the name ran nowhere across the union. That is a wiring/typo/
+		// gated-off fault (e.g. GH_OPTIVEM_RUN_WIP_TESTS never lifted), never a
+		// legitimate red, so route it to the infra halt with a presence-specific
+		// label rather than the stale "did they compile?" wording.
+		label: "requested test never executed — wrong name, gated off (GH_OPTIVEM_RUN_WIP_TESTS), or wrong suite/partition?",
+		re:    regexp.MustCompile(`(?i)requested test\S* never executed`),
+	},
 }
 
 // classifyShellErr is the pure-function entry point. It takes the

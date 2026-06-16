@@ -155,6 +155,17 @@ func TestClassifyShellErr(t *testing.T) {
 			wantClass: classInfra,
 			wantLabel: "named tests not discoverable — did they compile / are the names correct?",
 		},
+		{
+			// The runner's presence check (runner.RunTests): every sub-suite ran,
+			// but a requested --test name executed in none of them. Distinct from
+			// the "no tests found" siblings — a per-partition empty slice is now
+			// expected, so this fires only when the name ran nowhere across the union.
+			name:      "runner requested test never executed",
+			stderr:    "suite acceptance-isolated-api: requested test(s) never executed: cannotCancelAnOrderAt2245OnDec31 — not found in any selected suite; check the test name, that it compiled, and that it isn't gated off (e.g. GH_OPTIVEM_RUN_WIP_TESTS)",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "requested test never executed — wrong name, gated off (GH_OPTIVEM_RUN_WIP_TESTS), or wrong suite/partition?",
+		},
 		// ---- red: tests ran, at least one failed --------------------------
 		{
 			name: "jest reports failures",

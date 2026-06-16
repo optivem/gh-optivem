@@ -314,6 +314,78 @@ func TestRunTestsNonZeroExecutedSucceeds(t *testing.T) {
 	}
 }
 
+// twoPartitionSuites builds the partitioned shape of a fanned-out category: a
+// non-isolated sub-suite (its report holds whatever ran there) and an isolated
+// one, each reading its own report file. Commands are benign (`go version`,
+// exits 0) — the pre-staged reports stand in for what the runner produced.
+func twoPartitionSuites(t *testing.T, nonIsoReport, isoReport string) (*TestsConfig, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "noniso.xml"), []byte(nonIsoReport), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "iso.xml"), []byte(isoReport), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := &TestsConfig{Suites: []Suite{
+		{ID: "acc-noniso", Name: "acc-noniso", Command: "go version", Path: ".", TestCountPath: "noniso.xml"},
+		{ID: "acc-iso", Name: "acc-iso", Command: "go version", Path: ".", TestCountPath: "iso.xml"},
+	}}
+	return tests, dir
+}
+
+// TestRunTestsNamedPresentInOnePartitionPasses is the core fix: an isolated
+// named test runs only in the isolated sub-suite; the non-isolated sub-suite
+// legitimately runs zero. The presence union must still pass — the per-suite
+// empty is no longer a failure.
+func TestRunTestsNamedPresentInOnePartitionPasses(t *testing.T) {
+	tests, dir := twoPartitionSuites(t,
+		`<testsuite name="non-isolated" tests="0" skipped="0"></testsuite>`,
+		`<testsuite name="isolated" tests="2"><testcase name="cannotCancelAnOrderAt2245OnDec31 [Channel: API]"/><testcase name="cannotCancelAnOrderAt2245OnDec31 [Channel: UI]"/></testsuite>`,
+	)
+	err := RunTests(nil, tests, dir, dir, TestOptions{Test: []string{"cannotCancelAnOrderAt2245OnDec31"}})
+	if err != nil {
+		t.Fatalf("named isolated test present in one partition must pass, got: %v", err)
+	}
+}
+
+// TestRunTestsNamedAbsentEverywhereFails: a requested name that ran in no
+// partition is the genuine fault the presence check exists to catch, surfaced
+// with the prefix the verify classifier routes to the infra halt.
+func TestRunTestsNamedAbsentEverywhereFails(t *testing.T) {
+	tests, dir := twoPartitionSuites(t,
+		`<testsuite name="non-isolated" tests="1"><testcase name="placeOrder [Channel: API]"/></testsuite>`,
+		`<testsuite name="isolated" tests="1"><testcase name="someIsolatedTest [Channel: API]"/></testsuite>`,
+	)
+	err := RunTests(nil, tests, dir, dir, TestOptions{Test: []string{"ghostTest"}})
+	if err == nil {
+		t.Fatal("want error when the requested test ran nowhere")
+	}
+	if !strings.Contains(err.Error(), "requested test(s) never executed: ghostTest") {
+		t.Fatalf("want the presence marker naming ghostTest, got: %v", err)
+	}
+}
+
+// TestRunTestsMultiNamePartialMissFails is the case count>0 could not catch:
+// two names requested, one ran, one didn't — the run must fail and name only
+// the missing one.
+func TestRunTestsMultiNamePartialMissFails(t *testing.T) {
+	tests, dir := twoPartitionSuites(t,
+		`<testsuite name="non-isolated" tests="1"><testcase name="present [Channel: API]"/></testsuite>`,
+		`<testsuite name="isolated" tests="0" skipped="0"></testsuite>`,
+	)
+	err := RunTests(nil, tests, dir, dir, TestOptions{Test: []string{"present", "missing"}})
+	if err == nil {
+		t.Fatal("want error when one of two requested names ran nowhere")
+	}
+	if !strings.Contains(err.Error(), "requested test(s) never executed: missing") {
+		t.Fatalf("want the presence marker naming only 'missing', got: %v", err)
+	}
+	if strings.Contains(err.Error(), "present") {
+		t.Fatalf("the present name must not be reported missing, got: %v", err)
+	}
+}
+
 // TestRunSetupExecutesSetupCommandsInOrder asserts that RunSetup runs every
 // setupCommand in declaration order and wraps a failure with the failing
 // command's Name.
