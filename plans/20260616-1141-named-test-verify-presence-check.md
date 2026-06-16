@@ -35,7 +35,7 @@ Stripping rule is per-format (different separators), so the extractor dispatches
 
 ## ▶ Next executable step (resume here)
 
-Start with **Step 1** (gh-optivem runner: name extraction + `R ⊆ E` guard + unit tests) — it is the language-shared heart and unblocks all three consumers. It is self-contained and testable with fixtures (no consumer repo needed). Steps 2–4 are the per-language consumer (shop) wiring; Step 5 verifies end-to-end on the #76 rehearsal.
+**Step 1 (runner core) is DONE and committed (gh-optivem `5bdf0dc`).** Resume at **Step 2** — the shop consumer wiring, which is what actually switches the check on (until a suite declares `testCountPath`, the runner change is inert). Steps 2–4 are per-language and independent of each other; Step 5 is the end-to-end #76 rehearsal. The consumer repo is `../shop` (sibling of gh-optivem; `REHEARSAL_REPO=shop`). Per Decision 3, apply the `testCountPath` additions to BOTH the `acceptance-*` and `contract-*` suites in each language's `tests.yaml`.
 
 ## Steps
 
@@ -47,16 +47,16 @@ Start with **Step 1** (gh-optivem runner: name extraction + `R ⊆ E` guard + un
   - Scope `go test ./internal/build/runner/...` (no unbounded `./...` on Windows).
 
 - [ ] **Step 2 — shop Java consumer.**
-  - `system-test/java/build.gradle`: in the `test { filter { … } }` block add `setFailOnNoMatchingTests(false)` so a per-suite empty slice exits 0 instead of 1. (Filters still apply; this only stops the empty-match hard error.)
-  - `system-test/java/tests.yaml`: add `testCountPath: build\test-results\test` to the four `acceptance-*` suites (the XML dir). Without it the new check has no name source and a zero-run would silently green.
+  - `system-test/java/build.gradle`: in the `test { filter { … } }` block add `setFailOnNoMatchingTests(false)` so a per-suite empty slice exits 0 instead of 1. (Filters still apply; this only stops the empty-match hard error. Task-wide, so it covers acceptance AND contract.)
+  - `system-test/java/tests.yaml`: add `testCountPath: build\test-results\test` (the JUnit XML dir) to the four `acceptance-*` suites **and** the `contract-*` suites (Decision 3). Without it the new check has no name source and a zero-run would silently green.
 
 - [ ] **Step 3 — shop dotnet consumer.**
-  - Verify TRX `testName` extraction matches real output (`ShouldPlaceOrder(channel: UI)` → `ShouldPlaceOrder`). `testCountPath` already present. Expect **no** build/config edit — confirm by reproducing a named isolated verify.
+  - Verify TRX `testName` extraction matches real output (`ShouldPlaceOrder(channel: UI)` → `ShouldPlaceOrder`; the runner's `bareMethodTRX` strips args + FQN). `acceptance-*` already declare `testCountPath`; confirm `contract-*` do too (add if missing, Decision 3). Resolve open Decision 2: check `dotnet test`'s exit code on a zero-match `--filter` — if non-zero, add a `--pass-with-no-tests`-equivalent so per-partition empties aren't fatal (Java/TS get this via their own flags). Confirm by reproducing a named isolated verify.
 
 - [ ] **Step 4 — shop TypeScript consumer.**
-  - `playwright.config.ts`: add a `['json', { outputFile: '…/results.json' }]` reporter alongside the existing two.
-  - `system-test/typescript/tests.yaml`: add `testCountPath:` pointing at that JSON file to the four `acceptance-*` suites; append `--pass-with-no-tests` to their commands so a zero-match `--grep` exits 0.
-  - Confirm Playwright JSON `specs[].title` is the bare test name (channel is a project, not in the title).
+  - `playwright.config.ts`: add a `['json', { outputFile: '…/results.json' }]` reporter alongside the existing two (`channel-list-reporter`, `html`).
+  - `system-test/typescript/tests.yaml`: add `testCountPath:` pointing at that JSON file to the four `acceptance-*` suites **and** the `contract-*` suites; append `--pass-with-no-tests` to their commands so a zero-match `--grep` exits 0 instead of erroring.
+  - Confirm Playwright JSON `specs[].title` is the bare test name (channel is a project, not in the title); the runner's `namesPlaywrightJSON` walks nested `suites[].specs[].title`.
 
 - [ ] **Step 5 — end-to-end verify.**
   - Re-run the #76 rehearsal (monolith Java config) and confirm the named isolated test is found, runs red as expected, and the flow proceeds past `VERIFY_TESTS_FAIL_ACCEPTANCE` instead of `TESTS_INFRA_HALT`. Spot-check a dotnet and a TS named verify if a quick path exists.
