@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -559,24 +560,30 @@ func TestRunConfigPreflight_MissingTierPath(t *testing.T) {
 	}
 }
 
-// TestDefaultPreflightOptions_SonarTokenMissing covers the strict
-// behavior: when cfg declares a SonarCloud org but $SONAR_TOKEN is unset,
-// the helper refuses to wire up Sonar checks (which would silently pass)
-// and instead surfaces a clean "set SONAR_TOKEN" error to the cobra layer.
+// TestDefaultPreflightOptions_SonarTokenMissing covers the behavior: when
+// cfg declares a SonarCloud org but $SONAR_TOKEN is unset, the helper no
+// longer hard-fails. It returns cleanly with the Sonar remote checks left
+// unwired (no token to run them with) and reports the missing token via
+// opts.MissingEnvVars, so it folds into preflight.Run's aggregated block
+// alongside any other missing credential — one restart fixes them all.
 func TestDefaultPreflightOptions_SonarTokenMissing(t *testing.T) {
 	t.Setenv("SONAR_TOKEN", "")
 	cfg := &projectconfig.Config{
 		Sonar: projectconfig.Sonar{Organization: "acme"},
 	}
-	_, err := defaultPreflightOptions(cfg, "", "")
-	if err == nil {
-		t.Fatal("want error when SONAR_TOKEN missing and sonar.organization set, got nil")
+	opts, err := defaultPreflightOptions(cfg, "", "")
+	if err != nil {
+		t.Fatalf("want no error when SONAR_TOKEN missing (now reported via MissingEnvVars), got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "SONAR_TOKEN") {
-		t.Errorf("error should name SONAR_TOKEN, got: %v", err)
+	if opts.SonarOrgExists != nil || opts.SonarProjectExists != nil {
+		t.Error("Sonar remote checks should be left unwired when SONAR_TOKEN is missing")
 	}
-	if !strings.Contains(err.Error(), "acme") {
-		t.Errorf("error should name the declared org, got: %v", err)
+	if opts.MissingEnvVars == nil {
+		t.Fatal("MissingEnvVars should always be wired")
+	}
+	missing := opts.MissingEnvVars()
+	if !slices.Contains(missing, "SONAR_TOKEN") {
+		t.Errorf("MissingEnvVars should report SONAR_TOKEN, got: %v", missing)
 	}
 }
 

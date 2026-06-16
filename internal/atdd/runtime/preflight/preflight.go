@@ -95,6 +95,17 @@ type Options struct {
 	// any future caller that wants the structural-only checks can pass nil.
 	Engine *statemachine.Engine
 
+	// MissingEnvVars, when non-nil, returns the names of every required
+	// credential environment variable that is currently unset. Each name
+	// becomes one aggregated failure line, so a missing token folds into the
+	// same error block as missing repos/tiers/suites — the operator sees
+	// every gap in one pass and fixes them with a single shell restart
+	// instead of fix-one-restart-discover-next. nil = skip (tests and any
+	// caller with no env-var contract). Runs even on a nil cfg — credential
+	// presence is independent of project layout. Production wires
+	// config.MissingRequiredEnvVars via defaultPreflightOptions.
+	MissingEnvVars func() []string
+
 	// ClaudeCheck verifies the `claude` CLI is on PATH and runnable.
 	// nil = skip (used by the v1 --manual-agents fallback that doesn't
 	// need the CLI, and by config-flow callers that don't dispatch
@@ -119,6 +130,16 @@ type Options struct {
 // independent of project layout.
 func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	var failures []string
+
+	// Required env-var presence. Runs before any cfg-dependent work so it
+	// surfaces even on a nil cfg, and folds into the same aggregated error
+	// block as the structural failures below — one restart fixes every
+	// missing credential at once.
+	if opts.MissingEnvVars != nil {
+		for _, name := range opts.MissingEnvVars() {
+			failures = append(failures, fmt.Sprintf("environment variable %s is not set (required)", name))
+		}
+	}
 
 	// Local-tool check: claude CLI presence. Runs before any cfg-dependent
 	// work so its failure surfaces even on a nil cfg, and folds into the

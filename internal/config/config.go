@@ -25,20 +25,20 @@ import (
 // Surfaced in the startup banner so the user can audit exactly what they typed
 // (vs. the resolved/derived values the scaffold will actually act on).
 type RawInputs struct {
-	Repo            string // --repo as-passed
-	ShopRef         string // --shop-ref before resolving empty → baked-in SHA → latest meta-v*
-	TestLang        string // --test-lang (required; the system-test tier's language is independent of the impl lang)
-	VerifyLevel     string // --verify-level as-passed (flag default: "release")
-	WorkDir         string // --workdir before defaulting to temp dir
-	KeepLocal       bool   // --keep-local flag as-passed
-	RandomSuffix    bool   // --random-suffix flag as-passed
+	Repo         string // --repo as-passed
+	ShopRef      string // --shop-ref before resolving empty → baked-in SHA → latest meta-v*
+	TestLang     string // --test-lang (required; the system-test tier's language is independent of the impl lang)
+	VerifyLevel  string // --verify-level as-passed (flag default: "release")
+	WorkDir      string // --workdir before defaulting to temp dir
+	KeepLocal    bool   // --keep-local flag as-passed
+	RandomSuffix bool   // --random-suffix flag as-passed
 }
 
 type Config struct {
-	Owner      string
-	Repo       string
-	FullRepo   string
-	SystemName string
+	Owner        string
+	Repo         string
+	FullRepo     string
+	SystemName   string
 	Arch         string // "monolith" or "multitier"
 	RepoStrategy string // "monorepo" or "multirepo"
 
@@ -60,13 +60,13 @@ type Config struct {
 	// produces a Config supplies the paths matching its own on-disk layout).
 	// SystemPath applies only to monolith; BackendPath/FrontendPath apply only
 	// to multitier. SystemTestPath applies to both.
-	SystemPath      string
-	SystemTestPath  string
-	BackendPath     string
-	FrontendPath    string
+	SystemPath     string
+	SystemTestPath string
+	BackendPath    string
+	FrontendPath   string
 
-	Deploy     string // "docker" (default) or "cloud-run"
-	License    string
+	Deploy  string // "docker" (default) or "cloud-run"
+	License string
 
 	// ProjectURL is the GitHub Project URL written into gh-optivem.yaml at the
 	// "Write gh-optivem.yaml" step. Empty is allowed — the file is still
@@ -92,12 +92,12 @@ type Config struct {
 	// round-trip that drops comments.
 	SourceProjectURLWasEmpty bool
 
-	VerifyLevel    string // "none", "local", "commit", "acceptance", "qa", "release"
-	NoLegacy       bool   // exclude legacy from local tests and acceptance stage
-	NoLocalTests   bool   // skip the "Verify local testing" step (runner package over system-test/)
-	NoLocalSonar   bool   // skip the "Verify local SonarCloud scan" step (per-component run-sonar.sh)
-	NoAtdd         bool   // skip the "Install ATDD assets" step (skip copying agents/commands/prompts from shop)
-	NoProject      bool   // skip the "Ensure project board" step entirely (no auto-create, no status-ensure on supplied URL)
+	VerifyLevel  string // "none", "local", "commit", "acceptance", "qa", "release"
+	NoLegacy     bool   // exclude legacy from local tests and acceptance stage
+	NoLocalTests bool   // skip the "Verify local testing" step (runner package over system-test/)
+	NoLocalSonar bool   // skip the "Verify local SonarCloud scan" step (per-component run-sonar.sh)
+	NoAtdd       bool   // skip the "Install ATDD assets" step (skip copying agents/commands/prompts from shop)
+	NoProject    bool   // skip the "Ensure project board" step entirely (no auto-create, no status-ensure on supplied URL)
 	KeepLocal    bool   // keep the local scaffolded clone dir after a successful run (default: delete it)
 	BugReport    bool   // opt in to auto-creating a GitHub issue on failure (default: off)
 	Verbose      bool   // enable debug output
@@ -114,16 +114,16 @@ type Config struct {
 	// cautious default — confirmations fall through to the interactive
 	// prompt.
 	Approval approval.Resolved
-	WorkDir    string
+	WorkDir  string
 	ShopPath string
 	ShopRef  string // Pinned optivem/shop ref (SHA, tag, or branch). Never empty.
 
 	DockerHubUsername string
-	DockerHubToken   string
-	SonarToken       string
-	GHCRToken        string
-	WorkflowToken    string
-	RepoToken        string // Classic PAT with `repo` scope for cross-repo Contents:read in multirepo prod-stage
+	DockerHubToken    string
+	SonarToken        string
+	GHCRToken         string
+	WorkflowToken     string
+	RepoToken         string // Classic PAT with `repo` scope for cross-repo Contents:read in multirepo prod-stage
 
 	// Derived naming
 	OwnerPascal   string
@@ -472,36 +472,36 @@ func ValidateProjectURLFormat(url string) string {
 // to these fields on the Cobra command via BindInitFlags; ParseAndValidate then
 // consumes the populated struct after Cobra has parsed the command line.
 type RawFlags struct {
-	Owner             string
-	SystemName        string
-	Repo              string
-	Arch              string
-	RepoStrategy      string
-	Lang              string
-	TestLang          string
-	BackendLang       string
-	FrontendLang      string
-	License           string
-	VerifyLevel       string
-	Deploy            string
-	WorkDir           string
-	ShopRef           string
-	LogFile           string
-	ProjectURL        string
-	SystemPath        string
-	SystemTestPath    string
-	BackendPath       string
-	FrontendPath      string
-	KeepLocal         bool
-	NoLegacy          bool
-	NoLocalTests      bool
-	NoLocalSonar      bool
-	NoAtdd            bool
-	NoProject         bool
-	BugReport         bool
-	Verbose           bool
-	Quiet             bool
-	AssumeYes         bool
+	Owner          string
+	SystemName     string
+	Repo           string
+	Arch           string
+	RepoStrategy   string
+	Lang           string
+	TestLang       string
+	BackendLang    string
+	FrontendLang   string
+	License        string
+	VerifyLevel    string
+	Deploy         string
+	WorkDir        string
+	ShopRef        string
+	LogFile        string
+	ProjectURL     string
+	SystemPath     string
+	SystemTestPath string
+	BackendPath    string
+	FrontendPath   string
+	KeepLocal      bool
+	NoLegacy       bool
+	NoLocalTests   bool
+	NoLocalSonar   bool
+	NoAtdd         bool
+	NoProject      bool
+	BugReport      bool
+	Verbose        bool
+	Quiet          bool
+	AssumeYes      bool
 }
 
 // bindYAMLAffectingFlags binds the subset of init flags that influence the
@@ -707,6 +707,43 @@ func readEnvTokens() envTokens {
 		workflowToken:     os.Getenv("WORKFLOW_TOKEN"),
 		repoToken:         os.Getenv("REPO_TOKEN"),
 	}
+}
+
+// requiredEnvVar pairs a credential env-var name with its current value,
+// so presence checks and live-auth checks iterate the same source.
+type requiredEnvVar struct{ name, val string }
+
+// requiredEnvVars returns the canonical (name, current-value) list of the
+// environment variables every gh-optivem pipeline run needs. It is the
+// single source of truth shared by the live-auth pass (VerifyEnvironment)
+// and the presence-only preflight check (MissingRequiredEnvVars) so the two
+// can never drift on which vars count as required.
+func requiredEnvVars() []requiredEnvVar {
+	e := readEnvTokens()
+	return []requiredEnvVar{
+		{"DOCKERHUB_USERNAME", e.dockerHubUsername},
+		{"DOCKERHUB_TOKEN", e.dockerHubToken},
+		{"SONAR_TOKEN", e.sonarToken},
+		{"GHCR_TOKEN", e.ghcrToken},
+		{"WORKFLOW_TOKEN", e.workflowToken},
+		{"REPO_TOKEN", e.repoToken},
+	}
+}
+
+// MissingRequiredEnvVars returns the names of every required credential env
+// var that is currently unset, in canonical order. Presence-only: it does
+// not hit the network. Preflight wires this into preflight.Run so a missing
+// var folds into the one aggregated failure block alongside repo/tier/suite
+// failures — the operator sees every gap in one pass and fixes them with a
+// single shell restart instead of fix-one-restart-discover-next.
+func MissingRequiredEnvVars() []string {
+	var missing []string
+	for _, r := range requiredEnvVars() {
+		if r.val == "" {
+			missing = append(missing, r.name)
+		}
+	}
+	return missing
 }
 
 func resolveShopRef(shopRef string) string {
@@ -1084,10 +1121,10 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	logFilePath := resolveLogFilePath(f.LogFile)
 
 	return &Config{
-		Owner:      f.Owner,
-		Repo:       repoName,
-		FullRepo:   f.Owner + "/" + repoName,
-		SystemName: f.SystemName,
+		Owner:        f.Owner,
+		Repo:         repoName,
+		FullRepo:     f.Owner + "/" + repoName,
+		SystemName:   f.SystemName,
 		Arch:         f.Arch,
 		RepoStrategy: f.RepoStrategy,
 
@@ -1106,9 +1143,9 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		FrontendLang: lc.frontendLang,
 		TestLang:     lc.testLang,
 
-		Deploy:     f.Deploy,
-		License:    f.License,
-		ProjectURL: f.ProjectURL,
+		Deploy:         f.Deploy,
+		License:        f.License,
+		ProjectURL:     f.ProjectURL,
 		SystemPath:     f.SystemPath,
 		SystemTestPath: f.SystemTestPath,
 		BackendPath:    f.BackendPath,
@@ -1119,14 +1156,14 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		NoLocalSonar:   f.NoLocalSonar,
 		NoAtdd:         f.NoAtdd,
 		NoProject:      f.NoProject,
-		KeepLocal:    f.KeepLocal,
-		BugReport:    f.BugReport,
-		Verbose:      f.Verbose,
-		Quiet:        f.Quiet,
-		LogFile:      logFilePath,
-		AssumeYes:    f.AssumeYes,
-		Approval:     resolved,
-		WorkDir:    wd,
+		KeepLocal:      f.KeepLocal,
+		BugReport:      f.BugReport,
+		Verbose:        f.Verbose,
+		Quiet:          f.Quiet,
+		LogFile:        logFilePath,
+		AssumeYes:      f.AssumeYes,
+		Approval:       resolved,
+		WorkDir:        wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
 		// from WorkDir so the startup banner can show them before Phase 1. The
 		// Prepare and Apply Template phases clone into these paths directly.
@@ -1138,11 +1175,11 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		ShopRef:         resolvedShopRef,
 
 		DockerHubUsername: env.dockerHubUsername,
-		DockerHubToken:   env.dockerHubToken,
-		SonarToken:       env.sonarToken,
-		GHCRToken:        env.ghcrToken,
-		WorkflowToken:    env.workflowToken,
-		RepoToken:        env.repoToken,
+		DockerHubToken:    env.dockerHubToken,
+		SonarToken:        env.sonarToken,
+		GHCRToken:         env.ghcrToken,
+		WorkflowToken:     env.workflowToken,
+		RepoToken:         env.repoToken,
 
 		OwnerPascal:   ownerPascal,
 		OwnerLower:    ownerLower,

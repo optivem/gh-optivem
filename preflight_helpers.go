@@ -8,9 +8,12 @@
 // Token requirements:
 //   - GitHub: relies on whatever auth `gh` CLI is already configured with
 //     (`gh auth login` or $GH_TOKEN / $GITHUB_TOKEN). No extra plumbing.
-//   - SonarCloud: requires $SONAR_TOKEN whenever cfg.Sonar.Organization
-//     is set. Missing token is a hard error so preflight never silently
-//     skips a check class the operator's config implies should run.
+//   - SonarCloud: the live org/project checks need $SONAR_TOKEN; they are
+//     wired only when it (and cfg.Sonar.Organization) is present.
+//   - The full required credential set is presence-checked via
+//     opts.MissingEnvVars, so every missing var (SONAR_TOKEN included)
+//     surfaces together in preflight.Run's aggregated failure block rather
+//     than one-at-a-time.
 package main
 
 import (
@@ -21,6 +24,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/process"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/preflight"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
+	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
@@ -41,10 +45,14 @@ import (
 // builder: one definition of "ready to implement", validated identically
 // wherever it's checked.
 //
-// Returns an error when cfg declares a SonarCloud setup (sonar.organization
-// non-empty) but $SONAR_TOKEN is not in the environment — strict on
-// purpose, so preflight cannot pass while silently skipping the Sonar
-// remote contract. Also errors if the embedded state machine fails to load.
+// The full required credential set (SONAR_TOKEN, DOCKERHUB_USERNAME/_TOKEN,
+// GHCR_TOKEN, WORKFLOW_TOKEN, REPO_TOKEN) is checked for presence via
+// opts.MissingEnvVars, so every missing var surfaces together in
+// preflight.Run's aggregated block — one shell restart fixes them all. A
+// missing $SONAR_TOKEN therefore no longer hard-fails here; it simply
+// leaves the Sonar remote checks unwired (the missing-var line is the
+// single signal) so preflight never claims a Sonar check ran without a
+// token. Returns an error only if the embedded state machine fails to load.
 func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (preflight.Options, error) {
 	var project projectconfig.Project
 	if cfg != nil {
@@ -66,6 +74,11 @@ func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (
 			}
 			return tr.Verify(ctx)
 		},
+		// Presence-only check of the full required credential set. Folding it
+		// into preflight.Run's aggregated block means a missing token lists
+		// alongside any missing repo/tier/suite, so the operator fixes every
+		// gap with a single shell restart instead of fix-one-restart-discover-next.
+		MissingEnvVars: config.MissingRequiredEnvVars,
 	}
 	// Load the embedded state machine so preflight sweeps every writing-agent
 	// MID's read/write scope and the BPMN-required test suites against cfg
@@ -76,17 +89,21 @@ func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (
 		return preflight.Options{}, fmt.Errorf("preflight: load state machine: %w", err)
 	}
 	opts.Engine = eng
+
+	// Wire the SonarCloud remote checks only when the config declares an org
+	// AND $SONAR_TOKEN is present. A missing token no longer hard-fails here:
+	// it is reported by opts.MissingEnvVars as one line in preflight.Run's
+	// aggregated block. Skipping the remote wiring (rather than erroring)
+	// keeps preflight from claiming the Sonar org/project checks ran when
+	// there was no token to run them with — the missing-var line is the
+	// single, honest signal.
 	if cfg == nil || cfg.Sonar.Organization == "" {
 		return opts, nil
 	}
-	token := os.Getenv("SONAR_TOKEN")
-	if token == "" {
-		return preflight.Options{}, fmt.Errorf(
-			"preflight: SONAR_TOKEN is not set but sonar.organization=%q is declared in gh-optivem.yaml; export SONAR_TOKEN=<your-token>",
-			cfg.Sonar.Organization)
+	if token := os.Getenv("SONAR_TOKEN"); token != "" {
+		sc := shell.NewSonarCloud(token, cfg.Sonar.Organization)
+		opts.SonarOrgExists = sc.OrgExists
+		opts.SonarProjectExists = sc.ProjectExists
 	}
-	sc := shell.NewSonarCloud(token, cfg.Sonar.Organization)
-	opts.SonarOrgExists = sc.OrgExists
-	opts.SonarProjectExists = sc.ProjectExists
 	return opts, nil
 }

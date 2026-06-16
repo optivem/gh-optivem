@@ -38,6 +38,36 @@ func TestRun_NilCfgIsOK(t *testing.T) {
 	}
 }
 
+// TestRun_MissingEnvVarsAggregate pins that opts.MissingEnvVars folds every
+// missing credential into the one aggregated failure block — and that it
+// runs even on a nil cfg, since credential presence is independent of
+// project layout. This is the "fix everything in one shell restart" contract.
+func TestRun_MissingEnvVarsAggregate(t *testing.T) {
+	t.Parallel()
+	opts := Options{
+		MissingEnvVars: func() []string { return []string{"SONAR_TOKEN", "GHCR_TOKEN"} },
+	}
+	err := Run(context.Background(), nil, opts)
+	if err == nil {
+		t.Fatal("want error listing missing env vars, got nil")
+	}
+	for _, name := range []string{"SONAR_TOKEN", "GHCR_TOKEN"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("aggregated error should name %s, got:\n%s", name, err)
+		}
+	}
+}
+
+// TestRun_NoMissingEnvVarsIsOK confirms an empty missing-list is a no-op:
+// a fully-provisioned environment adds no failure lines.
+func TestRun_NoMissingEnvVarsIsOK(t *testing.T) {
+	t.Parallel()
+	opts := Options{MissingEnvVars: func() []string { return nil }}
+	if err := Run(context.Background(), nil, opts); err != nil {
+		t.Errorf("no missing env vars should pass, got: %v", err)
+	}
+}
+
 func TestRun_MonoRepoMonolithAllPresent(t *testing.T) {
 	t.Parallel()
 	root := makeFakeRepo(t, filepath.Join(t.TempDir(), "shop"))

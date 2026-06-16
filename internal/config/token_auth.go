@@ -53,7 +53,6 @@ type checkResult struct {
 	err  error  // nil on success
 }
 
-
 // verifyDockerHubAuth posts username+token to Docker Hub's login endpoint.
 // A valid PAT returns 200 with a JWT; anything else is an auth failure.
 //
@@ -344,16 +343,11 @@ func VerifyEnvironment(langs []string, deploy string) error {
 func verifyEnvironmentWithClient(langs []string, deploy string, client *http.Client) error {
 	e := readEnvTokens()
 
-	required := []struct{ name, val string }{
-		{"DOCKERHUB_USERNAME", e.dockerHubUsername},
-		{"DOCKERHUB_TOKEN", e.dockerHubToken},
-		{"SONAR_TOKEN", e.sonarToken},
-		{"GHCR_TOKEN", e.ghcrToken},
-		{"WORKFLOW_TOKEN", e.workflowToken},
-		{"REPO_TOKEN", e.repoToken},
-	}
+	// requiredEnvVars is the single source shared with the presence-only
+	// preflight check (MissingRequiredEnvVars), so both surfaces agree on
+	// which credentials count as required.
 	var missing []string
-	for _, r := range required {
+	for _, r := range requiredEnvVars() {
 		if r.val == "" {
 			missing = append(missing, r.name)
 		}
