@@ -289,6 +289,7 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = drivers"]
     SHARED_CONTRACT_END(( ))
     GATE_EXTERNAL_DRIVER_PORTS_CHANGED{External Driver Ports Changed?}
+    VALIDATE_EXTERNAL_SYSTEMS_REGISTERED[[Validate Touched External Systems Are Registered]]
     IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS["Implement and Verify External System Driver Adapters Contract Tests<br/>test-category = contract<br/>verify-mode = red"]
     GATE_AT_TERMINAL_GREEN{Cover Run Needs Terminal AT-Green?}
     START_SYSTEM_AT_TERMINAL[Start System]
@@ -298,13 +299,17 @@ flowchart TD
     GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
     GATE_DSL_PORT_CHANGED -- No --> SHARED_CONTRACT_END
     IMPLEMENT_AND_VERIFY_DSL --> GATE_EXTERNAL_DRIVER_PORTS_CHANGED
-    GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
+    GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- Yes --> VALIDATE_EXTERNAL_SYSTEMS_REGISTERED
     GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- No --> SHARED_CONTRACT_END
+    VALIDATE_EXTERNAL_SYSTEMS_REGISTERED --> IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
     IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS --> GATE_AT_TERMINAL_GREEN
     GATE_AT_TERMINAL_GREEN -- Yes --> START_SYSTEM_AT_TERMINAL
     GATE_AT_TERMINAL_GREEN -- No --> SHARED_CONTRACT_END
     START_SYSTEM_AT_TERMINAL --> VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL
     VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL --> SHARED_CONTRACT_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class VALIDATE_EXTERNAL_SYSTEMS_REGISTERED serviceNode
 ```
 
 ## Write and Verify Acceptance Test Code
@@ -359,11 +364,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    RESOLVE_EXTERNAL_SYSTEM[[Resolve External System]]
+    GATE_EXTERNAL_SYSTEM_TOUCHED{External System Touched?}
     WRITE_CONTRACT_TESTS["Write External System Contract Tests<br/>expected-test-result = success"]
+    EXTERNAL_SYSTEM_SKIPPED(( ))
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
     IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External System Driver Adapters]
-    IDENTIFY_EXTERNAL_SYSTEM[[Identify External System]]
     BUILD_SYSTEM_AFTER_DRIVER[Build System]
     START_SYSTEM_AFTER_DRIVER[Start System — see § start-system-restart]
     PROBE_CONTRACT_REAL["Probe External System Contract Tests Against the Real System — see § run-tests<br/>suite = contract-real"]
@@ -385,12 +392,14 @@ flowchart TD
     START_SYSTEM_AFTER_STUBS[Start System — see § start-system-restart]
     VERIFY_TESTS_PASS_CONTRACT_STUB["Verify External System Contract Tests Pass Against the Stub — see § verify-tests-pass<br/>suite = contract-stub"]
 
+    RESOLVE_EXTERNAL_SYSTEM --> GATE_EXTERNAL_SYSTEM_TOUCHED
+    GATE_EXTERNAL_SYSTEM_TOUCHED -- Yes --> WRITE_CONTRACT_TESTS
+    GATE_EXTERNAL_SYSTEM_TOUCHED -- No --> EXTERNAL_SYSTEM_SKIPPED
     WRITE_CONTRACT_TESTS --> GATE_DSL_PORT_CHANGED
     GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
     GATE_DSL_PORT_CHANGED -- No --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
     IMPLEMENT_AND_VERIFY_DSL --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
-    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> IDENTIFY_EXTERNAL_SYSTEM
-    IDENTIFY_EXTERNAL_SYSTEM --> BUILD_SYSTEM_AFTER_DRIVER
+    IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS --> BUILD_SYSTEM_AFTER_DRIVER
     BUILD_SYSTEM_AFTER_DRIVER --> START_SYSTEM_AFTER_DRIVER
     START_SYSTEM_AFTER_DRIVER --> PROBE_CONTRACT_REAL
     PROBE_CONTRACT_REAL --> GATE_CONTRACT_REAL_OUTCOME
@@ -416,7 +425,7 @@ flowchart TD
     VERIFY_TESTS_PASS_CONTRACT_STUB --> IMPL_EXT_DRIVER_CT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class IDENTIFY_EXTERNAL_SYSTEM serviceNode
+    class RESOLVE_EXTERNAL_SYSTEM serviceNode
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
     class CONTRACT_REAL_UPSTREAM_GAP_HALT,TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
@@ -494,20 +503,29 @@ flowchart TD
     RUN_TESTS[Run Tests]
     GATE_TESTS_OUTCOME{Test Outcome?}
     VERIFY_PASS_END(( ))
-    FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
+    CHECK_FIX_PROGRESS[[Check Fix-Loop Progress]]
     TESTS_INFRA_HALT((⚡))
     UNKNOWN_TESTS_OUTCOME((⚡))
+    GATE_FIX_PROGRESSING{Fix Loop Progressing?}
+    FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
+    FIX_LOOP_NO_PROGRESS_EXHAUSTED((⚡))
     FIX_LOOP_EXHAUSTED((⚡))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
     GATE_TESTS_OUTCOME -- Pass --> VERIFY_PASS_END
-    GATE_TESTS_OUTCOME -- Fail --> FIX_UNEXPECTED_FAILING_TESTS
+    GATE_TESTS_OUTCOME -- Fail --> CHECK_FIX_PROGRESS
     GATE_TESTS_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_TESTS_OUTCOME --> UNKNOWN_TESTS_OUTCOME
+    CHECK_FIX_PROGRESS --> GATE_FIX_PROGRESSING
+    GATE_FIX_PROGRESSING -- Yes --> FIX_UNEXPECTED_FAILING_TESTS
+    GATE_FIX_PROGRESSING -- No --> FIX_LOOP_NO_PROGRESS_EXHAUSTED
     FIX_UNEXPECTED_FAILING_TESTS --> RUN_TESTS
 
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class CHECK_FIX_PROGRESS serviceNode
+
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class FIX_LOOP_EXHAUSTED,TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
+    class FIX_LOOP_EXHAUSTED,FIX_LOOP_NO_PROGRESS_EXHAUSTED,TESTS_INFRA_HALT,UNKNOWN_TESTS_OUTCOME errorEndNode
 ```
 
 ## Verify Tests Fail
