@@ -148,6 +148,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	// params).
 	r.Register("command-succeeded", b.commandSucceeded)
 	r.Register("test-outcome", b.testOutcome)
+	// verify-tests-pass no-progress gateway (plan 20260615-1845 Step 4).
+	// Reads the bool the check-fix-progress action stamps after a failing
+	// test run; true re-dispatches the fixer, false halts at
+	// FIX_LOOP_NO_PROGRESS. Strict on unset (the action runs immediately
+	// upstream).
+	r.Register("fix-loop-progressing", b.fixLoopProgressing)
 	r.Register("expected-test-result", b.expectedTestResult)
 	r.Register("fix-on-failure-enabled", b.fixOnFailureEnabled)
 	// Cascade-namespaced port-changed verdicts (plan 20260606-1525). The
@@ -329,6 +335,24 @@ func (b bindings) testOutcome(ctx *statemachine.Context) statemachine.Outcome {
 	default:
 		return statemachine.Outcome{Err: fmt.Errorf("test-outcome: unrecognised value %q (action stamped a value the gate does not handle)", s)}
 	}
+}
+
+// fixLoopProgressing is the verify-tests-pass no-progress gateway
+// (GATE_FIX_PROGRESSING, plan 20260615-1845 Step 4). The check-fix-progress
+// action stamps ctx.State["fix-loop-progressing"] from a per-pass failure
+// fingerprint: true when the failure changed (or this is the loop's first
+// fail), false when two consecutive failing runs are byte-identical (the
+// fixer is spinning). True → re-dispatch the fixer; false →
+// FIX_LOOP_NO_PROGRESS. Strict on unset — the action runs immediately
+// upstream on the fail branch, so a missing value is a wiring bug, not a
+// default. Layers under the FIX node's max-visits count cap: this gate
+// catches a spinning fixer earlier and more precisely than the count.
+func (b bindings) fixLoopProgressing(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["fix-loop-progressing"]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("fix-loop-progressing: not set in Context — check-fix-progress action did not run")}
+	}
+	return outcomeFromBoolish(v)
 }
 
 // expectedTestResult is the implement-test-layer fork gate. The

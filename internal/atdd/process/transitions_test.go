@@ -355,6 +355,52 @@ func TestFixDispatch_LoopsAreBounded(t *testing.T) {
 	}
 }
 
+// verify-tests-pass's no-progress guard (plan 20260615-1845 Step 4) sits on
+// the fail branch BEFORE the fixer: GATE_TESTS_OUTCOME's `fail` edge now
+// routes through CHECK_FIX_PROGRESS → GATE_FIX_PROGRESSING, which either
+// re-dispatches the fixer (progressing == true) or halts at a distinct
+// error-end terminal (progressing == false) when two consecutive runs fail
+// identically. The fixer's own loop-back (FIX → RUN_TESTS) and the count cap
+// stay intact — this guard layers under them, it does not replace them.
+func TestVerifyTestsPass_NoProgressGuardWiring(t *testing.T) {
+	eng := loadSnapshot(t)
+	p, ok := eng.Processes["verify-tests-pass"]
+	if !ok {
+		t.Fatalf("process verify-tests-pass missing")
+	}
+
+	// 1. The fail branch now enters the progress check, not the fixer directly.
+	wantEdge(t, p, "GATE_TESTS_OUTCOME", "CHECK_FIX_PROGRESS", "test-outcome == fail")
+	notEdge(t, p, "GATE_TESTS_OUTCOME", "FIX_UNEXPECTED_FAILING_TESTS")
+
+	// 2. The check feeds the progress gateway, which forks dispatch vs. halt.
+	wantEdge(t, p, "CHECK_FIX_PROGRESS", "GATE_FIX_PROGRESSING", "")
+	wantEdge(t, p, "GATE_FIX_PROGRESSING", "FIX_UNEXPECTED_FAILING_TESTS", "fix-loop-progressing == true")
+	wantEdge(t, p, "GATE_FIX_PROGRESSING", "FIX_LOOP_NO_PROGRESS_EXHAUSTED", "fix-loop-progressing == false")
+
+	// 3. CHECK_FIX_PROGRESS is a service-task bound to the check-fix-progress
+	//    action; GATE_FIX_PROGRESSING binds the fix-loop-progressing gate.
+	if got := p.Nodes["CHECK_FIX_PROGRESS"].Raw.Action; got != "check-fix-progress" {
+		t.Errorf("CHECK_FIX_PROGRESS action = %q, want check-fix-progress", got)
+	}
+	if got := p.Nodes["GATE_FIX_PROGRESSING"].Raw.Binding; got != "fix-loop-progressing" {
+		t.Errorf("GATE_FIX_PROGRESSING binding = %q, want fix-loop-progressing", got)
+	}
+
+	// 4. The no-progress terminal is an error-end-event so the halt bubbles
+	//    up as a non-zero exit (the `_EXHAUSTED` marker also makes the
+	//    halt-terminals-are-error-end invariant enforce this).
+	if k := p.Nodes["FIX_LOOP_NO_PROGRESS_EXHAUSTED"].Kind; k != statemachine.ErrorEndEvent {
+		t.Errorf("FIX_LOOP_NO_PROGRESS_EXHAUSTED kind = %v, want statemachine.ErrorEndEvent", k)
+	}
+
+	// 5. The fixer loop-back and count cap are untouched.
+	wantEdge(t, p, "FIX_UNEXPECTED_FAILING_TESTS", "RUN_TESTS", "")
+	if fix := p.Nodes["FIX_UNEXPECTED_FAILING_TESTS"]; fix.Raw.MaxVisits != 2 || fix.Raw.OnMaxVisits != "FIX_LOOP_EXHAUSTED" {
+		t.Errorf("FIX_UNEXPECTED_FAILING_TESTS cap = (%d, %q), want (2, FIX_LOOP_EXHAUSTED)", fix.Raw.MaxVisits, fix.Raw.OnMaxVisits)
+	}
+}
+
 // Q31.a (CT nested under AT, plan 20260527-1147): shared-contract's
 // external-driver gate true-branch now enters the contract-test-first CT-HIGH
 // (a superset that writes+verifies the contract test, real then stub, AND

@@ -135,6 +135,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"move-to-in-progress",
 		"move-to-in-acceptance",
 		"parse-ticket",
+		"check-fix-progress",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {

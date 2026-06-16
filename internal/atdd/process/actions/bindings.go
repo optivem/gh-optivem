@@ -246,6 +246,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	// section enforcement happens at dispatch time via the load-bearing
 	// placeholder check in clauderun.go.
 	r.Register("parse-ticket", a.parseTicket)
+	// verify-tests-pass no-progress guard (plan 20260615-1845 Step 4). Runs
+	// on the gateway's fail branch before re-dispatching the fixer; stamps
+	// fix-loop-progressing from a per-pass failure fingerprint so
+	// GATE_FIX_PROGRESSING halts a fixer that keeps editing without changing
+	// the failure. See fix_progress.go.
+	r.Register("check-fix-progress", a.checkFixProgress)
 }
 
 // Context keys consumed by the check-phase-scope action. Centralised so the
@@ -1016,6 +1022,12 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		ctx.Unset("command-exit-code")
 		ctx.Unset("command-stderr-tail")
 		ctx.Unset("verify_failure_output")
+		// A green test run ends the verify-tests-pass loop, so the
+		// no-progress baseline (check-fix-progress, plan 20260615-1845 Step 4)
+		// must not survive into a later verify-tests-pass invocation in the
+		// same run, where its first fail would compare against a stale
+		// signature. Cleared here for the same reason verify_failure_output is.
+		ctx.Unset("fix-prev-failure-signature")
 	}
 	if isTestRun && !succeeded {
 		// Classify the failure so the gateway downstream of run-tests can

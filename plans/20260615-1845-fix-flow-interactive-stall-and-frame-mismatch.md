@@ -44,14 +44,15 @@ Notes that informed the steps below:
 
 ## ▶ Next executable step (resume here)
 
-**Status: Steps 1, 2, 3 DONE. Only Step 4 (+ its Step-5 tests) remains.**
+**Status: Steps 1, 2, 3 DONE. Step 4's no-progress guard DONE. Only the scope-drift half remains — and it is moved to a child plan that needs design first.**
 - Step 2 — committed `9f6ed37` (empty-selection infra label reworded).
 - Step 3 — committed `424220a` (`unexpected-failing-tests-fixer.md` reframed caller-blind; 3rd "implementation incomplete" diagnosis; exit-on-uncertainty bail realized via no-edit exit + existing `FIX_LOOP_EXHAUSTED` visit-cap halt — a bespoke 1-pass halt-for-human envelope would need a YAML route, noted follow-up).
 - Step 1 — pending-human yield: `ErrPendingHuman` sentinel + `stdinIsTTYFn` seam + `ExitCodePendingHuman = 2` in `driver.go`; dispatcher yields on `category:human && !TTY`; `Run` discards via `gitRunFn(... "reset","--hard","HEAD")`; CLI maps the sentinel to exit 2 in `implement_commands.go`. Tested (driver + root pkg green).
+- **Step 4 (no-progress guard) — DONE this session.** New `check-fix-progress` action + `fix-loop-progressing` gateway on the `verify-tests-pass` fail branch, halting at `FIX_LOOP_NO_PROGRESS_EXHAUSTED` when two consecutive runs fail with an identical (normalised) signature. Prior signature persists in `ctx.State["fix-prev-failure-signature"]`, cleared by `run-command` on a green test run. Layered under the `max-visits: 2` count cap. Tested: `TestCheckFixProgress`, `TestFixFailureSignature`, `TestFixLoopProgressing`, `TestVerifyTestsPass_NoProgressGuardWiring`; existing `TestVerifyTests_FixLoopHaltsAtCap` updated to stamp progressing on the count-cap path.
 
-**Next action: Step 4 — the no-progress / scope-drift fix-loop guard.** This is the heaviest remaining item and touches the collision-prone `process-flow.yaml` + `internal/atdd/process/actions/bindings.go`. Recommended: do it in a fresh `/clear`-ed session. Open design points to settle when starting it: (a) where to persist the previous pass's failing signature across loop iterations (a new `ctx` key vs. reuse of `verify_failure_output`); (b) whether the guard is a new gateway+binding in `process-flow.yaml` or folded into the existing `verify-tests-pass` outcome gate; (c) how "SUT scope for the red test" is resolved for the scope-drift check (reuse `Engine.Scope` / `ResolveLayerPaths` against `phase-changed-files`).
+**Next action: the scope-drift guard, which is underspecified and needs a design decision (the fixer's legal scope is already every layer, so "SUT scope of the red test" must be newly defined).** It is carried in a fresh child plan: **`plans/20260616-0922-scope-drift-guard-fix-loop.md`**. Resume by refining that plan first: `/refine-plan plans/20260616-0922-scope-drift-guard-fix-loop.md` to resolve its Q1–Q4, then `/execute-plan` it.
 
-> ⚠️ Concurrency note: a concurrent agent (external-system plan `20260615-0755`, now COMPLETE — its plan file was removed in `c24cc52`) previously edited `process-flow.yaml`/`bindings.go`. Before starting Step 4, re-confirm the working tree is clean (`git status` + grep `plans/*.md` for live pickup markers).
+> ⚠️ Concurrency note: `process-flow.yaml` / `bindings.go` are collision-prone. The loop-attempt-numbering plan (`20260616-0649`) touches the engine/driver/clauderun but explicitly NOT the YAML. Re-confirm a clean tree (`git status` + grep `plans/*.md` for live pickup markers) before executing the child plan.
 
 Decisions locked in:
 - **Q1 (unattended human gate)** → at a `category: human` node with **no operator TTY**, yield cleanly to a **pending-human terminal state** (not a failure halt), free the machine, discard uncommitted edits; resume re-enters from the last clean commit. No-TTY auto-detect, no notification (deferred).
@@ -63,12 +64,7 @@ Step 1 (unattended human-dispatch yield) is independently valuable and can land 
 
 ## Steps
 
-- [ ] **Step 4 — No-progress / scope-drift guard for the fix loop.** The flow already captures `pre-agent-fingerprint` and `phase-changed-files` per dispatch (`bindings.go:1110`, `:1251`). Add a guard so the loop halts when:
-  - **no progress** — consecutive fix passes leave the *test state* unchanged. Compare the **test-outcome / `verify_failure_output`** across passes (not `phase-changed-files`, which tracks source edits, not test results); two passes with an identical failing-test signature means the fixer is spinning.
-  - **scope drift** — the fixer's only edits fall **outside** the system-under-test scope (e.g. it edited a driver-port DTO but the red test is an API acceptance test). **Build this on the existing `check_phase_scope` / `validate-outputs-and-scopes` machinery** (`bindings.go:496`, `:1235`) rather than a fresh scope check.
-
-  Layer under the existing `max-visits: 2` count cap — that bounds *count*, not *relevance* or *wall-clock*. This is the orchestrator-side backstop Q3 relies on; it **complements** Q2's 3a fixer self-bail (exit-on-uncertainty) — 3a is the agent policing itself, Step 4 catches a fixer that keeps editing without bailing.
-- [ ] **Step 5 — Tests / verification (Step-4 portion remaining).** ✅ Step-1 tests DONE (`TestClaudeRunDispatch_HumanCategoryYieldsWhenNoTTY` + the no-TTY override on the forces-interactive / envelope tests; Run-level `TestEmbeddedDriver_RunYieldsToPendingHumanWhenNoTTY` asserts the `reset --hard HEAD` discard). **Remaining:** cover the Step 4 fix-loop guard (no-progress: identical failing signature across passes → halt; scope-drift: edits outside SUT scope → halt); regression-check that a normal headless fix flow is unchanged. Scope `go test` per-package (no unbounded `./...` on Windows).
+**Step 4 (no-progress guard) and its Step-5 tests are DONE this session** (see the resume block above). The **scope-drift** half — the only remaining work on this plan — is carried in the child plan **`plans/20260616-0922-scope-drift-guard-fix-loop.md`**, which needs its design questions resolved before execution. Nothing executable remains in *this* plan; it stays only as the record/cross-reference until the child plan lands, at which point this file can be deleted.
 
 ## Open questions — RESOLVED (via /refine-plan 2026-06-16)
 

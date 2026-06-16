@@ -420,6 +420,19 @@ func TestVerifyTests_FixLoopHaltsAtCap(t *testing.T) {
 						ctx.Set("outputs-and-scopes-valid", true)
 						return statemachine.Outcome{}
 					}
+				case "check-fix-progress":
+					// verify-tests-pass's no-progress guard (plan 20260615-1845
+					// Step 4) sits on the fail branch before the fixer. This
+					// fixture exercises the COUNT cap, so it models a loop that
+					// keeps making progress (never the identical failure twice)
+					// — stamp progressing=true so the no-progress guard never
+					// short-circuits and FIX_LOOP_EXHAUSTED stays the halt under
+					// test. (verify-tests-fail has no such node; the case is a
+					// no-op there.)
+					return func(ctx *statemachine.Context) statemachine.Outcome {
+						ctx.Set("fix-loop-progressing", true)
+						return statemachine.Outcome{}
+					}
 				default:
 					return func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} }
 				}

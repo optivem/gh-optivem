@@ -1606,6 +1606,21 @@ processes:
         max-visits: 2
         on-max-visits: FIX_LOOP_EXHAUSTED
 
+      # No-progress guard (plan 20260615-1845 Step 4). Runs on the fail
+      # branch BEFORE re-dispatching the fixer; fingerprints the failing
+      # run and stamps fix-loop-progressing. Catches a fixer that keeps
+      # editing without changing the failure — a behaviour the max-visits
+      # COUNT cap above cannot see (it bounds attempts, not relevance).
+      - id: CHECK_FIX_PROGRESS
+        type: service-task
+        action: check-fix-progress
+        name: "Check Fix-Loop Progress"
+
+      - id: GATE_FIX_PROGRESSING
+        type: gateway
+        binding: fix-loop-progressing
+        name: "Fix Loop Progressing?"
+
       - id: VERIFY_PASS_END
         type: end-event
         name: "Tests Pass Verified"
@@ -1618,6 +1633,20 @@ processes:
         type: error-end-event
         name: "Unknown Tests Outcome"
 
+      # Halt target for the no-progress guard (plan 20260615-1845 Step 4).
+      # Reached when two consecutive failing runs are identical — the last
+      # fixer pass changed nothing about the failure, so a human is asked to
+      # adjudicate rather than spend another opus·high pass on a spinning
+      # loop. Sibling of FIX_LOOP_EXHAUSTED (the count cap); this terminal
+      # fires earlier when the loop is provably stuck. The last verify
+      # output is fresh in ctx.State (verify_failure_output) and the driver
+      # surfaces it with the halt. The `_EXHAUSTED` suffix is intentional —
+      # it marks this as a loop-cap halt for the halt-terminals-are-error-end
+      # invariant (internal/engine/statemachine/invariants.go).
+      - id: FIX_LOOP_NO_PROGRESS_EXHAUSTED
+        type: error-end-event
+        name: "Fix Loop Stalled — identical test failure after a fix pass (the fixer is not changing the failure; review the last test output and adjudicate system code vs. test)"
+
       # Halt target for the fixer-retry cap. The FIX path here is reached
       # via a failing test run, so the last verify output is fresh in
       # ctx.State (verify_failure_output) and the driver surfaces it with the
@@ -1629,10 +1658,13 @@ processes:
 
     sequence-flows:
       - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
-      - {from: GATE_TESTS_OUTCOME, to: VERIFY_PASS_END,              when: "test-outcome == pass"}
-      - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_FAILING_TESTS, when: "test-outcome == fail"}
-      - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,             when: "test-outcome == infra"}
+      - {from: GATE_TESTS_OUTCOME, to: VERIFY_PASS_END,    when: "test-outcome == pass"}
+      - {from: GATE_TESTS_OUTCOME, to: CHECK_FIX_PROGRESS, when: "test-outcome == fail"}
+      - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,   when: "test-outcome == infra"}
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
+      - {from: CHECK_FIX_PROGRESS,   to: GATE_FIX_PROGRESSING}
+      - {from: GATE_FIX_PROGRESSING, to: FIX_UNEXPECTED_FAILING_TESTS,   when: "fix-loop-progressing == true"}
+      - {from: GATE_FIX_PROGRESSING, to: FIX_LOOP_NO_PROGRESS_EXHAUSTED, when: "fix-loop-progressing == false"}
       - {from: FIX_UNEXPECTED_FAILING_TESTS, to: RUN_TESTS}
 
   # Inverted: run tests under suite/test-names; on PASS, dispatch

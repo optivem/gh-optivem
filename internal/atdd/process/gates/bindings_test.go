@@ -75,6 +75,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"dsl-flags-present",
 		"command-succeeded",
 		"test-outcome",
+		"fix-loop-progressing",
 		"expected-test-result",
 		"fix-on-failure-enabled",
 		"at-dsl-port-changed",
@@ -352,6 +353,47 @@ func TestTestOutcome(t *testing.T) {
 			}
 			if out.Value != tc.want {
 				t.Fatalf("Value: got %q, want %q", out.Value, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// fix-loop-progressing — GATE_FIX_PROGRESSING (plan 20260615-1845 Step 4)
+// ---------------------------------------------------------------------------
+
+func TestFixLoopProgressing(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		seed   any
+		seeded bool
+		want   bool
+		err    bool
+	}{
+		{name: "true_continues", seed: true, seeded: true, want: true},
+		{name: "false_halts", seed: false, seeded: true, want: false},
+		{name: "string_true", seed: "true", seeded: true, want: true},
+		{name: "string_false", seed: "false", seeded: true, want: false},
+		{name: "unset_halts", seeded: false, err: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+			ctx := statemachine.NewContext()
+			if tc.seeded {
+				ctx.Set("fix-loop-progressing", tc.seed)
+			}
+			out := b.fixLoopProgressing(ctx)
+			if tc.err {
+				if out.Err == nil {
+					t.Fatalf("expected err, got %+v", out)
+				}
+				return
+			}
+			if out.Err != nil {
+				t.Fatalf("unexpected err: %v", out.Err)
+			}
+			if out.Bool != tc.want {
+				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)
 			}
 		})
 	}
