@@ -42,6 +42,7 @@ const (
 
 	infoCopyingExternals    = "Copying external simulators..."
 	infoCopyingDbMigrations = "Copying Flyway db migrations..."
+	infoCopyingContracts    = "Copying Pact contracts..."
 	infoCopyingSystemTests  = "Copying system-tests..."
 	infoCopyingCloudRun     = "Copying Cloud Run scripts..."
 	infoCopyingDocs         = "Copying docs..."
@@ -88,6 +89,19 @@ func copyDbMigrations(shop, dst string) {
 	src := filepath.Join(shop, "system", "db", "migrations")
 	if _, err := os.Stat(src); err == nil {
 		files.CopyDir(src, filepath.Join(dst, "db", "migrations"))
+	}
+}
+
+// copyContracts copies shop/contracts/ to <dst>/contracts/ so the flattened
+// frontend (consumer) and backend (provider) modules both resolve ../contracts
+// (see contractsPathReplacements). Broker-less pact sharing: the file is
+// committed into each repo that runs a Pact tier. The os.Stat guard keeps the
+// scaffolder compatible with shop refs predating the committed pact. Multitier
+// only — monolith carries no consumer/provider split.
+func copyContracts(shop, dst string) {
+	src := filepath.Join(shop, "contracts")
+	if _, err := os.Stat(src); err == nil {
+		files.CopyDir(src, filepath.Join(dst, "contracts"))
 	}
 }
 
@@ -391,6 +405,9 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	log.Info(infoCopyingDbMigrations)
 	copyDbMigrations(shop, repoDir)
 
+	log.Info(infoCopyingContracts)
+	copyContracts(shop, repoDir)
+
 	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "multi", backendLang)
 
@@ -417,6 +434,9 @@ func applyMultitierMonorepo(cfg *config.Config) {
 
 	// Flyway path rewrite for Java backend application-test.yml (no-op on TS).
 	templates.FixupAllTextFiles(repoDir, flywayPathReplacements())
+
+	// Pact contracts-folder path rewrite (flattened backend/ + frontend/).
+	templates.FixupAllTextFiles(repoDir, contractsPathReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -516,6 +536,11 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	log.Info(infoCopyingDbMigrations)
 	copyDbMigrations(shop, bDir)
 
+	// Pact contract lands in the backend repo so the provider verification
+	// (@PactFolder ../contracts, run in the backend commit stage) has a pact.
+	log.Info(infoCopyingContracts)
+	copyContracts(shop, bDir)
+
 	log.Info("Copying commit-stage and bump-patch-version workflows to backend repo...")
 	backendWfMap := map[string]string{
 		Expand(Names.MultitierBackendCommitStageWf, vars): Names.DestBackendCommitStageWf,
@@ -539,6 +564,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(bDir, systemTestSonarKeyReplacements())
 	templates.FixupAllTextFiles(bDir, flywayPathReplacements())
+	templates.FixupAllTextFiles(bDir, contractsPathReplacements())
 	log.Success("Applied backend repo template")
 
 	// Frontend repo: code + commit stage
@@ -546,6 +572,11 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	log.Info("Copying frontend code to frontend repo...")
 	frontendSrc := filepath.Join(shop, Expand(Names.ShopSystemMultitierFrontend, vars))
 	files.CopyDir(frontendSrc, filepath.Join(fDir, Names.TargetFrontendDir))
+
+	// Pact contract lands in the frontend repo so the consumer test regenerates
+	// it in place (../contracts) rather than writing outside the repo.
+	log.Info(infoCopyingContracts)
+	copyContracts(shop, fDir)
 
 	log.Info("Copying commit-stage and bump-patch-version workflows to frontend repo...")
 	frontendWfMap := map[string]string{
@@ -569,6 +600,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupWorkflowContent(fDir, frontendReplacements)
 	templates.FixupAllTextFiles(fDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(fDir, systemTestSonarKeyReplacements())
+	templates.FixupAllTextFiles(fDir, contractsPathReplacements())
 	log.Success("Applied frontend repo template")
 }
 
@@ -836,6 +868,18 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 func flywayPathReplacements() [][2]string {
 	return [][2]string{
 		{"filesystem:../../db/migrations", "filesystem:../db/migrations"},
+	}
+}
+
+// contractsPathReplacements rewrites the Pact contracts-folder path from
+// ../../../contracts (shop layout: system/multitier/{backend,frontend}-* → up 3
+// → root → contracts) to ../contracts (scaffold layout: {backend,frontend}/ →
+// up 1 → repo root → contracts). Applied to all text files so one call covers
+// both the Java provider's @PactFolder and the React consumer's PactV3 dir.
+// No-op on monolith / .NET, which carry no Pact contract test today.
+func contractsPathReplacements() [][2]string {
+	return [][2]string{
+		{"../../../contracts", "../contracts"},
 	}
 }
 
