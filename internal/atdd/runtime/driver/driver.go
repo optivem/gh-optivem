@@ -1882,13 +1882,15 @@ func (rs *runState) printAgentSummary(w io.Writer) {
 // renderAgentSummary writes a per-agent table + totals row to w. One row
 // per dispatch, in dispatch order. Columns:
 //
-//	#  agent  model  effort  elapsed  in  out  cost
+//	#  agent  model  effort  elapsed  fresh  cached  out  cost
 //
-// `in` aggregates input + cache-read + cache-creation tokens (the same
-// shape the per-dispatch banner uses via formatUsageSuffix); `out` is
-// output tokens; `cost` is the runner-reported total_cost_usd. Rows
-// whose dispatch ran without a parsed envelope (interactive mode, or a
-// headless run that crashed mid-stream) render in/out/cost as "—".
+// `fresh` is input billed at ≥ full rate this turn (input + cache-creation),
+// `cached` is the cheap cache-read reuse — split via clauderun.SplitInputTokens,
+// the same helper the per-dispatch banner uses via formatUsageSuffix so the two
+// views can't drift. `out` is output tokens; `cost` is the runner-reported
+// total_cost_usd. Rows whose dispatch ran without a parsed envelope (interactive
+// mode, or a headless run that crashed mid-stream) render fresh/cached/out/cost
+// as "—".
 // Failed dispatches get a "✗" prefix on the agent column so the operator
 // can spot which row burned tokens without producing work.
 //
@@ -1942,7 +1944,8 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 
 	var (
 		totalElapsed time.Duration
-		totalIn      int
+		totalFresh   int
+		totalCached  int
 		totalOut     int
 		totalCost    float64
 		anyUsage     bool
@@ -1950,12 +1953,12 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "=== Agent summary ===")
-	fmt.Fprintf(w, "  #  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+	fmt.Fprintf(w, "  #  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s  %8s\n",
 		agentW, "agent",
 		channelW, "channel",
 		modelW, "model",
 		effortW, "effort",
-		"elapsed", "in", "out", "cost")
+		"elapsed", "fresh", "cached", "out", "cost")
 
 	for i, r := range records {
 		name := summaryAgentLabel(r)
@@ -1963,41 +1966,44 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 			name = "✗ " + name
 		}
 		elapsed := r.elapsed.Round(time.Second).String()
-		in, out, cost := "—", "—", "—"
+		fresh, cached, out, cost := "—", "—", "—", "—"
 		if r.usage != nil {
-			inTokens := r.usage.InputTokens + r.usage.CacheCreationInputTokens + r.usage.CacheReadInputTokens
+			freshTokens, cachedTokens := clauderun.SplitInputTokens(r.usage)
 			outTokens := r.usage.OutputTokens
-			if inTokens > 0 || outTokens > 0 || r.usage.TotalCostUSD > 0 {
-				in = formatSummaryTokens(inTokens)
+			if freshTokens > 0 || cachedTokens > 0 || outTokens > 0 || r.usage.TotalCostUSD > 0 {
+				fresh = formatSummaryTokens(freshTokens)
+				cached = formatSummaryTokens(cachedTokens)
 				out = formatSummaryTokens(outTokens)
 				cost = fmt.Sprintf("$%.2f", r.usage.TotalCostUSD)
-				totalIn += inTokens
+				totalFresh += freshTokens
+				totalCached += cachedTokens
 				totalOut += outTokens
 				totalCost += r.usage.TotalCostUSD
 				anyUsage = true
 			}
 		}
 		totalElapsed += r.elapsed
-		fmt.Fprintf(w, "%3d  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+		fmt.Fprintf(w, "%3d  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s  %8s\n",
 			i+1,
 			agentW, name,
 			channelW, r.channel,
 			modelW, r.model,
 			effortW, r.effort,
-			elapsed, in, out, cost)
+			elapsed, fresh, cached, out, cost)
 	}
 
 	// Totals row.
-	totalInStr, totalOutStr, totalCostStr := "—", "—", "—"
+	totalFreshStr, totalCachedStr, totalOutStr, totalCostStr := "—", "—", "—", "—"
 	if anyUsage {
-		totalInStr = formatSummaryTokens(totalIn)
+		totalFreshStr = formatSummaryTokens(totalFresh)
+		totalCachedStr = formatSummaryTokens(totalCached)
 		totalOutStr = formatSummaryTokens(totalOut)
 		totalCostStr = fmt.Sprintf("$%.2f", totalCost)
 	}
-	fmt.Fprintf(w, "%3s  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s\n",
+	fmt.Fprintf(w, "%3s  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s  %8s\n",
 		"", agentW, "", channelW, "", modelW, "", effortW, "totals",
 		totalElapsed.Round(time.Second).String(),
-		totalInStr, totalOutStr, totalCostStr)
+		totalFreshStr, totalCachedStr, totalOutStr, totalCostStr)
 
 	if !anyUsage {
 		fmt.Fprintln(w, "(token + cost capture is headless-only; interactive runs show — for those columns)")

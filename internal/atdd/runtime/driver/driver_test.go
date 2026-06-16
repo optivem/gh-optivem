@@ -1455,8 +1455,11 @@ func TestPrintAgentSummary_EmptyRecordsIsNoOp(t *testing.T) {
 
 // TestPrintAgentSummary_WithUsage_RendersTotals seeds two synthetic
 // records with populated *TokenUsage and asserts the totals row sums
-// in/out tokens + cost across rows. Validates the headless-mode path
-// where every row carries a parsed envelope.
+// fresh/cached/out tokens + cost across rows. Row 1 is a high-cache
+// dispatch (most input served from cache_read); row 2 is a zero-cache
+// dispatch (cached renders "0"). Validates the headless-mode path where
+// every row carries a parsed envelope and exercises the fresh/cached
+// split via clauderun.SplitInputTokens.
 func TestPrintAgentSummary_WithUsage_RendersTotals(t *testing.T) {
 	rs := &runState{}
 	rs.appendRecord(dispatchRecord{
@@ -1465,7 +1468,9 @@ func TestPrintAgentSummary_WithUsage_RendersTotals(t *testing.T) {
 		effort:  "medium",
 		elapsed: 12 * time.Second,
 		usage: &clauderun.TokenUsage{
-			InputTokens: 2000, OutputTokens: 300, TotalCostUSD: 0.04,
+			// fresh = 2000 + 500 = 2500 → 2.5k; cached = 100000 → 100.0k.
+			InputTokens: 2000, CacheCreationInputTokens: 500,
+			CacheReadInputTokens: 100000, OutputTokens: 300, TotalCostUSD: 0.04,
 		},
 	})
 	rs.appendRecord(dispatchRecord{
@@ -1474,6 +1479,7 @@ func TestPrintAgentSummary_WithUsage_RendersTotals(t *testing.T) {
 		effort:  "high",
 		elapsed: 2*time.Minute + 31*time.Second,
 		usage: &clauderun.TokenUsage{
+			// fresh = 28000 → 28.0k; cached = 0 (renders "0").
 			InputTokens: 28000, OutputTokens: 4100, TotalCostUSD: 0.71,
 		},
 	})
@@ -1492,11 +1498,15 @@ func TestPrintAgentSummary_WithUsage_RendersTotals(t *testing.T) {
 		"high",
 		"12s",
 		"2m31s",
-		// totals: 12s + 2m31s = 2m43s; 2k+28k=30k → 30.0k;
-		// 0.3k+4.1k=4.4k → 4.4k; 0.04+0.71=$0.75.
+		// per-row split: row 1 fresh 2.5k / cached 100.0k; row 2 fresh 28.0k.
+		"2.5k",
+		"100.0k",
+		"28.0k",
+		// totals: 12s + 2m31s = 2m43s; fresh 2.5k+28.0k = 30.5k;
+		// cached 100.0k+0 = 100.0k; out 0.3k+4.1k = 4.4k; cost 0.04+0.71 = $0.75.
 		"totals",
 		"2m43s",
-		"30.0k",
+		"30.5k",
 		"4.4k",
 		"$0.75",
 	}
@@ -1507,7 +1517,7 @@ func TestPrintAgentSummary_WithUsage_RendersTotals(t *testing.T) {
 	}
 	// Header columns must be present so the operator can tell what each
 	// number means.
-	for _, want := range []string{"agent", "model", "effort", "elapsed", "in", "out", "cost"} {
+	for _, want := range []string{"agent", "model", "effort", "elapsed", "fresh", "cached", "out", "cost"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("summary missing header %q; got:\n%s", want, got)
 		}
@@ -1555,9 +1565,9 @@ func TestPrintAgentSummary_AttemptSuffix(t *testing.T) {
 }
 
 // TestPrintAgentSummary_NoUsage_RendersDashesAndFootnote covers the
-// interactive-mode path: usage is nil for every dispatch, so in / out /
-// cost render as "—" and the footnote explains why. Elapsed totals
-// still sum normally — wall-time is available in both modes.
+// interactive-mode path: usage is nil for every dispatch, so fresh /
+// cached / out / cost render as "—" and the footnote explains why.
+// Elapsed totals still sum normally — wall-time is available in both modes.
 func TestPrintAgentSummary_NoUsage_RendersDashesAndFootnote(t *testing.T) {
 	rs := &runState{}
 	rs.appendRecord(dispatchRecord{
@@ -1572,7 +1582,7 @@ func TestPrintAgentSummary_NoUsage_RendersDashesAndFootnote(t *testing.T) {
 	got := buf.String()
 
 	if !strings.Contains(got, "—") {
-		t.Errorf("no-usage rows must render in/out/cost as em-dash; got:\n%s", got)
+		t.Errorf("no-usage rows must render fresh/cached/out/cost as em-dash; got:\n%s", got)
 	}
 	if !strings.Contains(got, "headless-only") {
 		t.Errorf("no-usage path must surface footnote explaining headless-only capture; got:\n%s", got)

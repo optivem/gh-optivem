@@ -1351,7 +1351,8 @@ func TestExitBanner_IncludesUsageWhenPresent(t *testing.T) {
 	got := buf.String()
 	mustContain(t, got, "[agent]  exit   7 files")
 	mustContain(t, got, "47s")
-	mustContain(t, got, "12.4k in") // 6 + 10000 + 2400 = 12406 → 12.4k
+	mustContain(t, got, "10.0k fresh") // 6 + 10000 = 10006 → 10.0k (input + cache-creation)
+	mustContain(t, got, "2.4k cached") // cache_read 2400 → 2.4k
 	mustContain(t, got, "1.8k out")
 	mustContain(t, got, "$0.18")
 }
@@ -1366,7 +1367,7 @@ func TestExitBanner_OmitsUsageSuffixWhenNil(t *testing.T) {
 
 	got := buf.String()
 	mustContain(t, got, "[agent]  exit")
-	if strings.Contains(got, "$") || strings.Contains(got, " in ") {
+	if strings.Contains(got, "$") || strings.Contains(got, " fresh ") {
 		t.Errorf("expected no token suffix when usage is nil, got:\n%s", got)
 	}
 }

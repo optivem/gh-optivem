@@ -1555,20 +1555,34 @@ func writeExitBanner(opts Options, changedFiles int, elapsed time.Duration, usag
 		changedFiles, elapsed.Round(elapsedRound), formatUsageSuffix(usage)))
 }
 
-// formatUsageSuffix renders ", 12.4k in / 1.8k out, $0.18" if usage is non-nil
-// and non-empty. Returns "" otherwise so the banner gracefully degrades to
-// elapsed-time-only when the runner couldn't extract a JSON envelope (e.g.
-// interactive mode, or a headless-mode parse failure).
+// SplitInputTokens buckets a usage's input into fresh (paid-for this turn)
+// and cached (cheap reuse). fresh = input_tokens + cache_creation: a cache
+// write is billed at ≥ full rate this turn, so it belongs with genuinely
+// fresh input, not with the reuse. cached = cache_read, strictly the cheap
+// reuse. Single source of truth for the bucketing so the summary table and
+// the per-dispatch banner can't drift.
+func SplitInputTokens(usage *TokenUsage) (fresh, cached int) {
+	if usage == nil {
+		return 0, 0
+	}
+	return usage.InputTokens + usage.CacheCreationInputTokens, usage.CacheReadInputTokens
+}
+
+// formatUsageSuffix renders ", 7.0k fresh / 1355.6k cached / 1.8k out, $0.18"
+// if usage is non-nil and non-empty. Returns "" otherwise so the banner
+// gracefully degrades to elapsed-time-only when the runner couldn't extract
+// a JSON envelope (e.g. interactive mode, or a headless-mode parse failure).
 func formatUsageSuffix(usage *TokenUsage) string {
 	if usage == nil {
 		return ""
 	}
-	in := usage.InputTokens + usage.CacheCreationInputTokens + usage.CacheReadInputTokens
+	fresh, cached := SplitInputTokens(usage)
 	out := usage.OutputTokens
-	if in == 0 && out == 0 && usage.TotalCostUSD == 0 {
+	if fresh == 0 && cached == 0 && out == 0 && usage.TotalCostUSD == 0 {
 		return ""
 	}
-	return fmt.Sprintf(", %s in / %s out, $%.2f", formatTokens(in), formatTokens(out), usage.TotalCostUSD)
+	return fmt.Sprintf(", %s fresh / %s cached / %s out, $%.2f",
+		formatTokens(fresh), formatTokens(cached), formatTokens(out), usage.TotalCostUSD)
 }
 
 // formatTuning renders the enter-banner Tuning: line. Both set →
