@@ -22,10 +22,22 @@ const (
 	// IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS (plan 20260530-1725 Item 0).
 	// Unlike the system anchor, this one sits on the TRUE branch of the
 	// GATE_SYSTEM_DRIVER_PORTS_CHANGED gateway, so its incoming edge carries a
-	// `when:` predicate the unroll must preserve (see unrollChannelAnchor).
+	// `when:` predicate the unroll must preserve (see unrollAnchor).
 	writeAndVerifyAcceptanceTestsProcess          = "write-and-verify-acceptance-tests"
 	implementSystemDriverAdaptersAnchor           = "IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS"
 	implementAndVerifySystemDriverAdaptersProcess = "implement-and-verify-system-driver-adapters"
+
+	// External System driver-adapter contract cycle — shared-contract's
+	// IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS anchor (plan 20260615-0755).
+	// External systems are project-declared (config `external-systems:`), so —
+	// like channels — the anchor unrolls into one cloned call-activity per
+	// registered external system at load time. The anchor sits on the TRUE
+	// branch of GATE_EXTERNAL_DRIVER_PORTS_CHANGED (via the upfront
+	// VALIDATE_EXTERNAL_SYSTEMS_REGISTERED node), so the unroll preserves the
+	// seam predicate just like the System Driver adapter anchor.
+	sharedContractProcess                         = "shared-contract"
+	implementExternalDriverAdaptersAnchor         = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"
+	implementAndVerifyExternalDriverAdaptersProc  = "implement-and-verify-external-system-driver-adapters-contract-tests"
 )
 
 // UnrollSystemChannels statically unrolls the channel loop in the
@@ -48,7 +60,7 @@ const (
 //   - suite:   acceptance-<channel> (D1 selector) — each channel verifies
 //     only its own acceptance suite.
 func (e *Engine) UnrollSystemChannels(channels []string) error {
-	return e.unrollChannelAnchor(
+	return e.unrollAnchor(
 		changeSystemBehaviorProcess,
 		implementAndVerifySystemAnchor,
 		implementAndVerifySystemProcess,
@@ -98,7 +110,7 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 // behaviour intact. The unroll is strictly linear (gate → ch0 → … → chN-1 →
 // WAV_AT_END), no loopback.
 func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
-	return e.unrollChannelAnchor(
+	return e.unrollAnchor(
 		writeAndVerifyAcceptanceTestsProcess,
 		implementSystemDriverAdaptersAnchor,
 		implementAndVerifySystemDriverAdaptersProcess,

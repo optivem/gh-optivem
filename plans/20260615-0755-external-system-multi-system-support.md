@@ -1,5 +1,12 @@
 # Support a ticket that changes MORE THAN ONE external system's driver port
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-16T05:37:27Z`
+
+## TL;DR
+
+**Why:** A ticket whose change touches two external systems' driver ports (e.g. a method on `erp` and a DTO on `clock`) cannot be served today — the parent identity fix turns `>1` external systems into a hard error, so the author must split the ticket by hand.
+**End result:** The external-driver contract cycle runs **once per touched external system** — statically unrolled over the `external-systems:` registry, each clone guarded by its own "did *my* port change?" check and carrying its own baked `real-kind` routing. `identifyExternalSystem` is retired; its port→names-set logic survives as a shared helper feeding the per-clone guard and an upfront "all touched systems registered" validation.
+
 **Date:** 2026-06-15 (local)
 **Status:** Refined 2026-06-16 — all open questions (A–E) resolved, design fully pinned; ready for `/execute-plan`.
 **Follow-up to:** `plans/20260613-1835-external-system-identity-dto-only-change.md`
