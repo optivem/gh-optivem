@@ -132,7 +132,7 @@ var infraPatterns = []infraPattern{
 		// upstream, so route it to the infra halt for a human (same as the
 		// "unknown test suite" sibling above). Matches the tools' fixed "no
 		// tests …" wording, not the echoed filter, per the table's guidance.
-		label: "empty test selection",
+		label: "named tests not discoverable — did they compile / are the names correct?",
 		re:    regexp.MustCompile(`(?i)\bno tests? (found|were executed|match(es)? the given)`),
 	},
 	{
@@ -145,7 +145,7 @@ var infraPatterns = []infraPattern{
 		// report-count guard turns that silent success into this explicit marker.
 		// Same outcome as its siblings: an empty selection is never a valid
 		// result on either polarity, so route it to the infra halt.
-		label: "empty test selection",
+		label: "named tests not discoverable — did they compile / are the names correct?",
 		re:    regexp.MustCompile(`(?i)\b0 tests executed for the given selection`),
 	},
 }
