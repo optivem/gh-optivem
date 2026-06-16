@@ -1,5 +1,11 @@
 # 2026-06-16 09:22:00 CEST — Scope-drift guard for the verify-tests-pass fix loop
 
+> ⏸️ **DEFERRED — needs discussion before any build.** Moved to `plans/deferred/` on 2026-06-16.
+>
+> **Open meta-question (supersedes Q1–Q4 below): should this guard exist at all?** During refine it surfaced that the scope-drift guard is a *third* overlapping backstop (count cap + no-progress already halt the loop), that it requires inventing a new "system-under-test layer" concept that doesn't exist in `gh-optivem.yaml` and already has a multitier hole (`system-path` is monolith-only), and that its own Problem section flags an asymmetric too-narrow/too-broad risk in the most collision-prone file in the repo.
+>
+> **Leaning (not yet decided — discuss first):** *drop the auto-halting guard, keep only the diagnostic.* I.e. don't have the orchestrator make a relevance judgment; instead enrich the existing count-cap / no-progress `_EXHAUSTED` halt message with the layers/files the fixer edited across its passes (reuse `phase-changed-files`), so a human arriving at the halt immediately sees "only edited tests/DTOs, never the system" — the #69 value — with no new SUT-scope concept and no false-halt risk. The fuller Q1–Q4 guard design below is the alternative if discussion decides the auto-halt is worth its cost.
+
 > Spun off from `plans/20260615-1845-fix-flow-interactive-stall-and-frame-mismatch.md` (Step 4). That plan's **no-progress** guard landed (commit on the same session); this plan carries the **scope-drift** half, which needs a design decision before it can be built. Cross-references the parent's Conclusion / Q3 and the now-shipped `check-fix-progress` / `GATE_FIX_PROGRESSING` wiring.
 
 ## TL;DR
