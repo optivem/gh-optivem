@@ -1,7 +1,5 @@
 # 2026-06-15 18:45:00 UTC — Fix-flow stall: interactive human-dispatch in unattended runs + fixer frame-mismatch
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-16T05:40:12Z` (paused for concurrent-agent collision; Step 2 committed in `9f6ed37`)
-
 ## TL;DR
 
 **Why:** Run #69 (`Reject order with line quantity of 100`) burned **2h47m wall-clock and then halted on a bogus infra error**, and almost all of that time (2h14m58s) was a single `unexpected-failing-tests-fixer` dispatch that did **no measurable work** (no event stream, `—` tokens, `—` cost). Root cause is two independent defects:
@@ -46,9 +44,14 @@ Notes that informed the steps below:
 
 ## ▶ Next executable step (resume here)
 
-**Status: Step 2 DONE (committed `9f6ed37`). Step 3 DONE (uncommitted — `unexpected-failing-tests-fixer.md` rewritten: caller-blind framing, 3rd "implementation incomplete" diagnosis, exit-on-uncertainty bail; realized via no-edit exit + existing `FIX_LOOP_EXHAUSTED` visit-cap halt since no bespoke halt-for-human envelope exists without a YAML route — that route is a noted follow-up). Steps 1, 4, 5 remain. Next action is Step 1 (needs two design decisions: pending-human exit-code semantics + discard-scope of the uncommitted-edit cleanup).**
+**Status: Steps 1, 2, 3 DONE. Only Step 4 (+ its Step-5 tests) remains.**
+- Step 2 — committed `9f6ed37` (empty-selection infra label reworded).
+- Step 3 — committed `424220a` (`unexpected-failing-tests-fixer.md` reframed caller-blind; 3rd "implementation incomplete" diagnosis; exit-on-uncertainty bail realized via no-edit exit + existing `FIX_LOOP_EXHAUSTED` visit-cap halt — a bespoke 1-pass halt-for-human envelope would need a YAML route, noted follow-up).
+- Step 1 — pending-human yield: `ErrPendingHuman` sentinel + `stdinIsTTYFn` seam + `ExitCodePendingHuman = 2` in `driver.go`; dispatcher yields on `category:human && !TTY`; `Run` discards via `gitRunFn(... "reset","--hard","HEAD")`; CLI maps the sentinel to exit 2 in `implement_commands.go`. Tested (driver + root pkg green).
 
-> ⚠️ Execution paused on 2026-06-16 for a concurrent-agent collision: another agent was actively editing this plan's core files (`driver.go`, `process-flow.yaml`, `bindings.go`) while executing the external-system plan (`20260615-0755`). Step 2 lived only in `verify_classify.go`/`_test.go` (no overlap) so it landed. **Before resuming Steps 1/3/4, confirm the working tree is clean of other agents** (`git status` + grep `plans/*.md` for live pickup markers).
+**Next action: Step 4 — the no-progress / scope-drift fix-loop guard.** This is the heaviest remaining item and touches the collision-prone `process-flow.yaml` + `internal/atdd/process/actions/bindings.go`. Recommended: do it in a fresh `/clear`-ed session. Open design points to settle when starting it: (a) where to persist the previous pass's failing signature across loop iterations (a new `ctx` key vs. reuse of `verify_failure_output`); (b) whether the guard is a new gateway+binding in `process-flow.yaml` or folded into the existing `verify-tests-pass` outcome gate; (c) how "SUT scope for the red test" is resolved for the scope-drift check (reuse `Engine.Scope` / `ResolveLayerPaths` against `phase-changed-files`).
+
+> ⚠️ Concurrency note: a concurrent agent (external-system plan `20260615-0755`, now COMPLETE — its plan file was removed in `c24cc52`) previously edited `process-flow.yaml`/`bindings.go`. Before starting Step 4, re-confirm the working tree is clean (`git status` + grep `plans/*.md` for live pickup markers).
 
 Decisions locked in:
 - **Q1 (unattended human gate)** → at a `category: human` node with **no operator TTY**, yield cleanly to a **pending-human terminal state** (not a failure halt), free the machine, discard uncommitted edits; resume re-enters from the last clean commit. No-TTY auto-detect, no notification (deferred).
@@ -60,14 +63,12 @@ Step 1 (unattended human-dispatch yield) is independently valuable and can land 
 
 ## Steps
 
-- [ ] **Step 1 — Yield human-category dispatch to pending-human in unattended runs** (per Q1, resolved). In `driver.go` (around the `Headless: opts.Headless && nodeParams["category"] != "human"` decision, line ~1234), detect **no operator TTY** (stdin is not an interactive terminal — covers rehearsal / CI / cron / piped). When a `category: human` node is reached with no TTY, **do not dispatch the interactive TUI and do not block**: end the run in a clean **pending-human terminal state** (a normal, expected outcome — *not* a failure like `TESTS_INFRA_HALT`) and free the machine. Discard the uncommitted in-progress edits so the tree is left at the last clean (DONE) commit. Resume itself already exists (`scoped.go`): a later resume skips committed phases and re-enters the human gate from the clean, compiling tree. No idle-wait, no `--unattended` flag (no-TTY auto-detect), no notification (deferred).
-  - **Decided 2026-06-16:** (a) **exit code** — yield returns a distinct sentinel error from the dispatcher (`statemachine.Outcome{Err: ErrPendingHuman}`); `Run` recognizes it via `errors.Is` and the CLI (`implement_commands.go`) maps it to **exit code 2** (distinct from 0=done, 1=error). (b) **discard scope** — `git reset --hard HEAD` only (tracked working-tree mods); do **not** `git clean` untracked files. Detection reuses the existing TTY helper pattern (`stdinIsTTY` in `cross_repo_commands.go:1166` / `isatty.IsTerminal(os.Stdin.Fd())`).
 - [ ] **Step 4 — No-progress / scope-drift guard for the fix loop.** The flow already captures `pre-agent-fingerprint` and `phase-changed-files` per dispatch (`bindings.go:1110`, `:1251`). Add a guard so the loop halts when:
   - **no progress** — consecutive fix passes leave the *test state* unchanged. Compare the **test-outcome / `verify_failure_output`** across passes (not `phase-changed-files`, which tracks source edits, not test results); two passes with an identical failing-test signature means the fixer is spinning.
   - **scope drift** — the fixer's only edits fall **outside** the system-under-test scope (e.g. it edited a driver-port DTO but the red test is an API acceptance test). **Build this on the existing `check_phase_scope` / `validate-outputs-and-scopes` machinery** (`bindings.go:496`, `:1235`) rather than a fresh scope check.
 
   Layer under the existing `max-visits: 2` count cap — that bounds *count*, not *relevance* or *wall-clock*. This is the orchestrator-side backstop Q3 relies on; it **complements** Q2's 3a fixer self-bail (exit-on-uncertainty) — 3a is the agent policing itself, Step 4 catches a fixer that keeps editing without bailing.
-- [ ] **Step 5 — Tests / verification.** Unit-test the unattended human-dispatch decision (TTY present → interactive dispatch; TTY absent → clean yield to pending-human + uncommitted edits discarded, per Q1); cover the Step 4 fix-loop guard (no-progress: identical failing signature across passes → halt; scope-drift: edits outside SUT scope → halt); regression-check that a normal headless fix flow is unchanged. Scope `go test` per-package (no unbounded `./...` on Windows).
+- [ ] **Step 5 — Tests / verification (Step-4 portion remaining).** ✅ Step-1 tests DONE (`TestClaudeRunDispatch_HumanCategoryYieldsWhenNoTTY` + the no-TTY override on the forces-interactive / envelope tests; Run-level `TestEmbeddedDriver_RunYieldsToPendingHumanWhenNoTTY` asserts the `reset --hard HEAD` discard). **Remaining:** cover the Step 4 fix-loop guard (no-progress: identical failing signature across passes → halt; scope-drift: edits outside SUT scope → halt); regression-check that a normal headless fix flow is unchanged. Scope `go test` per-package (no unbounded `./...` on Windows).
 
 ## Open questions — RESOLVED (via /refine-plan 2026-06-16)
 

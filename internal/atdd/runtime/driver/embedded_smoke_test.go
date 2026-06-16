@@ -240,6 +240,71 @@ processes:
 	}
 }
 
+// TestEmbeddedDriver_RunYieldsToPendingHumanWhenNoTTY is the Run-level
+// counterpart to the dispatcher yield test: when the walk reaches a
+// category:human node in an unattended run (no operator TTY), Run must yield
+// the ErrPendingHuman sentinel AND discard the uncommitted in-progress edits
+// (git reset --hard HEAD) so a later resume re-enters from the last clean
+// committed phase (plan 20260615-1845 Step 1).
+func TestEmbeddedDriver_RunYieldsToPendingHumanWhenNoTTY(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Force no-TTY (go test usually has none, but be explicit for CI TTYs).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return false }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
+	// Capture the discard call without spawning real git.
+	var gitCalls [][]string
+	prevGit := gitRunFn
+	gitRunFn = func(repoPath string, args ...string) ([]byte, error) {
+		gitCalls = append(gitCalls, append([]string{repoPath}, args...))
+		return nil, nil
+	}
+	defer func() { gitRunFn = prevGit }()
+
+	yaml := `
+processes:
+  main:
+    name: "Main"
+    start: HUMAN_GATE
+    nodes:
+      - id: HUMAN_GATE
+        type: user-task
+        agent: acceptance-test-writer
+        name: human gate
+        params:
+          category: human
+    sequence-flows: []
+`
+	yamlPath := filepath.Join(tempDir, "human-gate-flow.yaml")
+	if err := os.WriteFile(yamlPath, []byte(yaml), 0o644); err != nil {
+		t.Fatalf("write YAML: %v", err)
+	}
+
+	err := Run(context.Background(), Options{
+		YAMLPath: yamlPath,
+		RepoPath: tempDir,
+		Headless: true, // category:human still forces interactive → yields on no-TTY
+		Stdout:   &discardWriter{},
+		Stderr:   &discardWriter{},
+		Stdin:    strings.NewReader(""),
+	})
+	if !errors.Is(err, ErrPendingHuman) {
+		t.Fatalf("expected ErrPendingHuman, got %v", err)
+	}
+
+	found := false
+	for _, c := range gitCalls {
+		if len(c) >= 4 && c[1] == "reset" && c[2] == "--hard" && c[3] == "HEAD" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a `reset --hard HEAD` discard on pending-human yield, got git calls: %v", gitCalls)
+	}
+}
+
 // discardWriter satisfies io.Writer with no allocation. Used in lieu of
 // io.Discard for tests that pass it via Options.Stdout — Options
 // declares io.Writer, and io.Discard is io.Writer at the interface

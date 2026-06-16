@@ -189,6 +189,15 @@ kill them.`,
 			if runErr == nil {
 				printRunEndBanner(cmd.ErrOrStderr(), cfg, resolved.URL, resolved.Title)
 			}
+			// Pending-human yield (plan 20260615-1845 Step 1): a category:human
+			// node was reached in an unattended run (no operator TTY). This is a
+			// clean pause, not a failure — exit with a distinct code so a
+			// rehearsal / CI harness can tell "paused, awaiting a human" apart
+			// from done (0) and crashed (1), and resume later with an operator.
+			if errors.Is(runErr, driver.ErrPendingHuman) {
+				fmt.Fprintln(cmd.ErrOrStderr(), runErr)
+				os.Exit(driver.ExitCodePendingHuman)
+			}
 			exitOnError(runErr)
 		},
 	}

@@ -456,6 +456,13 @@ func TestClaudeRunDispatch_HumanCategoryForcesInteractive(t *testing.T) {
 	// Even when --headless is set on the parent `gh optivem implement` run,
 	// a category=human dispatch (fix-* agents, refine-acceptance-criteria)
 	// must launch interactively so the operator can drive the conversation.
+	// `go test` has no TTY, so force the interactive branch (plan
+	// 20260615-1845 Step 1 yields to pending-human only when stdin is NOT a
+	// terminal — the no-TTY yield is covered by the sibling test below).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
 	gitFake := &fakeGit{
 		out: [][]byte{
 			[]byte("aaaaaaa1\n"),
@@ -482,6 +489,35 @@ func TestClaudeRunDispatch_HumanCategoryForcesInteractive(t *testing.T) {
 	}
 	if claudeFake.calls[0].Headless {
 		t.Errorf("category=human dispatch must launch interactively, got Headless=true even though parent --headless was set")
+	}
+}
+
+func TestClaudeRunDispatch_HumanCategoryYieldsWhenNoTTY(t *testing.T) {
+	// Unattended run (rehearsal / CI / cron / piped — no operator TTY): a
+	// category=human dispatch must NOT block the interactive TUI. It yields
+	// the ErrPendingHuman sentinel WITHOUT shelling out to claude, so the
+	// machine is freed immediately (plan 20260615-1845 Step 1). The
+	// uncommitted-edit discard happens in Run, not the dispatcher, so this
+	// dispatcher-level test asserts only the yield + the no-dispatch.
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return false }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
+	claudeFake := &fakeClaude{}
+	gitFake := &fakeGit{}
+	driverOpts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	driverOpts.Headless = true
+	fn := buildEngine(t, driverOpts)
+
+	ctx := newCtxWithIssue()
+	ctx.Params["category"] = "human"
+
+	out := fn(ctx)
+	if !errors.Is(out.Err, ErrPendingHuman) {
+		t.Fatalf("expected ErrPendingHuman sentinel, got %v", out.Err)
+	}
+	if len(claudeFake.calls) != 0 {
+		t.Fatalf("expected no claude dispatch on pending-human yield, got %d", len(claudeFake.calls))
 	}
 }
 
@@ -1265,6 +1301,14 @@ func TestClaudeRunDispatch_ScopedAgentWithoutDeclaredOutputs_SeedsEnvelopeChanne
 	// allow-list spec with the envelope keys; without it, `gh optivem
 	// output write scope-exception-files=...` refuses with "no outputs
 	// declared for this agent".
+	//
+	// Force a TTY so the "human" category dispatches (interactive) rather than
+	// yielding to pending-human — this test is about envelope seeding, not the
+	// no-TTY yield (plan 20260615-1845 Step 1, covered by its own test).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
 	for _, category := range []string{"test-agent", "prod-agent", "human"} {
 		t.Run(category, func(t *testing.T) {
 			tmpRepo := t.TempDir()
@@ -1314,6 +1358,13 @@ func TestClaudeRunDispatch_ScopeNoneDispatch_DoesNotSeedEnvelope(t *testing.T) {
 	// declares no read/write contract, so it has nothing to violate and stays
 	// exempt — the envelope channel is NOT wired and GH_OPTIVEM_OUTPUT_* stay
 	// unset. This is the one tier the scope-based gate still excludes.
+	//
+	// Force a TTY so the category:human dispatch is interactive rather than
+	// yielding to pending-human (plan 20260615-1845 Step 1, tested separately).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
 	tmpRepo := t.TempDir()
 	rs := &runState{runTimestamp: "20260528-150000", repoPath: tmpRepo}
 	gitFake := &fakeGit{

@@ -23,6 +23,7 @@ package driver
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -58,6 +59,28 @@ import (
 
 // DefaultProcessName is the entry process loaded by every public CLI command.
 const DefaultProcessName = "main"
+
+// ErrPendingHuman is the sentinel a dispatcher returns when it reaches a
+// `category: human` node in an unattended run (no operator TTY). Rather than
+// blocking the interactive `claude` TUI on stdin nobody will answer (run #69:
+// ~2h14m of dead wall-clock), the run yields: it ends here, the machine is
+// freed, and Run discards the uncommitted in-progress edits so a later resume
+// re-enters the human gate from the last clean committed phase with an
+// operator present. It is a normal, expected outcome — NOT a failure halt — so
+// the CLI maps it to ExitCodePendingHuman, distinct from success (0) and error
+// (1). Recognised via errors.Is through the engine's %w-wrapped propagation.
+var ErrPendingHuman = errors.New("pending human: category:human node reached with no operator TTY (unattended run) — yielded; resume with an operator present")
+
+// ExitCodePendingHuman is the process exit code for an ErrPendingHuman yield.
+// Distinct from 0 (run completed) and 1 (run failed) so a rehearsal / CI
+// harness can tell "paused, awaiting a human" apart from done and crashed.
+const ExitCodePendingHuman = 2
+
+// stdinIsTTYFn reports whether stdin is an interactive terminal. A package var
+// (like nowFn) so tests can force the answer without a real TTY. Mirrors the
+// isatty stdout check used for trace colorisation and the stdinIsTTY helper in
+// cross_repo_commands.go.
+var stdinIsTTYFn = func() bool { return isatty.IsTerminal(os.Stdin.Fd()) }
 
 // Options bundles every driver knob that callers (the `gh optivem implement`
 // command and tests) might want to set. Zero values yield a usable
@@ -534,7 +557,19 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		entryProcess = proc
 	}
 
-	return eng.RunProcess(entryProcess, sCtx)
+	runErr = eng.RunProcess(entryProcess, sCtx)
+	if errors.Is(runErr, ErrPendingHuman) {
+		// Pending-human yield (Step 1): discard the uncommitted in-progress
+		// edits so a later resume re-enters the human gate from the last clean
+		// committed phase (scoped.go refuses a DIRTY slice). Tracked working-
+		// tree mods only (`reset --hard HEAD`); untracked files are left as-is
+		// per the plan's decided discard scope. Best-effort — a failed reset
+		// warns but does not change the pending-human outcome.
+		if _, gerr := gitRunFn(repoPath, "reset", "--hard", "HEAD"); gerr != nil {
+			fmt.Fprintf(opts.Stderr, "driver: warning: discard uncommitted edits on pending-human yield: %v\n", gerr)
+		}
+	}
+	return runErr
 }
 
 // resolveRepoPath returns the absolute path the driver treats as the
@@ -1061,6 +1096,20 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 				return statemachine.Outcome{Err: fmt.Errorf("dispatcher: node param %q: %w", k, err)}
 			}
 			nodeParams[k] = expanded
+		}
+		// Unattended human gate (plan 20260615-1845 Step 1). A category:human
+		// node forces interactive mode (Headless is AND-gated on category in
+		// cOpts below), which blocks on the operator's TTY. In an unattended run
+		// (rehearsal / CI / cron / piped — stdin is not a terminal) no operator
+		// is present, so the TUI would stall indefinitely (run #69). Yield
+		// instead: return the ErrPendingHuman sentinel WITHOUT dispatching, so
+		// the machine is freed immediately. Run discards the uncommitted edits
+		// and the CLI maps the sentinel to ExitCodePendingHuman; a later resume
+		// (scoped.go) re-enters this gate from the clean committed tree with an
+		// operator present.
+		if nodeParams["category"] == "human" && !stdinIsTTYFn() {
+			fmt.Fprintf(opts.Stderr, "Human gate reached (%s) with no operator TTY — yielding to pending-human; run is resumable from the last committed phase.\n", agentName)
+			return statemachine.Outcome{Err: ErrPendingHuman}
 		}
 		tuning, err := opts.AgentSet.LoadTuning(agentName)
 		if err != nil {
