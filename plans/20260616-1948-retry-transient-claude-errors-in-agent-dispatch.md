@@ -53,13 +53,17 @@ General case: the agent subprocess is headless (`claude -p`), one-shot, and neve
 
 **File:** `internal/atdd/process/clauderun/clauderun.go` (near `rateLimitSignatures` / `authSignatures`, ~line 1273).
 
-Add `transientSignatures` (case-insensitive substrings) covering server-side / network blips that the CLI surfaces on stderr:
+Add `transientSignatures` (case-insensitive substrings). **Decision (refine 2026-06-16): anchored phrases only** — match the message form the `claude` CLI actually emits on stderr, never bare numeric codes or bare network tokens. A bare `"500"` would match an agent that prints "500 units" or a `$500` price in test data; a bare `"eof"`/`"timeout"` would match a legitimately-failed agent (e.g. a test that timed out), and retrying that burns tokens with no chance of success. Anchoring keeps the set to genuine infrastructure blips.
 
-- `"internal server error"`, `"500"`, `"502"`, `"503"`, `"504"`, `"529"`
-- `"overloaded"`, `"overloaded_error"`
-- `"connection reset"`, `"connection refused"`, `"timeout"`, `"timed out"`, `"eof"`, `"temporarily unavailable"`
+Signatures:
 
-**Design decision to confirm:** bare numeric codes like `"500"` risk false positives against agent stderr that happens to print "500" for unrelated reasons. Safer to anchor on the message form the CLI actually emits — `"api error: 500"`, `"api error: 529"`, etc. — captured from the rehearsal log (`API Error: 500 Internal server error`). Prefer the anchored form; a false positive here only costs up to 3 wasted re-dispatches, but a tighter pattern avoids retrying a genuinely-failed agent that merely mentioned a number.
+- `"api error: 500"`, `"api error: 502"`, `"api error: 503"`, `"api error: 504"`, `"api error: 529"` (the rehearsal-71 log shows the literal form `API Error: 500 Internal server error`)
+- `"internal server error"`
+- `"overloaded"` (covers `overloaded_error`)
+- `"connection reset"`, `"connection refused"`
+- `"temporarily unavailable"`
+
+Explicitly **excluded** (too ambiguous to retry safely): bare `"500"`/`"502"`/…, bare `"eof"`, bare `"timeout"`/`"timed out"`. If a real-world transient surfaces only as one of these in practice, add the *anchored* form of it then — driven by an observed log, not speculation.
 
 ### 2. Order matters: rate-limit and auth must still fail fast
 
@@ -69,31 +73,33 @@ In whatever classification the retry decision uses, **rate-limit and auth win ov
 
 **File:** `internal/atdd/process/clauderun/clauderun.go` → `Dispatch` (line ~644).
 
-Two options — pick during implementation:
+**Decision (refine 2026-06-16): reuse `shell.RetryWithPolicy`.** One canonical retry mechanism — do not roll a second backoff loop. Fall back to a small local loop **only** if the import `internal/atdd/process/clauderun → internal/kernel/shell` turns out to introduce a cycle (shell is a kernel package, so it should be importable; confirm first). If the fallback is taken, reuse the canonical backoff schedule — do not invent a new one.
 
-- **(a) Reuse `shell.RetryWithPolicy`** (preferred for consolidation, per the standing "one canonical retry mechanism" goal). `RetryWithPolicy` takes `fn func() (string, error)`; adapt by having `fn` run `deps.Claude.Run`, reset+capture a fresh `stderrCapture` each attempt, and return `(stderrCapture.String(), runErr)` so the `transient`/`hardFail` regexes classify against the captured stderr. `RunResult` is captured via closure into an outer variable. Verify the import direction `internal/atdd/process/clauderun → internal/kernel/shell` is allowed (shell is a kernel package, so it should be; confirm no cycle).
-- **(b) A small local loop** if the `(string, error)` adapter proves awkward with `RunResult`. Reuse the same backoff constants conceptually, but (a) is preferred to avoid a second retry implementation — duplicating backoff schedules is the exact thing the consolidation goal forbids.
+`RetryWithPolicy(transient, hardFail *regexp.Regexp, prefix string, fn func() (string, error))` maps onto this case cleanly because clauderun's classification is **substring-based, not typed** (unlike the gh path, which needs `errors.As` and therefore stays on `classifyGHError` — see the note in `retrycore.go`):
 
-Behaviour:
-- Retry **only** when the captured stderr matches a transient signature AND does not match rate-limit/auth.
-- Backoff: reuse the canonical 4-attempt / 5s→15s→45s schedule.
-- Each attempt re-runs the full subprocess (fresh prompt is unchanged; nothing to reset besides the stderr capture buffer and the per-attempt banners).
-- Emit an inter-attempt log line so the operator sees `retrying in 5s` rather than a silent stall — consistent with `runWithRetryLoop`'s existing `log.Warnf`.
+- **`hardFail` regex** = the existing rate-limit + auth signatures (`rateLimitSignatures` ∪ `authSignatures`). `RetryWithPolicy` checks `hardFail` first and returns "no retry" on a match — this *is* Item 2's precedence (auth/rate-limit win over transient), expressed as the two-regex contract. No separate ordering code needed.
+- **`transient` regex** = the anchored phrases from Item 1.
+- **`fn`** runs `deps.Claude.Run`, resets+captures a fresh `stderrCapture` each attempt, and returns `(stderrCapture.String(), runErr)` so both regexes classify against the captured stderr. `RunResult` is captured via closure into an outer variable so `Dispatch` can still return it (token usage from the final attempt, etc.).
 
-**Open question for implementation:** the exit banner currently writes once per dispatch. Decide whether each failed attempt writes its own `[agent] FAIL … retrying` banner (clearer audit trail) or only the final outcome is bannered (less noise). Lean toward a short per-attempt "transient error, retrying (N/4)" line plus the normal final banner.
+Behaviour falls out of `RetryWithPolicy`:
+- Retries **only** when stderr matches `transient` and not `hardFail`; generic errors match neither → no retry (preserves today's behaviour for real failures).
+- Backoff: the canonical 4-attempt / 5s→15s→45s schedule, for free.
+- Inter-attempt `log.Warnf` (`[clauderun] attempt N/4 failed, retrying in 5s`) comes built-in via `runWithRetryLoop` — pass an informative `prefix`.
+
+**Open question for implementation:** the exit banner currently writes once per dispatch. Decide whether each failed attempt writes its own `[agent] FAIL … retrying` banner (clearer audit trail) or only the final outcome is bannered (less noise). Lean toward a short per-attempt "transient error, retrying (N/4)" line plus the normal final banner. Note that `RetryWithPolicy`'s own `log.Warnf` already covers the minimal "retrying in Ns" signal, so the per-attempt banner is additive polish, not load-bearing.
 
 ### 4. Tests
 
 **File:** `internal/atdd/process/clauderun/clauderun_test.go`.
 
 Using the existing injectable `ClaudeRunner` fake:
-- Fake returns a transient `500` error on attempt 1, success on attempt 2 → `Dispatch` returns success; assert the runner was called twice and `sleepFn` was invoked (pin/stub the sleep seam as the shell package does).
+- Fake emits a transient signature on stderr (e.g. `API Error: 500 Internal server error` — the anchored form from Item 1) on attempt 1, success on attempt 2 → `Dispatch` returns success; assert the runner was called twice and the sleep seam was invoked.
 - Fake returns transient on all attempts → `Dispatch` fails after the cap; assert attempt count == max.
 - Fake returns a **rate-limit** signature → `Dispatch` fails **immediately**, runner called once (no retry); assert the existing rate-limit message still surfaces.
 - Fake returns an **auth** signature → same fast-fail, called once.
 - Fake returns a generic non-transient, non-rate-limit error → fails once, no retry (preserves today's behaviour for real failures).
 
-Pin the backoff sleep to a no-op in tests (mirror `shell`'s `sleepFn` seam) so the suite stays fast.
+**Sleep seam (decision, refine 2026-06-16):** because Item 3 routes through `shell.RetryWithPolicy`, the backoff sleep is `shell.sleepFn` — unexported, so clauderun's test in another package can't reach it. Add a small **exported** test seam in `internal/kernel/shell` (e.g. `SetSleepForTest(func(time.Duration)) (restore func())`, or an exported `var SleepFn`) so the clauderun test can no-op the backoff and the suite stays fast. This is a prerequisite sub-task of Item 3's "reuse `RetryWithPolicy`" decision, not optional — without it the retry-path tests either sleep for real (5s+/attempt) or can't assert the sleep fired. Keep the seam minimal and clearly test-only (doc comment), mirroring the existing `sleepFn`/`nowFn` seam convention in the codebase.
 
 ## Alternatives considered
 
