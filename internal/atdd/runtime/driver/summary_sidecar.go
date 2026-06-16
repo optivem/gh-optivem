@@ -295,6 +295,13 @@ func PrintSummaryFile(w io.Writer, path string) error {
 // are deliberately omitted to keep the digest short), the dispatch
 // records (the same []dispatchRecord renderAgentSummary consumes), and
 // the overall verdict (nil → succeeded, non-nil → failed).
+//
+// commits / compareURL carry the GitHub-style "what the run committed"
+// view: the commits made between the HEAD captured at run start and the
+// HEAD at run end, plus a compare URL pointing at the same range on the
+// remote. Both are empty when the run produced no commits, the repo has
+// no recognizable GitHub remote, or git wasn't available — the renderer
+// omits the whole section in that case.
 type runDigest struct {
 	issueNum           string
 	title              string
@@ -303,6 +310,19 @@ type runDigest struct {
 	acceptanceCriteria string
 	records            []dispatchRecord
 	result             error
+	commits            []commitInfo
+	compareURL         string
+}
+
+// commitInfo is one row in the run digest's Commits section: the
+// abbreviated SHA, the subject line, the author name, and a
+// human-readable relative date ("5 minutes ago"). Sourced from
+// `git log <base>..HEAD` at digest time — see commitsSince.
+type commitInfo struct {
+	shortSHA string
+	subject  string
+	author   string
+	relative string
 }
 
 // summaryMarkdownPath returns the absolute path to this run's human
@@ -373,6 +393,32 @@ func renderRunDigest(w io.Writer, d runDigest) {
 		fmt.Fprintln(w)
 	}
 
+	if len(d.commits) > 0 {
+		fmt.Fprintf(w, "## Commits (%d)\n", len(d.commits))
+		fmt.Fprintln(w)
+		// GitHub-style one row per commit: subject, then the author and
+		// when it landed, with the abbreviated SHA as a trailing code span.
+		for _, c := range d.commits {
+			subject := strings.TrimSpace(c.subject)
+			if subject == "" {
+				subject = "(no subject)"
+			}
+			line := "- " + subject
+			if meta := commitMeta(c); meta != "" {
+				line += " — " + meta
+			}
+			if sha := strings.TrimSpace(c.shortSHA); sha != "" {
+				line += " `" + sha + "`"
+			}
+			fmt.Fprintln(w, line)
+		}
+		fmt.Fprintln(w)
+		if url := strings.TrimSpace(d.compareURL); url != "" {
+			fmt.Fprintf(w, "[Compare on GitHub](%s)\n", url)
+			fmt.Fprintln(w)
+		}
+	}
+
 	fmt.Fprintln(w, "## Agents dispatched")
 	if len(d.records) == 0 {
 		fmt.Fprintln(w)
@@ -385,6 +431,24 @@ func renderRunDigest(w io.Writer, d runDigest) {
 	fmt.Fprintln(w, "```")
 	renderAgentSummary(w, d.records)
 	fmt.Fprintln(w, "```")
+}
+
+// commitMeta joins a commit's author and relative date into the GitHub-
+// style "Author committed 5 minutes ago" trailer, gracefully dropping
+// whichever half is absent (returns "" when both are).
+func commitMeta(c commitInfo) string {
+	author := strings.TrimSpace(c.author)
+	rel := strings.TrimSpace(c.relative)
+	switch {
+	case author != "" && rel != "":
+		return fmt.Sprintf("%s committed %s", author, rel)
+	case author != "":
+		return author
+	case rel != "":
+		return "committed " + rel
+	default:
+		return ""
+	}
 }
 
 // writeBlockquote emits text as a Markdown blockquote, prefixing each

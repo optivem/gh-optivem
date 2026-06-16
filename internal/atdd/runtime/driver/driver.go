@@ -387,6 +387,10 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		runTimestamp: runTs,
 		repoPath:     repoPath,
 		pidRunDir:    resolvePidRunDir(runTs, opts.Stderr),
+		// Snapshot HEAD up front so the run-end digest can list the commits
+		// produced between now and the final HEAD. Best-effort: empty when
+		// repoPath isn't a git repo — the digest just omits the section.
+		baseSHA: fullHeadSHA(repoPath),
 	}
 	// Print the per-agent summary table (model / effort / elapsed / tokens /
 	// cost) on every Run exit — success AND error. Deferred so a fix-loop
@@ -514,6 +518,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	defer func() {
 		runState.setResult(runErr)
 		digestPath := runState.summaryMarkdownPath()
+		commits := commitsSince(repoPath, runState.baseSHA)
 		if err := writeRunDigest(digestPath, runDigest{
 			issueNum:           sCtx.GetString("issue-num"),
 			title:              sCtx.GetString("issue-title"),
@@ -522,6 +527,8 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 			acceptanceCriteria: sCtx.GetString("acceptance-criteria"),
 			records:            runState.snapshotRecords(),
 			result:             runErr,
+			commits:            commits,
+			compareURL:         compareURL(repoPath, runState.baseSHA, len(commits)),
 		}); err != nil {
 			fmt.Fprintf(opts.Stderr, "driver: warning: write run digest: %v\n", err)
 		} else if digestPath != "" {
@@ -1329,11 +1336,11 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			// summary suffixes the agent name only in that case.
 			AttemptNumber: attemptNumber,
 			AttemptMax:    attemptMax,
-			RepoPath:          opts.RepoPath,
-			Stdout:            opts.Stdout,
-			Stderr:            opts.Stderr,
-			Stdin:             opts.Stdin,
-			Out:               opts.Out,
+			RepoPath:      opts.RepoPath,
+			Stdout:        opts.Stdout,
+			Stderr:        opts.Stderr,
+			Stdin:         opts.Stdin,
+			Out:           opts.Out,
 		}
 
 		t0 := nowFn()
@@ -1651,6 +1658,14 @@ type runState struct {
 	repoPath     string
 	pidRunDir    string
 	seq          atomic.Int64
+
+	// baseSHA is the full HEAD commit SHA captured at Run start, before any
+	// agent fires. The run-end digest diffs it against the final HEAD
+	// (`git log baseSHA..HEAD`) to list exactly the commits this run
+	// produced — the same "commits in this branch" view GitHub shows on a
+	// PR. Empty when the consumer dir wasn't a git repo (or git was
+	// unavailable) at start; the digest then omits the Commits section.
+	baseSHA string
 
 	// records accumulates one dispatchRecord per clauderun.Dispatch call so
 	// the end-of-run summary banner can show what every agent cost. Guarded
@@ -2047,6 +2062,134 @@ func headCommitSHA(repoPath string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// fullHeadSHA returns the full 40-char HEAD commit SHA, or "" when
+// repoPath isn't a git repo (or git is unavailable). Captured at Run
+// start as the base for the run-end commit list — full rather than
+// abbreviated so the `base..HEAD` range and the compare URL are
+// unambiguous.
+func fullHeadSHA(repoPath string) string {
+	cmd := exec.Command("git", "rev-parse", "HEAD")
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// commitsSince returns the commits reachable from HEAD but not from
+// baseSHA — i.e. the commits created since baseSHA was captured — newest
+// first, the same order GitHub lists a PR's commits. Returns nil when
+// baseSHA is empty (no base was captured), when HEAD still equals baseSHA
+// (the run committed nothing), or on any git error.
+//
+// The format string uses %x1f (unit separator) between fields and %x1e
+// (record separator) between commits so subjects containing spaces, tabs,
+// or em-dashes never confuse the split. Best-effort, mirroring
+// headCommitSHA's fail-soft stance — the digest is diagnostic.
+func commitsSince(repoPath, baseSHA string) []commitInfo {
+	if strings.TrimSpace(baseSHA) == "" {
+		return nil
+	}
+	cmd := exec.Command("git", "log",
+		"--pretty=format:%h%x1f%s%x1f%an%x1f%cr%x1e",
+		baseSHA+"..HEAD")
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var commits []commitInfo
+	for rec := range strings.SplitSeq(string(out), "\x1e") {
+		rec = strings.Trim(rec, "\n")
+		if rec == "" {
+			continue
+		}
+		fields := strings.Split(rec, "\x1f")
+		if len(fields) < 4 {
+			continue
+		}
+		commits = append(commits, commitInfo{
+			shortSHA: fields[0],
+			subject:  fields[1],
+			author:   fields[2],
+			relative: fields[3],
+		})
+	}
+	return commits
+}
+
+// compareURL builds a GitHub "compare" link for the range the run
+// committed (baseSHA…current-branch), or "" when there's nothing to link:
+// no commits were made, no base was captured, or the repo has no
+// recognizable GitHub remote. The head ref is the current branch name
+// when on one (prettier, and tracks further pushes); it falls back to the
+// abbreviated HEAD SHA in detached-HEAD state.
+func compareURL(repoPath, baseSHA string, commitCount int) string {
+	if commitCount == 0 || strings.TrimSpace(baseSHA) == "" {
+		return ""
+	}
+	web := remoteWebURL(repoPath)
+	if web == "" {
+		return ""
+	}
+	head := currentBranch(repoPath)
+	if head == "" || head == "HEAD" {
+		if head = headCommitSHA(repoPath); head == "" {
+			return ""
+		}
+	}
+	return fmt.Sprintf("%s/compare/%s...%s", web, baseSHA, head)
+}
+
+// currentBranch returns the checked-out branch name, "HEAD" in detached-
+// HEAD state, or "" on error.
+func currentBranch(repoPath string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// remoteWebURL resolves the origin remote to its https browser URL,
+// normalizing both transports — scp-style `git@github.com:owner/repo.git`
+// and `https://github.com/owner/repo.git` both become
+// `https://github.com/owner/repo`. Returns "" when there's no origin
+// remote or the URL isn't a recognizable github.com remote (the compare
+// link is GitHub-specific; a non-GitHub host gets no link rather than a
+// broken one).
+func remoteWebURL(repoPath string) string {
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	if repoPath != "" {
+		cmd.Dir = repoPath
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	raw := strings.TrimSpace(string(out))
+	raw = strings.TrimSuffix(raw, ".git")
+	switch {
+	case strings.HasPrefix(raw, "git@github.com:"):
+		return "https://github.com/" + strings.TrimPrefix(raw, "git@github.com:")
+	case strings.HasPrefix(raw, "ssh://git@github.com/"):
+		return "https://github.com/" + strings.TrimPrefix(raw, "ssh://git@github.com/")
+	case strings.HasPrefix(raw, "https://github.com/"):
+		return raw
+	default:
+		return ""
+	}
 }
 
 // ensureGhOptivemGitignore appends ".gh-optivem/" as a line in

@@ -452,6 +452,51 @@ func TestRenderRunDigest_PassingRunWithUsage(t *testing.T) {
 	}
 }
 
+// TestRenderRunDigest_Commits covers the Commits section: a row per
+// commit with subject, "Author committed <when>", and the abbreviated
+// SHA, a count in the heading, and the compare link rendered from
+// compareURL.
+func TestRenderRunDigest_Commits(t *testing.T) {
+	d := runDigest{
+		issueNum: "61", title: "Redesigning New Order UI",
+		commits: []commitInfo{
+			{shortSHA: "abc1234", subject: "Add new order form", author: "claude", relative: "5 minutes ago"},
+			{shortSHA: "def5678", subject: "Wire form to API", author: "valentinajemuovic", relative: "2 minutes ago"},
+		},
+		compareURL: "https://github.com/optivem/shop/compare/0000...rehearsal/x",
+	}
+
+	var buf bytes.Buffer
+	renderRunDigest(&buf, d)
+	got := buf.String()
+
+	for _, want := range []string{
+		"## Commits (2)",
+		"- Add new order form — claude committed 5 minutes ago `abc1234`",
+		"- Wire form to API — valentinajemuovic committed 2 minutes ago `def5678`",
+		"[Compare on GitHub](https://github.com/optivem/shop/compare/0000...rehearsal/x)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("digest missing %q; got:\n%s", want, got)
+		}
+	}
+}
+
+// TestRenderRunDigest_NoCommits confirms the Commits section is omitted
+// entirely (no heading, no dangling compare link) when the run produced
+// no commits — the common case for a run that only reads or fails early.
+func TestRenderRunDigest_NoCommits(t *testing.T) {
+	var buf bytes.Buffer
+	renderRunDigest(&buf, runDigest{issueNum: "1", title: "x", compareURL: "https://example.com/compare/a...b"})
+	got := buf.String()
+	if strings.Contains(got, "## Commits") {
+		t.Errorf("empty-commits digest must omit the Commits heading; got:\n%s", got)
+	}
+	if strings.Contains(got, "Compare on GitHub") {
+		t.Errorf("empty-commits digest must not render a compare link; got:\n%s", got)
+	}
+}
+
 // TestRenderRunDigest_FailedRun asserts the verdict line carries the
 // engine error string on a failed run.
 func TestRenderRunDigest_FailedRun(t *testing.T) {
