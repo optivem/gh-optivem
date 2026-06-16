@@ -314,6 +314,44 @@ func TestRunTestsNonZeroExecutedSucceeds(t *testing.T) {
 	}
 }
 
+// TestRunTestsUnnamedMissingCountReportFails is Layer 2 of the portable-path
+// guard: a full (unnamed) run whose suite declares a testCountPath that the
+// run never produced must fail loud naming the path — not fold into a silent 0
+// that the empty-selection marker would misreport as "filter matched nothing".
+func TestRunTestsUnnamedMissingCountReportFails(t *testing.T) {
+	dir := t.TempDir()
+	tests := &TestsConfig{Suites: []Suite{{
+		ID: "noop", Name: "noop", Command: "go version", Path: ".",
+		TestCountPath: "absent.xml", // declared, never written
+	}}}
+	err := RunTests(nil, tests, dir, dir, TestOptions{})
+	if err == nil {
+		t.Fatal("want error when an unnamed run's declared count report is missing")
+	}
+	if !strings.Contains(err.Error(), "test count report not found") {
+		t.Fatalf("want 'test count report not found' naming the path, got: %v", err)
+	}
+}
+
+// TestRunTestsNamedMissingCountReportTolerated is the named-run counterpart: a
+// requested test lives in one partition; the other legitimately runs nothing
+// and writes no report. Layer 2 must NOT fire for named runs — the presence
+// check already guarantees the name ran somewhere.
+func TestRunTestsNamedMissingCountReportTolerated(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "iso.xml"),
+		[]byte(`<testsuite name="isolated" tests="1"><testcase name="onlyHere [Channel: API]"/></testsuite>`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := &TestsConfig{Suites: []Suite{
+		{ID: "acc-noniso", Name: "acc-noniso", Command: "go version", Path: ".", TestCountPath: "noniso-absent.xml"},
+		{ID: "acc-iso", Name: "acc-iso", Command: "go version", Path: ".", TestCountPath: "iso.xml"},
+	}}
+	if err := RunTests(nil, tests, dir, dir, TestOptions{Test: []string{"onlyHere"}}); err != nil {
+		t.Fatalf("named run must tolerate a missing report in an empty partition, got: %v", err)
+	}
+}
+
 // twoPartitionSuites builds the partitioned shape of a fanned-out category: a
 // non-isolated sub-suite (its report holds whatever ran there) and an isolated
 // one, each reading its own report file. Commands are benign (`go version`,

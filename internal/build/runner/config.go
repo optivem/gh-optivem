@@ -208,6 +208,25 @@ func LoadTests(path string) (*TestsConfig, error) {
 		if s.Command == "" {
 			return nil, fmt.Errorf("tests config %s: suites[%d] (%s) missing command", path, i, s.ID)
 		}
+		// Reject non-portable path separators in the fields the runner resolves
+		// with filepath.Join (Path, TestReportPath, TestCountPath). A backslash
+		// is a directory separator on Windows but a literal filename character
+		// on Linux, so a Windows-authored `build\test-results\test` silently
+		// fails to resolve on a Linux CI runner — the report then reads as
+		// "0 executed", masquerading downstream as an empty selection. Caught
+		// here, at the source, for every run mode. Command/setupCommand are NOT
+		// checked: those are shell invocations that legitimately carry `.\` (e.g.
+		// `.\gradlew.bat`). This is a rejection, not a rewrite — the config must
+		// use forward slashes, which resolve on every OS.
+		for _, pf := range []struct{ key, val string }{
+			{"path", s.Path},
+			{"testReportPath", s.TestReportPath},
+			{"testCountPath", s.TestCountPath},
+		} {
+			if strings.Contains(pf.val, "\\") {
+				return nil, fmt.Errorf("tests config %s: suites[%d] (%s) %s %q uses a backslash separator — use forward slashes so the path resolves on every OS", path, i, s.ID, pf.key, pf.val)
+			}
+		}
 	}
 	return &cfg, nil
 }

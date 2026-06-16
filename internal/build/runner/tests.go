@@ -252,6 +252,20 @@ func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestO
 	}
 	if suite.TestCountPath != "" {
 		countPath := filepath.Join(suiteDir, suite.TestCountPath)
+		// For a full (unnamed) run, every selected suite is expected to execute
+		// its whole set and write its report. A missing report here is not a
+		// legitimate empty partition — that only happens for named --test runs,
+		// where a test lives in one partition and the others run nothing — but a
+		// real anomaly (the runner wrote nowhere, or crashed before reporting).
+		// Fail loud naming the resolved path, rather than letting
+		// countExecutedTests fold it into a 0 that masquerades downstream as an
+		// empty selection. Named runs keep tolerating the per-partition empty
+		// (the presence check guarantees the name ran somewhere).
+		if len(opts.Test) == 0 {
+			if _, statErr := os.Stat(countPath); os.IsNotExist(statErr) {
+				return 0, false, nil, fmt.Errorf("test count report not found at %s after suite %q ran — check testCountPath in tests.yaml resolves to the report the runner writes", countPath, suite.Name)
+			}
+		}
 		n, err := countExecutedTests(countPath)
 		if err != nil {
 			return 0, false, nil, fmt.Errorf("counting executed tests: %w", err)

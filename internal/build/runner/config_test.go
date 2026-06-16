@@ -177,6 +177,43 @@ func TestLoadTestsHappyPath(t *testing.T) {
 	}
 }
 
+// TestLoadTestsBackslashPathRejected is Layer 1 of the portable-path guard: a
+// Windows-authored report path with backslash separators is rejected at config
+// load — before any suite runs — so it can never silently fail to resolve on a
+// Linux runner and read as "0 executed".
+func TestLoadTestsBackslashPathRejected(t *testing.T) {
+	for _, tc := range []struct{ name, field, line string }{
+		{"testCountPath", "testCountPath", `"testCountPath": "build\\test-results\\test"`},
+		{"testReportPath", "testReportPath", `"testReportPath": "build\\reports\\index.html"`},
+		{"path", "path", `"path": "system-test\\java"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeTempFile(t, testsJSONFilename, `{
+				"suites": [{ "id": "smoke", "name": "Smoke", "command": "x", `+tc.line+` }]
+			}`)
+			_, err := LoadTests(path)
+			if err == nil || !strings.Contains(err.Error(), "uses a backslash separator") {
+				t.Errorf("want backslash-separator rejection for %s, got: %v", tc.field, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), tc.field) {
+				t.Errorf("error should name the offending field %q, got: %v", tc.field, err)
+			}
+		})
+	}
+}
+
+// TestLoadTestsBackslashInCommandAllowed guards the carve-out: a suite command
+// legitimately carries `.\gradlew.bat`, so backslashes there must NOT be
+// rejected — only the filepath.Join'd path fields are checked.
+func TestLoadTestsBackslashInCommandAllowed(t *testing.T) {
+	path := writeTempFile(t, testsJSONFilename, `{
+		"suites": [{ "id": "smoke", "name": "Smoke", "command": ".\\gradlew.bat test", "path": ".", "testReportPath": "build/reports/index.html" }]
+	}`)
+	if _, err := LoadTests(path); err != nil {
+		t.Errorf("a backslash in command must be allowed, got: %v", err)
+	}
+}
+
 func TestLoadTestsEmptySuitesRejected(t *testing.T) {
 	path := writeTempFile(t, testsJSONFilename, `{"suites":[]}`)
 	_, err := LoadTests(path)

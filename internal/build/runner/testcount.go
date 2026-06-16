@@ -25,6 +25,11 @@ import (
 // the empty-selection signal this guard exists to catch. A malformed report
 // that does exist IS an error — silently treating a parse failure as 0 would
 // turn every real run into a false halt.
+//
+// This silent-0 is scoped to named runs by runOneSuite: a full (unnamed) run
+// expects every selected suite to produce its report, so a missing path there
+// is failed loud at the call site before reaching here. Only named --test runs,
+// whose per-partition empties are legitimate, rely on the 0 below.
 func countExecutedTests(path string) (int, error) {
 	info, err := os.Stat(path)
 	if err != nil {
