@@ -1,4 +1,4 @@
-package actions
+package outlog
 
 import (
 	"fmt"
@@ -37,4 +37,3 @@ func WritePhaseBoundary(w io.Writer, edge, phaseName string, elapsed time.Durati
 		fmt.Fprintln(w)
 	}
 }
-

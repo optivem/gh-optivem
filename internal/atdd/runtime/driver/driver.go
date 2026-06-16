@@ -1606,10 +1606,10 @@ func wrapPhaseBoundaries(eng *statemachine.Engine, w io.Writer) {
 			phaseName := node.Raw.Process
 			inner := node.Fn
 			node.Fn = func(ctx *statemachine.Context) statemachine.Outcome {
-				actions.WritePhaseBoundary(w, "start", phaseName, 0)
+				outlog.WritePhaseBoundary(w, "start", phaseName, 0)
 				t0 := nowFn()
 				out := inner(ctx)
-				actions.WritePhaseBoundary(w, "end", phaseName, nowFn().Sub(t0))
+				outlog.WritePhaseBoundary(w, "end", phaseName, nowFn().Sub(t0))
 				return out
 			}
 			process.Nodes[id] = node
