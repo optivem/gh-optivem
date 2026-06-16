@@ -249,10 +249,59 @@ func (e *Engine) runProcess(process *Process, ctx *Context) error {
 			continue
 		}
 		visits[cur]++
+		// Expose this loop node's visit count and cap to the node body — and,
+		// because ctx.State is shared across call-activity frames, to any
+		// agent dispatched *inside* this node's subprocess. Generic engine
+		// vocabulary ("visit count", not "attempt"): downstream consumers
+		// (the ATDD driver) map it to whatever loop semantics they need.
+		//
+		// ONLY loop nodes (MaxVisits > 0) write the keys, and they save the
+		// prior values and restore them when the body returns — the same
+		// push/pop shape wrapCallActivity uses for Params. This is load-
+		// bearing: the max-visits cap sits on an *ancestor* call-activity
+		// node (e.g. execute-agent's FIX), while the agent that should read
+		// the count is dispatched in a *descendant* frame (execute-agent's
+		// RUN_AGENT, max-visits 0). If every node wrote the keys, that
+		// descendant would clobber the ancestor's count to 0. Writing only
+		// on loop nodes + restoring on exit means the enclosing loop frame's
+		// count survives down to the dispatch, and a non-looped dispatch
+		// outside any loop frame sees no count (so it renders no attempt
+		// label). visits[cur] is 1-based here (incremented above).
+		var (
+			prevCount, prevMax   any
+			hadCount, hadMax     bool
+			restoreVisitOnReturn bool
+		)
+		if node.Raw.MaxVisits > 0 {
+			prevCount, hadCount = ctx.State["visit-count"]
+			prevMax, hadMax = ctx.State["visit-max"]
+			ctx.Set("visit-count", visits[cur])
+			ctx.Set("visit-max", node.Raw.MaxVisits)
+			restoreVisitOnReturn = true
+		}
 		if node.Fn == nil {
 			return fmt.Errorf("process %q node %q: NodeFn not bound (call Bind first)", process.ID, cur)
 		}
 		out := node.Fn(ctx)
+		// Restore the prior visit context inline (NOT via defer — defer would
+		// fire at runProcess return, leaking this loop node's count into the
+		// next iteration's non-looped dispatch). node.Fn ran the whole
+		// subprocess synchronously, so the dispatch inside it has already read
+		// the count; restore now so the following primary re-dispatch sees
+		// none. Restore even on the error path below — it returns immediately,
+		// but keeping ctx clean costs nothing.
+		if restoreVisitOnReturn {
+			if hadCount {
+				ctx.Set("visit-count", prevCount)
+			} else {
+				ctx.Unset("visit-count")
+			}
+			if hadMax {
+				ctx.Set("visit-max", prevMax)
+			} else {
+				ctx.Unset("visit-max")
+			}
+		}
 		if out.Err != nil {
 			return fmt.Errorf("process %q node %q: %w", process.ID, cur, out.Err)
 		}

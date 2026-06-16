@@ -55,6 +55,10 @@ func TestSummarySidecar_RoundTrip(t *testing.T) {
 				InputTokens: 8200, OutputTokens: 1100, TotalCostUSD: 0.21,
 			},
 			err: errors.New("rate limit"),
+			// Loop-attempt position must survive the round trip so a replay
+			// shows the same (attempt N/M) label as the live banner.
+			attemptNumber: 2,
+			attemptMax:    2,
 		},
 		{
 			// Channel-unrolled dispatch: the channel must survive the
@@ -104,6 +108,9 @@ func TestSummarySidecar_RoundTrip(t *testing.T) {
 		}
 		if g.err != nil && want.err != nil && g.err.Error() != want.err.Error() {
 			t.Errorf("row %d err msg: got %q, want %q", i, g.err.Error(), want.err.Error())
+		}
+		if g.attemptNumber != want.attemptNumber || g.attemptMax != want.attemptMax {
+			t.Errorf("row %d attempt: got %d/%d, want %d/%d", i, g.attemptNumber, g.attemptMax, want.attemptNumber, want.attemptMax)
 		}
 	}
 }

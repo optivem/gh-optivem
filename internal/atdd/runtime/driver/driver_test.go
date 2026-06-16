@@ -1514,6 +1514,46 @@ func TestPrintAgentSummary_WithUsage_RendersTotals(t *testing.T) {
 	}
 }
 
+// TestPrintAgentSummary_AttemptSuffix pins the loop-attempt labelling
+// (plan 20260616-0649): a looped dispatch (attemptMax > 0) gets an
+// ` (attempt N/M)` suffix on the agent column so two passes of one fix
+// loop read as one loop, not two strangers — while a single-pass
+// dispatch (attemptMax == 0) renders the bare agent name with no suffix.
+func TestPrintAgentSummary_AttemptSuffix(t *testing.T) {
+	rs := &runState{}
+	// Two passes of one fixer loop.
+	rs.appendRecord(dispatchRecord{
+		agent: "command-failed-fixer", model: "opus", effort: "high",
+		elapsed: 30 * time.Second, attemptNumber: 1, attemptMax: 2,
+	})
+	rs.appendRecord(dispatchRecord{
+		agent: "command-failed-fixer", model: "opus", effort: "high",
+		elapsed: 25 * time.Second, attemptNumber: 2, attemptMax: 2,
+	})
+	// A single-pass, non-looped dispatch.
+	rs.appendRecord(dispatchRecord{
+		agent: "acceptance-test-writer", model: "opus", effort: "high",
+		elapsed: 1 * time.Minute,
+	})
+
+	var buf bytes.Buffer
+	rs.printAgentSummary(&buf)
+	got := buf.String()
+
+	for _, want := range []string{
+		"command-failed-fixer (attempt 1/2)",
+		"command-failed-fixer (attempt 2/2)",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary missing looped label %q; got:\n%s", want, got)
+		}
+	}
+	// The single-pass row must NOT acquire a suffix.
+	if strings.Contains(got, "acceptance-test-writer (attempt") {
+		t.Errorf("single-pass dispatch wrongly got an attempt suffix; got:\n%s", got)
+	}
+}
+
 // TestPrintAgentSummary_NoUsage_RendersDashesAndFootnote covers the
 // interactive-mode path: usage is nil for every dispatch, so in / out /
 // cost render as "—" and the footnote explains why. Elapsed totals

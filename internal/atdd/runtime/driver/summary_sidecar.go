@@ -52,6 +52,13 @@ type dispatchRecordJSON struct {
 	ElapsedNS int64      `json:"elapsed_ns"`
 	Usage     *usageJSON `json:"usage,omitempty"`
 	Error     string     `json:"error,omitempty"`
+	// AttemptNumber / AttemptMax persist the dispatch's max-visits loop
+	// position so a `gh optivem run summary` replay shows the same
+	// `(attempt N/M)` labels as the live banner. Both omitempty: a
+	// single-pass (non-looped) dispatch has AttemptMax == 0 and writes
+	// neither field, keeping pre-feature sidecars and non-loop rows clean.
+	AttemptNumber int `json:"attempt_number,omitempty"`
+	AttemptMax    int `json:"attempt_max,omitempty"`
 }
 
 // usageJSON mirrors clauderun.TokenUsage's field shape but with stable
@@ -70,11 +77,13 @@ type usageJSON struct {
 
 func recordToJSON(r dispatchRecord) dispatchRecordJSON {
 	out := dispatchRecordJSON{
-		Agent:     r.agent,
-		Channel:   r.channel,
-		Model:     r.model,
-		Effort:    r.effort,
-		ElapsedNS: r.elapsed.Nanoseconds(),
+		Agent:         r.agent,
+		Channel:       r.channel,
+		Model:         r.model,
+		Effort:        r.effort,
+		ElapsedNS:     r.elapsed.Nanoseconds(),
+		AttemptNumber: r.attemptNumber,
+		AttemptMax:    r.attemptMax,
 	}
 	if r.usage != nil {
 		out.Usage = &usageJSON{
@@ -93,11 +102,13 @@ func recordToJSON(r dispatchRecord) dispatchRecordJSON {
 
 func recordFromJSON(j dispatchRecordJSON) dispatchRecord {
 	out := dispatchRecord{
-		agent:   j.Agent,
-		channel: j.Channel,
-		model:   j.Model,
-		effort:  j.Effort,
-		elapsed: time.Duration(j.ElapsedNS),
+		agent:         j.Agent,
+		channel:       j.Channel,
+		model:         j.Model,
+		effort:        j.Effort,
+		elapsed:       time.Duration(j.ElapsedNS),
+		attemptNumber: j.AttemptNumber,
+		attemptMax:    j.AttemptMax,
 	}
 	if j.Usage != nil {
 		out.usage = &clauderun.TokenUsage{

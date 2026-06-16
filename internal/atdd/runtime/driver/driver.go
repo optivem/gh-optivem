@@ -1268,6 +1268,14 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("dispatcher: node description template %q: %w", raw.Name, err)}
 		}
+		// Loop-attempt context: the engine stamped the current node's 1-based
+		// visit count and max-visits cap onto ctx (generic "visit"
+		// vocabulary). Read them once here; both the dispatch options
+		// (${attempt-block} render) and the summary record (attempt N/M
+		// suffix) consume the same pair. attemptMax == 0 means the node is
+		// not a loop, and every downstream consumer no-ops on that.
+		attemptNumber, _ := ctx.Get("visit-count").(int)
+		attemptMax, _ := ctx.Get("visit-max").(int)
 		cOpts := clauderun.Options{
 			Agent:               agentName,
 			AgentSet:            opts.AgentSet,
@@ -1313,6 +1321,14 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			OutputFilePath:    outputFilePath,
 			OutputKeysSpec:    outputKeysSpec,
 			ExpectedOutputs:   expectedOutputs,
+			// Loop-attempt context (plan 20260616-0649). The engine writes the
+			// current node's 1-based visit count and its max-visits cap onto
+			// ctx (generic "visit" vocabulary); map them to the ATDD "attempt"
+			// at this boundary. Only meaningful when visit-max > 0 (a looped
+			// node, e.g. a fixer) — clauderun renders ${attempt-block} and the
+			// summary suffixes the agent name only in that case.
+			AttemptNumber: attemptNumber,
+			AttemptMax:    attemptMax,
 			RepoPath:          opts.RepoPath,
 			Stdout:            opts.Stdout,
 			Stderr:            opts.Stderr,
@@ -1327,13 +1343,15 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// shows what ran before the bust — partial runs are common during
 		// fix-loop debugging and the summary is most useful there.
 		record := dispatchRecord{
-			agent:   agentName,
-			channel: nodeParams["channel"],
-			model:   tuning.Model,
-			effort:  tuning.Effort,
-			elapsed: elapsed,
-			usage:   runResult.Usage,
-			err:     runErr,
+			agent:         agentName,
+			channel:       nodeParams["channel"],
+			model:         tuning.Model,
+			effort:        tuning.Effort,
+			elapsed:       elapsed,
+			usage:         runResult.Usage,
+			err:           runErr,
+			attemptNumber: attemptNumber,
+			attemptMax:    attemptMax,
 		}
 		rs.appendRecord(record)
 		// Mirror to the run's summary sidecar so `gh optivem run summary`
@@ -1665,6 +1683,14 @@ type dispatchRecord struct {
 	elapsed time.Duration
 	usage   *clauderun.TokenUsage
 	err     error
+
+	// attemptNumber / attemptMax record this dispatch's position in a
+	// max-visits loop (1-based number, loop cap), copied from the engine's
+	// per-node visit count. Both zero for a non-looped single-pass node;
+	// renderAgentSummary suffixes the agent name with ` (attempt N/M)` only
+	// when attemptMax > 0, so single-pass rows are untouched.
+	attemptNumber int
+	attemptMax    int
 }
 
 // appendRecord records one completed dispatch. Safe to call with nil rs —
@@ -1817,6 +1843,20 @@ func (rs *runState) printAgentSummary(w io.Writer) {
 // Single source of truth for the table shape — both the live banner
 // (printAgentSummary method) and the historical replay (PrintSummaryFile)
 // route through here so the two views stay byte-identical.
+// summaryAgentLabel is the agent column's value for one row: the agent
+// name, suffixed ` (attempt N/M)` when the dispatch was one pass of a
+// max-visits loop (attemptMax > 0). Single-pass dispatches (attemptMax ==
+// 0) render the bare agent name, so non-looped rows are unchanged. The
+// leading dispatch-sequence `#` column stays orthogonal — attempt is a
+// per-node loop position, not a global dispatch index. Shared by the
+// width calc and the row printer so the column stays aligned.
+func summaryAgentLabel(r dispatchRecord) string {
+	if r.attemptMax > 0 {
+		return fmt.Sprintf("%s (attempt %d/%d)", r.agent, r.attemptNumber, r.attemptMax)
+	}
+	return r.agent
+}
+
 func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 	if w == nil {
 		return
@@ -1834,7 +1874,7 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 	modelW := len("model")
 	effortW := len("effort")
 	for _, r := range records {
-		if w := len(r.agent) + 2; w > agentW { // +2 for "✗ " marker on failed rows
+		if w := len(summaryAgentLabel(r)) + 2; w > agentW { // +2 for "✗ " marker on failed rows
 			agentW = w
 		}
 		if w := len(r.channel); w > channelW {
@@ -1866,7 +1906,7 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 		"elapsed", "in", "out", "cost")
 
 	for i, r := range records {
-		name := r.agent
+		name := summaryAgentLabel(r)
 		if r.err != nil {
 			name = "✗ " + name
 		}

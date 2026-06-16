@@ -554,6 +554,86 @@ func TestRenderPrompt_UnsetLanguageFailsFast(t *testing.T) {
 	}
 }
 
+// TestRenderPrompt_AttemptBlockRendersWhenLooped pins the loop-attempt
+// wiring (plan 20260616-0649): a looped dispatch (AttemptMax > 0) fills
+// ${attempt-block} with a pre-rendered "Attempt #N of M" line. The
+// non-final pass gets the "re-validates / may dispatch one more" framing;
+// the final pass gets the "loop exhausted" framing. Both must leave no
+// raw ${attempt-block} behind.
+func TestRenderPrompt_AttemptBlockRendersWhenLooped(t *testing.T) {
+	cases := []struct {
+		name        string
+		number      int
+		max         int
+		wantContain string
+	}{
+		{name: "non-final pass", number: 1, max: 2, wantContain: "Attempt #1 of 2"},
+		{name: "final pass", number: 2, max: 2, wantContain: "Attempt #2 of 2"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			opts := newOpts()
+			opts.AttemptNumber = c.number
+			opts.AttemptMax = c.max
+			opts.PromptOverride = "Loop position: ${attempt-block}"
+
+			got, err := renderPrompt(opts)
+			if err != nil {
+				t.Fatalf("renderPrompt: %v", err)
+			}
+			if strings.Contains(got, "${attempt-block}") {
+				t.Errorf("expected ${attempt-block} substituted; got: %q", got)
+			}
+			if !strings.Contains(got, c.wantContain) {
+				t.Errorf("expected rendered prompt to contain %q; got: %q", c.wantContain, got)
+			}
+		})
+	}
+}
+
+// TestRenderPrompt_AttemptBlockOmittedWhenNotLooped is the safety half: a
+// single-pass dispatch (AttemptMax == 0) whose prompt does NOT reference
+// ${attempt-block} renders cleanly. This is the common case for every
+// non-loop agent — the key must stay unregistered so it never forces a
+// value onto prompts that don't ask for one.
+func TestRenderPrompt_AttemptBlockOmittedWhenNotLooped(t *testing.T) {
+	opts := newOpts()
+	opts.AttemptNumber = 0
+	opts.AttemptMax = 0
+	opts.PromptOverride = "You are the Test Agent. No loop context here."
+
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	if strings.Contains(got, "attempt") || strings.Contains(got, "Attempt") {
+		t.Errorf("expected no attempt text for a single-pass dispatch; got: %q", got)
+	}
+}
+
+// TestRenderPrompt_AttemptBlockUnfilledFailsFast pins the load-bearing
+// guard: a prompt that references ${attempt-block} on a NON-looped
+// dispatch (AttemptMax == 0) must fail fast via findUnfilledPlaceholders
+// rather than silently substituting an empty block. Only loop nodes (the
+// fixer preamble) may reference ${attempt-block}, and there AttemptMax is
+// always > 0; this test guards the misuse case.
+func TestRenderPrompt_AttemptBlockUnfilledFailsFast(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	opts := newOpts()
+	opts.AttemptNumber = 0
+	opts.AttemptMax = 0 // not a loop → ${attempt-block} stays unregistered
+	opts.PromptOverride = "Loop position: ${attempt-block}"
+	_, err := Dispatch(context.Background(), Deps{Claude: &fakeClaude{}, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected error for unfilled ${attempt-block}, got nil")
+	}
+	if !strings.Contains(err.Error(), "attempt-block") {
+		t.Errorf("expected error to name 'attempt-block'; got: %v", err)
+	}
+}
+
 // TestRenderPrompt_InteractiveSuffixAppendedWhenNotHeadless pins the
 // operator-facing terminal hint added in plan 20260528-0959 — interactive
 // dispatches keep the Claude Code REPL open after the agent finishes, so
@@ -2173,6 +2253,11 @@ func TestRenderPrompt_NoSnakePlaceholdersInRenderedOutput(t *testing.T) {
 			opts.CommandExitCode = 1
 			opts.CommandStderrTail = "stderr tail"
 			opts.TicketID = "42"
+			// Fixers always dispatch inside a max-visits loop, so seed the
+			// attempt context their preamble's ${attempt-block} consumes.
+			// Harmless for the non-fixer agents (they don't reference it).
+			opts.AttemptNumber = 1
+			opts.AttemptMax = 2
 			rendered, err := renderPrompt(opts)
 			if err != nil {
 				t.Fatalf("renderPrompt(%s): %v", agent, err)

@@ -1020,6 +1020,114 @@ processes:
 	}
 }
 
+// TestVisitCount_PropagatesToDescendantDispatchOnly is the load-bearing
+// proof for the loop-attempt numbering wiring (plan 20260616-0649). It
+// mirrors the real fixer call-graph: the max-visits cap sits on an
+// ANCESTOR call-activity node (here LOOP → fixframe), while the agent that
+// must read the attempt count is dispatched in a DESCENDANT frame
+// (fixframe's RUN_FIXER, itself uncapped). Because ctx.State is shared
+// across call-activity frames, the engine must (a) write visit-count /
+// visit-max only on the loop node so the descendant dispatch sees the
+// loop's count rather than its own (always 1), and (b) restore the prior
+// values when the loop body returns so a NON-looped dispatch outside the
+// loop frame (here RUN_PRIMARY) reads no count and renders no attempt.
+//
+// Assertions pin all three halves of the contract:
+//   - the non-looped primary dispatch sees count 0 / max 0 (unset),
+//   - the descendant fixer dispatch inside the loop sees 1/2 then 2/2, and
+//   - the count is the loop node's visit, not the dispatching node's.
+func TestVisitCount_PropagatesToDescendantDispatchOnly(t *testing.T) {
+	const yaml = `
+processes:
+  outer:
+    name: "Outer"
+    start: RUN_PRIMARY
+    nodes:
+      - id: RUN_PRIMARY
+        type: user-task
+        agent: primary
+        name: "Run primary"
+      - id: LOOP
+        type: call-activity
+        process: fixframe
+        name: "Fix Loop"
+        max-visits: 2
+        on-max-visits: OUTER_END
+      - id: OUTER_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: RUN_PRIMARY, to: LOOP}
+      - {from: LOOP, to: LOOP}
+
+  fixframe:
+    name: "Fix Frame"
+    start: RUN_FIXER
+    nodes:
+      - id: RUN_FIXER
+        type: user-task
+        agent: fixer
+        name: "Run fixer"
+      - id: FIXFRAME_END
+        type: end-event
+        name: "Done"
+    sequence-flows:
+      - {from: RUN_FIXER, to: FIXFRAME_END}
+`
+	eng, err := LoadBytes([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+
+	type seen struct {
+		agent string
+		count int
+		max   int
+	}
+	var dispatches []seen
+	eng.ActionFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	eng.AgentFn = func(name string) NodeFn {
+		return func(ctx *Context) Outcome {
+			count, _ := ctx.Get("visit-count").(int)
+			max, _ := ctx.Get("visit-max").(int)
+			dispatches = append(dispatches, seen{agent: name, count: count, max: max})
+			return Outcome{}
+		}
+	}
+	eng.GateFn = func(name string) NodeFn { return func(ctx *Context) Outcome { return Outcome{} } }
+	if err := eng.Bind(); err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+
+	ctx := NewContext()
+	if err := eng.RunProcess("outer", ctx); err != nil {
+		t.Fatalf("RunProcess outer: %v", err)
+	}
+
+	want := []seen{
+		{agent: "primary", count: 0, max: 0}, // non-looped dispatch: no attempt context
+		{agent: "fixer", count: 1, max: 2},   // 1st loop pass
+		{agent: "fixer", count: 2, max: 2},   // 2nd (final) loop pass
+	}
+	if len(dispatches) != len(want) {
+		t.Fatalf("got %d dispatch(es) %+v, want %d %+v", len(dispatches), dispatches, len(want), want)
+	}
+	for i := range want {
+		if dispatches[i] != want[i] {
+			t.Errorf("dispatch %d = %+v, want %+v", i, dispatches[i], want[i])
+		}
+	}
+
+	// The loop node restores ctx on exit, so no visit-* residue leaks out
+	// of RunProcess to confuse a later read.
+	if v, ok := ctx.State["visit-count"]; ok {
+		t.Errorf("visit-count leaked out of RunProcess: %v (loop node must restore on exit)", v)
+	}
+	if v, ok := ctx.State["visit-max"]; ok {
+		t.Errorf("visit-max leaked out of RunProcess: %v (loop node must restore on exit)", v)
+	}
+}
+
 // TestMaxVisits_LoadValidation pins the buildProcess guards on the paired
 // max-visits / on-max-visits fields: they are declared together and the
 // target must exist in the same process. Each case is a wiring bug that

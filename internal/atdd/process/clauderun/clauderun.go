@@ -385,6 +385,20 @@ type Options struct {
 	// no Required/Optional contract table in their rendered prompt.
 	ExpectedOutputs []statemachine.OutputSpec
 
+	// AttemptNumber / AttemptMax describe where this dispatch sits in a
+	// max-visits loop, mapped by the driver from the engine's generic
+	// per-node visit count (statemachine writes visit-count / visit-max
+	// onto the run Context). AttemptNumber is 1-based; AttemptMax is the
+	// loop cap. Only meaningful when AttemptMax > 0 (a looped node such as
+	// a fixer): renderPrompt then fills ${attempt-block} with a pre-rendered
+	// "Attempt #N of M" line. When AttemptMax == 0 (a non-looped, single-
+	// pass node), ${attempt-block} is left unfilled — so a prompt that does
+	// not reference it is unaffected, and one that does trips
+	// findUnfilledPlaceholders (only the fixer preamble references it, and
+	// fixers are always loop nodes, so it is always fillable there).
+	AttemptNumber int
+	AttemptMax    int
+
 	// ShowPrompt, when true, dumps the full rendered prompt to Stdout
 	// between the prepared-prompt summary banner and the `[agent] enter`
 	// banner. Off by default; useful for debugging template edits or
@@ -769,6 +783,19 @@ func renderPrompt(opts Options) (string, error) {
 	if len(opts.ScopeRead) > 0 && len(opts.ScopeWrite) > 0 {
 		params["scope-block"] = renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders, opts.ScopeRationale)
 	}
+	// Loop-attempt block (plan 20260616-0649). Pre-rendered loop-level
+	// caller context for looped nodes (fixers and any future max-visits
+	// loop): a single ${attempt-block} string the prompt author drops in,
+	// never raw ${attempt-number}/${attempt-max}. Registered only when
+	// AttemptMax > 0 (the dispatch is inside a loop). For a single-pass
+	// node AttemptMax == 0, so the key stays unfilled — a prompt that omits
+	// ${attempt-block} is unaffected, and one that references it would trip
+	// findUnfilledPlaceholders (by design: only loop nodes may reference
+	// it, and there it is always fillable). Mirrors the scope-block
+	// load-bearing registration pattern above.
+	if opts.AttemptMax > 0 {
+		params["attempt-block"] = renderAttemptBlock(opts.AttemptNumber, opts.AttemptMax)
+	}
 	// Language is load-bearing — only registered when the driver supplied
 	// a value. An empty value would silently substitute, masking a config
 	// bug; instead we leave `${language}` unfilled so findUnfilledPlaceholders
@@ -965,6 +992,22 @@ func renderExpectedOutputs(specs []statemachine.OutputSpec) string {
 	}
 	b.WriteString("\nEmit: gh optivem output write KEY=VAL [KEY=VAL...]")
 	return b.String()
+}
+
+// renderAttemptBlock produces the body of the ${attempt-block}
+// substitution: a one-line loop-level caller note telling a looped agent
+// where it sits in its fix loop (e.g. "Attempt #2 of 2 — the loop halts
+// after this pass."). number is 1-based; max is the loop cap. Only called
+// when max > 0 (renderPrompt gates the registration), so the "last pass"
+// clause is shown on the final attempt and a neutral "more attempts
+// remain" framing otherwise. This is caller context, NOT permission to
+// self-retry — the fixer preamble's "one attempt only" rule still governs
+// the agent's own single pass; see fixer-preamble.md.
+func renderAttemptBlock(number, max int) string {
+	if number >= max {
+		return fmt.Sprintf("Attempt #%d of %d — this is the final pass; the orchestrator's fix loop is exhausted after it and a human is asked to widen scope.", number, max)
+	}
+	return fmt.Sprintf("Attempt #%d of %d — the orchestrator re-validates after you exit and may dispatch one more pass before the loop is exhausted.", number, max)
 }
 
 // renderScopeBlock produces the body of the ${scope-block} substitution:
