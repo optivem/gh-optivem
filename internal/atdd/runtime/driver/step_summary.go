@@ -1,18 +1,22 @@
 // step_summary.go owns the end-of-run step-execution summary — the sibling
-// of the agent-summary table that spans BOTH halves of a run: agent
-// dispatches AND shell commands. The agent summary answers "what did each
-// agent cost?"; the step summary answers "which BPMN steps ran, in what
-// order, and where did the wall-clock go?".
+// of the agent-summary table that spans all three kinds of timed work in a
+// run: agent dispatches, shell commands, AND lifecycle/orchestration
+// service-tasks. The agent summary answers "what did each agent cost?"; the
+// step summary answers "which BPMN steps ran, in what order, and where did the
+// wall-clock go?".
 //
 // One stepRecord is appended per executed MID-level atomic step:
 //
 //   - agent steps   — recorded at dispatch time in newClaudeRunDispatcher
 //     (the LOW execute-agent RUN_AGENT fire), named by the MID task-name.
 //   - command steps — recorded by wrapStepRecorders (driver.go), which wraps
-//     every LOW execute-command run-command service task, named by the
-//     resolved command line.
+//     every LOW execute-command run-command service task; the bpmn-step traces
+//     to the MID via task-name and the detail carries the resolved command line.
+//   - service steps — also recorded by wrapStepRecorders, for the curated
+//     serviceStepActions (ticket parse, status transitions, external-system
+//     resolution), named by the action.
 //
-// Both append in execution order to runState.steps (the engine walks the BPMN
+// All append in execution order to runState.steps (the engine walks the BPMN
 // graph single-threaded, so append order IS execution order). A fix loop or a
 // max-visits retry that re-runs a step appends another record, so repeats show
 // as their own rows — matching the "one row per execution" contract.
@@ -35,28 +39,44 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
-// stepKind classifies one executed BPMN step. Only the two kinds that do real
-// work and carry a wall-clock cost are tracked — agent dispatches and shell
-// commands. Human-approval gates are sub-steps of execute-agent /
-// execute-command (every agent and command is fronted by one), so surfacing
-// them here would pair a noise row with every real step; they are deliberately
-// omitted.
+// stepKind classifies one executed BPMN step. Three kinds carry real
+// wall-clock cost and are tracked: agent dispatches, shell commands, and a
+// curated set of lifecycle/orchestration service-tasks (ticket parse, status
+// transitions, external-system resolution — see serviceStepActions).
+// Per-dispatch plumbing service-tasks (output validation, working-tree
+// snapshots) and human-approval gates are deliberately omitted: they fire
+// after every real step and would pair a noise row with each one. The
+// aggregate time they consume is surfaced instead as the "untracked overhead"
+// reconciliation line in renderStepSummary.
 type stepKind string
 
 const (
 	stepKindAgent   stepKind = "agent"
 	stepKindCommand stepKind = "command"
+	stepKindService stepKind = "service"
 )
 
 // stepRecord is one row in the step-execution summary: a MID-level atomic step
 // that actually ran, its kind, how long it took, and whether it failed. err is
 // set when the step's NodeFn returned an Outcome with a non-nil Err so the
 // table can mark the row with a "✗" prefix, mirroring renderAgentSummary.
+//
+// bpmnStep is the diagram node that traces 1:1 to process-flow.yaml (the agent
+// task-name, the command's MID process name, or the service action). detail
+// carries the concrete command line for command rows (blank otherwise — an
+// agent's name already IS its bpmnStep). channel disambiguates per-channel
+// unrolled rows (e.g. implement-system × api/ui); blank when the step isn't
+// channel-split. name is retained as the legacy primary identity so old
+// sidecars (which predate bpmnStep) still render — the renderer falls back to
+// it when bpmnStep is empty.
 type stepRecord struct {
-	name    string
-	kind    stepKind
-	elapsed time.Duration
-	err     error
+	name     string
+	bpmnStep string
+	detail   string
+	channel  string
+	kind     stepKind
+	elapsed  time.Duration
+	err      error
 }
 
 // appendStep records one completed step. Safe with nil rs (test fixtures that
@@ -122,64 +142,157 @@ func (rs *runState) printStepSummary(w io.Writer) {
 	renderStepSummary(w, rs.snapshotSteps(), rs.wallClock())
 }
 
-// renderStepSummary writes a per-step table + totals to w. One row per
-// executed step, in execution order. Columns:
+// stepBpmnLabel is the bpmn-step column's value for one row: the diagram node
+// the step traces to. Falls back to the legacy name field for pre-bpmnStep
+// sidecars so old runs still render a non-empty first column.
+func stepBpmnLabel(s stepRecord) string {
+	if s.bpmnStep != "" {
+		return s.bpmnStep
+	}
+	return s.name
+}
+
+// renderStepSummary writes a per-step table + per-kind breakdown + totals to w.
+// One row per executed step, in execution order. Columns:
 //
-//	#  step  kind  elapsed
+//	#  bpmn-step  detail  kind  channel  elapsed
 //
-// The totals row carries the sum of per-step elapsed times in the elapsed
-// column (mirroring renderAgentSummary). When wallClock > 0 a final line gives
-// it as the headline total — wall-clock and the step-time sum differ because
-// gateways, state plumbing, and inter-step overhead fall outside any step.
-// No-op when w is nil or there are no steps.
+// bpmn-step traces 1:1 to process-flow.yaml; detail carries the concrete
+// command line for command rows; channel disambiguates per-channel unrolled
+// rows. After the rows, one subtotal per kind (agent / command / service) gives
+// its elapsed and integer percentage of the step-sum, then a totals row carries
+// the step-sum. When wallClock > 0 two reconciliation lines follow: "untracked
+// overhead" (= wall-clock − step-sum, the time spent in gateways, param
+// plumbing, and un-recorded service-tasks) and "wall-clock" itself — so the
+// headline visibly adds up. No-op when w is nil or there are no steps.
 //
-// Single source of truth for the table shape — both the live banner
-// (printStepSummary) and the historical replay (PrintStepSummaryFile) route
-// through here so the two views stay byte-identical.
+// Single source of truth for the table shape — the live banner
+// (printStepSummary), the historical replay (PrintStepSummaryFile), and the
+// Markdown run digest all route through here so the views stay byte-identical.
 func renderStepSummary(w io.Writer, steps []stepRecord, wallClock time.Duration) {
 	if w == nil || len(steps) == 0 {
 		return
 	}
 
-	stepW := len("step")
-	kindW := len("kind")
-	for _, s := range steps {
-		if n := len(s.name) + 2; n > stepW { // +2 for the "✗ " marker on failed rows
-			stepW = n
-		}
-		if n := len(string(s.kind)); n > kindW {
-			kindW = n
-		}
-	}
-
-	var sum time.Duration
+	cw := stepColumnWidths(steps)
 
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "=== Step summary ===")
-	fmt.Fprintf(w, "  #  %-*s  %-*s  %10s\n", stepW, "step", kindW, "kind", "elapsed")
+	fmt.Fprintf(w, "  #  %-*s  %-*s  %-*s  %-*s  %10s\n",
+		cw.bpmn, "bpmn-step", cw.detail, "detail", cw.kind, "kind", cw.channel, "channel", "elapsed")
 
+	sum := time.Duration(0)
+	byKind := map[stepKind]time.Duration{}
 	for i, s := range steps {
-		name := s.name
+		bpmn := stepBpmnLabel(s)
 		if s.err != nil {
-			name = "✗ " + name
+			bpmn = "✗ " + bpmn
 		}
 		sum += s.elapsed
-		fmt.Fprintf(w, "%3d  %-*s  %-*s  %10s\n",
-			i+1, stepW, name, kindW, string(s.kind), s.elapsed.Round(time.Second).String())
+		byKind[s.kind] += s.elapsed
+		fmt.Fprintf(w, "%3d  %-*s  %-*s  %-*s  %-*s  %10s\n",
+			i+1, cw.bpmn, bpmn, cw.detail, s.detail, cw.kind, string(s.kind), cw.channel, s.channel,
+			s.elapsed.Round(time.Second).String())
 	}
 
-	fmt.Fprintf(w, "%3s  %-*s  %-*s  %10s\n",
-		"", stepW, "", kindW, "totals", sum.Round(time.Second).String())
-	if wallClock > 0 {
-		fmt.Fprintf(w, "Total execution time (wall-clock): %s\n", wallClock.Round(time.Second).String())
+	renderStepBreakdown(w, cw, byKind, sum)
+	renderStepReconciliation(w, cw, sum, wallClock)
+}
+
+// stepWidths holds the per-column widths the renderer aligns to.
+type stepWidths struct{ bpmn, detail, kind, channel int }
+
+// stepColumnWidths sizes each column to its widest value. The kind column also
+// hosts the breakdown/totals labels, so it accounts for those ("commands" is 8
+// chars — wider than any kind value).
+func stepColumnWidths(steps []stepRecord) stepWidths {
+	cw := stepWidths{bpmn: len("bpmn-step"), detail: len("detail"), kind: len("kind"), channel: len("channel")}
+	for _, lbl := range []string{"agents", "commands", "service", "totals"} {
+		if n := len(lbl); n > cw.kind {
+			cw.kind = n
+		}
+	}
+	for _, s := range steps {
+		if n := len(stepBpmnLabel(s)) + 2; n > cw.bpmn { // +2 for the "✗ " marker on failed rows
+			cw.bpmn = n
+		}
+		if n := len(s.detail); n > cw.detail {
+			cw.detail = n
+		}
+		if n := len(s.channel); n > cw.channel {
+			cw.channel = n
+		}
+		if n := len(string(s.kind)); n > cw.kind {
+			cw.kind = n
+		}
+	}
+	return cw
+}
+
+// renderStepBreakdown writes one subtotal row per kind (fixed agent → command →
+// service order, skipping a kind with no rows) plus the totals row. Each kind's
+// percentage is integer-rounded against the step-sum so the subtotals sum to
+// ~100%.
+func renderStepBreakdown(w io.Writer, cw stepWidths, byKind map[stepKind]time.Duration, sum time.Duration) {
+	for _, k := range []stepKind{stepKindAgent, stepKindCommand, stepKindService} {
+		d, ok := byKind[k]
+		if !ok {
+			continue
+		}
+		pct := int64(0)
+		if sum > 0 {
+			pct = (int64(d)*100 + int64(sum)/2) / int64(sum)
+		}
+		fmt.Fprintf(w, "%3s  %-*s  %-*s  %-*s  %-*s  %10s   %d%%\n",
+			"", cw.bpmn, "", cw.detail, "", cw.kind, breakdownLabel(k), cw.channel, "",
+			d.Round(time.Second).String(), pct)
+	}
+	fmt.Fprintf(w, "%3s  %-*s  %-*s  %-*s  %-*s  %10s\n",
+		"", cw.bpmn, "", cw.detail, "", cw.kind, "totals", cw.channel, "", sum.Round(time.Second).String())
+}
+
+// renderStepReconciliation writes the "untracked overhead" (= wall-clock −
+// step-sum) and "wall-clock" lines so the headline visibly adds up. No-op when
+// wallClock is zero (the replay path doesn't persist the run start time). The
+// label spans the bpmn-step+detail+kind+channel columns so the elapsed value
+// lands under the elapsed column.
+func renderStepReconciliation(w io.Writer, cw stepWidths, sum, wallClock time.Duration) {
+	if wallClock <= 0 {
+		return
+	}
+	labelSpan := cw.bpmn + 2 + cw.detail + 2 + cw.kind + 2 + cw.channel
+	if overhead := wallClock - sum; overhead > 0 {
+		fmt.Fprintf(w, "%3s  %-*s  %10s\n",
+			"", labelSpan, "untracked overhead", overhead.Round(time.Second).String())
+	}
+	fmt.Fprintf(w, "%3s  %-*s  %10s\n",
+		"", labelSpan, "wall-clock", wallClock.Round(time.Second).String())
+}
+
+// breakdownLabel maps a stepKind to its plural breakdown-row label. agent and
+// command pluralize; service is a mass noun and stays singular.
+func breakdownLabel(k stepKind) string {
+	switch k {
+	case stepKindAgent:
+		return "agents"
+	case stepKindCommand:
+		return "commands"
+	default:
+		return "service"
 	}
 }
 
 // stepRecordJSON is the on-disk shape of one row in steps.jsonl. ElapsedNS is
 // the raw nanoseconds (machine-readable; the renderer rounds at print time);
 // Error is the step's error string when non-empty, absence meaning success.
+// BpmnStep / Detail / Channel are all omitempty so pre-feature sidecars (which
+// lack them) decode cleanly — an absent BpmnStep falls back to Name at render
+// time (see stepBpmnLabel).
 type stepRecordJSON struct {
 	Name      string `json:"name"`
+	BpmnStep  string `json:"bpmn_step,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	Channel   string `json:"channel,omitempty"`
 	Kind      string `json:"kind"`
 	ElapsedNS int64  `json:"elapsed_ns"`
 	Error     string `json:"error,omitempty"`
@@ -188,6 +301,9 @@ type stepRecordJSON struct {
 func stepToJSON(s stepRecord) stepRecordJSON {
 	j := stepRecordJSON{
 		Name:      s.name,
+		BpmnStep:  s.bpmnStep,
+		Detail:    s.detail,
+		Channel:   s.channel,
 		Kind:      string(s.kind),
 		ElapsedNS: s.elapsed.Nanoseconds(),
 	}
@@ -199,9 +315,12 @@ func stepToJSON(s stepRecord) stepRecordJSON {
 
 func stepFromJSON(j stepRecordJSON) stepRecord {
 	s := stepRecord{
-		name:    j.Name,
-		kind:    stepKind(j.Kind),
-		elapsed: time.Duration(j.ElapsedNS),
+		name:     j.Name,
+		bpmnStep: j.BpmnStep,
+		detail:   j.Detail,
+		channel:  j.Channel,
+		kind:     stepKind(j.Kind),
+		elapsed:  time.Duration(j.ElapsedNS),
 	}
 	if j.Error != "" {
 		s.err = errors.New(j.Error)
@@ -281,8 +400,20 @@ func PrintStepSummaryFile(w io.Writer, path string) error {
 // call-activity params at run-command execution: the resolved command line is
 // the most descriptive (e.g. "gh optivem test compile"), falling back to the
 // MID task-name and finally a generic label.
+//
+// When a `suite` param is present and non-empty, it is appended as
+// `--suite=<suite>` — the `run-tests` MID carries the suite as a separate param
+// (process-flow.yaml), not baked into the static `command` literal, so without
+// this every `gh optivem test run` row would render identically regardless of
+// whether it ran the acceptance, contract-real, or contract-stub suite. An
+// empty suite means "all" (the strict-mode `""` convention) and stays bare.
+// test-names is deliberately not appended — it can be a long list and the suite
+// alone is enough to tell the rows apart at a glance.
 func commandStepName(ctx *statemachine.Context) string {
 	if cmd := ctx.Params["command"]; cmd != "" {
+		if suite := ctx.Params["suite"]; suite != "" {
+			return cmd + " --suite=" + suite
+		}
 		return cmd
 	}
 	if t := ctx.Params["task-name"]; t != "" {
@@ -291,34 +422,90 @@ func commandStepName(ctx *statemachine.Context) string {
 	return "command"
 }
 
-// wrapStepRecorders decorates every LOW execute-command run-command service
-// task with a timer that records one command stepRecord per execution. Agent
-// steps are recorded at dispatch time in newClaudeRunDispatcher; this covers
-// the command half so the step summary spans both kinds. Mirrors
-// wrapPhaseBoundaries' node-wrap shape (measure elapsed locally around the
-// inner NodeFn). No-op when rs is nil.
+// commandBpmnStep resolves the bpmn-step (diagram node) for a command step: the
+// MID process node carries a `task-name` param (process-flow.yaml), so prefer
+// it; fall back to the command line for pre-feature replay where no task-name
+// was threaded.
+func commandBpmnStep(ctx *statemachine.Context) string {
+	if t := ctx.Params["task-name"]; t != "" {
+		return t
+	}
+	return commandStepName(ctx)
+}
+
+// serviceStepActions is the curated allowlist of lifecycle/orchestration
+// service-task actions recorded as stepKindService — the ones that carry
+// semantic meaning and measurable wall-clock (reading the ticket, status
+// transitions, external-system resolution). Per-dispatch plumbing actions
+// (validate-outputs-and-scopes, snapshot-working-tree, …) are deliberately
+// absent: recording them would pair a noise row with every agent dispatch. The
+// time they consume surfaces in the renderer's "untracked overhead" line.
+var serviceStepActions = map[string]bool{
+	"parse-ticket":                         true,
+	"move-to-in-refinement":                true,
+	"move-to-ready":                        true,
+	"move-to-in-progress":                  true,
+	"move-to-in-acceptance":                true,
+	"validate-external-systems-registered": true,
+	"resolve-external-system":              true,
+}
+
+// wrapStepRecorders decorates the timed service-tasks with a recorder so the
+// step summary spans all three kinds. run-command tasks record as
+// stepKindCommand (named by the command line, traced to their MID via
+// task-name); the curated serviceStepActions record as stepKindService (named
+// by the action). Agent steps are recorded separately at dispatch time in
+// newClaudeRunDispatcher (RUN_AGENT is a user-task, not a service-task, so it
+// never matches here — no double-count). Mirrors wrapPhaseBoundaries' node-wrap
+// shape (measure elapsed locally around the inner NodeFn). No-op when rs is nil.
 func wrapStepRecorders(eng *statemachine.Engine, rs *runState, stderr io.Writer) {
 	if rs == nil {
 		return
 	}
 	for _, process := range eng.Processes {
 		for id, node := range process.Nodes {
-			if node.Kind != statemachine.ServiceTask || node.Raw.Action != "run-command" {
+			if node.Kind != statemachine.ServiceTask {
+				continue
+			}
+			action := node.Raw.Action
+			isCommand := action == "run-command"
+			if !isCommand && !serviceStepActions[action] {
 				continue
 			}
 			inner := node.Fn
+			act := action
 			node.Fn = func(ctx *statemachine.Context) statemachine.Outcome {
 				t0 := nowFn()
 				out := inner(ctx)
-				rs.recordStep(stepRecord{
-					name:    commandStepName(ctx),
-					kind:    stepKindCommand,
-					elapsed: nowFn().Sub(t0),
-					err:     out.Err,
-				}, stderr)
+				rs.recordStep(newStepRecord(ctx, act, isCommand, nowFn().Sub(t0), out.Err), stderr)
 				return out
 			}
 			process.Nodes[id] = node
 		}
+	}
+}
+
+// newStepRecord builds the stepRecord for a wrapped service-task. Command tasks
+// carry the concrete command line as detail and trace to their MID via
+// task-name; service tasks are named by their action and carry no detail or
+// channel.
+func newStepRecord(ctx *statemachine.Context, action string, isCommand bool, elapsed time.Duration, err error) stepRecord {
+	if isCommand {
+		return stepRecord{
+			name:     commandStepName(ctx),
+			bpmnStep: commandBpmnStep(ctx),
+			detail:   commandStepName(ctx),
+			channel:  ctx.Params["channel"],
+			kind:     stepKindCommand,
+			elapsed:  elapsed,
+			err:      err,
+		}
+	}
+	return stepRecord{
+		name:     action,
+		bpmnStep: action,
+		kind:     stepKindService,
+		elapsed:  elapsed,
+		err:      err,
 	}
 }

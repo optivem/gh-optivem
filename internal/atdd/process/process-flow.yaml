@@ -2268,6 +2268,9 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem test compile"
+          # task-name: the MID process node, so the step summary's bpmn-step
+          # column traces this command row back to the diagram (like agents do).
+          task-name: compile-tests
           # command tier: cheap, no AI cost, no global state mutation.
           category: command
 
@@ -2288,6 +2291,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem system build"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: build-system
           # command tier: cheap, no AI cost, no global state mutation.
           category: command
 
@@ -2332,6 +2337,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem system start"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: start-system
           # command tier: cheap, no AI cost, no global state mutation.
           category: command
 
@@ -2352,6 +2359,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem system start --restart"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: start-system-restart
           # command tier: cheap, no AI cost, no global state mutation.
           category: command
 
@@ -2384,6 +2393,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem commit --yes --include-untracked"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: commit
           message: "#${ticket-id} ${issue-title} - ${layer}"
           # Threaded from the commit-process caller (prod-commit or
           # test-commit), so the inner execute-command's approve gate
@@ -2422,6 +2433,8 @@ processes:
         name: "Dispatch the Command"
         params:
           command: "gh optivem test run"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: run-tests
           suite: ${suite}
           test-names: ${test-names}
           # command tier: cheap, no AI cost, no global state mutation.

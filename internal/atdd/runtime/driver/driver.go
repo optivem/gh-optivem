@@ -1389,10 +1389,12 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// no-MID test fixtures) — the same "BPMN step" identity the scope
 		// lookup uses. The command half is recorded by wrapStepRecorders.
 		rs.recordStep(stepRecord{
-			name:    scopeKey,
-			kind:    stepKindAgent,
-			elapsed: elapsed,
-			err:     runErr,
+			name:     scopeKey,
+			bpmnStep: scopeKey,
+			channel:  nodeParams["channel"],
+			kind:     stepKindAgent,
+			elapsed:  elapsed,
+			err:      runErr,
 		}, opts.Stderr)
 		if runErr != nil {
 			return statemachine.Outcome{Err: runErr}
@@ -1714,7 +1716,7 @@ type runState struct {
 	result error
 
 	// started is the wall-clock instant Run began, stamped at construction.
-	// The step summary's headline "Total execution time (wall-clock)" is
+	// The step summary's "wall-clock" reconciliation line is
 	// nowFn().Sub(started). Zero in test fixtures that build runState
 	// directly without this field.
 	started time.Time

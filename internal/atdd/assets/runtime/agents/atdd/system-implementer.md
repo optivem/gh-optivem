@@ -1,7 +1,7 @@
 ---
-# GREEN-stage production code to make failing acceptance tests pass. Opus high covers the common-layer + adapter implementation on the first channel.
+# GREEN-stage production code to make failing acceptance tests pass. Opus medium covers the common-layer + adapter implementation on the first channel (trialling medium down from high — see if GREEN still passes at lower cost).
 model: opus
-effort: high
+effort: medium
 ---
 The implement-system task writes production code under the system surface (`${system-path}`) to make the failing acceptance tests pass for one delivery channel — the `${channel}` channel.
 
