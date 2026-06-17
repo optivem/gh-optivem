@@ -1,7 +1,5 @@
 # 2026-06-17 10:00:00 UTC — Rehearsal corpus: cover the four untested implement-ticket CYCLEs
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-17T10:43:39Z`
-
 ## TL;DR
 
 **Why:** The `atdd-rehearsal` corpus (61, 65, 68–72, 76) exercises only two of the six CYCLE branches of the `implement-ticket` gateway — `change-system-behavior` (story/bug) and `redesign-system-structure` (#61). Four task-subtype branches have **zero** rehearsal coverage, so a regression in any of them ships undetected.
