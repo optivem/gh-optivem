@@ -42,6 +42,14 @@ bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh --keep never
 > git config --global core.longpaths true
 > ```
 
+> **One-time setup — rebase on pull:** set pull to rebase rather than merge:
+>
+> ```bash
+> git config --global pull.rebase true
+> ```
+>
+> This academy workspace is ~18 sibling repos, and rehearsal loops plus multiple sessions/machines push to the same branch, so your local `main` frequently diverges from `origin/main`. With the default merge-pull, a divergent push is **rejected** (`! [rejected] … (fetch first)`) — and in VS Code's Source Control that surfaces as an **endless progress spinner** rather than a clear error, because it can't complete the push. Rebasing on pull replays your local commits on top of the remote ones, keeping history linear and letting a Sync resolve the divergence cleanly instead of stalling. When the spinner does appear, the reliable unstick is a terminal in that repo: `git pull` (now rebases) then `git push`.
+
 To rehearse a single ticket, use `atdd-rehearsal.sh` directly:
 
 For structural change - UI Redesign
