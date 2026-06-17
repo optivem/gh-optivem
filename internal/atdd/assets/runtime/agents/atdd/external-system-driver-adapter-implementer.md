@@ -1,6 +1,8 @@
 ---
-# Translation work (fill TODO markers under the Real driver). Opus medium for per-implementation reasoning.
-model: opus
+# Translation work (fill TODO markers under the Real driver). Sonnet: shallow translation
+# against a published API contract, double-gated by contract-real + contract-stub suites.
+# Trialled down from opus 2026-06-17.
+model: sonnet
 effort: medium
 ---
 The implement-external-system-driver-adapters task fills in real adapter logic for the `${external-system-name}` External System Driver port (`${external-system-driver-port}`) — the Real and Stub drivers under `${external-system-driver-adapter}`. Replace each `TODO: External System Driver` prototype with actual logic. Implement only the `${external-system-name}` external system's adapters and touch no other external system.

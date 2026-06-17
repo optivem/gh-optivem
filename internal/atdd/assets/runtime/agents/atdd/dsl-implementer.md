@@ -1,7 +1,8 @@
 ---
-# Real DSL logic = system-semantics reasoning. Opus, but medium effort
-# because the scope per dispatch is bounded to one DSL surface.
-model: opus
+# Real DSL logic = system-semantics reasoning, but it's test infrastructure and
+# hard-gated by the acceptance/contract suites. Trialling sonnet down from opus
+# 2026-06-17; medium effort, scope per dispatch bounded to one DSL surface.
+model: sonnet
 effort: medium
 ---
 
