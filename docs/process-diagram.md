@@ -690,7 +690,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test compile"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test compile<br/>task-name = compile-tests"]
     COMPILE_TESTS_END(( ))
 
     EXECUTE_COMMAND --> COMPILE_TESTS_END
@@ -700,7 +700,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system build"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system build<br/>task-name = build-system"]
     BUILD_SYS_END(( ))
 
     EXECUTE_COMMAND --> BUILD_SYS_END
@@ -710,7 +710,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system start"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system start<br/>task-name = start-system"]
     START_SYS_END(( ))
 
     EXECUTE_COMMAND --> START_SYS_END
@@ -720,7 +720,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked<br/>task-name = commit"]
     COMMIT_MID_END(( ))
 
     EXECUTE_COMMAND --> COMMIT_MID_END
@@ -730,7 +730,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test run<br/>fix-on-failure = false"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test run<br/>fix-on-failure = false<br/>task-name = run-tests"]
     RUN_TESTS_END(( ))
 
     EXECUTE_COMMAND --> RUN_TESTS_END
@@ -883,7 +883,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system start --restart"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system start --restart<br/>task-name = start-system-restart"]
     START_SYS_RESTART_END(( ))
 
     EXECUTE_COMMAND --> START_SYS_RESTART_END
