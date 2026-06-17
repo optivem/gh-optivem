@@ -103,9 +103,10 @@ jobs:
       verify-level: ${{ steps.mode.outputs.verify-level }}
       head-mode: ${{ steps.mode.outputs.head-mode }}
       release-mode: ${{ steps.mode.outputs.release-mode }}
+      already-released: ${{ steps.released-check.outputs.already-released }}
       shop-tag: ${{ steps.mode.outputs.head-mode == 'true' && 'main' || steps.shop-tag.outputs.tag }}
       shop-sha: ${{ steps.mode.outputs.head-mode == 'true' && '' || ((steps.mode.outputs.verify-level == 'release' || inputs.shop-tag != '') && steps.shop-sha.outputs.sha || '') }}
-      should-run: ${{ steps.prior-status.outputs.exists != 'true' }}
+      should-run: ${{ steps.prior-status.outputs.exists != 'true' && steps.released-check.outputs.already-released != 'true' }}
       retain-repos: ${{ inputs.retain-repos && 'true' || 'false' }}
       matrix: ${{ steps.matrix.outputs.matrix }}
       smoke-matrix: ${{ steps.smoke-matrix.outputs.matrix }}
@@ -259,7 +260,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # When VERSION already has a final release tag there is nothing left to
+      # release, so this run exits neutrally rather than failing. This is the
+      # common benign race: optivem/shop fires a fire-and-forget acceptance run
+      # on every meta-v* release (meta-release-stage.yml), and one can dequeue
+      # (after waiting behind an in-flight run) just as gh-release-stage promotes
+      # the matching version. Failing here would surface that race as a red run
+      # even though the release train is healthy. Sets already-released=true so
+      # the test matrix (should-run) and create-prerelease both skip.
       - name: Check version not already released
+        id: released-check
         if: steps.mode.outputs.release-mode == 'true'
         shell: bash
         run: |
@@ -267,19 +277,18 @@ jobs:
           version=$(tr -d '[:space:]' < VERSION)
           tag="v${version}"
           if git tag -l "$tag" | grep -qx "$tag"; then
-            BUMP_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/workflows/gh-bump-patch-version.yml"
+            echo "already-released=true" >> "$GITHUB_OUTPUT"
             {
-              echo "## Version already released"
+              echo "## Version already released — nothing to do"
               echo ""
-              echo "The following tag already exists as a final release:"
+              echo "\`${tag}\` (from VERSION) already exists as a final release, so this run has no new version to publish and is skipping the test matrix and prerelease."
               echo ""
-              echo "- \`${tag}\` (from VERSION)"
-              echo ""
-              echo "Run the [gh-bump-patch-version workflow](${BUMP_URL}) to bump the VERSION file, then re-run this workflow."
+              echo "This is expected when a shop-triggered acceptance run dequeues just after gh-release-stage promoted the same version. VERSION is bumped automatically post-release, so the next run proceeds normally."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::Version already released: ${tag}. Run the gh-bump-patch-version workflow to bump the VERSION file, then re-run this workflow: ${BUMP_URL}"
-            exit 1
+            echo "::notice::Version ${tag} already released — skipping release path (nothing to do)."
+            exit 0
           fi
+          echo "already-released=false" >> "$GITHUB_OUTPUT"
           echo "Version tag ${tag} has not been released yet — OK to proceed."
 
       - name: Validate shop-tag prefix
@@ -553,7 +562,8 @@ jobs:
     # signal: false in HEAD mode, at non-release verify-levels, or when skip-prerelease=true.
     if: >-
       ${{ !failure() && !cancelled() &&
-      needs.check.outputs.release-mode == 'true' }}
+      needs.check.outputs.release-mode == 'true' &&
+      needs.check.outputs.already-released != 'true' }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.gen.outputs.version }}
