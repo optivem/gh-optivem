@@ -36,6 +36,19 @@ bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh --keep never
 
 `atdd-rehearsal-loop.sh` runs `atdd-rehearsal.sh` over each ticket serially (`--auto --headless`), keeping each worktree+branch on exit by default (`--keep always`; the per-run `.log` is kept regardless) and **stopping on the first failure**. Pass `--keep never` to delete every worktree or `--keep on-failure` to keep only the broken one; `--config <yaml>` to switch stacks for the whole run; run with `--help` for all options. Stale worktrees accumulate under `../worktrees/` — clear them with `atdd-rehearsal-cleanup.sh`.
 
+**Choosing the stack / language.** There is no `--language` flag — language is one axis of the `--config` value. Each config is a `gh-optivem.yaml` variant living in `../shop/`, named `gh-optivem-<arch>-<lang>[-legacy].yaml`, where `<arch>` is `monolith` | `multitier` and `<lang>` is `java` | `dotnet` | `typescript` (the `-legacy` suffix selects the legacy stack). The loop's `--config` applies to the **whole run** — to exercise more than one stack, invoke it once per config. Available variants:
+
+| | `java` | `dotnet` | `typescript` |
+| --- | --- | --- | --- |
+| **monolith** | `gh-optivem-monolith-java.yaml` | `gh-optivem-monolith-dotnet.yaml` | `gh-optivem-monolith-typescript.yaml` |
+| **multitier** | `gh-optivem-multitier-java.yaml` | `gh-optivem-multitier-dotnet.yaml` | `gh-optivem-multitier-typescript.yaml` |
+
+Each also has a `-legacy` companion (e.g. `gh-optivem-monolith-java-legacy.yaml`). The loop defaults to `gh-optivem-monolith-java.yaml`. For example, to run the full corpus against the TypeScript monolith:
+
+```bash
+bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh --config gh-optivem-monolith-typescript.yaml
+```
+
 > **Windows one-time setup:** enable long paths so the deep rehearsal worktrees can be deleted (otherwise removal fails with `Filename too long`, orphaning the directory):
 >
 > ```bash
