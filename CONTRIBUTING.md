@@ -24,7 +24,7 @@ Rehearse several tickets back-to-back, unattended:
 ```bash
 cd ../shop
 
-# Full corpus (61 65 68 69 70 71 72 76), default java config:
+# Full corpus (61 65 68 69 70 71 72 76 78 79 80 81), default java config:
 bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh
 
 # A subset, in the given order:
@@ -116,6 +116,54 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 76 --config gh-optivem-monolith-jav
 ```
 
 > **#76 is the only bug-fix rehearsal in this corpus.** Every other story (#61, #65, #68–#72) adds new behavior, so its acceptance test starts red because the feature is absent. #76 starts red against a defect that already exists in the system: `cancelOrder` blocks the Dec 31 cancellation blackout only for 22:00–22:30, while its own validation message states the policy is 22:00–23:00. The fix is a pure behavioral write-flow change (extend the window end to 23:00) — no DSL or driver-port change, reusing the existing cancel + clock-control DSL steps.
+
+For structural refactor — system internals
+
+**Issue [#78 — Extract order pricing math into an OrderPricing component](https://github.com/optivem/shop/issues/78)** (`task / system-refactor` → `refactor-system-structure`):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 78 --config gh-optivem-monolith-java.yaml --auto --headless
+```
+
+> **#78 is a structural refactor with no behavior change.** Task-kind ticket (Checklist body, not Gherkin AC) labelled `subtype:system-refactor`, so the `implement-ticket` gateway routes `ticket-kind == task` → `task-subtype == system-refactor` → the `refactor-system-structure` CYCLE. The cart-line discount + shipping-fee math is extracted into an internal `OrderPricing` component; the full regression runs GREEN with no AT-red phase and no DSL/driver/port change.
+
+For structural refactor — test structure
+
+**Issue [#79 — Extract a shared cart/order builder in the acceptance DSL](https://github.com/optivem/shop/issues/79)** (`task / test-refactor` → `refactor-test-structure`):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 79 --config gh-optivem-monolith-java.yaml --auto --headless
+```
+
+> **#79 is a test-only structural refactor.** Labelled `subtype:test-refactor`, it walks `refactor-test-structure` → `refactor-and-verify-tests`: the repeated cart/order-building setup in the acceptance DSL is extracted into a shared builder/helper, with no production change and tests staying GREEN throughout.
+
+For legacy coverage — write passing ATs for existing behavior
+
+**Issue [#80 — Coupon validity-window enforcement during PlaceOrder](https://github.com/optivem/shop/issues/80)** (`task / legacy-coverage` → `cover-system-behavior`):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 80 --config gh-optivem-monolith-java.yaml --auto --headless
+```
+
+> **#80 is the green-from-start coverage rehearsal.** Labelled `subtype:legacy-coverage`, it walks `cover-system-behavior` → `write-and-verify-acceptance-tests-pass` (`verify-mode: green-when-complete`). It adds a *passing* acceptance test for an existing-but-uncovered rule — placing an order with an *expired* coupon (`validTo` in the past) is rejected with `couponCode: "Coupon code <X> has expired"`, enforced today in `CouponService.getDiscount` but covered by no AT. The test is GREEN from the first verify, with no system-implementation phase — the opposite of #76, whose AT starts red against a defect.
+
+For structural redesign — external system boundary
+
+**Issue [#81 — Reshape ERP GetProductResponse structure (no behavior change)](https://github.com/optivem/shop/issues/81)** (`task / external-system-redesign` → `redesign-external-system-structure`):
+
+```bash
+cd ../shop
+
+bash ../gh-optivem/scripts/atdd-rehearsal.sh 81 --config gh-optivem-monolith-java.yaml --auto --headless
+```
+
+> **#81 redesigns the external-system boundary.** Labelled `subtype:external-system-redesign`, it walks `redesign-external-system-structure` → `update-external-system-driver-adapters`: the ERP `GetProductResponse` is structurally reshaped (e.g. nesting `price` under a `pricing` object) with no behavior change and full-regression GREEN. It is the external-side sibling of #61, which only covers the system-side `redesign-system-structure`. ERP is declared in `gh-optivem-monolith-java.yaml`, so the boundary exists to reshape.
 
 ## Contents
 

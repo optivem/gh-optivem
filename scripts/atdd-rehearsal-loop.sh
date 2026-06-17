@@ -24,7 +24,7 @@ set -euo pipefail
 #              the built-in default (always). See KEEP_WORKTREES in LOOP CONFIG.
 #
 # Examples:
-#   # Full built-in corpus (61 65 68 69 70 71 72 76), default config:
+#   # Full built-in corpus (61 65 68 69 70 71 72 76 78 79 80 81), default config:
 #   bash atdd-rehearsal-loop.sh
 #
 #   # A single ticket:
@@ -111,6 +111,31 @@ DEFAULT_TICKETS=(
       #   EXISTING defect (blackout blocks only 22:00–22:30 vs the documented
       #   22:00–23:00), then a pure behavioral fix (extend window to 23:00)
       #   turns it green. No DSL or driver-port change.
+
+  # --- structural refactor (no behavior change) ---
+  78  # Extract order pricing math into an OrderPricing component  https://github.com/optivem/shop/issues/78
+      #   task / system-refactor → refactor-system-structure. Extracts cart-line
+      #   discount + shipping-fee math into an internal OrderPricing component;
+      #   full regression stays GREEN, no AT-red phase, no DSL/driver/port change.
+  79  # Extract a shared cart/order builder in the acceptance DSL  https://github.com/optivem/shop/issues/79
+      #   task / test-refactor → refactor-test-structure → refactor-and-verify-tests.
+      #   Test-only change: extracts repeated cart/order setup into a shared DSL
+      #   builder; no production change, tests stay GREEN.
+
+  # --- legacy coverage (passing ATs for existing behavior) ---
+  80  # Coupon validity-window enforcement during PlaceOrder  https://github.com/optivem/shop/issues/80
+      #   task / legacy-coverage → cover-system-behavior (verify-mode:
+      #   green-when-complete). Writes a PASSING AT for expired-coupon rejection
+      #   (validTo in past → "Coupon code <X> has expired"), an existing-but-
+      #   uncovered rule in CouponService.getDiscount — green from the first
+      #   verify, no system-implementation phase. Distinct from #76's red bug path.
+
+  # --- external-system redesign ---
+  81  # Reshape ERP GetProductResponse structure (no behavior change)  https://github.com/optivem/shop/issues/81
+      #   task / external-system-redesign → redesign-external-system-structure →
+      #   update-external-system-driver-adapters. Structurally reshapes the ERP
+      #   GetProductResponse boundary with full-regression GREEN; the external-
+      #   side sibling of #61's system-side redesign.
 )
 # === END LOOP CONFIG ===
 
