@@ -24,6 +24,18 @@ var (
 // sleepFn is package-level so tests can replace it with a no-op.
 var sleepFn = time.Sleep
 
+// SetSleepForTest replaces the inter-attempt backoff sleep with fn and returns
+// a restore function. Test-only: lets callers in OTHER packages (e.g.
+// clauderun, whose Dispatch routes through RetryWithPolicy) no-op the backoff
+// so retry-path tests don't sleep for real seconds. Mirrors the unexported
+// sleepFn/nowFn seam convention used elsewhere in the codebase; kept minimal
+// and clearly test-only. Restore with the returned func in a defer.
+func SetSleepForTest(fn func(time.Duration)) func() {
+	prev := sleepFn
+	sleepFn = fn
+	return func() { sleepFn = prev }
+}
+
 // attemptFn runs one attempt and returns (combined output, error).
 type attemptFn func() (string, error)
 

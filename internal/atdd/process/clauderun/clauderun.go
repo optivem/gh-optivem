@@ -29,6 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -41,6 +42,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/expand"
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 	"github.com/optivem/gh-optivem/internal/userstate"
 )
 
@@ -615,15 +617,6 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		fmt.Fprintln(opts.Out.Detail, prompt)
 	}
 	writeEnterBanner(opts)
-	startedAt := nowFn()
-
-	// Tee stderr so we can classify rate-limit / auth failures after a
-	// non-zero exit without losing the operator-visible stream. Bounded
-	// to a reasonable cap to avoid pathological memory growth on a chatty
-	// runner.
-	var stderrCapture cappedBuffer
-	stderrCapture.cap = 64 * 1024
-	runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
 
 	// Stdout routing differs by mode. Headless: the `claude -p` stream-json
 	// is a captured byte stream — route it to Detail so it's teed to the
@@ -641,26 +634,62 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		runnerStdout = opts.Stdout
 	}
 
-	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
-		Prompt:            prompt,
-		Headless:          opts.Headless,
-		Model:             opts.Model,
-		Effort:            opts.Effort,
-		Dir:               opts.RepoPath,
-		Stdin:             opts.Stdin,
-		Stdout:            runnerStdout,
-		Stderr:            runStderr,
-		Out:               opts.Out,
-		OutputFilePath:    opts.OutputFilePath,
-		OutputKeysSpec:    opts.OutputKeysSpec,
-		EventsLogPath:     opts.EventsLogPath,
-		EventsTextLogPath: opts.EventsTextLogPath,
-		PidFilePath:       opts.PidFilePath,
-		Approval:          opts.Approval,
-	})
-	if runErr != nil {
-		writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
-		if classified := classifyRunError(stderrCapture.Bytes()); classified != nil {
+	// The agent subprocess is the longest, most failure-prone external call in
+	// the system, and a transient server-side blip (API 500/502/503/504/529,
+	// "overloaded", connection reset) carries zero diagnostic value — the
+	// remedy is simply to re-dispatch the identical prompt after a short
+	// backoff. The agent is headless and never commits, so a clean re-dispatch
+	// loses nothing (a failed attempt reports 0 in / 0 out / $0). Wrap the call
+	// in the canonical shell.RetryWithPolicy backoff (4 attempts, 5s→15s→45s):
+	// hardFail (rate-limit / auth) wins over transient and fast-fails; generic
+	// errors match neither regex and are not retried — preserving today's
+	// behaviour for real agent failures. See
+	// plans/20260616-1948-retry-transient-claude-errors-in-agent-dispatch.md.
+	var (
+		runResult  RunResult
+		lastStderr []byte
+		startedAt  time.Time
+	)
+	attempt := func() (string, error) {
+		// Fresh stderr capture per attempt so the classifier sees only this
+		// attempt's failure tail, not a previous attempt's. Tee so we keep the
+		// operator-visible stream; bounded to a reasonable cap to avoid
+		// pathological memory growth on a chatty runner.
+		var stderrCapture cappedBuffer
+		stderrCapture.cap = 64 * 1024
+		runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
+
+		startedAt = nowFn()
+		var runErr error
+		runResult, runErr = deps.Claude.Run(ctx, RunOpts{
+			Prompt:            prompt,
+			Headless:          opts.Headless,
+			Model:             opts.Model,
+			Effort:            opts.Effort,
+			Dir:               opts.RepoPath,
+			Stdin:             opts.Stdin,
+			Stdout:            runnerStdout,
+			Stderr:            runStderr,
+			Out:               opts.Out,
+			OutputFilePath:    opts.OutputFilePath,
+			OutputKeysSpec:    opts.OutputKeysSpec,
+			EventsLogPath:     opts.EventsLogPath,
+			EventsTextLogPath: opts.EventsTextLogPath,
+			PidFilePath:       opts.PidFilePath,
+			Approval:          opts.Approval,
+		})
+		lastStderr = stderrCapture.Bytes()
+		if runErr != nil {
+			writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
+			// Hand RetryWithPolicy the failure tail: it retries only when this
+			// matches transientStderrRegex and not hardFailStderrRegex.
+			return string(lastLines(lastStderr, 20)), runErr
+		}
+		return "", nil
+	}
+
+	if _, runErr := shell.RetryWithPolicy(transientStderrRegex, hardFailStderrRegex, "clauderun", attempt); runErr != nil {
+		if classified := classifyRunError(lastStderr); classified != nil {
 			return runResult, fmt.Errorf("clauderun: %s: %w", opts.Agent, classified)
 		}
 		return runResult, fmt.Errorf("clauderun: %s exited non-zero: %w", opts.Agent, runErr)
@@ -1263,8 +1292,57 @@ func shortSHA(sha string) string {
 }
 
 // ---------------------------------------------------------------------------
-// Stderr classification (rate limit / auth)
+// Stderr classification (rate limit / auth / transient)
 // ---------------------------------------------------------------------------
+
+// transientSignatures are anchored, case-insensitive substrings that mean
+// "the dispatch failed on a server-side blip, not on anything wrong with the
+// ticket/prompt/worktree". A match drives a bounded re-dispatch with backoff
+// (see Dispatch's shell.RetryWithPolicy wrap). Re-running the identical prompt
+// after a short pause is the entire remedy — the agent is headless, one-shot,
+// and never commits, so a clean retry loses nothing.
+//
+// Anchored phrases only: match the form the `claude` CLI actually emits on
+// stderr, never bare numeric codes or bare network tokens. A bare "500" would
+// match an agent that prints "500 units"; a bare "eof"/"timeout" would match a
+// legitimately-failed agent (e.g. a test that timed out), and retrying that
+// burns tokens with no chance of success. If a real transient ever surfaces
+// only as one of those, add its anchored form then — driven by an observed
+// log, not speculation.
+var transientSignatures = []string{
+	"api error: 500", // rehearsal-71 logged the literal "API Error: 500 Internal server error"
+	"api error: 502",
+	"api error: 503",
+	"api error: 504",
+	"api error: 529", // rehearsal-72 logged "API Error: 529 Overloaded"
+	"internal server error",
+	"overloaded", // covers overloaded_error
+	"connection reset",
+	"connection refused",
+	"temporarily unavailable",
+}
+
+// transientStderrRegex / hardFailStderrRegex compile the substring signature
+// sets into the two-regex contract shell.RetryWithPolicy expects. hardFail is
+// the rate-limit ∪ auth set: RetryWithPolicy checks it first and fast-fails on
+// a match, so auth / rate-limit always win over transient (retrying either is
+// pointless — quota is spent, or credentials are missing). A failure matching
+// neither regex is a real agent failure and is not retried.
+var (
+	transientStderrRegex = compileSignatureRegex(transientSignatures)
+	hardFailStderrRegex  = compileSignatureRegex(append(append([]string{}, rateLimitSignatures...), authSignatures...))
+)
+
+// compileSignatureRegex builds a case-insensitive alternation that matches if
+// any signature appears as a substring. Each signature is regexp-quoted so the
+// phrases stay literal.
+func compileSignatureRegex(sigs []string) *regexp.Regexp {
+	quoted := make([]string, len(sigs))
+	for i, s := range sigs {
+		quoted[i] = regexp.QuoteMeta(s)
+	}
+	return regexp.MustCompile("(?i)" + strings.Join(quoted, "|"))
+}
 
 // rateLimitSignatures are case-insensitive substrings that mean "claude
 // refused to dispatch because of a billing / rate limit". First match

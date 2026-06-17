@@ -24,6 +24,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/agents"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 	"github.com/optivem/gh-optivem/internal/userstate"
 )
 
@@ -1473,6 +1474,141 @@ func TestDispatch_FallsThroughToGenericOnUnknownStderr(t *testing.T) {
 	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
 	if err == nil {
 		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "exited non-zero") {
+		t.Errorf("expected generic wrapper, got %q", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch — transient-error retry
+// ---------------------------------------------------------------------------
+
+// scriptedClaude returns a canned (stderr, err) per attempt, advancing through
+// the script on each Run call (repeating the last entry if over-called). Lets
+// the retry tests vary the dispatch outcome attempt-to-attempt, unlike
+// fakeClaude which emits the same canned result every call.
+type scriptedClaude struct {
+	responses []scriptedResponse
+	calls     int
+}
+
+type scriptedResponse struct {
+	stderr string
+	err    error
+}
+
+func (f *scriptedClaude) Run(_ context.Context, opts RunOpts) (RunResult, error) {
+	i := f.calls
+	if i >= len(f.responses) {
+		i = len(f.responses) - 1
+	}
+	f.calls++
+	r := f.responses[i]
+	if r.stderr != "" && opts.Stderr != nil {
+		opts.Stderr.Write([]byte(r.stderr))
+	}
+	return RunResult{}, r.err
+}
+
+func TestDispatch_RetriesTransientThenSucceeds(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) {})()
+
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), // pre-snapshot HEAD
+			[]byte("aaaa\n"), // post-snapshot HEAD (success path runs the post snapshot)
+		},
+	}
+	claudeFake := &scriptedClaude{responses: []scriptedResponse{
+		{stderr: "API Error: 500 Internal server error\n", err: errors.New("exit status 1")},
+		{}, // attempt 2 succeeds
+	}}
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts()); err != nil {
+		t.Fatalf("expected success after transient retry, got %v", err)
+	}
+	if claudeFake.calls != 2 {
+		t.Errorf("expected 2 dispatch attempts (transient then success), got %d", claudeFake.calls)
+	}
+}
+
+func TestDispatch_RetriesTransientUntilCapThenFails(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) {})()
+
+	// Only the pre-snapshot HEAD is consumed — the failure path skips the
+	// post-snapshot regardless of how many attempts ran.
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &scriptedClaude{responses: []scriptedResponse{
+		{stderr: "API Error: 529 Overloaded\n", err: errors.New("exit status 1")},
+	}}
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	if err == nil {
+		t.Fatalf("expected error after exhausting retries, got nil")
+	}
+	if claudeFake.calls != 4 {
+		t.Errorf("expected 4 attempts (the canonical retry cap), got %d", claudeFake.calls)
+	}
+	if !strings.Contains(err.Error(), "exited non-zero") {
+		t.Errorf("a transient that never clears falls through to the generic wrapper, got %q", err.Error())
+	}
+}
+
+func TestDispatch_RateLimitFailsFastWithoutRetry(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) { t.Fatal("backoff sleep must not fire on a hard-fail") })()
+
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &scriptedClaude{responses: []scriptedResponse{
+		{stderr: "Error: rate_limit_error: weekly limit reached.\n", err: errors.New("exit status 1")},
+	}}
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if claudeFake.calls != 1 {
+		t.Errorf("rate-limit must fast-fail without retry, got %d attempts", claudeFake.calls)
+	}
+	if !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("expected rate-limit specific message to survive, got %q", err.Error())
+	}
+}
+
+func TestDispatch_AuthFailsFastWithoutRetry(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) { t.Fatal("backoff sleep must not fire on a hard-fail") })()
+
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &scriptedClaude{responses: []scriptedResponse{
+		{stderr: "Error: not authenticated. Run /login.\n", err: errors.New("exit status 1")},
+	}}
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if claudeFake.calls != 1 {
+		t.Errorf("auth failure must fast-fail without retry, got %d attempts", claudeFake.calls)
+	}
+	if !strings.Contains(err.Error(), "claude /login") {
+		t.Errorf("expected auth-specific message to survive, got %q", err.Error())
+	}
+}
+
+func TestDispatch_GenericErrorNotRetried(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) { t.Fatal("backoff sleep must not fire on a non-transient failure") })()
+
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &scriptedClaude{responses: []scriptedResponse{
+		{stderr: "panic: nil pointer dereference\n", err: errors.New("exit status 1")},
+	}}
+
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, newOpts())
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if claudeFake.calls != 1 {
+		t.Errorf("a real (non-transient) failure must not be retried, got %d attempts", claudeFake.calls)
 	}
 	if !strings.Contains(err.Error(), "exited non-zero") {
 		t.Errorf("expected generic wrapper, got %q", err.Error())
