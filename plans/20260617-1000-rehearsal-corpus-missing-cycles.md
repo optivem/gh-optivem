@@ -12,13 +12,13 @@ What we get out of this — the goals and deliverables:
 - Rehearsal coverage for every CYCLE branch of the `implement-ticket` two-level gateway except the still-unbuilt refine path (which is its own plan).
 - A `task / system-refactor` ticket that walks `refactor-system-structure` (full-regression GREEN, no DSL/driver/port change).
 - A `task / test-refactor` ticket that walks `refactor-test-structure` (`refactor-and-verify-tests`, test-only change).
-- A `task / legacy-coverage` ticket that walks `cover-system-behavior` (writes **passing** ATs against existing behavior — the green-from-start cover path, distinct from #76's red-then-green bug path).
+- A `task / legacy-coverage` ticket that walks `cover-system-behavior` (writes a **passing** AT for coupon validity-window enforcement during PlaceOrder — existing-but-uncovered behavior in `CouponService.getDiscount` — the green-from-start cover path, distinct from #76's red-then-green bug path).
 - A `task / external-system-redesign` ticket that walks `redesign-external-system-structure` (reshapes the ERP external boundary; #61 only covers the system-side sibling).
 - `DEFAULT_TICKETS` in `scripts/atdd-rehearsal-loop.sh` and the corpus prose in `CONTRIBUTING.md` extended in sync, each with the documentation comment block the existing entries carry.
 
 ## ▶ Next executable step (resume here)
 
-Resolve the **Open questions** first — they are design decisions, not mechanical edits, so this resumes under `/refine-plan`, not `/execute-plan`. Specifically: (1) confirm the concrete shop-domain scenario for each of the four tickets (recommendations are in the Steps below), and (2) confirm the exact `ticket-kind` / `task-subtype` label strings the tracker classifier (`Tracker.Classify` / `Tracker.Subtypes`) expects, by inspecting an existing task ticket or the classifier source. Once both are settled, the first executable unit is **Step 1a** (author the `system-refactor` shop issue).
+All open questions are resolved (see **Resolved decisions**) — scenarios confirmed, label encoding verified from source, Java-only rehearsal. The plan is ready for `/execute-plan`. The first executable unit is **Step 1a**: author the `system-refactor` shop issue (native Issue Type **Task** + label `subtype:system-refactor`, Checklist body, `OrderPricing`-extraction scenario), mirroring ticket **#61**.
 
 ## Steps
 
@@ -26,7 +26,14 @@ Each ticket follows the same four moves: author the shop issue → add to `DEFAU
 
 ### Step 0 — Prerequisites (shared)
 
-- [ ] Determine the label vocabulary the tracker maps to `ticket-kind == task` and to each `task-subtype` (`system-refactor`, `test-refactor`, `legacy-coverage`, `external-system-redesign`). Inspect `Tracker.Classify` / `Tracker.Subtypes` and an existing task ticket; record the exact label strings so all four issues are classified correctly.
+- [ ] Classify each of the four issues using the **verified encoding** (resolved 2026-06-17 from `internal/atdd/runtime/tracker/github/github.go` + the `GATE_TASK_SUBTYPE` branches in `process-flow.yaml`):
+  - **`ticket-kind == task`** is the issue's **native GitHub Issue Type** — set the issue's *Type* to **"Task"** in the GitHub UI/API. `Tracker.Classify` reads `repository.issue.issueType.name` via `gh api graphql` and lowercases it; it is **not** a label. An issue with no native type is rejected (`confident=false`) — the operator must set it before the orchestrator proceeds.
+  - **`task-subtype`** is a **label** of the form **`subtype:<value>`** (`Tracker.Subtypes` strips the `subtype:` prefix). Add exactly **one** such label per issue — the intake gate treats 0 as "operator must declare" and 2+ as "must reconcile". The four values (exact strings, matching the `GATE_TASK_SUBTYPE` `when:` clauses):
+    - `subtype:system-refactor` → `refactor-system-structure`
+    - `subtype:test-refactor` → `refactor-test-structure`
+    - `subtype:legacy-coverage` → `cover-system-behavior`
+    - `subtype:external-system-redesign` → `redesign-external-system-structure`
+  - Mirror the existing `task / system-redesign` ticket **#61** for label/type placement when authoring.
 
 ### Step 1 — `task / system-refactor` → `refactor-system-structure`
 
@@ -44,7 +51,7 @@ Each ticket follows the same four moves: author the shop issue → add to `DEFAU
 
 ### Step 3 — `task / legacy-coverage` → `cover-system-behavior`
 
-- [ ] 3a. Pick existing-but-uncovered behavior. **Recommended scenario:** add acceptance coverage for cancelling a *non-blackout* order (cancel already exists from the #76 domain) — i.e. behavior the system already has with no AT today. Verify the behavior is implemented but uncovered before authoring.
+- [ ] 3a. Pick existing-but-uncovered behavior. **Confirmed scenario (verified 2026-06-17):** add acceptance coverage for **coupon validity-window enforcement during PlaceOrder** — placing an order with an *expired* coupon (`validTo` in the past) is rejected with `couponCode: "Coupon code <X> has expired"`. The rule is implemented in `CouponService.getDiscount` (the `validTo` check) but has **no AT** today — `PlaceOrderNegativeTest` covers only coupon does-not-exist and usage-limit-reached, not the validity window. The `given().coupon()` DSL already exposes `withValidFrom`/`withValidTo`, so the scenario is authorable as-is. (The not-yet-valid `validFrom` rule is an equally-uncovered sibling and may be added as a second assertion.) *Rejected the earlier "cancel a non-blackout order" target: `CancelOrderPositiveTest` already covers it, so it is not uncovered behavior.*
 - [ ] 3b. Author shop issue (Checklist body, labels per Step 0).
 - [ ] 3c. Add to `DEFAULT_TICKETS` under a new `--- legacy coverage (passing ATs for existing behavior) ---` group.
 - [ ] 3d. Add the `CONTRIBUTING.md` subsection ("For legacy coverage — write passing ATs").
@@ -61,8 +68,10 @@ Each ticket follows the same four moves: author the shop issue → add to `DEFAU
 
 - [ ] Run the full loop (`bash scripts/atdd-rehearsal-loop.sh`) to confirm the four new tickets pass alongside the existing eight, then update the corpus count/order references in `CONTRIBUTING.md` and the loop-script header comment.
 
-## Open questions
+## Resolved decisions
 
-- **Domain scenario per ticket** — the Steps carry a recommended scenario each; confirm or substitute before authoring. The `legacy-coverage` one is load-bearing: it must target behavior that genuinely exists with no current AT.
-- **Label vocabulary** (Step 0) — exact `ticket-kind`/`task-subtype` label strings are unverified; resolve from the classifier before authoring issues.
-- **Rehearsal stacks** — recommend rehearsing all four under `gh-optivem-monolith-java.yaml` only (matches the documented corpus). Decide whether any should also be run under another stack (e.g. typescript/dotnet) for cross-stack confidence.
+*(Resolved 2026-06-17 via `/refine-plan`.)*
+
+- **Domain scenario per ticket** — **accept all four recommended scenarios**, with one substitution. The `system-refactor` (`OrderPricing` extraction), `test-refactor` (acceptance-DSL builder extraction), and `external-system-redesign` (reshape ERP `GetProductResponse`) scenarios stand as written. The `legacy-coverage` target was **changed**: "cancel a non-blackout order" is already covered by `CancelOrderPositiveTest`, so it is *not* uncovered behavior. The new target is **coupon validity-window enforcement during PlaceOrder** (expired coupon → `couponCode: "...has expired"`), implemented in `CouponService.getDiscount` (`validTo` check) but uncovered by any AT — a genuine green-from-start `cover-system-behavior` case. See Step 3a.
+- **Label vocabulary** — resolved from source (`tracker/github/github.go` + `process-flow.yaml` `GATE_TASK_SUBTYPE`). `ticket-kind == task` is the issue's **native GitHub Issue Type = "Task"** (not a label); `task-subtype` is a single **`subtype:<value>`** label per issue, with values `system-refactor` / `test-refactor` / `legacy-coverage` / `external-system-redesign`. Full encoding in Step 0.
+- **Rehearsal stacks** — **author + verify under Java only** (`gh-optivem-monolith-java.yaml`) for all four, matching the documented corpus default. These tickets exercise orchestration gateway branches (which CYCLE the BPMN walks), not language-specific code, so one stack proves the branch. *Note:* the loop already accepts `--config <yaml>` (default `gh-optivem-monolith-java.yaml`), so the operator can run the whole corpus — including these four — under `gh-optivem-monolith-typescript.yaml` / `gh-optivem-monolith-dotnet.yaml` on demand without any plan change; the four tickets just join `DEFAULT_TICKETS` once. **Caveat carried into execution:** cross-stack parity of the four scenarios is *not* verified by this plan (e.g. the `given().coupon().withValidFrom/withValidTo` DSL and `CouponService` validity rules are confirmed in the Java shop only) — a `--config typescript`/`dotnet` corpus run may surface a stack gap that is out of scope here.
