@@ -1,5 +1,14 @@
 # Route system-implementer `common:false` dispatches to sonnet
 
+## TL;DR
+
+**Why:** `system-implementer` runs on opus for every channel, but later-channel (`common:false`) dispatches do only a shallow adapter delta hard-gated by `acceptance-${channel}` — the same sonnet-grade work already downgraded for the adapter agents. Paying the opus tax there banks ~$0.67/run per extra channel.
+**End result:** A small `resolveDispatchModel` policy function routes `system-implementer` + `common:false` dispatches to sonnet at `driver.go:1336`, leaving the migration-bearing first channel (`common:true`) on opus; frontmatter is annotated and the rule is unit-tested.
+
+## ▶ Next executable step (resume here)
+
+**All agent items are implemented and committed** (the `model-later-channel` scalar + `resolveDispatchModel` + frontmatter + table test; build green, driver/agents packages green). What remains is **user-driven** — no agent edits left. Run the rehearsal corpus (see *Verification* below) across several tickets and let the green/red + delta correctness decide whether the sonnet downgrade stays or is reverted (delete the `model-later-channel:` line). If you keep it, this plan file can be deleted.
+
 ## Motivation
 
 Analysis of the rehearsal run on shop #72 ("Charge shipping based on product weight from ERP") showed the agent fleet is the cost center (79% of wall-clock, $5.97 of the $6.97 on opus). A first pass downgraded three uniformly-shallow, hard-gated agents from opus to sonnet (commit `488adc5`): both driver-adapter implementers and the dsl-implementer.
@@ -32,62 +41,18 @@ The `common` value is already present at that exact site:
 
 `common: false` dispatches touch only the per-channel adapter delta and are gated by `acceptance-${channel}` — a wrong adapter fails its suite loudly and immediately, with no spillover to other channels or SUTs. The thing that makes the *first-channel* dispatch risky (the shared, forward-only, under-verified migration) is **absent** on `common: false` by construction (`system-implementer.md` step 3 authors the migration only when `common: true`). So the verifier fully covers the downgraded path.
 
-## Mechanism decision (resolved)
+## Mechanism decision (resolved — revised during execution)
 
-The rule lives as a **small named policy function in code**, not a config field. Three options were weighed; the rejected two are recorded under *Alternatives*.
+**Chosen: an optional frontmatter scalar `model-later-channel:`, read by an agent-agnostic policy function `resolveDispatchModel` in code.** The original plan chose a hardcoded code function (no config field); during execution the author reversed this in favour of putting the *tunable value* in config. Both the original code-function design and the heavier conditional-map alternative are recorded under *Alternatives*.
 
-The deciding reasons for the code function:
+The deciding reasons for the scalar:
 
-1. **It is an N=1 rule today.** `system-implementer` is the only agent whose difficulty bifurcates on a param. A frontmatter "conditional model" grammar would be exercised by exactly one agent — schema that doesn't earn its slot.
-2. **Single source of truth for the default model stays in frontmatter.** The override is one named, commented exception next to where the model is already chosen — not a second file answering "what model does this agent use."
-3. **The data is already at the dispatch site.** Both `tuning.Model` and `nodeParams["common"]` are in scope at `driver.go:1336`.
-4. **Pure and testable**, mirroring the existing `common`-value tests in `scoped_test.go`.
-
-## Items
-
-### 1. Add `resolveDispatchModel`
-
-**File:** `internal/atdd/runtime/driver/driver.go` (near the dispatch construction, ~line 1336).
-
-Add a pure function:
-
-```go
-// resolveDispatchModel returns the frontmatter model unchanged, except for the
-// one documented exception: a system-implementer dispatch on a later channel
-// (common:false) does only the per-channel adapter delta — shallow translation
-// hard-gated by the acceptance-${channel} suite — so it is routed to sonnet.
-// The first channel (common:true) authors the shared forward-only migration and
-// stays on the frontmatter model (opus). N=1 rule; promote to a declarative
-// mechanism only when a second param-conditional agent earns it (rule of three).
-func resolveDispatchModel(agentName, frontmatterModel string, nodeParams map[string]string) string
-```
-
-- Default: return `frontmatterModel`.
-- Exception: when this is the system-implementer dispatch **and** `nodeParams["common"] == "false"` → return `"sonnet"`.
-- Call it at the dispatch site: `Model: resolveDispatchModel(agentName, tuning.Model, nodeParams)`.
-
-**Sub-task — confirm the agent identifier.** The frontmatter file is `system-implementer.md` but the BPMN task is `implement-system` (`driver_test.go:640`). Key the rule on the exact value `agentName` holds at `driver.go:1336` — confirm the literal token before hardcoding the comparison, and use a named constant if one already exists for this task rather than a bare string literal.
-
-### 2. Cross-reference comment in the agent frontmatter
-
-**File:** `internal/atdd/assets/runtime/agents/atdd/system-implementer.md` (frontmatter comment).
-
-Because the override lives in code, `model: opus` is now a half-truth — `common:false` dispatches run on sonnet. The frontmatter comment **must** point to the exception so a reader of the frontmatter is not misled:
-
-> `common:false` (later-channel adapter delta) dispatches are routed to sonnet in `resolveDispatchModel` (driver.go); the `common:true` first channel authors the shared migration and stays on opus.
-
-Keep `model: opus` as the declared default — it is correct for the worst-case path the frontmatter must size for.
-
-### 3. Tests
-
-**File:** `internal/atdd/runtime/driver/driver_test.go` (or a focused `resolveDispatchModel` table test).
-
-Pure-function table test:
-- system-implementer + `common: "false"` → `"sonnet"`.
-- system-implementer + `common: "true"` → frontmatter model (e.g. `"opus"`) unchanged.
-- system-implementer + `common` absent/empty → frontmatter model unchanged (no silent downgrade on a malformed dispatch).
-- a different agent + `common: "false"` → frontmatter model unchanged (the rule is system-implementer-only).
-- empty frontmatter model + non-matching case → empty (session default preserved).
+1. **Logic in code, tunable value in config — the right split.** The *condition* ("`common:false` ⇒ later, delta-only channel") is genuine program logic and stays in `resolveDispatchModel`. The *model value* (`sonnet`) is a tuning knob and belongs in frontmatter next to `model:`/`effort:`. The hardcoded code function buried that knob in Go — backwards.
+2. **Transparency + no-rebuild configurability.** The whole model story for the agent lives in its frontmatter (`model: opus` default, `model-later-channel: sonnet`). Changing, retuning, or disabling the downgrade is a one-line YAML edit — no Go change, no rebuild of routing logic.
+3. **Single source of truth.** "What model does this agent run?" is answered in one file (frontmatter), not split frontmatter-says-opus / code-says-sonnet.
+4. **Reversible experiment, not a prediction.** The field defaults the whole fleet to opus-everywhere when absent; setting it to `sonnet` makes the downgrade an experiment the rehearsal corpus validates per the *accuracy over speed* gate. If sonnet regresses, delete one line → back to opus everywhere.
+5. **No DSL.** One optional scalar, branched on in code (it earns its slot), not a `when:`-condition match-list grammar serving one agent.
+6. **Pure and testable.** `resolveDispatchModel(tuning, nodeParams)` is a pure function with a table test.
 
 ## Verification
 
@@ -95,12 +60,17 @@ Pure-function table test:
 
 - Rebuild the `gh optivem` binary if `internal/atdd/assets/` is embedded, then run the rehearsal corpus across **several** tickets (not just #72) and confirm: the `implement-system` later-channel dispatch reports `sonnet` in the agent summary's model column, the first channel still reports `opus`, and all suites stay green.
 - Spot-check one multi-channel ticket's later-channel commit to confirm the sonnet delta is correct, per the "accuracy over speed" gate — a passing channel suite plus a correct-looking adapter delta.
+- **If the rehearsal disappoints** (a later-channel suite regresses, or the sonnet delta is wrong): delete the `model-later-channel: sonnet` line in `system-implementer.md` and rebuild — the whole fleet is back to opus-everywhere with no code change.
 
 ## Alternatives considered
 
-### Conditional-model frontmatter field (rejected)
+### Hardcoded code function, no config field (original plan — reversed during execution)
 
-Add a frontmatter grammar like `model-when: {common=false: sonnet}`. Rejected: it splits routing across two places — a condition→model *map* in frontmatter plus a condition *evaluator* in the dispatcher — for zero second consumer. It is the clean option only if future param-conditional agents are imagined into existence. Revisit under the rule of three.
+A `resolveDispatchModel(agentName, frontmatterModel, nodeParams)` that hardcoded `agentName == "system-implementer" && common == "false" → "sonnet"` in Go. Rejected on execution: it buries the one tunable knob (the target model `sonnet`) in code, splits the "what model does this agent run" answer across frontmatter + driver.go, and forces a Go edit + rebuild to retune or disable. The scalar keeps the same agent-agnostic evaluator but moves the value to frontmatter — see *Mechanism decision*.
+
+### Conditional-model frontmatter *map* (rejected)
+
+A grammar like `model-overrides: [{when: {common: "false"}, model: sonnet}]`. Rejected: it is a mini condition→model DSL (match-list, condition keys, evaluator) serving exactly one agent today — schema speculating about multi-param conditional routing that doesn't exist yet. The single scalar covers the N=1 reality; revisit the map under the rule of three if a second agent needs multi-condition routing.
 
 ### Process-flow param override (rejected hardest)
 

@@ -1333,7 +1333,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			// rule on the dispatch side.
 			Headless:          opts.Headless && nodeParams["category"] != "human",
 			Approval:          opts.Approval,
-			Model:             tuning.Model,
+			Model:             resolveDispatchModel(tuning, nodeParams),
 			Effort:            tuning.Effort,
 			ShowPrompt:        opts.ShowPrompt,
 			PromptLogPath:     promptLog,
@@ -1458,6 +1458,27 @@ func encodeOutputKeysSpec(outs []statemachine.OutputSpec) string {
 // site.
 var fixScopeAugmentation = map[string][]string{
 	"scope-diff": {"internal/atdd/process/process-flow.yaml"},
+}
+
+// resolveDispatchModel returns the model a dispatch should run on: the agent's
+// frontmatter `model:` by default, or its optional `model-later-channel:`
+// override when this is a later-channel (common:false) dispatch. The rule is
+// agent-agnostic — it fires for any agent that declares the override field.
+// system-implementer is the only one today: it builds the shared common layer
+// plus a forward-only migration on the first channel (common:true, sized by
+// `model:`) but only a shallow per-channel adapter delta on later channels,
+// hard-gated by the acceptance-${channel} suite, so that tier is safe on a
+// cheaper model. An empty override (every other agent) means no downgrade.
+//
+// The whole model decision lives in the agent's frontmatter — both the default
+// and the later-channel value — so changing or disabling the downgrade is a
+// one-line YAML edit, not a code change. `common` is the orchestration's own
+// per-channel flag (scoped.go binds it true only for the first channel).
+func resolveDispatchModel(tuning agents.Tuning, nodeParams map[string]string) string {
+	if nodeParams["common"] == "false" && tuning.ModelLaterChannel != "" {
+		return tuning.ModelLaterChannel
+	}
+	return tuning.Model
 }
 
 // fixChangedFiles returns the working-tree dirty-file listing (one

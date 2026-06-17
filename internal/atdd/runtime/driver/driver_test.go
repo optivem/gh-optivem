@@ -1800,3 +1800,56 @@ func TestRun_WritesRunDigest_Failed(t *testing.T) {
 		t.Errorf("failed verdict must carry the run error %q; got:\n%s", err.Error(), digest)
 	}
 }
+
+// TestResolveDispatchModel pins the optional later-channel model override: an
+// agent that declares model-later-channel runs on it for common:false
+// (later-channel, adapter-delta-only) dispatches, hard-gated by the
+// acceptance-${channel} suite, and on its frontmatter model otherwise. An agent
+// with no override (the default) keeps its frontmatter model on every channel.
+func TestResolveDispatchModel(t *testing.T) {
+	tests := []struct {
+		name   string
+		tuning agents.Tuning
+		params map[string]string
+		want   string
+	}{
+		{
+			name:   "later channel uses the override",
+			tuning: agents.Tuning{Model: "opus", ModelLaterChannel: "sonnet"},
+			params: map[string]string{"common": "false"},
+			want:   "sonnet",
+		},
+		{
+			name:   "first channel keeps frontmatter model",
+			tuning: agents.Tuning{Model: "opus", ModelLaterChannel: "sonnet"},
+			params: map[string]string{"common": "true"},
+			want:   "opus",
+		},
+		{
+			name:   "common absent keeps frontmatter model (no silent downgrade)",
+			tuning: agents.Tuning{Model: "opus", ModelLaterChannel: "sonnet"},
+			params: map[string]string{},
+			want:   "opus",
+		},
+		{
+			name:   "no override declared keeps frontmatter model on later channel",
+			tuning: agents.Tuning{Model: "opus"},
+			params: map[string]string{"common": "false"},
+			want:   "opus",
+		},
+		{
+			name:   "empty frontmatter model preserved when no override applies",
+			tuning: agents.Tuning{},
+			params: map[string]string{"common": "false"},
+			want:   "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveDispatchModel(tt.tuning, tt.params); got != tt.want {
+				t.Errorf("resolveDispatchModel(%+v, %v) = %q; want %q",
+					tt.tuning, tt.params, got, tt.want)
+			}
+		})
+	}
+}

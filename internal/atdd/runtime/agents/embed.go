@@ -116,11 +116,23 @@ func DefaultAgentSet() *AgentSet {
 //	---
 //	You are the Test Agent. ...
 //
-// Validation happens at LoadTuning — a missing field is a hard error
-// the driver propagates, halting dispatch before claude is invoked.
+// Validation happens at LoadTuning — a missing `model`/`effort` is a hard
+// error the driver propagates, halting dispatch before claude is invoked.
+//
+// ModelLaterChannel is an OPTIONAL override (no validation): when set, a
+// later-channel dispatch (the `common:false` channels of a multi-channel
+// cycle) runs on this model instead of Model. It exists for agents whose
+// difficulty bifurcates on the channel — system-implementer builds the
+// shared common layer + forward-only migration on the first channel
+// (`common:true`, sized by Model) but only a shallow per-channel adapter
+// delta on later channels, hard-gated by the acceptance-${channel} suite,
+// so the later tier is safe to route to a cheaper model. Absent → no
+// per-channel downgrade; Model is used for every channel. See
+// resolveDispatchModel (driver.go) for the routing.
 type Tuning struct {
-	Model  string `yaml:"model"`
-	Effort string `yaml:"effort"`
+	Model             string `yaml:"model"`
+	Effort            string `yaml:"effort"`
+	ModelLaterChannel string `yaml:"model-later-channel"`
 }
 
 // Prompt returns the embedded prompt body for the given agent name,

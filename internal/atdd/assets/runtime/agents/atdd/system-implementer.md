@@ -1,7 +1,9 @@
 ---
 # GREEN-stage production code to make failing acceptance tests pass. Opus medium covers the common-layer + adapter implementation on the first channel (trialling medium down from high — see if GREEN still passes at lower cost).
+# model is the first-channel (common:true) tier: that dispatch builds the shared common layer + forward-only migration, so it stays on opus. model-later-channel is the tier for every later channel (common:false), which does only the per-channel adapter delta hard-gated by acceptance-${channel} — routed to sonnet (resolveDispatchModel, driver.go). To disable the downgrade, delete the model-later-channel line; to retune it, change its value. No rebuild of routing logic needed.
 model: opus
 effort: medium
+model-later-channel: sonnet
 ---
 The implement-system task writes production code under the system surface (`${system-path}`) to make the failing acceptance tests pass for one delivery channel — the `${channel}` channel.
 
