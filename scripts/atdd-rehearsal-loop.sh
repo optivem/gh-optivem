@@ -13,12 +13,15 @@ set -euo pipefail
 # overlapping runs would race on both.
 #
 # Usage:
-#   bash atdd-rehearsal-loop.sh [--config <yaml>] [ticket ...]
+#   bash atdd-rehearsal-loop.sh [--config <yaml>] [--keep <policy>] [ticket ...]
 #
 #   ticket:    one or more issue numbers / URLs forwarded to atdd-rehearsal.sh.
 #              If none are given, the built-in DEFAULT_TICKETS corpus runs.
 #   --config:  gh-optivem.yaml variant to exercise (forwarded as-is to every
 #              rehearsal). Default: DEFAULT_CONFIG below.
+#   --keep:    worktree+branch retention policy: never | on-failure | always.
+#              Overrides the KEEP_WORKTREES env var, which in turn overrides
+#              the built-in default (always). See KEEP_WORKTREES in LOOP CONFIG.
 #
 # Examples:
 #   # Full built-in corpus (61 65 68 69 70 71 72 76), default config:
@@ -37,9 +40,12 @@ set -euo pipefail
 #   bash atdd-rehearsal-loop.sh --config gh-optivem-multitier-java.yaml
 #
 #   # Keep the worktree of a failed run for inspection (delete passing ones):
-#   KEEP_WORKTREES=on-failure bash atdd-rehearsal-loop.sh
+#   bash atdd-rehearsal-loop.sh --keep on-failure
 #
 #   # Keep every worktree, pass or fail:
+#   bash atdd-rehearsal-loop.sh --keep always 68 69
+#
+#   # Same policies via env var (the flag overrides this if both are set):
 #   KEEP_WORKTREES=always bash atdd-rehearsal-loop.sh 68 69
 #
 # Autonomous by contract:
@@ -60,14 +66,16 @@ DEFAULT_CONFIG="gh-optivem-monolith-java.yaml"
 # KEEP_WORKTREES — what to do with each rehearsal worktree+branch after its run.
 # The per-run .log file is ALWAYS kept regardless; this only controls the
 # worktree (and its branch):
-#   never       delete every worktree, pass or fail.            [default]
+#   never       delete every worktree, pass or fail.
 #   on-failure  keep only a FAILED run's worktree (for inspection); delete the
 #               worktrees of runs that passed. Since the loop stops on the first
 #               failure, this leaves exactly the broken one behind.
-#   always      keep every worktree+branch, pass or fail.
-# Env-overridable without editing the file, e.g.:
+#   always      keep every worktree+branch, pass or fail.                        [default]
+# Override precedence (highest first): --keep flag > KEEP_WORKTREES env var >
+# this built-in default. Without editing the file, e.g.:
+#   bash atdd-rehearsal-loop.sh --keep on-failure
 #   KEEP_WORKTREES=on-failure bash atdd-rehearsal-loop.sh
-KEEP_WORKTREES="${KEEP_WORKTREES:-never}"
+KEEP_WORKTREES="${KEEP_WORKTREES:-always}"
 # The CONTRIBUTING.md rehearsal corpus, in document order. Only the leading
 # issue number is data — the loop forwards it to atdd-rehearsal.sh as-is; the
 # trailing comment (title · clickable issue URL · what the story exercises) is
@@ -121,7 +129,7 @@ TICKETS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
-      sed -n '9,56p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '9,62p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -c|--config)
@@ -129,6 +137,13 @@ while [[ $# -gt 0 ]]; do
       CONFIG="$2"; shift 2 ;;
     --config=*)
       CONFIG="${1#--config=}"; shift ;;
+    # --keep overrides the KEEP_WORKTREES env default; validated below alongside
+    # the env-sourced value, so a bad --keep value is caught by the same case.
+    --keep)
+      [[ $# -ge 2 ]] || { echo "ERROR: $1 requires a value" >&2; exit 2; }
+      KEEP_WORKTREES="$2"; shift 2 ;;
+    --keep=*)
+      KEEP_WORKTREES="${1#--keep=}"; shift ;;
     --)
       shift; while [[ $# -gt 0 ]]; do TICKETS+=("$1"); shift; done ;;
     -*)
@@ -155,7 +170,7 @@ case "$KEEP_WORKTREES" in
   on-failure) CLEANUP_MODE="on-success" ;;
   always)     CLEANUP_MODE="no" ;;
   *)
-    echo "ERROR: KEEP_WORKTREES must be never|on-failure|always (got: $KEEP_WORKTREES)" >&2
+    echo "ERROR: keep policy must be never|on-failure|always (got: $KEEP_WORKTREES) — set via --keep or KEEP_WORKTREES" >&2
     exit 2 ;;
 esac
 

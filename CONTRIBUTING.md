@@ -28,10 +28,13 @@ cd ../shop
 bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh
 
 # A subset, in the given order:
-bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh 68 69 76
+bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh 72 71 69 76 61
+
+# Delete each worktree after its run instead of keeping them:
+bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh --keep never
 ```
 
-`atdd-rehearsal-loop.sh` runs `atdd-rehearsal.sh` over each ticket serially (`--auto --headless`), auto-deleting each worktree on exit (the per-run `.log` is kept) and **stopping on the first failure**. Pass `--config <yaml>` to switch stacks for the whole run; run with `--help` for all options. To rehearse a single ticket, use `atdd-rehearsal.sh` directly:
+`atdd-rehearsal-loop.sh` runs `atdd-rehearsal.sh` over each ticket serially (`--auto --headless`), keeping each worktree+branch on exit by default (`--keep always`; the per-run `.log` is kept regardless) and **stopping on the first failure**. Pass `--keep never` to delete every worktree or `--keep on-failure` to keep only the broken one; `--config <yaml>` to switch stacks for the whole run; run with `--help` for all options. Stale worktrees accumulate under `../worktrees/` — clear them with `atdd-rehearsal-cleanup.sh`. To rehearse a single ticket, use `atdd-rehearsal.sh` directly:
 
 For structural change - UI Redesign
 
