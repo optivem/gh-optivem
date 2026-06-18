@@ -177,6 +177,13 @@ func askLicense(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
 	})
 }
 
+// askArch offers only the flag-authorable architectures (monolith, multitier).
+// microservices is intentionally absent: it is YAML-authored only (D7) — its N
+// backend-services: locations can't be expressed as a fixed flag/prompt family,
+// so an operator declares it directly in gh-optivem.yaml (mirroring
+// external-systems:, which `config init` also does not prompt for). ValidateArch
+// enforces the same restriction and its message points microservices operators
+// at YAML authoring.
 func askArch(r *bufio.Reader, out io.Writer, f *config.RawFlags) error {
 	return askChoice(r, out, "Architecture", []string{"monolith", "multitier"}, 0, func(v string) error {
 		if msg := config.ValidateArch(v); msg != "" {

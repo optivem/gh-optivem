@@ -52,8 +52,17 @@ type Config struct {
 
 	Lang         string // monolith only
 	BackendLang  string // multitier only
-	FrontendLang string // multitier only
+	FrontendLang string // multitier (and microservices) frontend
 	TestLang     string
+
+	// BackendServices is the microservices backend: one entry per declared
+	// service location, in sorted-name order. Empty for monolith/multitier
+	// (which carry a single backend via Lang / BackendLang+BackendPath).
+	// Authored only from the loaded gh-optivem.yaml backend-services: map
+	// (mirroring external-systems:, D7) — never from --backend-* flags, which
+	// can't bind arbitrary per-service names. Scaffolding iterates this slice
+	// to produce one backend scaffold per service.
+	BackendServices []BackendService
 
 	// Tier paths written into gh-optivem.yaml. Each is required when Arch is
 	// set (the YAML emitter does no path derivation — every call site that
@@ -167,6 +176,11 @@ type Config struct {
 	SystemRepo     string
 	SystemFullRepo string
 
+	// Microservices frontend repo slug (owner/name), read from the loaded YAML
+	// (D5 single frontend). Carried so BuildOptivemYAML re-emits the authored
+	// slug without re-deriving. Empty for monolith/multitier.
+	FrontendRepoSlug string
+
 	// Set after clone
 	RepoDir         string
 	FrontendRepoDir string
@@ -179,6 +193,23 @@ type Config struct {
 	// a no-op), but is treated as a hard error for freshly created repos
 	// (signals the template apply produced nothing).
 	PreExistingRepos map[string]bool
+}
+
+// BackendService is one microservices backend service: its identity (the
+// backend-services: map key) and the TierSpec facts the scaffolder needs to
+// materialize it — repo-relative Path, source Lang, owning Repo slug, and the
+// SonarCloud project key. RepoDir is the local clone directory the service's
+// code is written into; it is resolved after clone (mono-repo: the shared
+// RepoDir; multi-repo: the service's own clone dir). Mirrors how a single
+// multitier backend is carried by BackendPath/BackendLang/BackendRepo +
+// BackendRepoDir, but one per service.
+type BackendService struct {
+	Name         string
+	Path         string
+	Lang         string
+	Repo         string
+	SonarProject string
+	RepoDir      string
 }
 
 // Casings is the set of case variants for a single identifier token (owner or
@@ -499,16 +530,30 @@ type RawFlags struct {
 	SystemTestPath string
 	BackendPath    string
 	FrontendPath   string
-	KeepLocal      bool
-	NoLegacy       bool
-	NoLocalTests   bool
-	NoLocalSonar   bool
-	NoAtdd         bool
-	NoProject      bool
-	BugReport      bool
-	Verbose        bool
-	Quiet          bool
-	AssumeYes      bool
+
+	// BackendServices carries the microservices backend-services: map from
+	// the loaded gh-optivem.yaml. Not bound to any CLI flag (no --backend-*
+	// flag family for it, D7) — populated only by FillRawFlagsFromYAML and
+	// threaded into Config.BackendServices by ParseAndValidate.
+	BackendServices []BackendService
+
+	// FrontendRepoSlug is the microservices frontend's owner/name repo slug,
+	// read verbatim from the loaded YAML (the single frontend, D5). Carried so
+	// BuildOptivemYAML can re-emit it without re-deriving — multi-repo
+	// microservices has no flag-derived frontend repo. Empty for
+	// monolith/multitier (which derive their slugs from the workspace repo).
+	FrontendRepoSlug string
+
+	KeepLocal    bool
+	NoLegacy     bool
+	NoLocalTests bool
+	NoLocalSonar bool
+	NoAtdd       bool
+	NoProject    bool
+	BugReport    bool
+	Verbose      bool
+	Quiet        bool
+	AssumeYes    bool
 }
 
 // bindYAMLAffectingFlags binds the subset of init flags that influence the
@@ -607,8 +652,13 @@ func validateCommonFlags(deploy, arch, repoStrategy string) {
 	if deploy == "cloud-run" {
 		log.FatalExit("--deploy cloud-run is in development and may be available in a future release. Use --deploy docker for now.")
 	}
-	if msg := ValidateArch(arch); msg != "" {
-		log.FatalExit("--arch " + msg)
+	// ParseAndValidate is the scaffold path — its arch may have arrived from a
+	// loaded gh-optivem.yaml (FillRawFlagsFromYAML), so microservices is a
+	// legitimate value here even though the --arch FLAG path (ValidateArch,
+	// used by `config init` / the interactive prompt) rejects it (D7). Validate
+	// the resolved arch against the full scaffoldable set instead.
+	if arch != "monolith" && arch != "multitier" && arch != "microservices" {
+		log.FatalExit("--arch must be 'monolith', 'multitier', or 'microservices'")
 	}
 	if msg := ValidateRepoStrategy(repoStrategy); msg != "" {
 		log.FatalExit("--repo-strategy " + msg)
@@ -617,6 +667,10 @@ func validateCommonFlags(deploy, arch, repoStrategy string) {
 
 type langChoice struct {
 	lang, backendLang, frontendLang, testLang string
+	// serviceLangs holds the per-service backend languages for the
+	// microservices architecture (one entry per backend-services: service,
+	// D2 heterogeneous stacks). Empty for monolith/multitier.
+	serviceLangs []string
 }
 
 // IsValidLang reports whether s is one of the languages gh-optivem knows how
@@ -643,12 +697,42 @@ func collectLangs(lc langChoice) []string {
 			out = append(out, l)
 		}
 	}
+	// Microservices carries no single backend lang on the langChoice — each
+	// service brings its own (heterogeneous stacks, D2). Fold in every
+	// service lang so the environment verify step checks each compiler.
+	out = append(out, lc.serviceLangs...)
 	return out
 }
 
 func resolveLangs(f *RawFlags) langChoice {
 	validLangs := map[string]bool{"java": true, "dotnet": true, "typescript": true}
 	var c langChoice
+	if f.Arch == "microservices" {
+		// Microservices is YAML-authored (D7): langs come from the loaded
+		// backend-services: map + the single frontend, not from --backend-lang.
+		// FillRawFlagsFromYAML already populated these; validate them here.
+		if len(f.BackendServices) == 0 {
+			log.FatalExit("microservices architecture requires at least one backend service in gh-optivem.yaml's backend-services:")
+		}
+		for _, svc := range f.BackendServices {
+			if !validLangs[svc.Lang] {
+				log.FatalExit("backend-services." + svc.Name + ".lang must be java, dotnet, or typescript")
+			}
+			c.serviceLangs = append(c.serviceLangs, svc.Lang)
+		}
+		if f.FrontendLang != "typescript" {
+			log.FatalExit("microservices frontend lang must be typescript")
+		}
+		c.frontendLang = f.FrontendLang
+		if f.TestLang == "" {
+			log.FatalExit("--test-lang is required (the system-test tier's language is not derived from the backend services)")
+		}
+		if !validLangs[f.TestLang] {
+			log.FatalExit("--test-lang must be java, dotnet, or typescript")
+		}
+		c.testLang = f.TestLang
+		return c
+	}
 	if f.Arch == "monolith" {
 		if f.Lang == "" {
 			log.FatalExit("--monolith-lang is required for monolith architecture")
@@ -1149,6 +1233,13 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		BackendLang:  lc.backendLang,
 		FrontendLang: lc.frontendLang,
 		TestLang:     lc.testLang,
+
+		// Microservices backend (D7: YAML-authored). Empty for
+		// monolith/multitier. FillRawFlagsFromYAML populated f.BackendServices
+		// from the loaded backend-services: map; pass it through verbatim for
+		// the scaffolder to iterate.
+		BackendServices:  f.BackendServices,
+		FrontendRepoSlug: f.FrontendRepoSlug,
 
 		Deploy:         f.Deploy,
 		License:        f.License,

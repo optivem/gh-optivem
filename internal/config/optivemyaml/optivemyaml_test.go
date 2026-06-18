@@ -111,6 +111,60 @@ func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 	}
 }
 
+func TestBuildOptivemYAML_MicroservicesMonorepo(t *testing.T) {
+	t.Parallel()
+	cfg := &config.Config{
+		Arch:             "microservices",
+		RepoStrategy:     "monorepo",
+		Owner:            "optivem",
+		Repo:             "shop",
+		FullRepo:         "optivem/shop",
+		FrontendLang:     "typescript",
+		FrontendPath:     "system/microservices/frontend-react",
+		FrontendRepoSlug: "optivem/shop",
+		TestLang:         "java",
+		SystemTestPath:   "system-test/java",
+		ProjectURL:       "https://github.com/orgs/optivem/projects/20",
+		BackendServices: []config.BackendService{
+			{Name: "inventory", Path: "system/microservices/inventory-dotnet", Repo: "optivem/shop", Lang: "dotnet", SonarProject: "optivem_shop-inventory"},
+			{Name: "orders", Path: "system/microservices/orders-java", Repo: "optivem/shop", Lang: "java", SonarProject: "optivem_shop-orders"},
+		},
+	}
+	got := BuildOptivemYAML(cfg)
+	if got.System.Architecture != "microservices" {
+		t.Fatalf("Architecture: got %q", got.System.Architecture)
+	}
+	if len(got.System.BackendServices) != 2 {
+		t.Fatalf("BackendServices: got %d, want 2", len(got.System.BackendServices))
+	}
+	orders, ok := got.System.BackendServices["orders"]
+	if !ok {
+		t.Fatalf("BackendServices missing 'orders': %+v", got.System.BackendServices)
+	}
+	if orders.Path != "system/microservices/orders-java" || orders.Lang != "java" || orders.SonarProject != "optivem_shop-orders" {
+		t.Errorf("orders service mismatch: %+v", orders)
+	}
+	inv := got.System.BackendServices["inventory"]
+	if inv.Lang != "dotnet" || inv.SonarProject != "optivem_shop-inventory" {
+		t.Errorf("inventory service mismatch: %+v", inv)
+	}
+	// Single frontend (D5), sonar-project derived as <owner>_<repo>-frontend.
+	if got.System.Frontend.Repo != "optivem/shop" || got.System.Frontend.Lang != "typescript" {
+		t.Errorf("Frontend mismatch: %+v", got.System.Frontend)
+	}
+	if got.System.Frontend.SonarProject != "optivem_shop-frontend" {
+		t.Errorf("Frontend.SonarProject: got %q, want optivem_shop-frontend", got.System.Frontend.SonarProject)
+	}
+	// monolith/multitier singular fields stay empty.
+	if got.System.Path != "" || !got.System.Backend.IsEmpty() {
+		t.Errorf("singular backend fields should be empty: path=%q backend=%+v", got.System.Path, got.System.Backend)
+	}
+	// The whole thing must validate as a real microservices config.
+	if err := got.Validate(); err != nil {
+		t.Errorf("BuildOptivemYAML output should validate: %v", err)
+	}
+}
+
 func TestBuildOptivemYAML_MonolithMultirepo(t *testing.T) {
 	t.Parallel()
 	sys, sysTest := monolithFlatPaths()

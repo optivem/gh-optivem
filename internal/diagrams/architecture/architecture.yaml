@@ -216,6 +216,9 @@ sections:
       - {id: MULTI_BACK_DOTNET, label: system/multitier/backend-dotnet}
       - {id: MULTI_BACK_TS, label: system/multitier/backend-typescript}
       - {id: MULTI_FRONT, label: system/multitier/frontend-react}
+      - {id: MICRO_ORDERS, label: system/microservices/orders-java}
+      - {id: MICRO_INVENTORY, label: system/microservices/inventory-dotnet}
+      - {id: MICRO_FRONT, label: system/microservices/frontend-react}
       - {id: BACKEND_ROUTE, label: Backend Route}
       - {id: UI_FETCH, label: UI Fetch Site}
       - {id: DRIVER_CONST, label: Driver Adapter URL Constant}
@@ -227,9 +230,12 @@ sections:
       - {from: MULTI_BACK_JAVA, to: BACKEND_ROUTE}
       - {from: MULTI_BACK_DOTNET, to: BACKEND_ROUTE}
       - {from: MULTI_BACK_TS, to: BACKEND_ROUTE}
+      - {from: MICRO_ORDERS, to: BACKEND_ROUTE}
+      - {from: MICRO_INVENTORY, to: BACKEND_ROUTE}
       - {from: MONO_JAVA, to: UI_FETCH}
       - {from: MONO_DOTNET, to: UI_FETCH}
       - {from: MONO_TS, to: UI_FETCH}
       - {from: MULTI_FRONT, to: UI_FETCH}
+      - {from: MICRO_FRONT, to: UI_FETCH}
       - {from: BACKEND_ROUTE, to: DRIVER_CONST, style: undirected}
       - {from: UI_FETCH, to: DRIVER_CONST, style: undirected}

@@ -69,6 +69,31 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 		f.FrontendPath = pc.System.Frontend.Path
 		f.BackendLang = pc.System.Backend.Lang
 		f.FrontendLang = pc.System.Frontend.Lang
+	case "microservices":
+		// Microservices is YAML-authored only (D7): the service list comes from
+		// the backend-services: map (mirroring external-systems:), never from
+		// flags. Project Validate has already enforced the shape (>=1 service,
+		// per-service completeness, single frontend); fill the RawFlags carrier
+		// in sorted-name order so the scaffolder iterates deterministically.
+		if len(pc.System.BackendServices) == 0 {
+			return missingYAMLField("system.backend-services")
+		}
+		if pc.System.Frontend.IsEmpty() {
+			return missingYAMLField("system.frontend")
+		}
+		for _, name := range pc.BackendServiceNames() {
+			svc := pc.System.BackendServices[name]
+			f.BackendServices = append(f.BackendServices, BackendService{
+				Name:         name,
+				Path:         svc.Path,
+				Lang:         svc.Lang,
+				Repo:         svc.Repo,
+				SonarProject: svc.SonarProject,
+			})
+		}
+		f.FrontendPath = pc.System.Frontend.Path
+		f.FrontendLang = pc.System.Frontend.Lang
+		f.FrontendRepoSlug = pc.System.Frontend.Repo
 	}
 
 	if pc.SystemTest.IsEmpty() {
@@ -107,14 +132,23 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 // reconstruct, and silently guessing a base name would commit a wrong
 // repo on GitHub.
 func workspaceRepoFromYAML(pc *projectconfig.Config) (owner, repo string, err error) {
-	var slug string
-	if pc.System.Architecture == "monolith" {
-		slug = pc.System.Repo
-	} else {
-		slug = pc.System.Backend.Repo
+	// Pick the anchor tier slug + its multi-repo suffix per architecture:
+	//   - monolith:      system.repo,          `-system`
+	//   - multitier:     system.backend.repo,  `-backend`
+	//   - microservices: system.frontend.repo, `-frontend`
+	//     (the single frontend is the one stable tier — backend-services is a
+	//     map of N services with no single backend slug to anchor on, D5).
+	var slug, suffix, missingHint string
+	switch pc.System.Architecture {
+	case projectconfig.ArchMonolith:
+		slug, suffix, missingHint = pc.System.Repo, "-system", "system.repo (monolith)"
+	case projectconfig.ArchMicroservices:
+		slug, suffix, missingHint = pc.System.Frontend.Repo, "-frontend", "system.frontend.repo (microservices)"
+	default:
+		slug, suffix, missingHint = pc.System.Backend.Repo, "-backend", "system.backend.repo (multitier)"
 	}
 	if slug == "" {
-		return "", "", missingYAMLField("system.repo (monolith) or system.backend.repo (multitier)")
+		return "", "", missingYAMLField(missingHint)
 	}
 	parts := strings.SplitN(slug, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
@@ -123,12 +157,6 @@ func workspaceRepoFromYAML(pc *projectconfig.Config) (owner, repo string, err er
 	owner = parts[0]
 	name := parts[1]
 	if pc.RepoStrategy == projectconfig.RepoStrategyMultiRepo {
-		var suffix string
-		if pc.System.Architecture == "monolith" {
-			suffix = "-system"
-		} else {
-			suffix = "-backend"
-		}
 		if !strings.HasSuffix(name, suffix) {
 			return "", "", fmt.Errorf("gh-optivem.yaml: multi-repo tier slug %q must end in %q for `gh optivem init` to derive the workspace repo name; edit the slug or rerun `gh optivem config init`",
 				slug, suffix)
@@ -149,6 +177,8 @@ func mapArchFromYAML(arch string) string {
 		return "monolith"
 	case projectconfig.ArchMultitier:
 		return "multitier"
+	case projectconfig.ArchMicroservices:
+		return "microservices"
 	default:
 		return arch
 	}

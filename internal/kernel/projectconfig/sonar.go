@@ -39,6 +39,12 @@ func DeriveSonarProjects(owner, repo, arch, repoStrategy string) DerivedSonar {
 	case ArchMultitier:
 		d.Backend = prefix + "-backend"
 		d.Frontend = prefix + "-frontend"
+	case ArchMicroservices:
+		// Microservices shares multitier's single-frontend convention (D5).
+		// The N backend services carry their OWN sonar-project keys from the
+		// authored YAML (keyed by service name, not derivable here), so only
+		// the frontend is derived; Backend stays empty.
+		d.Frontend = prefix + "-frontend"
 	}
 	return d
 }

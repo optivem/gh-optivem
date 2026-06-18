@@ -195,6 +195,29 @@ func buildSystem(cfg *config.Config, derived projectconfig.DerivedSonar, sutName
 			Lang:         projectconfig.LangTypescript,
 			SonarProject: derived.Frontend,
 		}
+	case "microservices":
+		// Microservices is YAML-authored (D7): the per-service facts (path,
+		// repo, lang, sonar-project) come straight from the loaded
+		// backend-services: map — DeriveSonarProjects has no microservices
+		// branch, so each service carries its own key rather than a
+		// flag-derived one. Re-emit the map verbatim from the carrier (in the
+		// sorted-name order FillRawFlagsFromYAML produced) so the round-trip is
+		// faithful. The single frontend (D5) re-emits its authored repo slug.
+		s.BackendServices = make(map[string]projectconfig.TierSpec, len(cfg.BackendServices))
+		for _, svc := range cfg.BackendServices {
+			s.BackendServices[svc.Name] = projectconfig.TierSpec{
+				Path:         svc.Path,
+				Repo:         svc.Repo,
+				Lang:         svc.Lang,
+				SonarProject: svc.SonarProject,
+			}
+		}
+		s.Frontend = projectconfig.TierSpec{
+			Path:         cfg.FrontendPath,
+			Repo:         cfg.FrontendRepoSlug,
+			Lang:         projectconfig.LangTypescript,
+			SonarProject: derived.Frontend,
+		}
 	}
 	s.DbMigrationPath = projectconfig.DefaultDbMigrationPath
 	return s

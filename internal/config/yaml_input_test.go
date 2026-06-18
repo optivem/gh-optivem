@@ -45,6 +45,87 @@ func validMultitierMultirepoYAML() *projectconfig.Config {
 	}
 }
 
+// validMicroservicesMonorepoYAML returns the heterogeneous mono-repo
+// microservices shape from the plan: two backend services (java + dotnet)
+// sharing one repo, plus the single typescript frontend.
+func validMicroservicesMonorepoYAML() *projectconfig.Config {
+	return &projectconfig.Config{
+		Project:      projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
+		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
+		SystemName:   "Shop",
+		License:      projectconfig.LicenseMIT,
+		Deploy:       projectconfig.DeployDocker,
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMicroservices,
+			BackendServices: map[string]projectconfig.TierSpec{
+				"orders":    {Path: "system/microservices/orders-java", Repo: "optivem/shop", Lang: projectconfig.LangJava, SonarProject: "optivem_shop-orders"},
+				"inventory": {Path: "system/microservices/inventory-dotnet", Repo: "optivem/shop", Lang: projectconfig.LangDotnet, SonarProject: "optivem_shop-inventory"},
+			},
+			Frontend: projectconfig.TierSpec{Path: "system/microservices/frontend-react", Repo: "optivem/shop", Lang: projectconfig.LangTypescript, SonarProject: "optivem_shop-frontend"},
+		},
+		SystemTest: projectconfig.TierSpec{Path: "system-test/java", Repo: "optivem/shop", Lang: projectconfig.LangJava},
+	}
+}
+
+func TestFillRawFlagsFromYAML_MicroservicesMonorepo(t *testing.T) {
+	t.Parallel()
+	f := &RawFlags{}
+	if err := FillRawFlagsFromYAML(f, validMicroservicesMonorepoYAML()); err != nil {
+		t.Fatalf("FillRawFlagsFromYAML: %v", err)
+	}
+	if f.Arch != "microservices" {
+		t.Errorf("arch: got %q, want microservices", f.Arch)
+	}
+	// Mono-repo: owner/repo derived from the single frontend slug optivem/shop.
+	if f.Owner != "optivem" || f.Repo != "shop" {
+		t.Errorf("owner/repo: got %q/%q, want optivem/shop", f.Owner, f.Repo)
+	}
+	// backend-services populated in sorted-name order (inventory < orders).
+	if len(f.BackendServices) != 2 {
+		t.Fatalf("BackendServices: got %d, want 2", len(f.BackendServices))
+	}
+	if f.BackendServices[0].Name != "inventory" || f.BackendServices[1].Name != "orders" {
+		t.Errorf("service order: got %q,%q want inventory,orders", f.BackendServices[0].Name, f.BackendServices[1].Name)
+	}
+	if f.BackendServices[0].Lang != "dotnet" || f.BackendServices[1].Lang != "java" {
+		t.Errorf("service langs: got %q,%q", f.BackendServices[0].Lang, f.BackendServices[1].Lang)
+	}
+	if f.BackendServices[1].Path != "system/microservices/orders-java" || f.BackendServices[1].SonarProject != "optivem_shop-orders" {
+		t.Errorf("orders service mismatch: %+v", f.BackendServices[1])
+	}
+	if f.FrontendLang != "typescript" || f.FrontendPath != "system/microservices/frontend-react" {
+		t.Errorf("frontend: got lang=%q path=%q", f.FrontendLang, f.FrontendPath)
+	}
+	if f.FrontendRepoSlug != "optivem/shop" {
+		t.Errorf("FrontendRepoSlug: got %q", f.FrontendRepoSlug)
+	}
+}
+
+func TestFillRawFlagsFromYAML_MicroservicesMultirepoStripsFrontendSuffix(t *testing.T) {
+	t.Parallel()
+	pc := validMicroservicesMonorepoYAML()
+	pc.RepoStrategy = projectconfig.RepoStrategyMultiRepo
+	pc.System.BackendServices = map[string]projectconfig.TierSpec{
+		"orders":    {Path: ".", Repo: "optivem/shop-orders", Lang: projectconfig.LangJava, SonarProject: "optivem_shop-orders"},
+		"inventory": {Path: ".", Repo: "optivem/shop-inventory", Lang: projectconfig.LangDotnet, SonarProject: "optivem_shop-inventory"},
+	}
+	pc.System.Frontend = projectconfig.TierSpec{Path: ".", Repo: "optivem/shop-frontend", Lang: projectconfig.LangTypescript, SonarProject: "optivem_shop-frontend"}
+	pc.SystemTest.Repo = "optivem/shop-orders"
+
+	f := &RawFlags{}
+	if err := FillRawFlagsFromYAML(f, pc); err != nil {
+		t.Fatalf("FillRawFlagsFromYAML: %v", err)
+	}
+	// Multi-repo: owner/repo derived from the frontend slug, stripping
+	// the "-frontend" suffix → optivem/shop.
+	if f.Owner != "optivem" || f.Repo != "shop" {
+		t.Errorf("owner/repo: got %q/%q, want optivem/shop (stripped -frontend)", f.Owner, f.Repo)
+	}
+	if f.BackendServices[1].Repo != "optivem/shop-orders" {
+		t.Errorf("orders repo: got %q", f.BackendServices[1].Repo)
+	}
+}
+
 func TestFillRawFlagsFromYAML_MonolithMonorepo(t *testing.T) {
 	t.Parallel()
 	f := &RawFlags{}

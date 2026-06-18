@@ -696,6 +696,20 @@ func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath 
 				cfg.System.Backend.Path, cfg.System.Backend.Lang, cfg.System.Backend.Repo)
 			fmt.Fprintf(w, "  frontend:      %s (lang: %s, repo: %s)\n",
 				cfg.System.Frontend.Path, cfg.System.Frontend.Lang, cfg.System.Frontend.Repo)
+		case projectconfig.ArchMicroservices:
+			// One backend route per declared service, keyed by service name —
+			// the microservices generalization of the single multitier
+			// `backend:` line. backendServiceRoutes resolves the same
+			// per-service TierSpec the system-test driver addresses, in
+			// BackendServiceNames() (sorted) order so the banner is
+			// deterministic. The single frontend stays one line (D5).
+			for _, name := range cfg.BackendServiceNames() {
+				route := cfg.System.BackendServices[name]
+				fmt.Fprintf(w, "  backend %s: %s (lang: %s, repo: %s)\n",
+					name, route.Path, route.Lang, route.Repo)
+			}
+			fmt.Fprintf(w, "  frontend:      %s (lang: %s, repo: %s)\n",
+				cfg.System.Frontend.Path, cfg.System.Frontend.Lang, cfg.System.Frontend.Repo)
 		}
 		if !cfg.SystemTest.IsEmpty() {
 			fmt.Fprintf(w, "  system-test:   %s (lang: %s, repo: %s)\n",
@@ -807,6 +821,33 @@ func primaryLanguage(cfg *projectconfig.Config) string {
 	default:
 		return ""
 	}
+}
+
+// backendServiceRoutes resolves the per-service routing handles the
+// system-test driver addresses on a microservices system: a name → TierSpec
+// map keyed by the `backend-services` map key (D4 — the key is both the
+// service identity and the driver-routing handle, so each service is
+// reachable on its own route/base-location). It generalizes the single
+// backend the monolith / multitier driver assumes: those have exactly one
+// route (System / System.Backend), microservices have N, one per declared
+// service.
+//
+// Returns nil for monolith / multitier (and a nil cfg) so the single-backend
+// path is untouched — those architectures resolve their one route directly
+// off System / System.Backend as today, never through this map. The values
+// reuse the declared TierSpec verbatim (validateBackendServices already
+// enforces per-service path/repo/lang completeness), so no route-construction
+// logic is forked per service. BackendServiceNames() is the sorted-iteration
+// companion for any caller that needs deterministic order over the routes.
+func backendServiceRoutes(cfg *projectconfig.Config) map[string]projectconfig.TierSpec {
+	if cfg == nil || cfg.System.Architecture != projectconfig.ArchMicroservices {
+		return nil
+	}
+	routes := make(map[string]projectconfig.TierSpec, len(cfg.System.BackendServices))
+	for _, name := range cfg.BackendServiceNames() {
+		routes[name] = cfg.System.BackendServices[name]
+	}
+	return routes
 }
 
 func (o Options) withDefaults() Options {

@@ -189,13 +189,20 @@ func ApplyTemplate(cfg *config.Config) {
 	log.Info("Copying issue templates...")
 	copyIssueTemplates(cfg.ShopPath, cfg.RepoDir)
 
-	if cfg.Arch == "monolith" {
+	switch cfg.Arch {
+	case "monolith":
 		if cfg.RepoStrategy == "monorepo" {
 			applyMonolithMonorepo(cfg)
 		} else {
 			applyMonolithMultirepo(cfg)
 		}
-	} else {
+	case "microservices":
+		// Microservices is backend-multiplicity (D7, YAML-authored): scaffold
+		// one backend per declared service location plus the single frontend.
+		// Same mono-repo/multi-repo split as the others, resolved per-service
+		// inside the routine.
+		applyMicroservices(cfg)
+	default:
 		if cfg.RepoStrategy == "monorepo" {
 			applyMultitierMonorepo(cfg)
 		} else {
