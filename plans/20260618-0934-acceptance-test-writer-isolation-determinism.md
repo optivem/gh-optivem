@@ -13,7 +13,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Design is **resolved** (see Resolved design). This is now a coordinated three-repo change with a library release in the middle — run `/execute-plan` (ideally after `/clear`) and walk the Items **in dependency order**: optivem-testing library release first, then gh-optivem writer/gate, then optivem/shop consumer. No pickup marker yet; check for concurrent agents before starting.
+Design is **resolved** and the Items carry concrete paths/commands — `/execute-plan` can run this without further discovery. It's a coordinated three-repo change with a library release in the middle; walk the Items **in dependency order**: A (`../optivem-testing` delete time markers + release `2.0.0`) must publish before B (gh-optivem writer/gate/docs + dep bump) and C (optivem/shop dep bump + retag #76). The reason param already exists and the pre-removal check is resolved, so A is delete-and-release. No pickup marker yet; check for concurrent agents before starting; commit/release are gated on user approval.
 
 ## Problem
 
@@ -38,7 +38,14 @@ These are a teaching-repo concern (the generated tests are what students read), 
    ```
    → `@Isolated(reason = "mutates the cancellation-blackout clock; parallel runs would be flaky")`
 
-3. **`@TimeDependent` is retired in all languages (Java, .NET, TypeScript).** It's subsumed: the reason now lives in the `@Isolated` string, and the isolation decision lives in the bare tag. Removing it is a breaking change → **major version bump** of the optivem-testing library. **Pre-removal check (blocker):** confirm `@TimeDependent` is a pure marker, not the mechanism that *activates* the controlled/fake clock. If it activates the clock, repurpose rather than remove. The plan assumes clock control is driven by explicit DSL steps (per #76's "reusing the existing clock-control DSL steps"); verify before deleting.
+   **Already in the library — no add needed.** Java `Isolated.java` has `String value() default ""`; .NET `IsolatedAttribute` has an `IsolatedAttribute(string reason)` ctor + `Reason` property. So `@Isolated("reason")` / `[Isolated("reason")]` already compile today. TypeScript has **no** isolation annotation concept at all (its test model is channel-based) — nothing to add there.
+
+3. **The time-marker annotations are retired.** They're subsumed: the reason now lives in the `@Isolated` string, the isolation decision lives in the bare tag. Per-language names differ:
+   - Java: `@TimeDependent` (`TimeDependent.java`) **and** its already-`@Deprecated(forRemoval=true)` alias `@Time` (`Time.java`).
+   - .NET: `[Time]` (`TimeAttribute.cs`, incl. `TimeTraitDiscoverer`). *(There is no `[TimeDependent]` in .NET.)*
+   - TypeScript: none exists — nothing to remove.
+
+   **Pre-removal check — RESOLVED (not a blocker).** All of these are pure marker meta-annotations: Java `@TimeDependent` = `@Tag("time-dependent") @Tag("time") @Isolated("Time-dependent test")`; .NET `[Time]` = a `TraitDiscoverer` emitting `time`+`isolated` categories. None *activates* the clock — clock control is driven by explicit DSL steps (per #76). Safe to delete. Removal is breaking → **major version bump** (`VERSION` 1.1.8 → `2.0.0`). Note: `@TimeDependent`'s ISO `value()` is documentation-only ("potential future automation"); migrating drops it, which is fine (the actual instant is set via DSL steps).
 
 4. **The clock correctness invariant is enforced by a gate keyed on the clock-control DSL mechanism** — not on the reason prose and not on `@TimeDependent`. A scenario that drives the clock must carry `@isolated`, else reject. This keeps the one known correctness invariant un-forgettable without a closed reason enum.
 
@@ -46,23 +53,26 @@ These are a teaching-repo concern (the generated tests are what students read), 
 
 ## Items
 
-Walk in dependency order — each repo depends on the one above it being released/landed.
+Walk in dependency order — each repo depends on the one above it being released/landed. All paths are relative to the academy workspace root (`../` from gh-optivem).
 
-### A. optivem-testing library (all languages) → new major release
-- [ ] Add an optional `reason` parameter to `@Isolated` in each language binding (Java, .NET, TypeScript).
-- [ ] Confirm `@TimeDependent` is a marker (not clock activation), then remove it in each language binding.
-- [ ] Major version bump + release per the library's release process.
+### A. `../optivem-testing` → new major release (`2.0.0`)
+The `@Isolated` reason surface already exists (see Resolved design §2) — this repo is **delete the time markers + release**, nothing else.
+- [ ] Java: delete `java/core/src/main/java/com/optivem/testing/TimeDependent.java` and `java/core/src/main/java/com/optivem/testing/Time.java`.
+- [ ] .NET: delete `dotnet/Optivem.Testing/TimeAttribute.cs` (removes both `TimeAttribute` and `TimeTraitDiscoverer`).
+- [ ] TypeScript: no change — no isolation/time annotation exists.
+- [ ] Sweep the library's own docs for the removed names: `grep -rinE "TimeDependent|\[Time\]|@Time\b" ../optivem-testing` (notably `dotnet/README.md`) and update.
+- [ ] Release (breaking → major): `echo "2.0.0" > ../optivem-testing/VERSION && bash ../optivem-testing/scripts/bump-version.sh` → commit + push `main` (triggers RC commit stages) → `gh workflow run release-stage.yml` (promotes RC to Maven Central `com.optivem:optivem-testing`, NuGet `Optivem.Testing`, npm `@optivem/optivem-testing`; tags + GitHub Release). See `../optivem-testing/CONTRIBUTING.md` "Release Checklist".
 
-### B. gh-optivem (writer + gate + docs)
-- [ ] acceptance-test-writer prompt: mirror the bare `@isolated` AC tag into `@Isolated(reason = …)`, lifting the reason verbatim from an adjacent AC comment/description when present, bare `@Isolated()` otherwise; never invent. Remove all expectation/emission of `@TimeDependent`.
-- [ ] Add the clock-control-DSL gate: a scenario that drives the clock must carry `@isolated`.
-- [ ] Sweep process docs / runtime prompts for `@TimeDependent` references and retire them.
-- [ ] Bump the scaffolded optivem-testing dependency to the new release.
+### B. gh-optivem (writer + gate + docs) — after A is published
+- [ ] acceptance-test-writer prompt (`internal/atdd/assets/runtime/agents/atdd/*.md` — the AT-write prompt): mirror the bare `@isolated` AC tag into `@Isolated(reason = …)`, lifting the reason verbatim from an adjacent AC comment/description when present, bare `@Isolated()` otherwise; never invent. Remove all expectation/emission of `@TimeDependent` / `[Time]`.
+- [ ] Add the clock-control-DSL gate: a scenario that drives the clock-control DSL steps must carry `@isolated`, else reject.
+- [ ] Sweep gh-optivem for the retired names: `grep -rinE "TimeDependent|@Time\b|\[Time\]" internal docs` and retire references (prompts, process docs, fixtures).
+- [ ] Bump the scaffolded optivem-testing dependency to `2.0.0` wherever the scaffold pins it (Maven/Gradle, NuGet, npm template files).
 
-### C. optivem/shop (consumer)
-- [ ] Bump the optivem-testing dependency to the new release.
-- [ ] Retag #76's AC: replace `@TimeDependent` with bare `@isolated` (+ optional reason comment). Re-check #80 (coupon `validTo`) — likely date-seeded, not clock-mutating, so probably no isolation needed; confirm.
-- [ ] Update any committed tests using `@TimeDependent` → `@Isolated(reason = …)`.
+### C. optivem/shop (consumer) — after A is published
+- [ ] Bump the optivem-testing dependency to `2.0.0` in each language config (`build.gradle` / `.csproj` / `package.json`).
+- [ ] Find every usage: `grep -rinE "@TimeDependent|@Time\b|\[Time\]" ../shop`. Migrate each to bare `@isolated` Gherkin tag (on the AC) + `@Isolated("reason")` (in the test). This includes #76's clock-mutating cancellation scenario.
+- [ ] Re-check #80 (coupon `validTo` in the past) — likely date-seeded, not clock-mutating, so probably needs **no** isolation; confirm before tagging.
 
 ## Verification
 
