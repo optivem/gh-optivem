@@ -419,9 +419,16 @@ func ValidateSystemName(name string) string {
 
 // ValidateArch checks --arch / interactive arch input.
 // Returns an error message or empty string if valid.
+//
+// Scoped to the init / `config init` flag path, which scaffolds a single
+// backend (monolith or multitier). The microservices architecture is
+// authored directly in gh-optivem.yaml under system.backend-services:
+// (mirroring external-systems:, which init also does not scaffold) — its N
+// service locations can't be expressed as a fixed flag family, so it is not
+// a valid --arch value here even though the YAML schema accepts it.
 func ValidateArch(arch string) string {
 	if arch != "monolith" && arch != "multitier" {
-		return "must be 'monolith' or 'multitier'"
+		return "must be 'monolith' or 'multitier' (a microservices backend is declared directly in gh-optivem.yaml under system.backend-services:, not via init)"
 	}
 	return ""
 }

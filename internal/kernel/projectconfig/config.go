@@ -63,8 +63,9 @@ const (
 
 // Architecture enum values.
 const (
-	ArchMonolith  = "monolith"
-	ArchMultitier = "multitier"
+	ArchMonolith      = "monolith"
+	ArchMultitier     = "multitier"
+	ArchMicroservices = "microservices"
 )
 
 // Language enum values (shared by every TierSpec.Lang).
@@ -220,11 +221,13 @@ type Sonar struct {
 }
 
 // System describes the system being built. Polymorphic by architecture:
-//   - monolith:  Path/Repo/Lang are populated; Backend/Frontend are empty.
-//   - multitier: Backend/Frontend are populated; Path/Repo/Lang are empty.
+//   - monolith:      Path/Repo/Lang are populated; Backend/Frontend/BackendServices are empty.
+//   - multitier:     Backend/Frontend are populated; Path/Repo/Lang/BackendServices are empty.
+//   - microservices: BackendServices (>=1) and Frontend are populated;
+//     Path/Repo/Lang and the singular Backend are empty.
 //
 // Validate enforces exclusivity. Operators reading the file should see
-// exactly one shape per architecture, never both.
+// exactly one shape per architecture, never a mix.
 type System struct {
 	Architecture string `yaml:"architecture,omitempty"`
 
@@ -266,6 +269,19 @@ type System struct {
 	// Multitier-only.
 	Backend  TierSpec `yaml:"backend,omitempty"`
 	Frontend TierSpec `yaml:"frontend,omitempty"`
+
+	// Microservices-only. BackendServices is a name-keyed map of the
+	// backend services that make up a microservices system — one entry per
+	// service, keyed by the service's name (e.g. "orders"). It mirrors the
+	// external-systems: map shape exactly: the key is the service identity
+	// and the driver-routing handle, and each value reuses TierSpec verbatim
+	// so requireFullTier already enforces per-service path/repo/lang
+	// completeness and each service carries its own lang (heterogeneous
+	// stacks) and repo (mono-repo ⇒ shared repo + distinct paths;
+	// multi-repo ⇒ one repo per service). Empty/absent for monolith and
+	// multitier; required (>=1 entry) for microservices. The single frontend
+	// stays on Frontend — microservices multiplicity is backend-only.
+	BackendServices map[string]TierSpec `yaml:"backend-services,omitempty"`
 }
 
 // TierSpec describes one body of code: where it lives, in which repo,
@@ -388,6 +404,22 @@ func (c *Config) ExternalSystemNames() []string {
 	return out
 }
 
+// BackendServiceNames returns the backend-services map keys in sorted order.
+// Mirrors ExternalSystemNames — used wherever deterministic iteration over
+// the microservices backend matters (Validate error messages, Repos,
+// scaffolding, and driver routing keyed by service name).
+func (c *Config) BackendServiceNames() []string {
+	if c == nil || len(c.System.BackendServices) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(c.System.BackendServices))
+	for name := range c.System.BackendServices {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // RepoEntry is one entry in Config.LocalRepos — a single local repo path
 // the project iterates over for cross-repo verbs. Path is project-relative
 // (resolved against the directory containing gh-optivem.yaml), validated
@@ -418,6 +450,9 @@ func (c *Config) Repos() []string {
 	add(c.System.Backend.Repo)
 	add(c.System.Frontend.Repo)
 	add(c.SystemTest.Repo)
+	for _, svc := range c.System.BackendServices {
+		add(svc.Repo)
+	}
 	for _, es := range c.ExternalSystems {
 		add(es.Stub.Repo)
 		add(es.Simulator.Repo)
@@ -540,10 +575,10 @@ func (c *Config) Validate() error {
 
 	// Rule 2: architecture enum.
 	switch c.System.Architecture {
-	case "", ArchMonolith, ArchMultitier:
+	case "", ArchMonolith, ArchMultitier, ArchMicroservices:
 	default:
-		return fmt.Errorf("config: system.architecture %q must be one of %q, %q",
-			c.System.Architecture, ArchMonolith, ArchMultitier)
+		return fmt.Errorf("config: system.architecture %q must be one of %q, %q, %q",
+			c.System.Architecture, ArchMonolith, ArchMultitier, ArchMicroservices)
 	}
 
 	// Rule 3: lang enum on every tier where it is set.
@@ -592,6 +627,10 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("config: system.architecture=%s incompatible with system.frontend (multitier-only field)",
 				ArchMonolith)
 		}
+		if len(c.System.BackendServices) != 0 {
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend-services (microservices-only field)",
+				ArchMonolith)
+		}
 	case ArchMultitier:
 		if c.System.Path != "" || c.System.Repo != "" || c.System.Lang != "" {
 			return fmt.Errorf("config: system.architecture=%s incompatible with system.{path,repo,lang} (monolith-only fields); use system.backend / system.frontend",
@@ -604,6 +643,27 @@ func (c *Config) Validate() error {
 		if c.System.Frontend.IsEmpty() {
 			return fmt.Errorf("config: system.architecture=%s requires system.frontend",
 				ArchMultitier)
+		}
+		if len(c.System.BackendServices) != 0 {
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend-services (microservices-only field); a multitier backend is a single system.backend",
+				ArchMultitier)
+		}
+	case ArchMicroservices:
+		if c.System.Path != "" || c.System.Repo != "" || c.System.Lang != "" {
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.{path,repo,lang} (monolith-only fields); declare each service under system.backend-services",
+				ArchMicroservices)
+		}
+		if !c.System.Backend.IsEmpty() {
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend (multitier-only field); declare each service under system.backend-services",
+				ArchMicroservices)
+		}
+		if len(c.System.BackendServices) == 0 {
+			return fmt.Errorf("config: system.architecture=%s requires at least one system.backend-services entry",
+				ArchMicroservices)
+		}
+		if c.System.Frontend.IsEmpty() {
+			return fmt.Errorf("config: system.architecture=%s requires system.frontend (microservices multiplicity is backend-only)",
+				ArchMicroservices)
 		}
 	}
 
@@ -621,6 +681,9 @@ func (c *Config) Validate() error {
 		return err
 	}
 	if err := c.validateExternalSystems(); err != nil {
+		return err
+	}
+	if err := c.validateBackendServices(); err != nil {
 		return err
 	}
 
@@ -986,6 +1049,21 @@ func (c *Config) validateSonar() error {
 			return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar-project (monolith-only)",
 				ArchMultitier)
 		}
+	case ArchMicroservices:
+		for _, name := range c.BackendServiceNames() {
+			if c.System.BackendServices[name].SonarProject == "" {
+				return fmt.Errorf("config: system.architecture=%s requires system.backend-services.%s.sonar-project",
+					ArchMicroservices, name)
+			}
+		}
+		if c.System.Frontend.SonarProject == "" {
+			return fmt.Errorf("config: system.architecture=%s requires system.frontend.sonar-project",
+				ArchMicroservices)
+		}
+		if c.System.SonarProject != "" {
+			return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar-project (monolith-only)",
+				ArchMicroservices)
+		}
 	}
 	if c.SystemTest.SonarProject == "" {
 		return fmt.Errorf("config: system.architecture is set; system-test.sonar-project is required")
@@ -1092,6 +1170,60 @@ func (c *Config) validateExternalSystems() error {
 		if err := validatePath(prefix+".simulator.path", es.Simulator.Path); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateBackendServices enforces the per-service rules for the
+// backend-services map (the microservices backend). Mirrors
+// validateExternalSystems:
+//
+//   - each service is a complete TierSpec (path/repo/lang all set) —
+//     requireFullTier, the same primitive the multitier backend/frontend use;
+//   - lang is one of the enum members and path is repo-relative;
+//   - config / paths / system-driver-adapter-channels are system-test-only,
+//     rejected here exactly as Rules 0b/22c/22d reject them on the singular
+//     backend/frontend tiers, so a misplaced block can't parse as a no-op;
+//   - no two services occupy the same location. The collision key is
+//     repo+path, not path alone: mono-repo services share one repo with
+//     distinct paths, while multi-repo services share path "." across
+//     distinct repos — both are legitimate, only a repo+path clash is not.
+//
+// Iterates sorted names so errors are deterministic across the map. The map
+// keys themselves give duplicate-name rejection for free (a YAML map cannot
+// hold the same key twice).
+func (c *Config) validateBackendServices() error {
+	seen := map[string]struct{}{}
+	for _, name := range c.BackendServiceNames() {
+		svc := c.System.BackendServices[name]
+		prefix := "system.backend-services." + name
+
+		if err := requireFullTier(prefix, svc); err != nil {
+			return err
+		}
+		if err := validateLang(prefix+".lang", svc.Lang); err != nil {
+			return err
+		}
+		if err := validatePath(prefix+".path", svc.Path); err != nil {
+			return err
+		}
+		if svc.Config != "" {
+			return fmt.Errorf("config: %s.config is not a supported field (use system.config for the runner systems.yaml)", prefix)
+		}
+		if len(svc.Paths) > 0 {
+			return fmt.Errorf("config: %s.paths is not a supported field (paths: is system-test-only; use system-test.paths)", prefix)
+		}
+		if len(svc.SystemDriverAdapterChannels) > 0 {
+			return fmt.Errorf("config: %s.system-driver-adapter-channels is not a supported field (system-test-only; use system-test.system-driver-adapter-channels)", prefix)
+		}
+
+		// requireFullTier above guarantees repo and path are non-empty here.
+		key := svc.Repo + "\x00" + filepath.ToSlash(filepath.Clean(svc.Path))
+		if _, dup := seen[key]; dup {
+			return fmt.Errorf("config: %s occupies the same location (repo %q, path %q) as another backend service; each service needs its own location",
+				prefix, svc.Repo, svc.Path)
+		}
+		seen[key] = struct{}{}
 	}
 	return nil
 }
