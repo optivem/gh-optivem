@@ -331,7 +331,7 @@ func runSuiteExistenceChecks(cfg *projectconfig.Config, eng *statemachine.Engine
 		}
 		// Channel-aware expansion through the SAME source the runtime/CLI use
 		// (testselect.ExpandSuiteGroups): the `acceptance` alias unrolls to
-		// acceptance-<ch> + acceptance-isolated-<ch> per cfg.Channels, every
+		// acceptance-parallel-<ch> + acceptance-isolated-<ch> per cfg.Channels, every
 		// other literal passes through (project-declared group aliases resolve
 		// via tests.SuiteGroups). One function = preflight validates exactly
 		// the ids the runtime's `--suite=` emission requests.

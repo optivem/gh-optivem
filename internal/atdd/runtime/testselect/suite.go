@@ -1,12 +1,19 @@
 package testselect
 
-// AcceptanceSuites returns the acceptance suite ids for the given channels —
-// the single channel-aware source for the `acceptance` group alias. For each
-// channel <ch> it emits BOTH the parallel non-isolated suite (acceptance-<ch>)
-// and the serial isolated suite (acceptance-isolated-<ch>): the split is an
-// execution concern (parallel vs maxParallelForks=1), not a semantic one, so
-// `--suite=acceptance` runs all of them — the runner runs suites sequentially,
-// so the serial isolated suites simply run after the parallel ones.
+// AcceptanceSuites returns the concrete acceptance suite ids for the given
+// channels — the single channel-aware source for the `acceptance` group alias.
+// For each channel <ch> it emits BOTH partitions, named symmetrically: the
+// parallel non-isolated suite (acceptance-parallel-<ch>) and the serial
+// isolated suite (acceptance-isolated-<ch>). The split is an execution concern
+// (parallel vs maxParallelForks=1), not a semantic one, so `--suite=acceptance`
+// runs all of them — the runner runs suites sequentially, so the serial
+// isolated suites simply run after the parallel ones.
+//
+// Symmetric naming is deliberate: neither partition id may pretend to be the
+// whole channel. The bare `acceptance-<ch>` is NOT a concrete suite — it is a
+// per-channel group alias (see defaultSuiteGroups) that fans out to exactly
+// these two partitions, so a single binding `acceptance-<ch>` is always
+// complete by construction.
 //
 // When channels is empty it falls back to the canonical {api, ui} pair. That
 // fallback exists for the one caller that cannot see the project's channel set:
@@ -23,21 +30,48 @@ func AcceptanceSuites(channels []string) []string {
 	}
 	out := make([]string, 0, len(channels)*2)
 	for _, ch := range channels {
-		out = append(out, "acceptance-"+ch, "acceptance-isolated-"+ch)
+		out = append(out, channelAcceptanceSuites(ch)...)
 	}
 	return out
 }
 
+// channelAcceptanceSuites returns the two concrete partition suites that the
+// per-channel `acceptance-<ch>` group alias fans out to. The single source for
+// both AcceptanceSuites (which composes the top-level `acceptance` group from
+// every channel) and defaultSuiteGroups (which registers the per-channel
+// alias), so the partition ids are named in exactly one place.
+func channelAcceptanceSuites(ch string) []string {
+	return []string{"acceptance-parallel-" + ch, "acceptance-isolated-" + ch}
+}
+
 // defaultSuiteGroups is the fallback registry of group-alias names used when a
 // project's tests.yaml does not declare its own `suiteGroups:` block. Built
-// per-call because the only default group, "acceptance", is channel-derived;
-// the registry is shaped this way so adding contract / e2e groups later is a
-// one-line edit. Projects override the defaults by listing their own groups in
-// tests.yaml — see runner.TestsConfig.SuiteGroups.
+// per-call because every default group is channel-derived. It registers:
+//
+//   - "acceptance": all channels' both-partition suites (the top-level group);
+//   - "acceptance-<ch>" per channel: that channel's two partitions only.
+//
+// The per-channel aliases are what make the bare `acceptance-<ch>` resolve to
+// both partitions by construction — the per-channel verify unrolls
+// (statemachine/channels.go) bind the literal `acceptance-<ch>`, and the CLI
+// expands it here, so the isolated partition can never be silently dropped from
+// a per-channel verify. Constituents are always concrete partition suites (not
+// nested group names), since ExpandSuiteGroups does a single, non-recursive
+// pass.
+//
+// Projects override the defaults by listing their own groups in tests.yaml —
+// see runner.TestsConfig.SuiteGroups.
 func defaultSuiteGroups(channels []string) map[string][]string {
-	return map[string][]string{
+	if len(channels) == 0 {
+		channels = []string{"api", "ui"}
+	}
+	groups := map[string][]string{
 		"acceptance": AcceptanceSuites(channels),
 	}
+	for _, ch := range channels {
+		groups["acceptance-"+ch] = channelAcceptanceSuites(ch)
+	}
+	return groups
 }
 
 // ExpandSuiteGroups maps known group-alias names to their constituent suite ids

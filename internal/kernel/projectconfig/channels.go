@@ -7,10 +7,15 @@ import (
 )
 
 // Channel token enum values — the canonical lowercase slugs the scaffold
-// writes into channels: and the runtime selectors are derived from
-// (acceptance-${channel} → acceptance-api / acceptance-ui). Each token names
-// a channel the testkit physically has: a driver (MyShopApiDriver /
-// MyShopUiDriver), a ChannelType constant, and an acceptance-<token> suite.
+// writes into channels: and the runtime selectors are derived from. Each
+// channel <token> owns a per-channel acceptance GROUP, `acceptance-<token>`
+// (e.g. acceptance-api / acceptance-ui), which fans out to that channel's two
+// concrete partition suites — acceptance-parallel-<token> and
+// acceptance-isolated-<token> (see testselect.AcceptanceSuites). The bare
+// `acceptance-<token>` is the group, never a single suite, so binding it always
+// covers both partitions. Each token names a channel the testkit physically
+// has: a driver (MyShopApiDriver / MyShopUiDriver), a ChannelType constant, and
+// that acceptance partition pair.
 // channels: therefore *selects a subset* of these — narrow to [api] for an
 // API-only project, or reorder — it does not declare arbitrary new channels.
 // Adding a genuinely new channel (cli, grpc) means building its driver +

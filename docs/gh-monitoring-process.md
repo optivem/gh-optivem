@@ -49,7 +49,7 @@ The acceptance stage workflow is `gh-acceptance-stage.yml`. It supports a `verif
      ```
    - Investigate the root cause using local files only (the clone, gh-optivem, and shop repos).
    - **All fixes must be applied and verified in the clone first — never commit to shop or gh-optivem until the clone fully passes. No exceptions, even if the fix seems obvious or trivially correct. "Obvious" fixes can still break in unexpected ways — the clone verification step exists to catch that.** Apply fixes directly in the cloned scaffolded repo:
-     1. Run the specific failing suite first (e.g. `gh optivem test run --suite acceptance-ui`) to quickly confirm the fix. Pass `--system path/to/systems.yaml` if the runner can't find it from CWD.
+     1. Run the specific failing suite first (e.g. `gh optivem test run --suite acceptance-parallel-ui`) to quickly confirm the fix. Pass `--system path/to/systems.yaml` if the runner can't find it from CWD.
      2. Then run the full system test suite (`gh optivem test run` with no `--suite` filter) to catch any additional failures.
      3. If more failures appear, fix them in the clone and re-run the full suite again.
    - Repeat until the full suite passes in the clone with no failures.

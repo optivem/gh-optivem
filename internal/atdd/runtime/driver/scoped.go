@@ -150,6 +150,10 @@ func resolveScopedEntry(target Target, channel string, cfg *projectconfig.Config
 			// common layer; later channels are common:false deltas. Same
 			// first-channel rule UnrollSystemChannels applies (i == 0).
 			sCtx.Params["common"] = boolStr(channel == cfg.Channels[0])
+			// `acceptance-<channel>` is the per-channel group alias (testselect),
+			// expanded by the CLI to both the parallel and isolated partitions —
+			// matching UnrollSystemChannels so a scoped resume covers identical
+			// suites to a full run.
 			sCtx.Params["suite"] = "acceptance-" + channel
 		}
 	}

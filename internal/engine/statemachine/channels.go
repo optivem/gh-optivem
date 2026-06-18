@@ -58,7 +58,13 @@ const (
 //     plus its adapter; later channels ("false") add only their adapter
 //     delta, so the common layer and its migration are not re-paid.
 //   - suite:   acceptance-<channel> (D1 selector) — each channel verifies
-//     only its own acceptance suite.
+//     only its own acceptance partitions. `acceptance-<channel>` is the
+//     per-channel GROUP alias (testselect.AcceptanceSuites / defaultSuiteGroups),
+//     so the CLI expands it to BOTH acceptance-parallel-<channel> and
+//     acceptance-isolated-<channel> — the isolated partition can never be
+//     silently dropped from the per-channel verify. The literal is kept here
+//     (rather than importing testselect) because this generic engine hardcodes
+//     the convention; the group expansion happens downstream in the CLI.
 func (e *Engine) UnrollSystemChannels(channels []string) error {
 	return e.unrollAnchor(
 		changeSystemBehaviorProcess,
@@ -95,7 +101,10 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 // `channel` and `suite` are overridden per node — the adapter has no common
 // layer (it is channel-shaped by nature), and its verify suite is narrowed to
 // `acceptance-<channel>` so each per-channel node verifies ONLY its own
-// channel. Previously each clone inherited the union `suite: acceptance`, so
+// channel. `acceptance-<channel>` is the per-channel GROUP alias, so it still
+// expands to BOTH that channel's partitions (parallel + isolated) downstream —
+// the narrowing is across channels, never across a channel's own partitions.
+// Previously each clone inherited the union `suite: acceptance`, so
 // for N channels every node re-ran all N suites (2N suite runs for 2 channels)
 // — pure redundancy: the adapter is channel-specific, so a node only needs to
 // exercise its own channel, and each channel's RED is still verified exactly
