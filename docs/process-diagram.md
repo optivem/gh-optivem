@@ -88,6 +88,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    SETUP_TESTS[Setup Tests]
     MARK_IN_PROGRESS[[Mark IN PROGRESS]]
     PARSE_TICKET[[Parse Ticket]]
     GATE_TICKET_KIND{Ticket Kind?}
@@ -103,6 +104,7 @@ flowchart TD
     UNKNOWN_TASK_SUBTYPE((⚡))
     IMPLEMENT_TICKET_END(( ))
 
+    SETUP_TESTS --> MARK_IN_PROGRESS
     MARK_IN_PROGRESS --> PARSE_TICKET
     PARSE_TICKET --> GATE_TICKET_KIND
     GATE_TICKET_KIND -- Story --> CHANGE_SYSTEM_BEHAVIOR
@@ -877,6 +879,16 @@ flowchart TD
 
     classDef tddGreenNode stroke:#28a745,stroke-width:3px
     class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
+```
+
+## Setup Tests
+
+```mermaid
+flowchart TD
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test setup<br/>task-name = setup-tests"]
+    SETUP_TESTS_END(( ))
+
+    EXECUTE_COMMAND --> SETUP_TESTS_END
 ```
 
 ## Start System (Restart)
