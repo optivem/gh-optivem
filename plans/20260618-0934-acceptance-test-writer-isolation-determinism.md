@@ -15,7 +15,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Item A's edits are done** (time markers deleted + docs swept, committed to optivem-testing). The next unit is the **gated publish of `optivem-testing 1.1.9`** (PATCH — VJ exception): from `../optivem-testing`, `echo "1.1.9" > VERSION && bash scripts/bump-version.sh`, then commit + push `main` and `gh workflow run release-stage.yml`. This is outward-facing and irreversible → **requires user approval before running**. Once `1.1.9` is live on Maven Central / NuGet / npm, run B (gh-optivem writer/gate/docs + dep bump to `1.1.9`) and C (optivem/shop dep bump + migrate `@TimeDependent`/`[Time]` usages, incl. #76; re-check #80). B and C can't be verified to build green until the release lands.
+**Items A, B, C are done; only the deferred clock-DSL gate remains.** `1.1.9` is live on all three registries (A). The writer prompt/marker chunks (B) and the shop migration + dep bump (C) are edited in the working trees of gh-optivem and shop respectively — **pending the commit gate** (two commits: gh-optivem, shop). The one open design item is **B-gate** (the clock-control-DSL gate), deferred to its own plan because gh-optivem has no AC-content-validation primitive and the DSL is shop-side — the next executable move there is `/create-plan`, not a mechanical edit. Verification (rehearse #76 twice for identical isolation) can run once the commits land.
 
 ## Problem
 
@@ -31,16 +31,16 @@ These are a teaching-repo concern (the generated tests are what students read), 
 
 1. **Isolation signal is a bare `@isolated` Gherkin tag on the AC.** The ticket author sets it; the writer mechanically mirrors it. This is the deterministic upstream signal that was missing. Gherkin tags are whitespace-delimited bare identifiers, so the tag itself **cannot** carry a free-text reason — `@isolated` only.
 
-2. **Code annotation carries the reason: `@Isolated(reason = "…")`, reason OPTIONAL.** Free-text string, because the full set of isolation reasons can't be enumerated up front. The writer **lifts the reason verbatim** from an adjacent Gherkin comment / scenario-description line when present, and emits bare `@Isolated()` when absent. The writer never invents a reason. Consequence to accept: with an optional reason, "every isolated test states its why" is a *convention enforced at review/lint*, not a compile guarantee.
+2. **Code annotation carries the reason POSITIONALLY: `@Isolated("…")` / `[Isolated("…")]`, reason OPTIONAL.** Free-text string, because the full set of isolation reasons can't be enumerated up front. The writer **lifts the reason verbatim** from an adjacent Gherkin comment / scenario-description line when present, and emits the bare form (`@Isolated()` / `[Isolated]`) when absent. The writer never invents a reason. Consequence to accept: with an optional reason, "every isolated test states its why" is a *convention enforced at review/lint*, not a compile guarantee.
 
    ```gherkin
    @isolated
    # isolated: mutates the cancellation-blackout clock; parallel runs would be flaky
    Scenario: Cannot cancel an order at 22:45 on December 31st
    ```
-   → `@Isolated(reason = "mutates the cancellation-blackout clock; parallel runs would be flaky")`
+   → `@Isolated("mutates the cancellation-blackout clock; parallel runs would be flaky")`
 
-   **Already in the library — no add needed.** Java `Isolated.java` has `String value() default ""`; .NET `IsolatedAttribute` has an `IsolatedAttribute(string reason)` ctor + `Reason` property. So `@Isolated("reason")` / `[Isolated("reason")]` already compile today. TypeScript has **no** isolation annotation concept at all (its test model is channel-based) — nothing to add there.
+   **NB — the reason is positional, NOT a named `reason =` param.** Verified against released `1.1.9`: Java `Isolated.java` declares `String value() default ""` (so `@Isolated(reason = …)` would not compile — use `@Isolated("…")`); .NET `IsolatedAttribute` has an `IsolatedAttribute(string reason)` ctor + nullable `Reason` property (`[Isolated("…")]`). Per-language placement differs (matches the shop reference): **Java** puts `@Isolated("reason")` at **class** level; **.NET** keeps `[Collection("Isolated")]` + `[Trait("Category","isolated")]` at class level (the optivem `[Isolated]` only tags the trait — `[Collection]` is what serialises isolated classes) and puts the reason-bearing `[Isolated("reason")]` at **method** level. TypeScript has **no** isolation annotation (channel/serial-`describe` model) — nothing to add.
 
 3. **The time-marker annotations are retired.** They're subsumed: the reason now lives in the `@Isolated` string, the isolation decision lives in the bare tag. Per-language names differ:
    - Java: `@TimeDependent` (`TimeDependent.java`) **and** its already-`@Deprecated(forRemoval=true)` alias `@Time` (`Time.java`).
@@ -59,21 +59,20 @@ These are a teaching-repo concern (the generated tests are what students read), 
 
 Walk in dependency order — each repo depends on the one above it being released/landed. All paths are relative to the academy workspace root (`../` from gh-optivem).
 
-### A. `../optivem-testing` → patch release (`1.1.9`)
-The time-marker deletes + doc sweep are **done** (committed to optivem-testing). What remains is the gated publish.
-- [ ] Release (PATCH — deliberate exception, see §3): `echo "1.1.9" > ../optivem-testing/VERSION && bash ../optivem-testing/scripts/bump-version.sh` → commit + push `main` (triggers RC commit stages) → `gh workflow run release-stage.yml` (promotes RC to Maven Central `com.optivem:optivem-testing`, NuGet `Optivem.Testing`, npm `@optivem/optivem-testing`; tags + GitHub Release). See `../optivem-testing/CONTRIBUTING.md` "Release Checklist". **Outward-facing/irreversible → user-gated.**
+### A. `../optivem-testing` → patch release (`1.1.9`) — ✅ DONE
+Time-marker deletes + doc sweep + version bump committed; `1.1.9` published to **Maven Central, NuGet, and npm**; git tag `v1.1.9` + GitHub Release created (release run `27752979718`, after an `NPM_TOKEN` refresh + `rerun --failed`). Nothing left here.
 
-### B. gh-optivem (writer + gate + docs) — after A is published
-- [ ] acceptance-test-writer prompt (`internal/atdd/assets/runtime/agents/atdd/*.md` — the AT-write prompt): mirror the bare `@isolated` AC tag into `@Isolated(reason = …)`, lifting the reason verbatim from an adjacent AC comment/description when present, bare `@Isolated()` otherwise; never invent. Remove all expectation/emission of `@TimeDependent` / `[Time]`.
-- [ ] Add the clock-control-DSL gate: a scenario that drives the clock-control DSL steps must carry `@isolated`, else reject.
-- [ ] Any code that reads the `@Isolated` reason (writer mirror logic, lint) must treat absence idiom-proof: the reason defaults to `null` in .NET (xUnit-`Skip` idiom) and `""` in Java (JUnit-`@Disabled` idiom) — use `string.IsNullOrEmpty` / `isBlank()`, never an `== null` or `== ""` check alone.
-- [ ] Sweep gh-optivem for the retired names: `grep -rinE "TimeDependent|@Time\b|\[Time\]" internal docs` and retire references (prompts, process docs, fixtures).
-- [ ] Bump the scaffolded optivem-testing dependency to `1.1.9` wherever the scaffold pins it (Maven/Gradle, NuGet, npm template files).
+### B. gh-optivem (writer + docs) — ✅ DONE (gate deferred, see below)
+- Writer prompt + per-language marker chunks updated to mirror the bare `@isolated` tag into the positional `@Isolated("…")` / `[Isolated("…")]` shape, lift the reason verbatim from an adjacent AC comment, bare form when absent, never invent. .NET chunk reconciled to the shop reference (`[Collection("Isolated")]`+`[Trait]` at class, `[Isolated("reason")]` at method) + a `clauderun_test.go` assertion pinning `[Collection("Isolated")]`. (`internal/atdd/assets/runtime/shared/isolated-marker-{java,csharp}.md`, `acceptance-test-writer.md`, `clauderun.go`, `clauderun_test.go`.)
+- **Sweep / dep-bump were no-ops:** `@TimeDependent`/`[Time]` were already retired in commit `06ec40b` (grep is clean); gh-optivem has **no** optivem-testing version pin to bump — the scaffold copies build files verbatim from the shop repo (`cfg.ShopPath`), so the `1.1.9` pin lives shop-side (Item C, done).
 
-### C. optivem/shop (consumer) — after A is published
-- [ ] Bump the optivem-testing dependency to `1.1.9` in each language config (`build.gradle` / `.csproj` / `package.json`).
-- [ ] Find every usage: `grep -rinE "@TimeDependent|@Time\b|\[Time\]" ../shop`. Migrate each to bare `@isolated` Gherkin tag (on the AC) + `@Isolated("reason")` (in the test). This includes #76's clock-mutating cancellation scenario.
-- [ ] Re-check #80 (coupon `validTo` in the past) — likely date-seeded, not clock-mutating, so probably needs **no** isolation; confirm before tagging.
+### B-gate. Clock-control-DSL gate — ⏳ DEFERRED to its own plan
+The design (§4) assumed a gate keyed on "the clock-control DSL mechanism," but that DSL lives in the **shop** repo, not gh-optivem, and gh-optivem has **no AC-content-validation primitive** to extend (the process-flow gateways key on ticket kind/subtype, never on scenario step text). Building it would mean inventing both a new content-validation gate location and an authoritative list of clock-DSL step identifiers — pure inference, which repo policy forbids. The core determinism goal is already met without it (the `@isolated` tag is the deterministic signal; clock-mutating scenarios are tagged in shop). Spin a fresh plan to design where this safety-net gate lives (likely a shop-side contract test / lint over the DSL) and its step-identifier source.
+
+### C. optivem/shop (consumer) — ✅ DONE
+- optivem-testing bumped to `1.1.9` across Java (`build.gradle`), .NET (4 `.csproj`), TypeScript (`package.json`+lockfile).
+- Every `@TimeDependent`/`[Time]`/`@time-dependent` usage migrated to `@Isolated("reason")` / `[Isolated("reason")]` (+ TS title-suffix removed); reasons written in plain English (no ISO-timestamp carryover). Covers #76's clock-mutating cancellation pair. (No `.feature` files exist — ACs are encoded in DSL test classes, so the isolation signal sits at the test-class level.)
+- **#80** (`cannotPlaceOrderWithExpiredCoupon`) determined **clock-mutating** (drives `.clock().withTime(...)` at runtime, not merely date-seeded) → correctly isolated.
 
 ## Verification
 

@@ -2477,11 +2477,10 @@ func TestRenderGateMarkerExample_FailFast(t *testing.T) {
 // TestRenderIsolatedMarkerExample pins the per-language isolation
 // snippet rendered into the acceptance-test-writer prompt. The writer
 // mirrors the source scenario's Gherkin `@isolated` tag onto the test's
-// language isolation shape: class-level `@Isolated` (Java), the
-// `[Collection("Isolated")]`+`[Trait]` pair (C#), or the serial-mode
-// describe wrapper (TypeScript). The symbols are what the run-side
-// isolated suites (acceptance-isolated-<ch>) filter on, so they must not
-// drift.
+// language isolation shape: class-level `@Isolated("reason")` (Java),
+// `[Isolated("reason")]` (C#), or the serial-mode describe wrapper
+// (TypeScript). The symbols are what the run-side isolated suites
+// (acceptance-isolated-<ch>) filter on, so they must not drift.
 func TestRenderIsolatedMarkerExample(t *testing.T) {
 	cases := []struct {
 		lang        string
@@ -2498,7 +2497,8 @@ func TestRenderIsolatedMarkerExample(t *testing.T) {
 			lang: "csharp",
 			wantSubstrs: []string{
 				`[Collection("Isolated")]`,
-				`[Trait("Category", "isolated")]`,
+				`[Isolated(`,
+				`using Optivem.Testing;`,
 			},
 		},
 		{

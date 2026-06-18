@@ -856,9 +856,9 @@ func renderPrompt(opts Options) (string, error) {
 	}
 	// Isolation marker (acceptance-test-writer). Mirrors the Gherkin
 	// `@isolated` tag in the Acceptance Criteria onto the test's
-	// language isolation shape (class-level @Isolated in Java, the
-	// [Collection("Isolated")]+[Trait] pair in C#, the serial-mode
-	// describe wrapper in TypeScript). Same load-bearing registration as
+	// language isolation shape (class-level @Isolated("reason") in Java,
+	// [Isolated("reason")] in C#, the serial-mode describe wrapper in
+	// TypeScript). Same load-bearing registration as
 	// the WIP gate above: register only when the language is recognised,
 	// else findUnfilledPlaceholders fails the dispatch fast when the
 	// prompt references ${isolated-marker-example}. The per-language
@@ -1162,8 +1162,8 @@ func renderGateMarkerExample(lang string) string {
 // carries the Gherkin `@isolated` tag, via ${isolated-marker-example}.
 // It is the isolation twin of renderGateMarkerExample: the writer is a
 // mechanical 1:1 translator, so the per-language shape (class-level
-// @Isolated in Java, the [Collection("Isolated")]+[Trait] pair in C#,
-// the serial-mode describe wrapper in TypeScript) is injected rather
+// @Isolated("reason") in Java, [Isolated("reason")] in C#, the
+// serial-mode describe wrapper in TypeScript) is injected rather
 // than reverse-engineered from out-of-scope sibling tests.
 //
 // Unlike the WIP gate the isolation shape is class/describe-level, not
