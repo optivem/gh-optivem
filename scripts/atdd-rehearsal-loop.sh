@@ -13,7 +13,8 @@ set -euo pipefail
 # overlapping runs would race on both.
 #
 # Usage:
-#   bash atdd-rehearsal-loop.sh [--config <yaml>] [--keep <policy>] [ticket ...]
+#   bash atdd-rehearsal-loop.sh [--config <yaml>] [--keep <policy>] \
+#                               [--stop-on-failure] [ticket ...]
 #
 #   ticket:    one or more issue numbers / URLs forwarded to atdd-rehearsal.sh.
 #              If none are given, the built-in DEFAULT_TICKETS corpus runs.
@@ -22,6 +23,11 @@ set -euo pipefail
 #   --keep:    worktree+branch retention policy: never | on-failure | always.
 #              Overrides the KEEP_WORKTREES env var, which in turn overrides
 #              the built-in default (always). See KEEP_WORKTREES in LOOP CONFIG.
+#   --stop-on-failure:
+#              Stop the loop at the first ticket whose rehearsal exits non-zero.
+#              By DEFAULT the loop continues through every ticket and reports
+#              all failures in the final summary (exiting non-zero if any
+#              failed). Overrides the STOP_ON_FAILURE env var.
 #
 # Examples:
 #   # Full built-in corpus (61 65 68 69 70 71 72 76 78 79 80 81), default config:
@@ -45,8 +51,12 @@ set -euo pipefail
 #   # Keep every worktree, pass or fail:
 #   bash atdd-rehearsal-loop.sh --keep always 68 69
 #
+#   # Stop at the first failing ticket instead of running the whole corpus:
+#   bash atdd-rehearsal-loop.sh --stop-on-failure
+#
 #   # Same policies via env var (the flag overrides this if both are set):
 #   KEEP_WORKTREES=always bash atdd-rehearsal-loop.sh 68 69
+#   STOP_ON_FAILURE=1 bash atdd-rehearsal-loop.sh
 #
 # Autonomous by contract:
 #   - Every rehearsal is invoked with --auto --headless (fully unattended).
@@ -57,9 +67,12 @@ set -euo pipefail
 #     <academy>/worktrees/.
 #   - stdin is redirected from /dev/null per run so no stray read can block.
 #
-# Failure policy: STOP on the first ticket whose rehearsal exits non-zero. The
-# summary printed so far tells you what passed; re-run with just the failing
-# ticket (and drop --headless / REHEARSAL_CLEANUP to inspect) to debug it.
+# Failure policy: by DEFAULT the loop CONTINUES through every ticket even when a
+# rehearsal fails, then reports all PASS/FAIL results in the final summary and
+# exits non-zero if any ticket failed. Pass --stop-on-failure (or set
+# STOP_ON_FAILURE=1) to stop at the first non-zero rehearsal instead. Either
+# way, the summary tells you what passed; re-run with just a failing ticket (and
+# drop --headless / REHEARSAL_CLEANUP to inspect) to debug it.
 
 # === LOOP CONFIG === (edit these for your setup)
 DEFAULT_CONFIG="gh-optivem-monolith-java.yaml"
@@ -68,14 +81,20 @@ DEFAULT_CONFIG="gh-optivem-monolith-java.yaml"
 # worktree (and its branch):
 #   never       delete every worktree, pass or fail.
 #   on-failure  keep only a FAILED run's worktree (for inspection); delete the
-#               worktrees of runs that passed. Since the loop stops on the first
-#               failure, this leaves exactly the broken one behind.
+#               worktrees of runs that passed. With --stop-on-failure this
+#               leaves exactly the one broken worktree behind; in the default
+#               continue mode it leaves every failed run's worktree.
 #   always      keep every worktree+branch, pass or fail.                        [default]
 # Override precedence (highest first): --keep flag > KEEP_WORKTREES env var >
 # this built-in default. Without editing the file, e.g.:
 #   bash atdd-rehearsal-loop.sh --keep on-failure
 #   KEEP_WORKTREES=on-failure bash atdd-rehearsal-loop.sh
 KEEP_WORKTREES="${KEEP_WORKTREES:-always}"
+# STOP_ON_FAILURE — when truthy, stop the loop at the first failing rehearsal
+# instead of running the whole corpus. Default: empty (continue through all
+# tickets). Override precedence (highest first): --stop-on-failure flag >
+# STOP_ON_FAILURE env var > this built-in default.
+STOP_ON_FAILURE="${STOP_ON_FAILURE:-}"
 # The CONTRIBUTING.md rehearsal corpus, in document order. Only the leading
 # issue number is data — the loop forwards it to atdd-rehearsal.sh as-is; the
 # trailing comment (title · clickable issue URL · what the story exercises) is
@@ -154,7 +173,7 @@ TICKETS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -h|--help)
-      sed -n '9,62p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '9,75p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     -c|--config)
@@ -169,6 +188,8 @@ while [[ $# -gt 0 ]]; do
       KEEP_WORKTREES="$2"; shift 2 ;;
     --keep=*)
       KEEP_WORKTREES="${1#--keep=}"; shift ;;
+    --stop-on-failure)
+      STOP_ON_FAILURE=1; shift ;;
     --)
       shift; while [[ $# -gt 0 ]]; do TICKETS+=("$1"); shift; done ;;
     -*)
@@ -199,13 +220,22 @@ case "$KEEP_WORKTREES" in
     exit 2 ;;
 esac
 
+if [[ -n "$STOP_ON_FAILURE" ]]; then
+  FAILURE_POLICY="stop-on-failure"
+else
+  FAILURE_POLICY="continue-on-failure"
+fi
+
 log "Tickets: ${TICKETS[*]}"
 log "Config:  $CONFIG"
-log "Mode:    --auto --headless, stop-on-failure, logs kept; worktrees: keep=$KEEP_WORKTREES"
+log "Mode:    --auto --headless, $FAILURE_POLICY, logs kept; worktrees: keep=$KEEP_WORKTREES"
 echo ""
 
 # Each iteration appends "<ticket> <PASS|FAIL>"; printed as a table at the end.
 RESULTS=()
+# Exit code carried out of the loop: 0 if every ticket passed, else the exit
+# code of the last failing rehearsal.
+LOOP_RC=0
 print_summary() {
   echo ""
   log "${C_BOLD}Summary${C_RESET}"
@@ -223,14 +253,23 @@ for ticket in "${TICKETS[@]}"; do
     log "#${ticket} PASS"
   else
     rc=$?
+    LOOP_RC=$rc
     RESULTS+=("#${ticket}  FAIL (exit $rc)")
-    log "#${ticket} FAILED (exit $rc) — stopping per failure policy."
-    print_summary
-    exit "$rc"
+    if [[ -n "$STOP_ON_FAILURE" ]]; then
+      log "#${ticket} FAILED (exit $rc) — stopping per --stop-on-failure."
+      print_summary
+      exit "$rc"
+    fi
+    log "#${ticket} FAILED (exit $rc) — continuing to next ticket."
   fi
 done
 
 print_summary
-log "All ${#TICKETS[@]} ticket(s) passed."
+if [[ $LOOP_RC -eq 0 ]]; then
+  log "All ${#TICKETS[@]} ticket(s) passed."
+else
+  log "Some ticket(s) failed — see FAIL rows above. Exiting $LOOP_RC."
+fi
+exit "$LOOP_RC"
 
 } && exit
