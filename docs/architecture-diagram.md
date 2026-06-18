@@ -202,6 +202,9 @@ flowchart TD
     MULTI_BACK_DOTNET[system/multitier/backend-dotnet]
     MULTI_BACK_TS[system/multitier/backend-typescript]
     MULTI_FRONT[system/multitier/frontend-react]
+    MICRO_ORDERS[system/microservices/orders-java]
+    MICRO_INVENTORY[system/microservices/inventory-dotnet]
+    MICRO_FRONT[system/microservices/frontend-react]
     BACKEND_ROUTE[Backend Route]
     UI_FETCH[UI Fetch Site]
     DRIVER_CONST[Driver Adapter URL Constant]
@@ -213,10 +216,13 @@ flowchart TD
     MULTI_BACK_JAVA --> BACKEND_ROUTE
     MULTI_BACK_DOTNET --> BACKEND_ROUTE
     MULTI_BACK_TS --> BACKEND_ROUTE
+    MICRO_ORDERS --> BACKEND_ROUTE
+    MICRO_INVENTORY --> BACKEND_ROUTE
     MONO_JAVA --> UI_FETCH
     MONO_DOTNET --> UI_FETCH
     MONO_TS --> UI_FETCH
     MULTI_FRONT --> UI_FETCH
+    MICRO_FRONT --> UI_FETCH
     BACKEND_ROUTE --- DRIVER_CONST
     UI_FETCH --- DRIVER_CONST
 ```
