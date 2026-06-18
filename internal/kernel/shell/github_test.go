@@ -170,6 +170,72 @@ func TestRunWatchWorkflow_AppearPollRetries504OnFirstAttempt(t *testing.T) {
 	}
 }
 
+// TestRunWatchPushWorkflow_FailsLoudWhenNoStartupFailure verifies the honest
+// gate: when the push-triggered run never appears AND there is no
+// startup_failure, the push trigger genuinely did not fire (e.g. a bad paths:
+// filter). We must fail loud and NOT workflow_dispatch — dispatch bypasses the
+// on.push filter and would mask the real bug.
+func TestRunWatchPushWorkflow_FailsLoudWhenNoStartupFailure(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	// Every `gh run list` is empty: no run appears, no startup_failure exists.
+	orig := runCaptureFn
+	runCaptureFn = func(_ string, _ string) (string, error) { return "", nil }
+	t.Cleanup(func() { runCaptureFn = orig })
+
+	// runFn backs WorkflowRun (the dispatch). It must never be called here.
+	var dispatched int32
+	withFakeRunFn(t, func(int) (string, error) {
+		atomic.AddInt32(&dispatched, 1)
+		return "", nil
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	err := gh.RunWatchPushWorkflow("backend-commit-stage.yml", 1)
+	if err == nil || !strings.Contains(err.Error(), "push trigger did not fire") {
+		t.Fatalf("err = %v, want one mentioning 'push trigger did not fire'", err)
+	}
+	if got := atomic.LoadInt32(&dispatched); got != 0 {
+		t.Fatalf("dispatch calls = %d, want 0 (must not workflow_dispatch without a startup_failure)", got)
+	}
+}
+
+// TestRunWatchPushWorkflow_ReDispatchesOnStartupFailure verifies the recovery
+// path: when the push-triggered run never appears but a startup_failure is
+// present (the fresh-repo first-push flake), we re-fire via workflow_dispatch,
+// bounded to maxReDispatches, then fail loud.
+func TestRunWatchPushWorkflow_ReDispatchesOnStartupFailure(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	// The expected run never appears; the startup_failure query always finds
+	// the phantom run, so the gate stays open across attempts.
+	orig := runCaptureFn
+	runCaptureFn = func(cmd string, _ string) (string, error) {
+		if strings.Contains(cmd, "startup_failure") {
+			return "999", nil
+		}
+		return "", nil
+	}
+	t.Cleanup(func() { runCaptureFn = orig })
+
+	var dispatched int32
+	withFakeRunFn(t, func(int) (string, error) {
+		atomic.AddInt32(&dispatched, 1)
+		return "", nil
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	err := gh.RunWatchPushWorkflow("backend-commit-stage.yml", 1)
+	if err == nil || !strings.Contains(err.Error(), "re-dispatch attempts") {
+		t.Fatalf("err = %v, want one mentioning 're-dispatch attempts'", err)
+	}
+	if got := atomic.LoadInt32(&dispatched); got != int32(maxReDispatches) {
+		t.Fatalf("dispatch calls = %d, want %d (one per re-dispatch)", got, maxReDispatches)
+	}
+}
+
 // TestPollRunUntilComplete_GhRunViewRetries504 covers Item 6: the per-iter
 // gh run view call must retry on a transient and then surface the parsed
 // status. We make the first call 504 and the second return "completed,success".

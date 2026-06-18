@@ -292,9 +292,13 @@ func verifyCleanupIn(gh *shell.GitHub, label string) {
 	verifyWorkflow(gh, label, "cleanup.yml", map[string]string{"dry-run": "true"}, 60)
 }
 
+// verifyNamedWorkflow watches a commit-stage workflow whose run is fired by the
+// scaffold's initial push. It uses RunWatchPushWorkflow so a dropped first-push
+// trigger (GitHub startup_failure flake) is recovered via workflow_dispatch
+// rather than failing the whole scaffold.
 func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalSecs int) {
 	shell.CheckRateLimit()
-	err := gh.RunWatchWorkflow(workflowFile, intervalSecs)
+	err := gh.RunWatchPushWorkflow(workflowFile, intervalSecs)
 	handleWorkflowResult(err, label, gh.Repo)
 }
 

@@ -437,42 +437,68 @@ func (g *GitHub) WorkflowRun(workflow string, fields map[string]string) {
 	g.mustRun(fmt.Sprintf("workflow run %s%s", workflow, fieldArgs))
 }
 
-// RunWatchWorkflow watches the latest run for a specific workflow name.
-// If workflow is empty, watches the overall latest run.
-// Retries up to 12 times (60s total) waiting for the run to appear.
-// intervalSecs controls the polling frequency for gh run watch.
-// If gh run watch hits a rate limit mid-stream, falls back to manual polling.
-func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
-	var listCmd string
+// Appear-poll bounds shared by the run-watching helpers: how long we wait for
+// a triggered run to become visible via `gh run list` before giving up
+// (runAppearAttempts × runAppearPollSecs).
+const (
+	runAppearPollSecs = 10
+	runAppearAttempts = 6
+)
+
+// maxReDispatches bounds how many times RunWatchPushWorkflow re-fires a
+// push-triggered workflow via workflow_dispatch when GitHub drops the original
+// push trigger (see RunWatchPushWorkflow for the failure mode).
+const maxReDispatches = 2
+
+// latestRunListCmd builds the `gh run list` command that returns the newest
+// run's databaseId for workflow (or the repo-wide newest run when workflow is
+// empty).
+func (g *GitHub) latestRunListCmd(workflow string) string {
 	if workflow != "" {
-		listCmd = fmt.Sprintf("gh run list --repo %s --workflow %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo, workflow)
-	} else {
-		listCmd = fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
+		return fmt.Sprintf("gh run list --repo %s --workflow %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo, workflow)
 	}
+	return fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
+}
 
-	const appearPollSecs = 10
-	const appearAttempts = 6
-	sp := spinner.Start(fmt.Sprintf("Waiting for workflow run to appear (%s, polling every %ds)", workflow, appearPollSecs))
-	var out string
-	var err error
-	for attempt := 1; attempt <= appearAttempts; attempt++ {
-		out, err = RunCaptureWithRetry(listCmd, "")
+// waitForRunToAppear polls (runAppearAttempts × runAppearPollSecs) for the
+// newest run of workflow to become visible and returns its run ID. The bool is
+// false when no run shows up within the window. The per-poll `gh run list` is
+// retry-wrapped so a transient (504, rate limit) does not end the poll early.
+func (g *GitHub) waitForRunToAppear(workflow string) (string, bool) {
+	listCmd := g.latestRunListCmd(workflow)
+	sp := spinner.Start(fmt.Sprintf("Waiting for workflow run to appear (%s, polling every %ds)", workflow, runAppearPollSecs))
+	defer sp.Stop()
+
+	for attempt := 1; attempt <= runAppearAttempts; attempt++ {
+		out, err := RunCaptureWithRetry(listCmd, "")
 		if err == nil && strings.TrimSpace(out) != "" {
-			break
+			return strings.TrimSpace(out), true
 		}
-		sp.Update(fmt.Sprintf("attempt %d/%d", attempt, appearAttempts))
-		if attempt < appearAttempts {
-			time.Sleep(appearPollSecs * time.Second)
+		sp.Update(fmt.Sprintf("attempt %d/%d", attempt, runAppearAttempts))
+		if attempt < runAppearAttempts {
+			sleepFn(runAppearPollSecs * time.Second)
 		}
 	}
-	sp.Stop()
-	if err != nil || strings.TrimSpace(out) == "" {
-		return fmt.Errorf("no workflow runs found for %s (workflow: %s) after %d attempts", g.Repo, workflow, appearAttempts)
-	}
+	return "", false
+}
 
-	runID := strings.TrimSpace(out)
+// hasRecentStartupFailure reports whether the repo has any recent run with a
+// startup_failure conclusion. This is the signature of a GitHub-side workflow
+// build failure — on a freshly created repo's first push, the Actions
+// subsystem occasionally fails to build the run graph and emits one synthetic
+// startup_failure run while creating none of the real workflow runs. Used to
+// distinguish that recoverable infra flake from a genuinely missing trigger.
+func (g *GitHub) hasRecentStartupFailure() bool {
+	cmd := fmt.Sprintf("gh run list --repo %s --status startup_failure --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
+	out, err := RunCaptureWithRetry(cmd, "")
+	return err == nil && strings.TrimSpace(out) != ""
+}
+
+// watchRunID streams a known run to completion, falling back to status polling
+// if `gh run watch` hits a rate limit mid-stream.
+func (g *GitHub) watchRunID(runID string, intervalSecs int) error {
 	log.Successf("Watching workflow run (polling every %ds): https://github.com/%s/actions/runs/%s", intervalSecs, g.Repo, runID)
-	_, err = Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), true, "")
+	_, err := Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), true, "")
 	if err == nil {
 		return nil
 	}
@@ -485,6 +511,62 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 
 	log.Infof("Rate limit hit while watching run %s — switching to polling mode...", runID)
 	return g.pollRunUntilComplete(runID)
+}
+
+// RunWatchWorkflow watches the latest run for a specific workflow name.
+// If workflow is empty, watches the overall latest run.
+// Waits up to (runAppearAttempts × runAppearPollSecs) for the run to appear.
+// intervalSecs controls the polling frequency for gh run watch.
+// If gh run watch hits a rate limit mid-stream, falls back to manual polling.
+func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
+	runID, found := g.waitForRunToAppear(workflow)
+	if !found {
+		return fmt.Errorf("no workflow runs found for %s (workflow: %s) after %d attempts", g.Repo, workflow, runAppearAttempts)
+	}
+	return g.watchRunID(runID, intervalSecs)
+}
+
+// RunWatchPushWorkflow watches a workflow whose run is triggered by a push
+// (e.g. the commit-stage workflows fired by the scaffold's initial push),
+// recovering from a specific GitHub flake: on a freshly created repo's first
+// push the Actions subsystem can fail to build the run graph, emitting one
+// synthetic startup_failure run and creating none of the real workflow runs —
+// so the expected push-triggered run never appears no matter how long we poll.
+//
+// When the run does not appear within the appear-window, this re-fires the
+// workflow via workflow_dispatch and polls again, bounded to maxReDispatches.
+// The re-dispatch is gated on hasRecentStartupFailure: workflow_dispatch
+// bypasses the workflow's on.push filters, so re-dispatching unconditionally
+// would mask a genuinely broken trigger (e.g. a bad paths: filter). We only
+// re-dispatch when the startup_failure signature confirms the infra flake;
+// otherwise we fail loud so the real trigger bug surfaces.
+//
+// Actions-side analogue of MustRunPostCreatePush, which retries the ref-store
+// replica lag seen on the same fresh-repo first-push window.
+func (g *GitHub) RunWatchPushWorkflow(workflow string, intervalSecs int) error {
+	for dispatched := 0; ; dispatched++ {
+		if runID, found := g.waitForRunToAppear(workflow); found {
+			return g.watchRunID(runID, intervalSecs)
+		}
+
+		if dispatched >= maxReDispatches {
+			return fmt.Errorf("no workflow runs found for %s (workflow: %s) after %d re-dispatch attempts", g.Repo, workflow, maxReDispatches)
+		}
+
+		if !g.hasRecentStartupFailure() {
+			// No phantom build failure: the push trigger genuinely did not
+			// fire (e.g. an on.push paths filter that does not match the
+			// scaffolded files). Re-dispatching would bypass that filter and
+			// hide the bug, so fail loud instead.
+			return fmt.Errorf("no run and no startup_failure for %s (workflow: %s): push trigger did not fire — check the workflow's on.push filters", g.Repo, workflow)
+		}
+
+		log.Warnf("GitHub emitted a startup_failure and dropped the push trigger for %s — re-dispatching via workflow_dispatch (attempt %d/%d)", workflow, dispatched+1, maxReDispatches)
+		g.WorkflowRun(workflow, nil)
+		// Give GitHub a moment to register the dispatched run before the next
+		// appear-poll, mirroring verifyWorkflow's post-dispatch settle.
+		sleepFn(5 * time.Second)
+	}
 }
 
 // pollRunUntilComplete polls gh run view until the run is no longer in_progress/queued.
