@@ -256,8 +256,19 @@ processes:
   # message (see statemachine/run.go).
   implement-ticket:
     name: "Implement Ticket"
-    start: MARK_IN_PROGRESS
+    start: SETUP_TESTS
     nodes:
+      # SETUP_TESTS is the first activity, before MARK_IN_PROGRESS /
+      # PARSE_TICKET / GATE_TICKET_KIND. Test setup is ticket-independent (a
+      # harness prerequisite, not a ticket-processing step), so it needs
+      # nothing from PARSE_TICKET and sits above the ticket-kind gateway.
+      # Crucially it is OUTSIDE verify-tests-pass, so the FIX_* → RUN_TESTS
+      # back-edge never re-triggers a fresh `npm ci`. See plan 20260617-1456.
+      - id: SETUP_TESTS
+        type: call-activity
+        process: setup-tests
+        name: "Setup Tests"
+
       - id: MARK_IN_PROGRESS
         type: service-task
         action: move-to-in-progress
@@ -326,6 +337,7 @@ processes:
         name: "Unknown Task Subtype"
 
     sequence-flows:
+      - {from: SETUP_TESTS,                 to: MARK_IN_PROGRESS}
       - {from: MARK_IN_PROGRESS,            to: PARSE_TICKET}
       - {from: PARSE_TICKET,                to: GATE_TICKET_KIND}
       - {from: GATE_TICKET_KIND, to: CHANGE_SYSTEM_BEHAVIOR, when: "ticket-kind == story"}
@@ -2257,6 +2269,38 @@ processes:
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFINE_AC_END}
+
+  # setup-tests guarantees the test harness's own dependencies are installed
+  # before any path can reach the first `run-tests`. It wraps
+  # `gh optivem test setup`, which resolves the active language's
+  # `setupCommands` from tests.yaml (npm ci for TS, gradle clean compile for
+  # Java, restore for .NET). It is idempotent — N runs leave the same state
+  # as one — so it is dispatched unconditionally at the very top of
+  # `implement-ticket` (before the ticket-kind gateway and OUTSIDE the
+  # verify-tests-pass fix loop), covering every ticket kind rather than
+  # riding on the incidental `npm ci` inside `compile-tests` on the
+  # test-authoring paths. See plan 20260617-1456.
+  setup-tests:
+    name: "Setup Tests"
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call-activity
+        process: execute-command
+        name: "Dispatch the Command"
+        params:
+          command: "gh optivem test setup"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: setup-tests
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
+
+      - id: SETUP_TESTS_END
+        type: end-event
+        name: "Tests Set Up"
+
+    sequence-flows:
+      - {from: EXECUTE_COMMAND, to: SETUP_TESTS_END}
 
   compile-tests:
     name: "Compile Tests"

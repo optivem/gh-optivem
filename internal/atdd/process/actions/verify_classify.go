@@ -161,6 +161,32 @@ var infraPatterns = []infraPattern{
 		label: "requested test never executed — wrong name, gated off (GH_OPTIVEM_RUN_WIP_TESTS), or wrong suite/partition?",
 		re:    regexp.MustCompile(`(?i)requested test\S* never executed`),
 	},
+	{
+		// The test harness could not resolve its OWN dependencies before any
+		// test ran — the missing-node_modules defect plan 20260617-1456 closes.
+		// A fresh worktree reaches `run-tests` with no `node_modules`, so the
+		// JS loader fails to import a devDependency (`ERR_MODULE_NOT_FOUND`,
+		// "Cannot find package '@playwright/test'", "Cannot find module …").
+		// This is an orchestrator-side prerequisite failure, not a red test —
+		// system-updater can never resolve a missing npm package, so routing it
+		// red burns both opus·high fix passes on an unfixable condition. The
+		// structural fix (a setup-tests BPMN step) installs deps up front; this
+		// row is defense-in-depth that halts loud with the true cause if setup
+		// is ever skipped or fails. Match the loader's fixed wording, not the
+		// echoed package name, per the table's guidance.
+		label: "test harness dependencies not installed — run `gh optivem test setup`",
+		re:    regexp.MustCompile(`(?i)(err_module_not_found|cannot find (package|module)\b)`),
+	},
+	{
+		// Gradle / NuGet equivalents of the missing-deps case above: the build
+		// tool failed to resolve a declared dependency before compiling or
+		// running tests (Gradle "Could not resolve all (files|dependencies|
+		// artifacts)", NuGet "NU1101"/"Unable to find package"). Same root
+		// cause and same remedy as the JS row — the harness's own deps are not
+		// installed — so route it to the infra halt rather than the fix loop.
+		label: "test harness dependencies not installed — run `gh optivem test setup`",
+		re:    regexp.MustCompile(`(?i)(could not resolve all (files|dependencies|artifacts)|\bnu1101\b|unable to find package\b)`),
+	},
 }
 
 // classifyShellErr is the pure-function entry point. It takes the

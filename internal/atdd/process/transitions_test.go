@@ -868,3 +868,60 @@ func TestImplementTicket_TwoAxisRouting(t *testing.T) {
 		}
 	}
 }
+
+// SETUP_TESTS must be the unconditional first activity of implement-ticket,
+// upstream of the ticket-kind gateway and outside verify-tests-pass's fix
+// loop, so test-harness deps are installed before any path reaches the first
+// run-tests — for every ticket kind, not just the redesign path that crashed
+// with ERR_MODULE_NOT_FOUND (plan 20260617-1456). implement-ticket is the
+// only top-level entry that reaches run-tests, so making setup its start node
+// is complete coverage. Placing it before the FIX_* → RUN_TESTS back-edge
+// also keeps repeated fix iterations from each paying a fresh `npm ci`.
+func TestSetupTests_PrecedesImplementTicketGateway(t *testing.T) {
+	eng := loadSnapshot(t)
+
+	// 1. setup-tests is the start node of implement-ticket and a call-activity
+	//    into the setup-tests sub-process.
+	it, ok := eng.Processes["implement-ticket"]
+	if !ok {
+		t.Fatalf("process implement-ticket missing")
+	}
+	if it.Start != "SETUP_TESTS" {
+		t.Fatalf("implement-ticket start = %q, want SETUP_TESTS", it.Start)
+	}
+	setupNode, ok := it.Nodes["SETUP_TESTS"]
+	if !ok {
+		t.Fatalf("implement-ticket: SETUP_TESTS node missing")
+	}
+	if setupNode.Kind != statemachine.CallActivity {
+		t.Errorf("SETUP_TESTS kind = %v, want CallActivity", setupNode.Kind)
+	}
+	if got := setupNode.Raw.Process; got != "setup-tests" {
+		t.Errorf("SETUP_TESTS process = %q, want setup-tests", got)
+	}
+
+	// 2. Setup precedes the ticket-kind gateway: its only successor is
+	//    MARK_IN_PROGRESS, which leads into PARSE_TICKET → GATE_TICKET_KIND.
+	//    This puts setup above the kind/subtype routing for every ticket kind.
+	wantEdge(t, it, "SETUP_TESTS", "MARK_IN_PROGRESS", "")
+	if got := len(it.OutgoingByNode["SETUP_TESTS"]); got != 1 {
+		t.Errorf("SETUP_TESTS outgoing edges = %d, want 1 (unconditional)", got)
+	}
+
+	// 3. The setup-tests sub-process dispatches `gh optivem test setup`, the
+	//    language-agnostic command that resolves the active tier's setupCommands.
+	st, ok := eng.Processes["setup-tests"]
+	if !ok {
+		t.Fatalf("process setup-tests missing")
+	}
+	cmdNode, ok := st.Nodes[st.Start]
+	if !ok {
+		t.Fatalf("setup-tests: start node %q missing", st.Start)
+	}
+	if got := cmdNode.Raw.Process; got != "execute-command" {
+		t.Errorf("setup-tests start node process = %q, want execute-command", got)
+	}
+	if got := cmdNode.Raw.Params["command"]; got != "gh optivem test setup" {
+		t.Errorf("setup-tests command = %q, want `gh optivem test setup`", got)
+	}
+}

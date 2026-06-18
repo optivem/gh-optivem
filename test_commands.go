@@ -43,7 +43,12 @@ func newTestCmd() *cobra.Command {
 //
 // Runs suites against an already-running system. The caller is responsible
 // for the lifecycle: `gh optivem test setup` (once) → `gh optivem system start`
-// (once) → `gh optivem test run ...` (one or more times). The verb
+// (once) → `gh optivem test run ...` (one or more times). For operator and CI
+// callers that lifecycle is manual; under the ATDD orchestrator the `setup`
+// phase is run automatically by the `setup-tests` BPMN step at the top of
+// `implement-ticket`, before any path reaches the first `test run` (so deps
+// are installed even on paths that never compile tests — see plan
+// 20260617-1456). The verb
 // health-probes every entry in systems.yaml first; if any aren't up it errors
 // with "start it first with `gh optivem system start`". Mirrors mainstream
 // service-lifecycle CLIs (docker compose, systemctl, kubectl) where each

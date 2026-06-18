@@ -166,6 +166,40 @@ func TestClassifyShellErr(t *testing.T) {
 			wantClass: classInfra,
 			wantLabel: "requested test never executed — wrong name, gated off (GH_OPTIVEM_RUN_WIP_TESTS), or wrong suite/partition?",
 		},
+		// ---- infra: test harness deps not installed (missing node_modules) -
+		{
+			// The rehearsal #61 crash (plan 20260617-1456): a fresh worktree
+			// reached run-tests with no node_modules, so the JS loader failed
+			// to import a devDependency. Must NOT be classified red — it is an
+			// orchestrator-side prerequisite, not a test assertion failure.
+			name: "playwright missing @playwright/test (ERR_MODULE_NOT_FOUND)",
+			stderr: "Error: Cannot find package '@playwright/test' imported from " +
+				"/work/system-test/typescript/playwright.config.ts\n  code: 'ERR_MODULE_NOT_FOUND'",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "test harness dependencies not installed — run `gh optivem test setup`",
+		},
+		{
+			name:      "node cannot find module",
+			stderr:    "Error: Cannot find module 'dotenv'\nRequire stack:\n- /work/system-test/typescript/setup.ts",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "test harness dependencies not installed — run `gh optivem test setup`",
+		},
+		{
+			name:      "gradle could not resolve dependencies",
+			stderr:    "FAILURE: Could not resolve all dependencies for configuration ':testRuntimeClasspath'.",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "test harness dependencies not installed — run `gh optivem test setup`",
+		},
+		{
+			name:      "nuget unable to find package (NU1101)",
+			stderr:    "error NU1101: Unable to find package Microsoft.Playwright. No packages exist with this id in source(s): nuget.org",
+			err:       exitErr,
+			wantClass: classInfra,
+			wantLabel: "test harness dependencies not installed — run `gh optivem test setup`",
+		},
 		// ---- red: tests ran, at least one failed --------------------------
 		{
 			name: "jest reports failures",
