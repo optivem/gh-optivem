@@ -1,7 +1,5 @@
 # Make acceptance-test isolation deterministic, not writer-inferred
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-18T09:18:56Z`
-
 > Spun out of `plans/20260617-1651-per-channel-verify-covers-isolated-suite.md`
 > (now deleted). 1651's framework fix — making the per-channel verify cover the
 > isolated partition — shipped via `plans/20260618-0653-symmetric-acceptance-partition-naming.md`
