@@ -1,9 +1,24 @@
 # Guarantee test-harness dependencies before the first test run (add a setup-tests BPMN step)
 
+## TL;DR
+
+**Why:** There is no path-independent guarantee that test-harness dependencies are installed before the first `run-tests` — it happens only incidentally, via the `npm ci` inside `compile-tests` on test-authoring paths. Any path that reaches `run-tests` without authoring/compiling tests has no such guarantee; the redesign path is simply the one that crashes today (`ERR_MODULE_NOT_FOUND`, no `node_modules`). Worse, that missing-dependency crash is misclassified as a failing test, so the fix loop burns both expensive `opus·high` passes asking `system-updater` to fix system code it can never fix.
+**End result:** A new idempotent `setup-tests` BPMN step runs `gh optivem test setup` once near the top of `implement-ticket` (before the ticket-kind gateway and outside the fix loop), guaranteeing deps are installed before the first `run-tests` for *every* ticket kind (story / bug / all task subtypes), not just redesign. As defense-in-depth, the runner classifies dependency/module-resolution errors as `infra` (immediate halt with a clear message) rather than `fail` — a general fix for any path or cause.
+
 ## Motivation
 
-Rehearsal `#61` (`redesigning-new-order-ui`, TypeScript) crashed in the GREEN
-verification with a **missing-dependency** error, not a test-logic failure:
+**Orchestrated test setup does not exist today.** `gh optivem test setup` (which
+runs `setupCommands` from `tests.yaml`) is never invoked by the BPMN flow on any
+path — there is no `setup-tests` process at all. Test-harness deps get installed
+only as a *side effect* of the `npm ci` embedded in `compile-tests`
+(`gh optivem test compile`), and only on the three test-authoring/refactor
+paths. Any path that reaches `run-tests` without compiling tests gets no setup,
+and anything in `setupCommands` beyond what `npm ci` happens to cover (fixture
+seeding, browser installs, env prep) never runs automatically anywhere.
+
+The redesign path is simply the first place this surfaced. Rehearsal `#61`
+(`redesigning-new-order-ui`, TypeScript) crashed in the GREEN verification with
+a **missing-dependency** error, not a test-logic failure:
 
 ```
 Error: Cannot find package '@playwright/test' imported from
@@ -127,14 +142,17 @@ Two fixes, primary + defense-in-depth:
    `gh optivem test setup`, `task-name: setup-tests`, `category: command`
    (cheap, no AI cost). Add its end-event and sequence-flow.
 
-2. **Dispatch it in `implement-ticket`, before the loop.** Insert a
-   `SETUP_TESTS` call-activity between `PARSE_TICKET` and `GATE_TICKET_KIND`
-   (`process-flow.yaml:266–271`): re-point `PARSE_TICKET → SETUP_TESTS` and add
-   `SETUP_TESTS → GATE_TICKET_KIND`. Ticket-kind-independent placement = one
-   install before every cycle, and crucially *outside* `verify-tests-pass`, so
-   the `FIX_* → RUN_TESTS` back-edge never re-triggers it. **Do not** place
-   setup on the `run-tests` / `verify-tests-pass` path itself. (Alternative
-   placement: top of `main`; see Open Question A.)
+2. **Dispatch it as the first activity of `implement-ticket`.** Make
+   `SETUP_TESTS` the new start node of `implement-ticket` (currently
+   `start: MARK_IN_PROGRESS`, `process-flow.yaml:259`): change `start:` to
+   `SETUP_TESTS`, add the `SETUP_TESTS` call-activity node, and add the flow
+   `SETUP_TESTS → MARK_IN_PROGRESS` (the existing `MARK_IN_PROGRESS →
+   PARSE_TICKET → GATE_TICKET_KIND` chain is unchanged). Setup is
+   ticket-independent, so it needs nothing from `PARSE_TICKET`; placing it first
+   keeps it above the ticket-kind gateway and crucially *outside*
+   `verify-tests-pass`, so the `FIX_* → RUN_TESTS` back-edge never re-triggers
+   it. **Do not** place setup on the `run-tests` / `verify-tests-pass` path
+   itself.
 
 3. **Classify dependency/module-resolution errors as `infra` in the runner.**
    Locate where `gh optivem test run` maps a suite's non-zero exit to the
@@ -163,14 +181,26 @@ Two fixes, primary + defense-in-depth:
 
 ## Open questions
 
-- **A. Placement: `implement-ticket` vs `main`.** **(Recommended)** Put
-  `SETUP_TESTS` in `implement-ticket` after `PARSE_TICKET` — it's the narrowest
-  scope that still covers every ticket kind, and it sits next to the other
-  per-ticket bookends (`MARK_IN_PROGRESS`, `MARK_IN_ACCEPTANCE`). Alternative:
-  top of `main` (`:157`) if there are non-`implement-ticket` entry paths that
-  also reach `run-tests` — check `main`'s other branches (`MARK_IN_REFINEMENT`,
-  refine-backlog) before deciding. Recommend `implement-ticket` unless such a
-  path exists.
+- **A. Placement — RESOLVED: very first activity of `implement-ticket`.** Setup
+  is **independent of ticket type** — a harness prerequisite, not a
+  ticket-processing step — so it should not be sequenced inside the ticket-kind
+  logic. Make `SETUP_TESTS` the new start node of `implement-ticket`, before
+  `MARK_IN_PROGRESS` / `PARSE_TICKET` / `GATE_TICKET_KIND` (wiring in Item 2).
+
+  Call-graph verification settles the `main`-vs-`implement-ticket` question:
+  - `main` is just `START → IMPLEMENT_TICKET → END` (`:174–176`) — no other
+    branch, so top-of-`main` would give zero extra coverage.
+  - The only other top-level entry, `refine-ticket`, runs
+    `refine-backlog-item → refine-acceptance-criteria` (a leaf agent dispatch,
+    `:2243`) and **never reaches `run-tests`** — so it correctly needs no setup.
+  - Every `run-tests` call site (`PROBE_CONTRACT_REAL/STUB` at `:1233`/`:1291`,
+    `verify-tests-pass` at `:1609`, `verify-tests-fail` at `:1702`) lives under
+    `implement-ticket`'s cycle subtree.
+
+  So no non-`implement-ticket` path reaches `run-tests`: top-of-`implement-ticket`
+  is complete coverage, runs only when we actually implement (no `npm ci` on
+  refinement-only runs), and sits *before* `verify-tests-pass` so the
+  `FIX_* → RUN_TESTS` back-edge never re-triggers it.
 
 - **B. Reuse cost only (correctness is settled by idempotence).** Running
   `setup-tests` unconditionally is always *correct* — the only question is the
