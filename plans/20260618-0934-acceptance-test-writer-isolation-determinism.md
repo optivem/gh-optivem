@@ -1,5 +1,7 @@
 # Make acceptance-test isolation deterministic, not writer-inferred
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-18T09:18:56Z`
+
 > Spun out of `plans/20260617-1651-per-channel-verify-covers-isolated-suite.md`
 > (now deleted). 1651's framework fix — making the per-channel verify cover the
 > isolated partition — shipped via `plans/20260618-0653-symmetric-acceptance-partition-naming.md`
@@ -13,7 +15,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Design is **resolved** and the Items carry concrete paths/commands — `/execute-plan` can run this without further discovery. It's a coordinated three-repo change with a library release in the middle; walk the Items **in dependency order**: A (`../optivem-testing` delete time markers + release `2.0.0`) must publish before B (gh-optivem writer/gate/docs + dep bump) and C (optivem/shop dep bump + retag #76). The reason param already exists and the pre-removal check is resolved, so A is delete-and-release. No pickup marker yet; check for concurrent agents before starting; commit/release are gated on user approval.
+**Item A's edits are done** (time markers deleted + docs swept, committed to optivem-testing). The next unit is the **gated publish of `optivem-testing 1.1.9`** (PATCH — VJ exception): from `../optivem-testing`, `echo "1.1.9" > VERSION && bash scripts/bump-version.sh`, then commit + push `main` and `gh workflow run release-stage.yml`. This is outward-facing and irreversible → **requires user approval before running**. Once `1.1.9` is live on Maven Central / NuGet / npm, run B (gh-optivem writer/gate/docs + dep bump to `1.1.9`) and C (optivem/shop dep bump + migrate `@TimeDependent`/`[Time]` usages, incl. #76; re-check #80). B and C can't be verified to build green until the release lands.
 
 ## Problem
 
@@ -45,7 +47,9 @@ These are a teaching-repo concern (the generated tests are what students read), 
    - .NET: `[Time]` (`TimeAttribute.cs`, incl. `TimeTraitDiscoverer`). *(There is no `[TimeDependent]` in .NET.)*
    - TypeScript: none exists — nothing to remove.
 
-   **Pre-removal check — RESOLVED (not a blocker).** All of these are pure marker meta-annotations: Java `@TimeDependent` = `@Tag("time-dependent") @Tag("time") @Isolated("Time-dependent test")`; .NET `[Time]` = a `TraitDiscoverer` emitting `time`+`isolated` categories. None *activates* the clock — clock control is driven by explicit DSL steps (per #76). Safe to delete. Removal is breaking → **major version bump** (`VERSION` 1.1.8 → `2.0.0`). Note: `@TimeDependent`'s ISO `value()` is documentation-only ("potential future automation"); migrating drops it, which is fine (the actual instant is set via DSL steps).
+   **Pre-removal check — RESOLVED (not a blocker).** All of these are pure marker meta-annotations: Java `@TimeDependent` = `@Tag("time-dependent") @Tag("time") @Isolated("Time-dependent test")`; .NET `[Time]` = a `TraitDiscoverer` emitting `time`+`isolated` categories. None *activates* the clock — clock control is driven by explicit DSL steps (per #76). Safe to delete. Note: `@TimeDependent`'s ISO `value()` is documentation-only ("potential future automation"); migrating drops it, which is fine (the actual instant is set via DSL steps).
+
+   **Version: `1.1.8` → `1.1.9` (PATCH) — deliberate exception, set by VJ 2026-06-18.** Removing the public marker types is technically breaking and would default to a major bump (`2.0.0`); the breaking-change risk was flagged and VJ chose a patch bump anyway. All dependency bumps below pin `1.1.9`.
 
 4. **The clock correctness invariant is enforced by a gate keyed on the clock-control DSL mechanism** — not on the reason prose and not on `@TimeDependent`. A scenario that drives the clock must carry `@isolated`, else reject. This keeps the one known correctness invariant un-forgettable without a closed reason enum.
 
@@ -55,22 +59,19 @@ These are a teaching-repo concern (the generated tests are what students read), 
 
 Walk in dependency order — each repo depends on the one above it being released/landed. All paths are relative to the academy workspace root (`../` from gh-optivem).
 
-### A. `../optivem-testing` → new major release (`2.0.0`)
-The `@Isolated` reason surface already exists (see Resolved design §2) — this repo is **delete the time markers + release**, nothing else.
-- [ ] Java: delete `java/core/src/main/java/com/optivem/testing/TimeDependent.java` and `java/core/src/main/java/com/optivem/testing/Time.java`.
-- [ ] .NET: delete `dotnet/Optivem.Testing/TimeAttribute.cs` (removes both `TimeAttribute` and `TimeTraitDiscoverer`).
-- [ ] TypeScript: no change — no isolation/time annotation exists.
-- [ ] Sweep the library's own docs for the removed names: `grep -rinE "TimeDependent|\[Time\]|@Time\b" ../optivem-testing` (notably `dotnet/README.md`) and update.
-- [ ] Release (breaking → major): `echo "2.0.0" > ../optivem-testing/VERSION && bash ../optivem-testing/scripts/bump-version.sh` → commit + push `main` (triggers RC commit stages) → `gh workflow run release-stage.yml` (promotes RC to Maven Central `com.optivem:optivem-testing`, NuGet `Optivem.Testing`, npm `@optivem/optivem-testing`; tags + GitHub Release). See `../optivem-testing/CONTRIBUTING.md` "Release Checklist".
+### A. `../optivem-testing` → patch release (`1.1.9`)
+The time-marker deletes + doc sweep are **done** (committed to optivem-testing). What remains is the gated publish.
+- [ ] Release (PATCH — deliberate exception, see §3): `echo "1.1.9" > ../optivem-testing/VERSION && bash ../optivem-testing/scripts/bump-version.sh` → commit + push `main` (triggers RC commit stages) → `gh workflow run release-stage.yml` (promotes RC to Maven Central `com.optivem:optivem-testing`, NuGet `Optivem.Testing`, npm `@optivem/optivem-testing`; tags + GitHub Release). See `../optivem-testing/CONTRIBUTING.md` "Release Checklist". **Outward-facing/irreversible → user-gated.**
 
 ### B. gh-optivem (writer + gate + docs) — after A is published
 - [ ] acceptance-test-writer prompt (`internal/atdd/assets/runtime/agents/atdd/*.md` — the AT-write prompt): mirror the bare `@isolated` AC tag into `@Isolated(reason = …)`, lifting the reason verbatim from an adjacent AC comment/description when present, bare `@Isolated()` otherwise; never invent. Remove all expectation/emission of `@TimeDependent` / `[Time]`.
 - [ ] Add the clock-control-DSL gate: a scenario that drives the clock-control DSL steps must carry `@isolated`, else reject.
+- [ ] Any code that reads the `@Isolated` reason (writer mirror logic, lint) must treat absence idiom-proof: the reason defaults to `null` in .NET (xUnit-`Skip` idiom) and `""` in Java (JUnit-`@Disabled` idiom) — use `string.IsNullOrEmpty` / `isBlank()`, never an `== null` or `== ""` check alone.
 - [ ] Sweep gh-optivem for the retired names: `grep -rinE "TimeDependent|@Time\b|\[Time\]" internal docs` and retire references (prompts, process docs, fixtures).
-- [ ] Bump the scaffolded optivem-testing dependency to `2.0.0` wherever the scaffold pins it (Maven/Gradle, NuGet, npm template files).
+- [ ] Bump the scaffolded optivem-testing dependency to `1.1.9` wherever the scaffold pins it (Maven/Gradle, NuGet, npm template files).
 
 ### C. optivem/shop (consumer) — after A is published
-- [ ] Bump the optivem-testing dependency to `2.0.0` in each language config (`build.gradle` / `.csproj` / `package.json`).
+- [ ] Bump the optivem-testing dependency to `1.1.9` in each language config (`build.gradle` / `.csproj` / `package.json`).
 - [ ] Find every usage: `grep -rinE "@TimeDependent|@Time\b|\[Time\]" ../shop`. Migrate each to bare `@isolated` Gherkin tag (on the AC) + `@Isolated("reason")` (in the test). This includes #76's clock-mutating cancellation scenario.
 - [ ] Re-check #80 (coupon `validTo` in the past) — likely date-seeded, not clock-mutating, so probably needs **no** isolation; confirm before tagging.
 
