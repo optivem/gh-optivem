@@ -287,6 +287,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
+    VALIDATE_CHANNELS_REGISTERED[[Validate Touched Channels Are Configured]]
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
     IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = drivers"]
     SHARED_CONTRACT_END(( ))
@@ -297,7 +298,8 @@ flowchart TD
     START_SYSTEM_AT_TERMINAL[Start System]
     VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL["Verify Acceptance Tests Pass — see § verify-tests-pass<br/>suite = acceptance"]
 
-    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE --> GATE_DSL_PORT_CHANGED
+    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE --> VALIDATE_CHANNELS_REGISTERED
+    VALIDATE_CHANNELS_REGISTERED --> GATE_DSL_PORT_CHANGED
     GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
     GATE_DSL_PORT_CHANGED -- No --> SHARED_CONTRACT_END
     IMPLEMENT_AND_VERIFY_DSL --> GATE_EXTERNAL_DRIVER_PORTS_CHANGED
@@ -311,7 +313,7 @@ flowchart TD
     VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL --> SHARED_CONTRACT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class VALIDATE_EXTERNAL_SYSTEMS_REGISTERED serviceNode
+    class VALIDATE_CHANNELS_REGISTERED,VALIDATE_EXTERNAL_SYSTEMS_REGISTERED serviceNode
 ```
 
 ## Write and Verify Acceptance Test Code
@@ -356,10 +358,19 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    RESOLVE_CHANNEL[[Resolve Channel]]
+    GATE_CHANNEL_TOUCHED{Channel Touched?}
     IMPLEMENT_TEST_LAYER["Implement System Driver Adapter Layer — see § implement-test-layer<br/>action = implement-system-driver-adapters<br/>task-name = implement-system-driver-adapters"]
+    CHANNEL_SKIPPED(( ))
     IMPL_SYS_DRIVER_END(( ))
 
+    RESOLVE_CHANNEL --> GATE_CHANNEL_TOUCHED
+    GATE_CHANNEL_TOUCHED -- Yes --> IMPLEMENT_TEST_LAYER
+    GATE_CHANNEL_TOUCHED -- No --> CHANNEL_SKIPPED
     IMPLEMENT_TEST_LAYER --> IMPL_SYS_DRIVER_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class RESOLVE_CHANNEL serviceNode
 ```
 
 ## Implement and Verify External System Driver Adapters Contract Tests
@@ -437,18 +448,27 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    RESOLVE_CHANNEL[[Resolve Channel]]
+    GATE_CHANNEL_TOUCHED{Channel Touched?}
     RUN_ACTION["Run the Configured Agent — see § ${action}"]
+    CHANNEL_SKIPPED(( ))
     BUILD_SYSTEM[Build the System — see § build-system]
     START_SYSTEM[Start the System — see § start-system-restart]
     VERIFY_TESTS_PASS[Verify Tests Pass]
     COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = prod-commit"]
     IMPL_AND_VERIFY_SYSTEM_END(( ))
 
+    RESOLVE_CHANNEL --> GATE_CHANNEL_TOUCHED
+    GATE_CHANNEL_TOUCHED -- Yes --> RUN_ACTION
+    GATE_CHANNEL_TOUCHED -- No --> CHANNEL_SKIPPED
     RUN_ACTION --> BUILD_SYSTEM
     BUILD_SYSTEM --> START_SYSTEM
     START_SYSTEM --> VERIFY_TESTS_PASS
     VERIFY_TESTS_PASS --> COMMIT_SYSTEM
     COMMIT_SYSTEM --> IMPL_AND_VERIFY_SYSTEM_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class RESOLVE_CHANNEL serviceNode
 ```
 
 ## Refactor and Verify Tests
