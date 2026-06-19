@@ -1,7 +1,5 @@
 # 2026-06-19 19:34:00 UTC — Prevent contract tests from escaping into the system-under-test
 
-🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-19T19:51:26Z`
-
 ## TL;DR
 
 **Why:** Rehearsal #65 burned ~16 min on an unwinnable fix loop because the `contract-test-writer` authored an ERP contract test that drove the *my-shop System Driver* (`.when().viewProductList()`) instead of the *external (ERP) driver port*. The call hit an unimplemented `TODO: System Driver` stub that **no contract-phase agent is scoped to implement**, so the test could never go green.
