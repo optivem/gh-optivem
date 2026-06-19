@@ -1853,3 +1853,52 @@ func TestResolveDispatchModel(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveSystemSurface pins the channel→tier mapping the driver uses to
+// fill ${system-surface} (plan 20260619-1120 A1). The unknown-channel and
+// non-monolith/multitier rows assert the fail-fast contract: ok=false so the
+// caller leaves the placeholder unfilled rather than substituting "".
+func TestResolveSystemSurface(t *testing.T) {
+	monolith := &projectconfig.Config{
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMonolith,
+			Path:         "system",
+		},
+	}
+	multitier := &projectconfig.Config{
+		System: projectconfig.System{
+			Architecture: projectconfig.ArchMultitier,
+			Backend:      projectconfig.TierSpec{Path: "backend"},
+			Frontend:     projectconfig.TierSpec{Path: "frontend"},
+		},
+	}
+	microservices := &projectconfig.Config{
+		System: projectconfig.System{Architecture: projectconfig.ArchMicroservices},
+	}
+
+	tests := []struct {
+		name    string
+		cfg     *projectconfig.Config
+		channel string
+		want    string
+		wantOK  bool
+	}{
+		{name: "monolith any channel → system path", cfg: monolith, channel: "api", want: "system", wantOK: true},
+		{name: "monolith no channel → system path", cfg: monolith, channel: "", want: "system", wantOK: true},
+		{name: "multitier api → backend", cfg: multitier, channel: "api", want: "backend", wantOK: true},
+		{name: "multitier ui → frontend", cfg: multitier, channel: "ui", want: "frontend", wantOK: true},
+		{name: "multitier whole-system → both tiers", cfg: multitier, channel: "", want: "backend/ and frontend/", wantOK: true},
+		{name: "multitier unknown channel → unfilled", cfg: multitier, channel: "mobile", want: "", wantOK: false},
+		{name: "microservices → unfilled (out of scope)", cfg: microservices, channel: "api", want: "", wantOK: false},
+		{name: "nil cfg → unfilled", cfg: nil, channel: "api", want: "", wantOK: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := resolveSystemSurface(tt.cfg, tt.channel)
+			if got != tt.want || ok != tt.wantOK {
+				t.Errorf("resolveSystemSurface(%v, %q) = (%q, %v); want (%q, %v)",
+					tt.cfg, tt.channel, got, ok, tt.want, tt.wantOK)
+			}
+		})
+	}
+}

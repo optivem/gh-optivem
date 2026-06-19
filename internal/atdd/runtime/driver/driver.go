@@ -1188,6 +1188,20 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		var placeholders map[string]string
 		if cfg != nil {
 			placeholders = cfg.PlaceholderMap()
+			// ${system-surface} is the per-dispatch production-code surface
+			// the GREEN/redesign/refactor system prompts name. PlaceholderMap
+			// only emits the monolith-only ${system-path} (empty on
+			// multitier), so the driver resolves the surface here from cfg +
+			// the dispatch's channel: monolith → the single system path;
+			// multitier → the channel's tier (api→backend, ui→frontend) or
+			// both tiers for a whole-system dispatch. Mirrors the
+			// driver-resolved-per-phase Language pattern (plan 20260619-1120
+			// A1). Unknown channel on multitier → unfilled, so
+			// findUnfilledPlaceholders fail-fasts rather than silently
+			// substituting "".
+			if surface, ok := resolveSystemSurface(cfg, nodeParams["channel"]); ok && surface != "" {
+				placeholders["system-surface"] = surface
+			}
 		}
 		// Command-failure payload from upstream runCommand. State keys are
 		// only populated when the LOW execute-command primitive's shell
@@ -1520,6 +1534,47 @@ func resolveDispatchModel(tuning agents.Tuning, nodeParams map[string]string) st
 		return tuning.ModelLaterChannel
 	}
 	return tuning.Model
+}
+
+// resolveSystemSurface computes the ${system-surface} placeholder for a
+// dispatch — the production-code surface the GREEN/redesign/refactor
+// system prompts name. The channel→tier mapping is pinned in Go here
+// (plan 20260619-1120 A1); the config schema is unchanged, the surface is
+// read off the existing System.Path / System.Backend / System.Frontend.
+//
+//   - monolith → the single System.Path.
+//   - multitier + channel → that channel's tier path: api→backend,
+//     ui→frontend.
+//   - multitier + no channel (whole-system updater/refactorer dispatch) →
+//     both tier paths joined in reader-friendly form ("backend/ and frontend/").
+//
+// Returns ok=false for an unknown channel on multitier (and for the
+// not-yet-supported microservices / unset architectures) so the caller
+// leaves ${system-surface} unfilled and findUnfilledPlaceholders fail-fasts,
+// rather than silently substituting "" and writing code to an empty path.
+func resolveSystemSurface(cfg *projectconfig.Config, channel string) (string, bool) {
+	if cfg == nil {
+		return "", false
+	}
+	switch cfg.System.Architecture {
+	case projectconfig.ArchMonolith:
+		return cfg.System.Path, true
+	case projectconfig.ArchMultitier:
+		switch channel {
+		case "":
+			// Whole-system dispatch (updater/refactorer walk the Checklist
+			// across every tier) — name both surfaces.
+			return fmt.Sprintf("%s/ and %s/", cfg.System.Backend.Path, cfg.System.Frontend.Path), true
+		case "api":
+			return cfg.System.Backend.Path, true
+		case "ui":
+			return cfg.System.Frontend.Path, true
+		default:
+			return "", false
+		}
+	default:
+		return "", false
+	}
 }
 
 // fixChangedFiles returns the working-tree dirty-file listing (one

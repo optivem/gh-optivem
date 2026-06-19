@@ -1,5 +1,16 @@
 # Plan: fix the multitier `${system-path}` render crash in the GREEN/redesign/refactor system prompts ({20260619-1120})
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-19T09:55:12Z`
+
+## TL;DR
+
+**Why:** The GREEN/redesign/refactor system prompts hardcode the monolith-only `${system-path}`, which is empty on a multitier repo — so shop #72's multitier rehearsal crashes at prompt render (`unresolved placeholder ${system-path}`) after 27m of green phases.
+**End result:** The driver resolves one architecture-agnostic `${system-surface}` placeholder per dispatch (monolith→`System.Path`; multitier `api`→backend, `ui`→frontend, whole-system→both tiers), the three prompts name `${system-surface}` instead, and a render-matrix unit test catches any future multitier-only prompt drift in <1s.
+
+## ▶ Next executable step (resume here)
+
+All four agent Items are landed and the test suite is green. **Only operator-driven verification remains** (see `## Verification` below): re-run the failing multitier shop #72 rehearsal and the rehearsal-loop to confirm `implement-system` renders past `RUN_AGENT`, and spot-check a rendered `system-implementer` prompt log shows `backend` on `api` / `frontend` on `ui`. Plus the post-landing memory follow-up in `## Notes`. No further agent edits.
+
 ✅ **DECISIONS RESOLVED — ready to execute.** Records the 2026-06-19 shop #72
 multitier rehearsal crash and the agreed orchestrator-side fix (A1 + B1). All
 fixes are in **`gh-optivem`** (driver + agent prompts + tests), not in `shop`.
@@ -145,58 +156,21 @@ Deferring (B2) would leave two known landmines for the next redesign/refactor st
 
 ---
 
-## Items (A1 + B1, decisions resolved)
+## Items (A1 + B1) — ✅ all landed
 
-> All edits in **`gh-optivem`**. Decisions D-A/D-B are settled (see Resolved decisions).
+All four agent Items are implemented and committed; the test suite is green
+(`go test -p 2 ./internal/atdd/... ./internal/kernel/projectconfig/`). Summary:
 
-### 1. [driver] Resolve a per-dispatch `${system-surface}` placeholder
+1. **[driver]** `resolveSystemSurface(cfg, channel)` in `driver.go` + `${system-surface}`
+   registered on the placeholder map at the `cfg.PlaceholderMap()` site.
+2. **[agent]** `${system-path}`→`${system-surface}` in `system-implementer.md` (×2),
+   `system-updater.md` (×3), `system-refactorer.md` (×1); `${system-db-migration-path}` untouched.
+3. **[test]** `TestRenderMatrix_NoUnfilledPlaceholders` in `clauderun_test.go` — every agent ×
+   `[monolith, multitier]` × `[channelled, whole-system]`, asserts no unfilled `${…}`.
+4. **[driver/test]** `TestResolveSystemSurface` in `driver_test.go` — monolith / multitier
+   api→backend / ui→frontend / whole-system→both / unknown→unfilled / nil → unfilled.
 
-**Where:** `internal/atdd/runtime/driver/driver.go` (placeholder assembly,
-~`:1188-1191`, where `placeholders = cfg.PlaceholderMap()` is built and
-`nodeParams["channel"]` is in scope).
-
-**Change:** compute `system-surface` and register it on the placeholder map:
-- monolith → `cfg.System.Path`.
-- multitier + `channel` set → that channel's tier path via an explicit
-  `channel→tier` table (`api`→`System.Backend.Path`, `ui`→`System.Frontend.Path`).
-- multitier + no `channel` (whole-system agents) → both tier paths joined in a
-  reader-friendly form (final shape decided in encoding; e.g. "`backend/` and
-  `frontend/`").
-- Unknown channel on multitier → leave unfilled so `findUnfilledPlaceholders`
-  fails fast (don't silently substitute "").
-
-Keep the existing `system-path` emission untouched for monolith back-compat (any
-prompt still naming it on a monolith run keeps working).
-
-### 2. [agent] Replace `${system-path}` with `${system-surface}` in the three system prompts
-
-**Where:**
-- `internal/atdd/assets/runtime/agents/atdd/system-implementer.md:8,27`
-- `internal/atdd/assets/runtime/agents/atdd/system-updater.md:6,25,30`
-- `internal/atdd/assets/runtime/agents/atdd/system-refactorer.md:8`
-
-**Change:** swap every `${system-path}` body reference to `${system-surface}`.
-Do not alter surrounding scope guidance. `${system-db-migration-path}`
-(implementer step 3) is unaffected — it is its own key and is architecture-agnostic.
-
-### 3. [test] Render-matrix guard: every prompt × every architecture, no leftovers
-
-**Where:** `internal/atdd/process/clauderun/clauderun_test.go` (add a multitier
-sibling to the monolith `newOpts()` fixture, ~`:125`).
-
-**Change:** add a table test over `[monolith, multitier] × agents.DefaultAgentSet().Names()`
-that renders each prompt against the matching `PlaceholderMap` (plus the
-driver-resolved `system-surface` for both a channelled and a no-channel dispatch)
-and asserts `findUnfilledPlaceholders == ∅`. This is the cheap gate that would
-have caught R1+R4 in <1s instead of a live rehearsal. Covers future
-multitier-only prompt drift, not just this bug.
-
-### 4. [driver/test] Unit-cover the `system-surface` resolver
-
-**Where:** alongside Item 1 (driver test file).
-
-**Change:** table-test the resolver: monolith→`System.Path`; multitier api→backend,
-ui→frontend; multitier whole-system→both; unknown channel→unfilled.
+Only operator-driven verification + the memory follow-up remain.
 
 ---
 

@@ -139,6 +139,11 @@ func newOpts() Options {
 			Paths: projectconfig.DefaultPaths(projectconfig.LangJava, "system-test", "shop"),
 		},
 	}
+	// ${system-surface} is driver-resolved per dispatch (driver.resolveSystemSurface),
+	// not emitted by PlaceholderMap — on this monolith fixture it is System.Path.
+	// Seed it so dispatch tests rendering the system prompts resolve cleanly.
+	placeholders := cfg.PlaceholderMap()
+	placeholders["system-surface"] = cfg.System.Path
 	return Options{
 		Agent:           "acceptance-test-writer",
 		NodeDescription: "Write the AT-RED scenario",
@@ -158,11 +163,120 @@ func newOpts() Options {
 		// these.
 		ScopeRead:    []string{"at-test", "dsl-port"},
 		ScopeWrite:   []string{"at-test", "dsl-port", "dsl-core"},
-		Placeholders: cfg.PlaceholderMap(),
+		Placeholders: placeholders,
 		// Discard banners so test output stays clean.
 		Stdout: io.Discard,
 		Stderr: io.Discard,
 		Stdin:  strings.NewReader(""),
+	}
+}
+
+// renderMatrixOpts returns a maximally-seeded Options for the given
+// architecture so every agent's prompt body renders with all load-bearing
+// placeholders filled. Only the architecture-driven keys vary between rows:
+// cfg.PlaceholderMap() (system-path is empty on multitier, skipped) plus the
+// driver-resolved ${system-surface} the test seeds explicitly — the resolver
+// itself is unit-tested in the driver package (TestResolveSystemSurface).
+// Everything else is constant noise to satisfy the per-agent load-bearing
+// fields (scope-block, checklist, command trio, fix-* payloads, …).
+func renderMatrixOpts(arch, surface, channel string) Options {
+	sys := projectconfig.System{
+		Architecture:    arch,
+		Lang:            projectconfig.LangJava,
+		DbMigrationPath: projectconfig.DefaultDbMigrationPath,
+	}
+	switch arch {
+	case projectconfig.ArchMonolith:
+		sys.Path = "system"
+	case projectconfig.ArchMultitier:
+		// system.path stays empty on multitier (monolith-only); the surface
+		// is the per-tier path the driver resolves into ${system-surface}.
+		sys.Lang = "" // no single SUT lang on multitier; language falls back to SystemTest.Lang
+		sys.Backend = projectconfig.TierSpec{Path: "backend"}
+		sys.Frontend = projectconfig.TierSpec{Path: "frontend"}
+	}
+	cfg := &projectconfig.Config{
+		System: sys,
+		SystemTest: projectconfig.TierSpec{
+			Path:  "system-test",
+			Lang:  projectconfig.LangJava,
+			Paths: projectconfig.DefaultPaths(projectconfig.LangJava, "system-test", "shop"),
+		},
+	}
+	ph := cfg.PlaceholderMap()
+	ph["system-surface"] = surface // driver-resolved per dispatch (see driver.resolveSystemSurface)
+	return Options{
+		NodeDescription:     "Phase",
+		IssueNum:            42,
+		IssueTitle:          "Add PUT /carts/{id}/items endpoint",
+		Architecture:        arch,
+		Subtype:             "feature",
+		Language:            projectconfig.LangJava,
+		TicketID:            "T-1",
+		AcceptanceCriteria:  "Scenario: placeholder\n  Given x\n  When y\n  Then z",
+		Checklist:           "- [ ] do the thing",
+		ParsedConcepts:      "cart, item",
+		VerifyFailureOutput: "boom",
+		ChangedFiles:        "system/Foo.java",
+		CommandLine:         "gh optivem system build",
+		CommandExitCode:     1,
+		CommandStderrTail:   "build failed",
+		FailingTaskName:     "implement-system",
+		MissingOutputs:      "some-key: string",
+		ViolatingPaths:      "system/Bar.java",
+		ScopeRead:           []string{"at-test"},
+		ScopeWrite:          []string{"system-driver-adapter"},
+		AttemptNumber:       1,
+		AttemptMax:          2,
+		Placeholders:        ph,
+		NodeParams: map[string]string{
+			"channel":              channel,
+			"common":               "true",
+			"external-system-name": "erp",
+			"test-category":        "contract",
+		},
+		Headless: true,
+		Stdout:   io.Discard,
+		Stderr:   io.Discard,
+		Stdin:    strings.NewReader(""),
+	}
+}
+
+// TestRenderMatrix_NoUnfilledPlaceholders renders every agent prompt against
+// each architecture × dispatch-shape and asserts no ${…} placeholder leaks
+// through. This is the cheap (<1s) guard that would have caught the multitier
+// ${system-path} crash (plan 20260619-1120): a monolith-only placeholder in a
+// system prompt is empty on multitier, gets skipped by renderPrompt, and
+// survives to findUnfilledPlaceholders — here, not in a 27-minute live
+// rehearsal. Covers future multitier-only prompt drift across all agents, not
+// just the three system prompts this plan touched.
+func TestRenderMatrix_NoUnfilledPlaceholders(t *testing.T) {
+	dispatches := []struct {
+		name    string
+		arch    string
+		channel string
+		surface string
+	}{
+		{"monolith channelled", projectconfig.ArchMonolith, "api", "system"},
+		{"monolith whole-system", projectconfig.ArchMonolith, "", "system"},
+		{"multitier channelled", projectconfig.ArchMultitier, "api", "backend"},
+		{"multitier whole-system", projectconfig.ArchMultitier, "", "backend/ and frontend/"},
+	}
+	for _, d := range dispatches {
+		for _, name := range agents.DefaultAgentSet().Names() {
+			t.Run(d.name+"/"+name, func(t *testing.T) {
+				opts := renderMatrixOpts(d.arch, d.surface, d.channel)
+				opts.Agent = name
+				prompt, err := renderPrompt(opts)
+				if err != nil {
+					t.Fatalf("renderPrompt(%s): %v", name, err)
+				}
+				if leftovers := findUnfilledPlaceholders(prompt); len(leftovers) > 0 {
+					t.Errorf("agent %q on %s has unfilled placeholders: %s",
+						name, d.name, strings.Join(leftovers, ", "))
+				}
+			})
+		}
 	}
 }
 
@@ -314,6 +428,7 @@ func TestRenderPrompt_TaskAgentArchitectureAndScopeBlock_ExplicitValues(t *testi
 	opts.Placeholders = map[string]string{
 		"sut-namespace":                  "shop",
 		"system-path":                    "system/monolith/java",
+		"system-surface":                 "system/monolith/java", // driver-resolved; monolith → system path
 		"system-db-migration-path":       projectconfig.DefaultDbMigrationPath,
 		"system-test-path":               "system-test/java",
 		"system-driver-port":             "system-test/src/testkit/driver/port/shop",
@@ -418,6 +533,7 @@ func TestRenderPrompt_RefactorSystemAgent_RendersScopeBlock(t *testing.T) {
 	opts.Placeholders = map[string]string{
 		"sut-namespace":         "shop",
 		"system-path":           "system",
+		"system-surface":        "system", // driver-resolved; monolith → system path
 		"system-test-path":      "system-test",
 		"system-driver-port":    "system-test/src/testkit/driver/port/shop",
 		"system-driver-adapter": "system-test/src/testkit/driver/adapter/shop",
@@ -1998,6 +2114,7 @@ func TestDispatch_PreparedPromptBannerReflectsOptions(t *testing.T) {
 	opts.Placeholders = map[string]string{
 		"sut-namespace":                  "shop",
 		"system-path":                    "system/monolith/typescript",
+		"system-surface":                 "system/monolith/typescript", // driver-resolved; monolith → system path
 		"system-db-migration-path":       projectconfig.DefaultDbMigrationPath,
 		"system-test-path":               "system-test/typescript",
 		"system-driver-port":             "system-test/src/testkit/driver/port/shop",
