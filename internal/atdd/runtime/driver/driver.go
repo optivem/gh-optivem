@@ -1203,6 +1203,22 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 				placeholders["system-surface"] = surface
 			}
 		}
+		// Raw tier surface path(s) for the scope-block render. The
+		// monolith-only `system-path` scope key is empty in PlaceholderMap on
+		// multitier, so the driver supplies the concrete surface — from
+		// cfg.SystemSurfacePaths, the same kernel resolver the runtime
+		// scope-diff (actions.AddSystemSurfaceScope) and preflight use — for
+		// renderScopeBlock to name in the read:/write: sets. Multitier-only
+		// (monolith already resolves system-path via PlaceholderMap); nil when
+		// the channel has no surface, so renderScopeBlock hard-errors on a
+		// declared system-path key rather than leaking `(unresolved)`
+		// (plan 20260619-1953).
+		var systemSurfacePaths []string
+		if cfg != nil && cfg.System.Architecture == projectconfig.ArchMultitier {
+			if paths, ok := cfg.SystemSurfacePaths(nodeParams["channel"]); ok {
+				systemSurfacePaths = paths
+			}
+		}
 		// Command-failure payload from upstream runCommand. State keys are
 		// only populated when the LOW execute-command primitive's shell
 		// dispatch failed and routed via GATE_COMMAND_SUCCEEDED → FIX;
@@ -1366,6 +1382,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			ScopeRead:           scopeRead,
 			ScopeWrite:          scopeWrite,
 			ScopeRationale:      scopeRationale,
+			SystemSurfacePaths:  systemSurfacePaths,
 			Checklist:           ctx.GetString("checklist"),
 			AcceptanceCriteria:  ctx.GetString("acceptance-criteria"),
 			ParsedConcepts:      ctx.GetString("parsed_concepts"),

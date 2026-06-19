@@ -33,6 +33,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd/process/actions"
+	"github.com/optivem/gh-optivem/internal/atdd/process/clauderun"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/repolocator"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 	"github.com/optivem/gh-optivem/internal/build/runner"
@@ -219,6 +220,15 @@ func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	// Scope-resolution sweep (optional; only runs when an engine is wired).
 	failures = append(failures, runScopeResolutionChecks(cfg, opts.Engine)...)
 
+	// Scope-block render dry-run (optional; only runs when an engine is wired).
+	// Exercises the exact render path a live dispatch takes — for every
+	// writing-MID, render its read:/write: scope block via the same
+	// clauderun.RenderScopeBlock the dispatcher calls — so a config that would
+	// leak an unresolvable scope key into a prompt (the multitier system-path
+	// collapse, a Family B key with a blank cfg path) aborts here, before the
+	// BPMN main process, instead of 20 minutes into a run (plan 20260619-1953).
+	failures = append(failures, runScopeRenderChecks(cfg, opts.Engine)...)
+
 	// Suite-existence sweep (optional; only runs when an engine is wired).
 	// Resolve the project's tests.yaml against the system-test repo's local
 	// clone. An empty path — no system-test.config declared, or its repo
@@ -317,6 +327,65 @@ func runScopeResolutionChecks(cfg *projectconfig.Config, eng *statemachine.Engin
 			break
 		}
 	}
+	return failures
+}
+
+// runScopeRenderChecks renders every writing-agent MID's read:/write: scope
+// block through the same clauderun.RenderScopeBlock the live dispatcher calls
+// (driver → renderPrompt → renderScopeBlock), so a scope key that would
+// resolve to no real path — the multitier `system-path` collapse, a Family B
+// key with a blank cfg path — fails here, at preflight, before the BPMN main
+// process, rather than leaking `(unresolved)` into a live prompt and surfacing
+// 20 minutes later as a build / scope-diff failure.
+//
+// It complements runScopeResolutionChecks: that walk resolves the layer→path
+// view (actions.ResolveLayerPaths) and flags a *total* collapse to zero paths;
+// this one exercises the placeholder-map render view and flags *any single*
+// unresolvable key — the partial `(unresolved)` alongside a still-valid key
+// the collapse gate let through. The render path is the one the agent's prompt
+// is built from, so this is the highest-fidelity guard.
+//
+// Channel-blind (channel="") like runScopeResolutionChecks: on multitier the
+// surface resolves to both tiers, proving `system-path` names a real path on
+// this config. nil engine / cfg skips (the optional-check convention). The
+// dispatcher only renders a scope block when both read: and write: are
+// non-empty (scope: none / command-only MIDs leave ${scope-block} unfilled),
+// so this mirror skips a MID whose either list is empty. Templated fix-*
+// task-names are skipped — same rationale as runScopeResolutionChecks.
+func runScopeRenderChecks(cfg *projectconfig.Config, eng *statemachine.Engine) []string {
+	if eng == nil || cfg == nil {
+		return nil
+	}
+	placeholders := cfg.PlaceholderMap()
+	var surface []string
+	if cfg.System.Architecture == projectconfig.ArchMultitier {
+		if paths, ok := cfg.SystemSurfacePaths(""); ok {
+			surface = paths
+		}
+	}
+	var failures []string
+	for processName, proc := range eng.Processes {
+		for _, node := range proc.Nodes {
+			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
+				continue
+			}
+			task := node.Raw.Params["task-name"]
+			if task == "" || strings.Contains(task, "${") {
+				continue
+			}
+			// Mirror the dispatcher's render gate (clauderun renderPrompt): a
+			// scope block is only rendered when both read: and write: are
+			// non-empty, so an empty either side cannot leak `(unresolved)`.
+			if len(node.Raw.Read) == 0 || len(node.Raw.Write) == 0 {
+				break
+			}
+			if _, err := clauderun.RenderScopeBlock(node.Raw.Read, node.Raw.Write, placeholders, "", surface); err != nil {
+				failures = append(failures, fmt.Sprintf("MID %s %v", processName, err))
+			}
+			break
+		}
+	}
+	sort.Strings(failures)
 	return failures
 }
 

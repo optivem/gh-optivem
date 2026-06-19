@@ -115,6 +115,20 @@ type Options struct {
 	ScopeRead  []string
 	ScopeWrite []string
 
+	// SystemSurfacePaths is the multitier production-code surface the
+	// dispatch's `system-path` scope key resolves to — the raw tier path(s)
+	// from the kernel resolver cfg.SystemSurfacePaths(channel)
+	// (api→backend, ui→frontend, whole-system→both). The driver supplies it
+	// per dispatch because PlaceholderMap() leaves the monolith-only
+	// ${system-path} empty on multitier, so renderScopeBlock would otherwise
+	// have no path for the `system-path` key and hard-error (the
+	// `(unresolved)` leak this closes — plan 20260619-1953). Empty on
+	// monolith (system-path is already in Placeholders) and harmless when
+	// `system-path` is not a declared scope key. Mirrors the driver-resolved
+	// ${system-surface} placeholder (driver.resolveSystemSurface), but as raw
+	// paths for the scope-block render rather than the prose display string.
+	SystemSurfacePaths []string
+
 	// ScopeRationale is the optional free-form per-MID *why* sourced from
 	// the BPMN node's `scope-rationale:` field (sibling to `read:` /
 	// `write:`). The driver looks it up via engine.ScopeRationale at
@@ -810,7 +824,11 @@ func renderPrompt(opts Options) (string, error) {
 	// body references the placeholder. Mirrors the Language /
 	// AcceptanceCriteria load-bearing pattern.
 	if len(opts.ScopeRead) > 0 && len(opts.ScopeWrite) > 0 {
-		params["scope-block"] = renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders, opts.ScopeRationale)
+		scopeBlock, err := renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders, opts.ScopeRationale, opts.SystemSurfacePaths)
+		if err != nil {
+			return "", fmt.Errorf("render scope block: %w", err)
+		}
+		params["scope-block"] = scopeBlock
 	}
 	// Loop-attempt block (plan 20260616-0649). Pre-rendered loop-level
 	// caller context for looped nodes (fixers and any future max-visits
@@ -1048,20 +1066,63 @@ func renderAttemptBlock(number, max int) string {
 // Layer keys are resolved against the supplied paths map — same source
 // the inline ${key} placeholders resolve through (opts.Placeholders, fed
 // by cfg.PlaceholderMap()). Family B path keys (system-driver-port, dsl-core,
-// …) plus the Family A `system-path` are all in scope. Unresolved keys
-// (nil paths, or key not in the map) emit as `<key>: (unresolved)`
-// rather than disappearing silently — the build-time canonical-keys
-// guard catches drift before runtime, but if it slips through, the
-// agent sees the gap.
-func renderScopeBlock(read, write []string, paths map[string]string, rationale string) string {
-	resolve := func(key string) string {
-		if paths == nil {
-			return "(unresolved)"
+// …) plus the Family A `system-path` are all in scope. The monolith-only
+// `system-path` key is empty in the map on multitier (PlaceholderMap skips
+// it by construction); it is resolved instead from systemSurface — the raw
+// tier path(s) the driver pulls from cfg.SystemSurfacePaths(channel) — so a
+// multitier dispatch's scope block names the real surface (e.g.
+// system/multitier/frontend-react) rather than a placeholder.
+//
+// A key that resolves to no non-empty path is a hard error, not a soft
+// sentinel: renderScopeBlock returns it so the caller fails the dispatch
+// (and preflight, via RenderScopeBlock) before the agent ever sees a
+// malformed write-contract. This aligns the renderer with the engine's
+// existing strict-placeholder policy (statemachine load/run); the prior
+// `(unresolved)` fallback was the lone outlier (plan 20260619-1953).
+func renderScopeBlock(read, write []string, paths map[string]string, rationale string, systemSurface []string) (string, error) {
+	resolve := func(key string) (string, bool) {
+		if paths != nil {
+			if v, ok := paths[key]; ok && v != "" {
+				return v, true
+			}
 		}
-		if v, ok := paths[key]; ok && v != "" {
-			return v
+		// Multitier system-path: empty in the placeholder map by
+		// construction (PlaceholderMap emits the monolith-only key), so it
+		// resolves from the driver-supplied tier surface instead. Filter blank
+		// tier paths first — a fully-collapsed surface (["",""]) must fall
+		// through to the unresolved error, not render as a bare ", " join.
+		if key == "system-path" && len(systemSurface) > 0 {
+			nonEmpty := make([]string, 0, len(systemSurface))
+			for _, p := range systemSurface {
+				if strings.TrimSpace(p) != "" {
+					nonEmpty = append(nonEmpty, p)
+				}
+			}
+			if len(nonEmpty) > 0 {
+				return strings.Join(nonEmpty, ", "), true
+			}
 		}
-		return "(unresolved)"
+		return "", false
+	}
+	// Resolve every distinct read/write key up front; a key that names no
+	// real path is a hard error rather than a `(unresolved)` sentinel.
+	resolved := map[string]string{}
+	seen := map[string]bool{}
+	var unresolved []string
+	for _, k := range append(append([]string{}, read...), write...) {
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		v, ok := resolve(k)
+		if !ok {
+			unresolved = append(unresolved, k)
+			continue
+		}
+		resolved[k] = v
+	}
+	if len(unresolved) > 0 {
+		return "", fmt.Errorf("scope block: %d scope key(s) resolve to no path: %s — every read:/write: key must name a real path (the monolith-only system-path is resolved from the tier surface on multitier)", len(unresolved), strings.Join(unresolved, ", "))
 	}
 	maxKeyLen := func(keys []string) int {
 		n := 0
@@ -1075,7 +1136,7 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 	writeBlock := func(b *strings.Builder, keys []string) {
 		pad := maxKeyLen(keys)
 		for _, k := range keys {
-			fmt.Fprintf(b, "- `%s`:%s %s\n", k, strings.Repeat(" ", pad-len(k)), resolve(k))
+			fmt.Fprintf(b, "- `%s`:%s %s\n", k, strings.Repeat(" ", pad-len(k)), resolved[k])
 		}
 	}
 
@@ -1112,7 +1173,21 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 	}
 
 	b.WriteString("\nReading or writing outside this set requires a `scope_exception` block.")
-	return b.String()
+	return b.String(), nil
+}
+
+// RenderScopeBlock is the public counterpart to renderScopeBlock: it renders
+// a writing-MID's read:/write: scope block (or returns the resolution error)
+// without building a full prompt. Preflight calls it to exercise the exact
+// render path a live dispatch takes — for every writing-MID, before the BPMN
+// `main` process — so a config that would leak an unresolvable scope key
+// (the multitier `system-path` collapse, a Family B key with a blank cfg
+// path) aborts at second 0 instead of 20 minutes into a run. systemSurface
+// is the raw tier path(s) from cfg.SystemSurfacePaths(channel); pass nil on
+// monolith (system-path is already in paths) or the channel-blind both-tier
+// surface on multitier.
+func RenderScopeBlock(read, write []string, paths map[string]string, rationale string, systemSurface []string) (string, error) {
+	return renderScopeBlock(read, write, paths, rationale, systemSurface)
 }
 
 // renderGateMarkerExample inlines the per-language WIP-gate snippet the

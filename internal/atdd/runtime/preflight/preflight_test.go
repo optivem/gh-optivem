@@ -1043,6 +1043,104 @@ func TestRun_ScopeSweepRealEngineMultitierPasses(t *testing.T) {
 	}
 }
 
+// TestRun_ScopeRenderCatchesUnresolvableKey covers the render dry-run (this
+// plan's Item 2a/3a): a writing-agent MID whose rendered scope block would
+// leak `(unresolved)` — the multitier system-path surface collapse the #71
+// postmortem traced — is flagged statically, before the BPMN main process,
+// while healthy multitier AND monolith configs pass. The synthetic MID
+// declares both read: and write: (the dispatcher only renders a scope block
+// when both are non-empty) including the monolith-only system-path key.
+func TestRun_ScopeRenderCatchesUnresolvableKey(t *testing.T) {
+	t.Parallel()
+
+	const flow = `
+processes:
+  root:
+    name: "Root"
+    start: CALL_IMPL
+    nodes:
+      - id: CALL_IMPL
+        type: call-activity
+        process: impl-system
+        name: "Call Impl"
+      - id: ROOT_END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: CALL_IMPL, to: ROOT_END}
+  impl-system:
+    name: "Implement System"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: implement-system
+          agent: system-implementer
+          category: prod-agent
+        read: [system-path]
+        write: [system-path]
+      - id: IMPL_END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: IMPL_END}
+`
+	eng, err := statemachine.LoadBytes([]byte(flow))
+	if err != nil {
+		t.Fatalf("load synthetic flow: %v", err)
+	}
+
+	t.Run("collapsed multitier surface leaks unresolved system-path → flagged", func(t *testing.T) {
+		cfg := &projectconfig.Config{}
+		cfg.System.Architecture = projectconfig.ArchMultitier // backend/frontend paths left empty
+		got := runScopeRenderChecks(cfg, eng)
+		joined := strings.Join(got, "\n")
+		if !strings.Contains(joined, "impl-system") || !strings.Contains(joined, "system-path") {
+			t.Errorf("expected a render failure naming impl-system and system-path, got: %v", got)
+		}
+	})
+
+	t.Run("well-formed multitier surface passes", func(t *testing.T) {
+		cfg := &projectconfig.Config{}
+		cfg.System.Architecture = projectconfig.ArchMultitier
+		cfg.System.Backend = projectconfig.TierSpec{Path: "system/multitier/backend-java"}
+		cfg.System.Frontend = projectconfig.TierSpec{Path: "system/multitier/frontend-react"}
+		if got := runScopeRenderChecks(cfg, eng); len(got) != 0 {
+			t.Errorf("well-formed multitier render must resolve system-path, got: %v", got)
+		}
+	})
+
+	t.Run("monolith passes (system-path resolves via PlaceholderMap)", func(t *testing.T) {
+		cfg := &projectconfig.Config{}
+		cfg.System.Architecture = projectconfig.ArchMonolith
+		cfg.System.Path = "system/monolith/java"
+		if got := runScopeRenderChecks(cfg, eng); len(got) != 0 {
+			t.Errorf("monolith render must resolve system-path from PlaceholderMap, got: %v", got)
+		}
+	})
+}
+
+// TestRun_ScopeRenderRealEngineMultitierPasses guards that the real embedded
+// engine's writing-agent MIDs render cleanly on a well-formed multitier
+// config — no MID's scope block leaks an unresolvable key.
+func TestRun_ScopeRenderRealEngineMultitierPasses(t *testing.T) {
+	t.Parallel()
+	if got := runScopeRenderChecks(fullMultitierCfg(), loadDefaultEngine(t)); len(got) != 0 {
+		t.Errorf("real engine on a well-formed multitier config must pass the render dry-run, got: %v", got)
+	}
+}
+
+// TestRun_ScopeRenderSkippedWhenEngineNil pins the nil-Engine skip convention.
+func TestRun_ScopeRenderSkippedWhenEngineNil(t *testing.T) {
+	t.Parallel()
+	if got := runScopeRenderChecks(fullMultitierCfg(), nil); got != nil {
+		t.Errorf("nil engine must skip the render dry-run, got: %v", got)
+	}
+}
+
 func TestEffectiveSuiteResolution_StateSourcedSuiteFlagged(t *testing.T) {
 	t.Parallel()
 

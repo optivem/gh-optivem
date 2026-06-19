@@ -2796,3 +2796,78 @@ func TestDispatchCwd_FallsBackToOsGetwd(t *testing.T) {
 		t.Errorf("dispatchCwd(\"\") = %q, want %q (os.Getwd)", got, want)
 	}
 }
+
+// TestRenderScopeBlock_MultitierSystemPathResolvesSurface reproduces the #71
+// shape: a multitier dispatch whose read:/write: scope keys include the
+// monolith-only system-path (empty in the placeholder map on multitier) must
+// render the driver-supplied tier surface in BOTH the read and write blocks —
+// never the removed `(unresolved)` sentinel.
+func TestRenderScopeBlock_MultitierSystemPathResolvesSurface(t *testing.T) {
+	t.Parallel()
+	const surface = "system/multitier/frontend-react"
+	// The placeholder map carries the non-system-path keys; system-path is
+	// absent (PlaceholderMap skips it on multitier), so it must resolve from
+	// the surface argument the driver supplies per dispatch.
+	paths := map[string]string{"at-test": "system-test/acceptance"}
+	out, err := RenderScopeBlock(
+		[]string{"at-test", "system-path"},
+		[]string{"at-test", "system-path"},
+		paths, "", []string{surface},
+	)
+	if err != nil {
+		t.Fatalf("render must succeed when the surface resolves system-path: %v", err)
+	}
+	if strings.Contains(out, "(unresolved)") {
+		t.Errorf("scope block must not contain the (unresolved) sentinel:\n%s", out)
+	}
+	readIdx := strings.Index(out, "**read**")
+	writeIdx := strings.Index(out, "**modify**")
+	if readIdx < 0 || writeIdx < 0 || writeIdx < readIdx {
+		t.Fatalf("expected a read block before a modify block:\n%s", out)
+	}
+	readBlock, writeBlock := out[readIdx:writeIdx], out[writeIdx:]
+	if !strings.Contains(readBlock, surface) {
+		t.Errorf("read block must name the tier surface %q:\n%s", surface, readBlock)
+	}
+	if !strings.Contains(writeBlock, surface) {
+		t.Errorf("write block must name the tier surface %q:\n%s", surface, writeBlock)
+	}
+}
+
+// TestRenderScopeBlock_UnresolvableKeyErrors pins the strict-placeholder
+// contract: a scope key that names no real path (absent from the placeholder
+// map, and not the surface-resolved system-path) is a hard error naming the
+// key, not a `(unresolved)` sentinel.
+func TestRenderScopeBlock_UnresolvableKeyErrors(t *testing.T) {
+	t.Parallel()
+	_, err := RenderScopeBlock(
+		[]string{"at-test"},
+		[]string{"at-test", "system-driver-port"}, // system-driver-port absent from paths
+		map[string]string{"at-test": "system-test/acceptance"},
+		"", nil,
+	)
+	if err == nil {
+		t.Fatal("expected an error when a scope key resolves to no path")
+	}
+	if !strings.Contains(err.Error(), "system-driver-port") {
+		t.Errorf("error must name the unresolved key, got: %v", err)
+	}
+}
+
+// TestRenderScopeBlock_CollapsedSurfaceErrors guards that a multitier surface
+// of only blank tier paths (the collapse the #71 postmortem traced) falls
+// through to the unresolved error rather than rendering a bare ", " join.
+func TestRenderScopeBlock_CollapsedSurfaceErrors(t *testing.T) {
+	t.Parallel()
+	_, err := RenderScopeBlock(
+		[]string{"system-path"},
+		[]string{"system-path"},
+		map[string]string{}, "", []string{"", ""},
+	)
+	if err == nil {
+		t.Fatal("expected an error when the tier surface is all-blank")
+	}
+	if !strings.Contains(err.Error(), "system-path") {
+		t.Errorf("error must name system-path, got: %v", err)
+	}
+}
