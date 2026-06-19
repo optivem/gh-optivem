@@ -14,11 +14,12 @@ func TestClassifyShellErr(t *testing.T) {
 	exitErr := errors.New("exit status 1")
 
 	cases := []struct {
-		name      string
-		stderr    string
-		err       error
-		wantClass failureClass
-		wantLabel string
+		name            string
+		stderr          string
+		err             error
+		isContractSuite bool
+		wantClass       failureClass
+		wantLabel       string
 	}{
 		{
 			name:      "no error is ok regardless of stderr",
@@ -231,11 +232,35 @@ func TestClassifyShellErr(t *testing.T) {
 			wantClass: classRed,
 			wantLabel: "",
 		},
+		// ---- infra: contract test escaped into the system-under-test ------
+		{
+			// run #65: a contract test drove the system-under-test driver and
+			// hit its unimplemented `TODO: System Driver` stub. No contract-phase
+			// agent can implement that stub, so this is an authoring violation,
+			// not a fixable red — route it to the infra halt.
+			name:            "contract suite hitting System Driver stub is infra",
+			stderr:          "Error: TODO: System Driver\n    at MyShopApiDriver.viewProductList",
+			err:             exitErr,
+			isContractSuite: true,
+			wantClass:       classInfra,
+			wantLabel:       "contract test routed through the system-under-test driver — contract tests must exercise only the external-system driver port",
+		},
+		{
+			// The SAME stub is a legitimate expected-red outside a contract
+			// suite: in the acceptance suite the System Driver simply isn't
+			// implemented yet. The suite gate must keep this red.
+			name:            "non-contract suite hitting System Driver stub stays red",
+			stderr:          "Error: TODO: System Driver\n    at MyShopApiDriver.viewProductList",
+			err:             exitErr,
+			isContractSuite: false,
+			wantClass:       classRed,
+			wantLabel:       "",
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, label := classifyShellErr(tc.stderr, tc.err)
+			got, label := classifyShellErr(tc.stderr, tc.err, tc.isContractSuite)
 			if got != tc.wantClass {
 				t.Fatalf("class: got %s, want %s", got, tc.wantClass)
 			}

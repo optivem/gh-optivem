@@ -189,6 +189,15 @@ var infraPatterns = []infraPattern{
 	},
 }
 
+// systemDriverStub matches a `TODO: System Driver` prototype reached at
+// runtime — the marker the system-driver-adapter-implementer leaves for an
+// unimplemented System Driver method (internal/atdd/assets/runtime/agents/
+// atdd/system-driver-adapter-implementer.md). The literal is identical across
+// the Java / .NET / TypeScript stacks; only the throwing exception type
+// varies, so a single literal match suffices. classifyShellErr consults it
+// only for contract suites — see the suite-conditional branch there.
+var systemDriverStub = regexp.MustCompile(`TODO: System Driver`)
+
 // classifyShellErr is the pure-function entry point. It takes the
 // captured stderr (combined stderr+stdout is fine — patterns are
 // runner-prefix-anchored) and the exit error from the shell call.
@@ -203,12 +212,29 @@ var infraPatterns = []infraPattern{
 // The label is "" for ok and red; only infra carries a label. Callers
 // that want a one-liner reason for a non-infra failure should pull
 // from err.Error() directly.
-func classifyShellErr(stderr string, err error) (failureClass, string) {
+func classifyShellErr(stderr string, err error, isContractSuite bool) (failureClass, string) {
 	if err == nil {
 		return classOK, ""
 	}
 	if stderr == "" {
 		return classRed, ""
+	}
+	// A contract suite that reached a `TODO: System Driver` prototype is an
+	// authoring violation, not a fixable red: the contract test routed
+	// through the system-under-test driver (the application's own driver)
+	// instead of the external-system driver port. No contract-phase agent is
+	// scoped to implement that stub, so the verify-tests-pass fix loop can
+	// never green it — run #65 burned both opus·high passes on exactly this
+	// before the count cap halted it. Route it to the infra halt so it stops
+	// on the first failing run with the true cause. This is a *branch*, not an
+	// infraPatterns row, because the rule is suite-conditional: the identical
+	// stub is a legitimate expected-red in the acceptance suite (the System
+	// Driver simply isn't built yet there), so it must never fire off a
+	// contract suite. The marker string is identical across the Java / .NET /
+	// TypeScript stacks (only the wrapping exception type differs), so a single
+	// literal match suffices.
+	if isContractSuite && systemDriverStub.MatchString(stderr) {
+		return classInfra, "contract test routed through the system-under-test driver — contract tests must exercise only the external-system driver port"
 	}
 	for _, p := range infraPatterns {
 		if p.re.MatchString(stderr) {

@@ -175,7 +175,8 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		// runner that never produced a report. The verify_classify table
 		// is the authoritative pattern set; new infra modes are added as
 		// rows there, not as branches here.
-		if class, label := classifyShellErr(string(result.Stderr), err); class == classInfra {
+		isContractSuite := strings.HasPrefix(strings.TrimSpace(ctx.Params["suite"]), "contract")
+		if class, label := classifyShellErr(string(result.Stderr), err, isContractSuite); class == classInfra {
 			ctx.Set("test-outcome", "infra")
 			ctx.Set("test-infra-label", label)
 		}
