@@ -17,9 +17,16 @@ set -euo pipefail
 #   bash atdd-rehearsal-cleanup.sh                   # dry run: list what would be deleted
 #   bash atdd-rehearsal-cleanup.sh --delete          # actually delete, then chain to
 #                                                     gh optivem doctor --orphans
-#   bash atdd-rehearsal-cleanup.sh --delete --force  # ALSO delete skipped branches that
-#                                                     have commits ahead of main (separate
-#                                                     y/n confirmation, lists subjects first)
+#   bash atdd-rehearsal-cleanup.sh --delete --force  # ALSO (a) delete skipped branches that
+#                                                     have commits ahead of main, and (b)
+#                                                     remove leftover *registered* rehearsal
+#                                                     worktrees + their branches (each behind
+#                                                     its own y/n confirmation, lists subjects
+#                                                     first). NOT safe during a live rehearsal
+#                                                     — see the safety note below.
+#   bash atdd-rehearsal-cleanup.sh --delete --logs   # ALSO delete the rehearsal-*.log
+#                                                     postmortem files under worktrees/
+#                                                     (combine with --force for a full reset)
 #   bash atdd-rehearsal-cleanup.sh --help            # show this help
 #
 # Workflow:
@@ -27,7 +34,12 @@ set -euo pipefail
 #      `worktrees/` of the consumer repo named per REHEARSAL_REPO).
 #   2. List `rehearsal-*` directories under <WORKTREES_DIR>.
 #   3. Cross-reference with `git -C <consumer-repo> worktree list
-#      --porcelain`. Any directory NOT in the registered list is an orphan.
+#      --porcelain`. Any directory NOT in the registered list is an orphan
+#      dir. Any directory that IS registered AND lives under <WORKTREES_DIR>
+#      with a `rehearsal-*` name is a leftover *registered* worktree from a
+#      force-cancelled run whose EXIT trap never fired `git worktree remove`
+#      — preserved by default (a live rehearsal's worktree is registered
+#      too), removed only under --force (see step 6).
 #   4. List `rehearsal/*` branches via `git -C <consumer-repo> branch
 #      --list 'rehearsal/*'`. Any branch NOT checked out by a registered
 #      worktree is an orphan candidate. Branches with commits ahead of
@@ -43,15 +55,23 @@ set -euo pipefail
 #      branches, `git worktree prune` to drop stale `.git/worktrees/<id>`
 #      metadata, and finally `exec gh optivem doctor --orphans` to chain
 #      into the binary-side process cleanup. Adding --force to --delete
-#      ALSO force-deletes the skipped (commits-ahead) branches, behind a
-#      SECOND, separate y/n prompt that first prints each branch's latest
+#      ALSO (a) force-deletes the skipped (commits-ahead) orphan branches
+#      and (b) removes the leftover registered rehearsal worktrees from
+#      step 3 (`git worktree remove --force` + `git branch -D`), each
+#      behind its OWN separate y/n prompt that first prints the latest
 #      commit subject so unsynced work is visible before it is dropped.
+#      Adding --logs ALSO deletes the rehearsal-*.log postmortem files
+#      under <WORKTREES_DIR>, behind their own y/n prompt.
 #
-# Safe to run with a live rehearsal in progress: the cross-reference
-# against `git worktree list` means any worktree currently registered
-# (i.e. currently active under atdd-rehearsal.sh) is preserved, and the
-# chained doctor sweep classifies its claude.exe as "parent alive, skip"
-# rather than prompting to kill.
+# Safe to run with a live rehearsal in progress IN THE DEFAULT (and
+# --logs) MODE: the cross-reference against `git worktree list` means any
+# worktree currently registered (i.e. currently active under
+# atdd-rehearsal.sh) is preserved, and the chained doctor sweep classifies
+# its claude.exe as "parent alive, skip" rather than prompting to kill.
+#
+# --force BREAKS this guarantee: it removes ALL registered rehearsal
+# worktrees, including one a live rehearsal is mid-run on. Only pass
+# --force when no rehearsal is active.
 #
 # The doctor chain at the end uses `gh optivem` resolved from PATH (the
 # installed binary), NOT the rehearsal's freshly-built `gh-optivem.exe`
@@ -92,11 +112,12 @@ prompt_yn() {
 }
 
 usage() {
-  sed -n '9,58p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '9,78p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 DRY_RUN=1
 FORCE=0
+DELETE_LOGS=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -116,9 +137,13 @@ while [[ $# -gt 0 ]]; do
       FORCE=1
       shift
       ;;
+    --logs)
+      DELETE_LOGS=1
+      shift
+      ;;
     *)
       echo "ERROR: unknown argument: $1" >&2
-      echo "Usage: $0 [--dry-run | --delete] [--force]" >&2
+      echo "Usage: $0 [--dry-run | --delete] [--force] [--logs]" >&2
       exit 2
       ;;
   esac
@@ -173,6 +198,25 @@ is_registered() {
   return 1
 }
 
+# Resolve the comparison base for "commits ahead" counts once. Prefer
+# origin/main (local main may be stale); fall back to local main; empty
+# if neither exists (then everything counts as 0 ahead).
+MAIN_BASE=""
+if git -C "$CONSUMER_ROOT" rev-parse --verify --quiet origin/main >/dev/null; then
+  MAIN_BASE="origin/main"
+elif git -C "$CONSUMER_ROOT" rev-parse --verify --quiet main >/dev/null; then
+  MAIN_BASE="main"
+fi
+
+# ahead_count <branch> — commits on <branch> not on MAIN_BASE (0 if no base).
+ahead_count() {
+  if [[ -n "$MAIN_BASE" ]]; then
+    git -C "$CONSUMER_ROOT" rev-list --count "$MAIN_BASE..$1" 2>/dev/null || echo 0
+  else
+    echo 0
+  fi
+}
+
 # --- Discover orphan worktree dirs ---
 orphan_dirs=()
 if [[ -d "$WORKTREES_DIR" ]]; then
@@ -221,36 +265,67 @@ while IFS= read -r br; do
   if is_registered_branch "$br"; then
     continue
   fi
-  # Count commits on the branch that are NOT on main. `git rev-list`
-  # returns 0 with empty output when the branch is fully merged into
-  # main, and a non-zero count when it has commits ahead. We compare
-  # against `main` and `origin/main` (whichever exists) — local main
-  # may be stale.
-  base=""
-  if git -C "$CONSUMER_ROOT" rev-parse --verify --quiet origin/main >/dev/null; then
-    base="origin/main"
-  elif git -C "$CONSUMER_ROOT" rev-parse --verify --quiet main >/dev/null; then
-    base="main"
-  fi
-  if [[ -n "$base" ]]; then
-    ahead="$(git -C "$CONSUMER_ROOT" rev-list --count "$base..$br" 2>/dev/null || echo 0)"
-  else
-    ahead="0"
-  fi
+  # Count commits on the branch that are NOT on main. A branch fully
+  # merged into main counts 0 ahead and is an orphan; any commits ahead
+  # mean unsynced work, so it is SKIPPED (mirrors cleanup-orphans.sh:382-399).
+  ahead="$(ahead_count "$br")"
   if [[ "$ahead" != "0" ]]; then
-    skipped_branches+=("$br (has $ahead commit(s) ahead of $base)")
+    skipped_branches+=("$br (has $ahead commit(s) ahead of ${MAIN_BASE:-main})")
     skipped_branch_names+=("$br")
     continue
   fi
   orphan_branches+=("$br")
 done < <(git -C "$CONSUMER_ROOT" branch --list 'rehearsal/*' --format='%(refname:short)')
 
+# --- Discover registered rehearsal worktrees ---
+# A registered worktree whose path lives under WORKTREES_DIR with a
+# `rehearsal-*` basename is a leftover from a force-cancelled run: the
+# EXIT trap that would have run `git worktree remove --force` never
+# fired, so git still tracks both the dir and its branch. These fall
+# through every other category — the orphan-dir scan skips registered
+# paths, and is_registered_branch skips their branches. Preserved by
+# default (a live rehearsal's worktree is registered too); only --force
+# opts them into removal. Parse path+branch as a pair by tracking the
+# current `worktree` line until its `branch` line arrives.
+reg_wt_paths=()
+reg_wt_branches=()
+cur_path=""
+while IFS= read -r line; do
+  if [[ "$line" =~ ^worktree[[:space:]]+(.+)$ ]]; then
+    cur_path="${BASH_REMATCH[1]}"
+    if [[ -d "$cur_path" ]]; then
+      cur_path="$(cd "$cur_path" && pwd)"
+    fi
+  elif [[ "$line" =~ ^branch[[:space:]]+refs/heads/(.+)$ ]]; then
+    cur_br="${BASH_REMATCH[1]}"
+    if [[ "$cur_path" == "$WORKTREES_DIR"/* && "$(basename "$cur_path")" == rehearsal-* ]]; then
+      reg_wt_paths+=("$cur_path")
+      reg_wt_branches+=("$cur_br")
+    fi
+  elif [[ -z "$line" ]]; then
+    cur_path=""
+  fi
+done < <(git -C "$CONSUMER_ROOT" worktree list --porcelain)
+
+# --- Discover rehearsal .log files (only relevant under --logs) ---
+log_files=()
+if [[ -d "$WORKTREES_DIR" ]]; then
+  for f in "$WORKTREES_DIR"/rehearsal-*.log; do
+    [[ -f "$f" ]] || continue
+    log_files+=("$f")
+  done
+fi
+
 # --- Summary ---
 echo ""
 log "${C_BOLD}Summary:${C_RESET}"
-log "  orphan worktree dirs:  ${#orphan_dirs[@]}"
-log "  orphan branches:       ${#orphan_branches[@]}"
-log "  skipped branches:      ${#skipped_branches[@]}"
+log "  orphan worktree dirs:        ${#orphan_dirs[@]}"
+log "  orphan branches:             ${#orphan_branches[@]}"
+log "  skipped branches:            ${#skipped_branches[@]}"
+log "  registered rehearsal worktrees: ${#reg_wt_paths[@]}"
+if [[ $DELETE_LOGS -eq 1 ]]; then
+  log "  rehearsal .log files:        ${#log_files[@]}"
+fi
 
 if [[ ${#orphan_dirs[@]} -gt 0 ]]; then
   echo ""
@@ -280,14 +355,36 @@ if [[ ${#skipped_branches[@]} -gt 0 ]]; then
   done
 fi
 
+if [[ ${#reg_wt_paths[@]} -gt 0 ]]; then
+  echo ""
+  if [[ $FORCE -eq 1 ]]; then
+    log "${C_BOLD}Registered rehearsal worktrees${C_RESET} (leftover from crashed runs — ${C_BOLD}--force${C_RESET} will remove these + their branches):"
+  else
+    log "${C_BOLD}Registered rehearsal worktrees${C_RESET} (will NOT be touched — may be a live rehearsal; pass --force to remove):"
+  fi
+  for i in "${!reg_wt_paths[@]}"; do
+    echo "  - ${reg_wt_paths[$i]}"
+    echo "      ${C_DIM}↳ branch ${reg_wt_branches[$i]} ($(ahead_count "${reg_wt_branches[$i]}") commit(s) ahead)${C_RESET}"
+  done
+fi
+
 # Anything actionable? Orphan dirs/branches always count; skipped branches
-# only count when --force opts them back in.
+# and registered worktrees only count when --force opts them back in; log
+# files only count under --logs.
 have_force_targets=0
 if [[ $FORCE -eq 1 && ${#skipped_branch_names[@]} -gt 0 ]]; then
   have_force_targets=1
 fi
+if [[ $FORCE -eq 1 && ${#reg_wt_paths[@]} -gt 0 ]]; then
+  have_force_targets=1
+fi
 
-if [[ ${#orphan_dirs[@]} -eq 0 && ${#orphan_branches[@]} -eq 0 && $have_force_targets -eq 0 ]]; then
+have_log_targets=0
+if [[ $DELETE_LOGS -eq 1 && ${#log_files[@]} -gt 0 ]]; then
+  have_log_targets=1
+fi
+
+if [[ ${#orphan_dirs[@]} -eq 0 && ${#orphan_branches[@]} -eq 0 && $have_force_targets -eq 0 && $have_log_targets -eq 0 ]]; then
   echo ""
   log "${C_DIM}Nothing to delete on the script side.${C_RESET}"
   if [[ $DRY_RUN -eq 0 ]]; then
@@ -300,11 +397,15 @@ fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
   echo ""
-  if [[ $have_force_targets -eq 1 ]]; then
-    log "${C_DIM}Dry run — nothing was deleted. Re-run with --delete --force to act on the above (force-deletes the skipped branches too).${C_RESET}"
-  else
-    log "${C_DIM}Dry run — nothing was deleted. Re-run with --delete to act on the above.${C_RESET}"
+  # Suggest the flag combo that would act on everything listed above.
+  rerun="--delete"
+  if [[ ${#skipped_branch_names[@]} -gt 0 || ${#reg_wt_paths[@]} -gt 0 ]]; then
+    rerun="$rerun --force"
   fi
+  if [[ ${#log_files[@]} -gt 0 ]]; then
+    rerun="$rerun --logs"
+  fi
+  log "${C_DIM}Dry run — nothing was deleted. Re-run with ${rerun} to act on the above.${C_RESET}"
   exit 0
 fi
 
@@ -325,18 +426,18 @@ if [[ ${#orphan_dirs[@]} -gt 0 || ${#orphan_branches[@]} -gt 0 ]]; then
     done
   else
     log "Skipping orphan deletion."
-    # Preserve original abort-then-exit unless --force still has work to do.
-    if [[ $have_force_targets -eq 0 ]]; then
+    # Preserve original abort-then-exit unless --force or --logs still has work.
+    if [[ $have_force_targets -eq 0 && $have_log_targets -eq 0 ]]; then
       log "Aborted by user."
       exit 0
     fi
   fi
 fi
 
-# --- Force-delete skipped (commits-ahead) branches ---
+# --- Force-delete skipped (commits-ahead) orphan branches ---
 # Behind a SECOND, explicit prompt. Each branch's latest commit subject is
 # printed first so any unsynced work is visible before it is dropped.
-if [[ $have_force_targets -eq 1 ]]; then
+if [[ $FORCE -eq 1 && ${#skipped_branch_names[@]} -gt 0 ]]; then
   echo ""
   log "${C_BOLD}--force:${C_RESET} the following ${#skipped_branch_names[@]} branch(es) have commits ahead of main:"
   for b in "${skipped_branch_names[@]}"; do
@@ -352,6 +453,48 @@ if [[ $have_force_targets -eq 1 ]]; then
     done
   else
     log "Skipping force-delete."
+  fi
+fi
+
+# --- Force-remove registered (leftover) rehearsal worktrees ---
+# Behind its OWN explicit prompt. Each worktree's branch + commits-ahead +
+# latest commit subject is printed first. `git worktree remove --force`
+# drops both the dir and the `.git/worktrees/<id>` metadata; the branch is
+# then force-deleted. Only reached under --force (see safety note in header).
+if [[ $FORCE -eq 1 && ${#reg_wt_paths[@]} -gt 0 ]]; then
+  echo ""
+  log "${C_BOLD}--force:${C_RESET} the following ${#reg_wt_paths[@]} registered rehearsal worktree(s) will be removed (worktree + branch):"
+  for i in "${!reg_wt_paths[@]}"; do
+    b="${reg_wt_branches[$i]}"
+    subj="$(git -C "$CONSUMER_ROOT" log -1 --format='%h %s' "$b" 2>/dev/null || echo '(could not read tip)')"
+    echo "  - ${reg_wt_paths[$i]}"
+    echo "      ${C_DIM}↳ branch $b ($(ahead_count "$b") commit(s) ahead) — $subj${C_RESET}"
+  done
+  echo ""
+  if prompt_yn "Remove these ${#reg_wt_paths[@]} registered worktree(s) and FORCE-delete their branch(es)? Cannot be undone."; then
+    for i in "${!reg_wt_paths[@]}"; do
+      p="${reg_wt_paths[$i]}"
+      b="${reg_wt_branches[$i]}"
+      log "git worktree remove --force $p"
+      git -C "$CONSUMER_ROOT" worktree remove --force "$p" 2>/dev/null || log "  ! worktree remove failed for $p"
+      log "git branch -D $b"
+      git -C "$CONSUMER_ROOT" branch -D "$b" 2>/dev/null || log "  ! branch -D failed for $b"
+    done
+  else
+    log "Skipping registered-worktree removal."
+  fi
+fi
+
+# --- Delete rehearsal .log postmortem files (--logs) ---
+if [[ $DELETE_LOGS -eq 1 && ${#log_files[@]} -gt 0 ]]; then
+  echo ""
+  if prompt_yn "Delete ${#log_files[@]} rehearsal .log file(s) under $WORKTREES_DIR? Cannot be undone."; then
+    for f in "${log_files[@]}"; do
+      log "rm -f $(basename "$f")"
+      rm -f "$f" || log "  ! rm -f failed for $f"
+    done
+  else
+    log "Keeping .log files."
   fi
 fi
 
