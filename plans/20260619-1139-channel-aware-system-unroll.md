@@ -1,5 +1,7 @@
 # 2026-06-19 11:39:00 UTC — Channel-aware system unroll: derive implement/verify channels from the tests, not static config
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-19T13:45:37Z`
+
 ## TL;DR
 
 **Why:** The ATDD orchestration unrolls one implement-and-verify-system dispatch per *configured* channel (`channels: api, ui`), blind to which channels each ticket's acceptance tests actually registered for. When a ticket's tests are channel-specific (e.g. API-only negative/error-message tests), the orchestration still dispatches a system-implementer for the absent channel **and** verifies that channel against a suite that cannot contain the test — wasting compute and then hard-halting on `TESTS_INFRA_HALT`.
