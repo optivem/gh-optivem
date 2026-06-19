@@ -14,10 +14,13 @@ set -euo pipefail
 # the rehearsal wrapper creates.
 #
 # Usage:
-#   bash atdd-rehearsal-cleanup.sh           # dry run: list what would be deleted
-#   bash atdd-rehearsal-cleanup.sh --delete  # actually delete, then chain to
-#                                             gh optivem doctor --orphans
-#   bash atdd-rehearsal-cleanup.sh --help    # show this help
+#   bash atdd-rehearsal-cleanup.sh                   # dry run: list what would be deleted
+#   bash atdd-rehearsal-cleanup.sh --delete          # actually delete, then chain to
+#                                                     gh optivem doctor --orphans
+#   bash atdd-rehearsal-cleanup.sh --delete --force  # ALSO delete skipped branches that
+#                                                     have commits ahead of main (separate
+#                                                     y/n confirmation, lists subjects first)
+#   bash atdd-rehearsal-cleanup.sh --help            # show this help
 #
 # Workflow:
 #   1. Resolve <WORKTREES_DIR> exactly as atdd-rehearsal.sh does (sibling
@@ -30,7 +33,8 @@ set -euo pipefail
 #      worktree is an orphan candidate. Branches with commits ahead of
 #      main are SKIPPED (printed as "has commits") so the operator can
 #      investigate manually — mirrors the safety stance in
-#      cleanup-orphans.sh:382-399.
+#      cleanup-orphans.sh:382-399. Pass --force to opt those skipped
+#      branches back in as force-delete candidates (see step 6).
 #   5. Print summary (orphan dir count, orphan branch count, skipped
 #      count with reasons).
 #   6. Default mode is --dry-run — prints what WOULD happen and exits 0
@@ -38,7 +42,10 @@ set -euo pipefail
 #      prompt y/n, then `rm -rf` orphan dirs, `git branch -D` orphan
 #      branches, `git worktree prune` to drop stale `.git/worktrees/<id>`
 #      metadata, and finally `exec gh optivem doctor --orphans` to chain
-#      into the binary-side process cleanup.
+#      into the binary-side process cleanup. Adding --force to --delete
+#      ALSO force-deletes the skipped (commits-ahead) branches, behind a
+#      SECOND, separate y/n prompt that first prints each branch's latest
+#      commit subject so unsynced work is visible before it is dropped.
 #
 # Safe to run with a live rehearsal in progress: the cross-reference
 # against `git worktree list` means any worktree currently registered
@@ -85,10 +92,11 @@ prompt_yn() {
 }
 
 usage() {
-  sed -n '9,46p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '9,58p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 DRY_RUN=1
+FORCE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -104,9 +112,13 @@ while [[ $# -gt 0 ]]; do
       DRY_RUN=0
       shift
       ;;
+    --force)
+      FORCE=1
+      shift
+      ;;
     *)
       echo "ERROR: unknown argument: $1" >&2
-      echo "Usage: $0 [--dry-run | --delete]" >&2
+      echo "Usage: $0 [--dry-run | --delete] [--force]" >&2
       exit 2
       ;;
   esac
@@ -200,6 +212,7 @@ is_registered_branch() {
 
 orphan_branches=()
 skipped_branches=()
+skipped_branch_names=()
 while IFS= read -r br; do
   br="${br#  }"
   br="${br#\* }"
@@ -226,6 +239,7 @@ while IFS= read -r br; do
   fi
   if [[ "$ahead" != "0" ]]; then
     skipped_branches+=("$br (has $ahead commit(s) ahead of $base)")
+    skipped_branch_names+=("$br")
     continue
   fi
   orphan_branches+=("$br")
@@ -256,13 +270,24 @@ fi
 
 if [[ ${#skipped_branches[@]} -gt 0 ]]; then
   echo ""
-  log "${C_BOLD}Skipped${C_RESET} (will NOT be touched — investigate manually):"
+  if [[ $FORCE -eq 1 ]]; then
+    log "${C_BOLD}Skipped${C_RESET} (commits ahead of main — ${C_BOLD}--force${C_RESET} will delete these):"
+  else
+    log "${C_BOLD}Skipped${C_RESET} (will NOT be touched — investigate manually, or pass --force):"
+  fi
   for b in "${skipped_branches[@]}"; do
     echo "  - $b"
   done
 fi
 
-if [[ ${#orphan_dirs[@]} -eq 0 && ${#orphan_branches[@]} -eq 0 ]]; then
+# Anything actionable? Orphan dirs/branches always count; skipped branches
+# only count when --force opts them back in.
+have_force_targets=0
+if [[ $FORCE -eq 1 && ${#skipped_branch_names[@]} -gt 0 ]]; then
+  have_force_targets=1
+fi
+
+if [[ ${#orphan_dirs[@]} -eq 0 && ${#orphan_branches[@]} -eq 0 && $have_force_targets -eq 0 ]]; then
   echo ""
   log "${C_DIM}Nothing to delete on the script side.${C_RESET}"
   if [[ $DRY_RUN -eq 0 ]]; then
@@ -275,28 +300,60 @@ fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
   echo ""
-  log "${C_DIM}Dry run — nothing was deleted. Re-run with --delete to act on the above.${C_RESET}"
-  exit 0
-fi
-
-# --- Delete (interactive) ---
-echo ""
-if ! prompt_yn "Delete ${#orphan_dirs[@]} orphan worktree dir(s) and ${#orphan_branches[@]} orphan branch(es)?"; then
-  log "Aborted by user."
-  exit 0
-fi
-
-for d in "${orphan_dirs[@]+"${orphan_dirs[@]}"}"; do
-  log "Removing $d"
-  if ! rm -rf "$d"; then
-    log "  ! rm -rf failed for $d (process likely still holds handles — run gh optivem doctor --orphans first)"
+  if [[ $have_force_targets -eq 1 ]]; then
+    log "${C_DIM}Dry run — nothing was deleted. Re-run with --delete --force to act on the above (force-deletes the skipped branches too).${C_RESET}"
+  else
+    log "${C_DIM}Dry run — nothing was deleted. Re-run with --delete to act on the above.${C_RESET}"
   fi
-done
+  exit 0
+fi
 
-for b in "${orphan_branches[@]+"${orphan_branches[@]}"}"; do
-  log "git branch -D $b"
-  git -C "$CONSUMER_ROOT" branch -D "$b" 2>/dev/null || log "  ! branch -D failed for $b"
-done
+# --- Delete orphans (interactive) ---
+if [[ ${#orphan_dirs[@]} -gt 0 || ${#orphan_branches[@]} -gt 0 ]]; then
+  echo ""
+  if prompt_yn "Delete ${#orphan_dirs[@]} orphan worktree dir(s) and ${#orphan_branches[@]} orphan branch(es)?"; then
+    for d in "${orphan_dirs[@]+"${orphan_dirs[@]}"}"; do
+      log "Removing $d"
+      if ! rm -rf "$d"; then
+        log "  ! rm -rf failed for $d (process likely still holds handles — run gh optivem doctor --orphans first)"
+      fi
+    done
+
+    for b in "${orphan_branches[@]+"${orphan_branches[@]}"}"; do
+      log "git branch -D $b"
+      git -C "$CONSUMER_ROOT" branch -D "$b" 2>/dev/null || log "  ! branch -D failed for $b"
+    done
+  else
+    log "Skipping orphan deletion."
+    # Preserve original abort-then-exit unless --force still has work to do.
+    if [[ $have_force_targets -eq 0 ]]; then
+      log "Aborted by user."
+      exit 0
+    fi
+  fi
+fi
+
+# --- Force-delete skipped (commits-ahead) branches ---
+# Behind a SECOND, explicit prompt. Each branch's latest commit subject is
+# printed first so any unsynced work is visible before it is dropped.
+if [[ $have_force_targets -eq 1 ]]; then
+  echo ""
+  log "${C_BOLD}--force:${C_RESET} the following ${#skipped_branch_names[@]} branch(es) have commits ahead of main:"
+  for b in "${skipped_branch_names[@]}"; do
+    subj="$(git -C "$CONSUMER_ROOT" log -1 --format='%h %s' "$b" 2>/dev/null || echo '(could not read tip)')"
+    echo "  - $b"
+    echo "      ${C_DIM}↳ $subj${C_RESET}"
+  done
+  echo ""
+  if prompt_yn "FORCE-delete these ${#skipped_branch_names[@]} branch(es) WITH unsynced commits? Cannot be undone."; then
+    for b in "${skipped_branch_names[@]}"; do
+      log "git branch -D $b"
+      git -C "$CONSUMER_ROOT" branch -D "$b" 2>/dev/null || log "  ! branch -D failed for $b"
+    done
+  else
+    log "Skipping force-delete."
+  fi
+fi
 
 log "git worktree prune"
 git -C "$CONSUMER_ROOT" worktree prune 2>/dev/null || true
