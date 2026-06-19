@@ -424,6 +424,113 @@ func TestRunTestsMultiNamePartialMissFails(t *testing.T) {
 	}
 }
 
+// stageSuite writes a JUnit report file and returns a Suite reading it. The
+// command is benign (`go version`, exits 0) — the staged report stands in for
+// what the runner produced, the idiom twoPartitionSuites uses.
+func stageSuite(t *testing.T, dir, id, report string) Suite {
+	t.Helper()
+	file := id + ".xml"
+	if err := os.WriteFile(filepath.Join(dir, file), []byte(report), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return Suite{ID: id, Name: id, Command: "go version", Path: ".", TestCountPath: file}
+}
+
+// TestNamesExecutedInUnionsAcrossSuites is the run-based membership primitive
+// (Step 1): running two suites filtered to the names returns the union of the
+// bare method names each report shows executed.
+func TestNamesExecutedInUnionsAcrossSuites(t *testing.T) {
+	dir := t.TempDir()
+	tests := &TestsConfig{Suites: []Suite{
+		stageSuite(t, dir, "acc-api", `<testsuite tests="1"><testcase name="apiOnly [Channel: API]"/></testsuite>`),
+		stageSuite(t, dir, "acc-ui", `<testsuite tests="1"><testcase name="uiOnly [Channel: UI]"/></testsuite>`),
+	}}
+	got, err := NamesExecutedIn(tests, dir, []string{"acc-api", "acc-ui"}, []string{"apiOnly", "uiOnly"})
+	if err != nil {
+		t.Fatalf("NamesExecutedIn: %v", err)
+	}
+	if !got["apiOnly"] || !got["uiOnly"] {
+		t.Fatalf("want union {apiOnly, uiOnly}, got %v", got)
+	}
+}
+
+// TestNamesExecutedInEmptyNamesRunsNothing: empty names short-circuit before
+// suite resolution, so even a nonexistent suite id can't surface an error.
+func TestNamesExecutedInEmptyNamesRunsNothing(t *testing.T) {
+	got, err := NamesExecutedIn(&TestsConfig{}, ".", []string{"ghost"}, nil)
+	if err != nil {
+		t.Fatalf("empty names must not run or error, got: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("want empty set, got %v", got)
+	}
+}
+
+// TestRunTestsNamedElsewhereSkips is the rehearsal-#76 fix: an API-only test
+// reached by the UI verify executes in none of the selected UI suites, but the
+// membership probe finds it in the complementary acceptance-api suite — so the
+// run is a clean skip (nil), not the infra-halt error.
+func TestRunTestsNamedElsewhereSkips(t *testing.T) {
+	dir := t.TempDir()
+	tests := &TestsConfig{Suites: []Suite{
+		stageSuite(t, dir, "acc-ui", `<testsuite tests="0"></testsuite>`),
+		stageSuite(t, dir, "acc-api", `<testsuite tests="1"><testcase name="apiOnly [Channel: API]"/></testsuite>`),
+	}}
+	err := RunTests(nil, tests, dir, dir, TestOptions{
+		Suite:                 []string{"acc-ui"},
+		Test:                  []string{"apiOnly"},
+		MembershipProbeSuites: []string{"acc-ui", "acc-api"},
+	})
+	if err != nil {
+		t.Fatalf("a named test registered for another channel must skip cleanly, got: %v", err)
+	}
+}
+
+// TestRunTestsNamedAbsentEverywhereWithProbeFails: even with a probe universe, a
+// name that ran nowhere — neither the selected suites nor the probed complement
+// — still fails loud with the presence marker (a genuine typo).
+func TestRunTestsNamedAbsentEverywhereWithProbeFails(t *testing.T) {
+	dir := t.TempDir()
+	tests := &TestsConfig{Suites: []Suite{
+		stageSuite(t, dir, "acc-ui", `<testsuite tests="0"></testsuite>`),
+		stageSuite(t, dir, "acc-api", `<testsuite tests="1"><testcase name="apiOnly [Channel: API]"/></testsuite>`),
+	}}
+	err := RunTests(nil, tests, dir, dir, TestOptions{
+		Suite:                 []string{"acc-ui"},
+		Test:                  []string{"ghostTest"},
+		MembershipProbeSuites: []string{"acc-ui", "acc-api"},
+	})
+	if err == nil {
+		t.Fatal("want fail-loud when the name exists nowhere, even with a probe universe")
+	}
+	if !strings.Contains(err.Error(), "requested test(s) never executed: ghostTest") {
+		t.Fatalf("want the presence marker naming ghostTest, got: %v", err)
+	}
+}
+
+// TestRunTestsNamedNonAcceptanceSelectionFailsLoud: the net is scoped to
+// channel runs — a named run whose selection does NOT overlap the acceptance
+// probe universe keeps the original fail-loud behaviour, so a smoke typo is not
+// masked even when the name happens to exist in an acceptance suite.
+func TestRunTestsNamedNonAcceptanceSelectionFailsLoud(t *testing.T) {
+	dir := t.TempDir()
+	tests := &TestsConfig{Suites: []Suite{
+		stageSuite(t, dir, "smoke", `<testsuite tests="0"></testsuite>`),
+		stageSuite(t, dir, "acc-api", `<testsuite tests="1"><testcase name="apiOnly [Channel: API]"/></testsuite>`),
+	}}
+	err := RunTests(nil, tests, dir, dir, TestOptions{
+		Suite:                 []string{"smoke"},
+		Test:                  []string{"apiOnly"},
+		MembershipProbeSuites: []string{"acc-api"},
+	})
+	if err == nil {
+		t.Fatal("want fail-loud for a non-acceptance selection even if the name exists in acceptance")
+	}
+	if !strings.Contains(err.Error(), "requested test(s) never executed: apiOnly") {
+		t.Fatalf("want the presence marker, got: %v", err)
+	}
+}
+
 // TestRunSetupExecutesSetupCommandsInOrder asserts that RunSetup runs every
 // setupCommand in declaration order and wraps a failure with the failing
 // command's Name.

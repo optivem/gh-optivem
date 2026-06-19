@@ -101,6 +101,14 @@ func newTestRunCmd() *cobra.Command {
 				Suite:  suites,
 				Test:   test,
 				Sample: sample,
+				// Membership safety net (plan 20260619-1139 Step 2): the universe of
+				// acceptance suites the runner may probe to tell a benign cross-channel
+				// skip (a named test registered for another channel) from a typo that
+				// exists nowhere. nil channels mirrors the suite expansion above — the
+				// CLI sees only tests.yaml, so the project's own `suiteGroups: acceptance:`
+				// (or the {api,ui} fallback) defines the set; the runner restricts it to
+				// declared suites before probing.
+				MembershipProbeSuites: testselect.ExpandSuiteGroups([]string{"acceptance"}, tests.SuiteGroups, nil),
 			}
 			exitOnError(runner.RunTests(sys, tests, cwdForPath(resolvedSystem), cwdForPath(resolvedTests), opts))
 		},

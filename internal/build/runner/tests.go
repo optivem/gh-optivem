@@ -28,6 +28,14 @@ type TestOptions struct {
 	// Sample, when true, uses each suite's sampleTest field as the test
 	// name (if both Sample is set and Test is non-empty, Test wins).
 	Sample bool
+	// MembershipProbeSuites is the universe of acceptance suite ids the
+	// membership safety net may run to decide whether a requested --test that
+	// executed in NONE of the selected suites nonetheless exists elsewhere (a
+	// benign cross-channel skip) versus nowhere (a typo → fail loud). The CLI
+	// populates it with the project's acceptance suite set; empty disables the
+	// net (back-compat: a missing name fails loud as before). Only consulted on
+	// a named run whose selection overlaps this set — see classifyMissingNames.
+	MembershipProbeSuites []string
 	// Health overrides default HTTP-probe parameters used by the pre-run
 	// probe (every entry in systems.yaml must be responding before any suite
 	// runs).
@@ -143,9 +151,29 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 				missing = append(missing, want)
 			}
 		}
-		if len(missing) > 0 {
-			return fmt.Errorf("requested test(s) never executed: %s — not found in any selected suite; check the test name, that it compiled, and that it isn't gated off (e.g. GH_OPTIVEM_RUN_WIP_TESTS)", strings.Join(missing, ", "))
+		if len(missing) == 0 {
+			return nil
 		}
+		// A requested name that executed in NONE of the selected suites is
+		// either registered for another channel/suite (a benign cross-channel
+		// skip — the rehearsal-#76 shape: an API-only test reached by the UI
+		// verify) or a typo that exists nowhere (a real fault). The membership
+		// safety net (plan 20260619-1139 Step 2) disambiguates run-based
+		// (decision #6): run the complementary acceptance suites filtered to the
+		// missing names and read what executed — names that ran elsewhere are a
+		// clean skip (exit 0), names that ran nowhere fail loud with the same
+		// marker the verify classifier routes to the infra halt. The net is in
+		// force only for acceptance/channel runs (the selection overlaps
+		// opts.MembershipProbeSuites); any other selection (or an empty probe
+		// universe) keeps the original fail-loud behaviour.
+		skipped, nowhere, err := classifyMissingNames(tests, testsCwd, missing, opts.Suite, opts.MembershipProbeSuites)
+		if err != nil {
+			return err
+		}
+		if len(nowhere) > 0 {
+			return fmt.Errorf("requested test(s) never executed: %s — not found in any selected suite; check the test name, that it compiled, and that it isn't gated off (e.g. GH_OPTIVEM_RUN_WIP_TESTS)", strings.Join(nowhere, ", "))
+		}
+		fmt.Fprintf(os.Stdout, "Skipped — requested test(s) %s are not registered for the selected suite(s) but exist in another channel/suite; nothing to verify here.\n", strings.Join(skipped, ", "))
 		return nil
 	}
 
@@ -153,6 +181,132 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 		return fmt.Errorf("0 tests executed for the given selection — the suite/test filter matched nothing on any selected suite; check --suite / --test against the available tests")
 	}
 	return nil
+}
+
+// NamesExecutedIn runs the given suite ids (resolved against tests) filtered to
+// testNames and returns the union of bare method names that executed across
+// them. It is the run-based channel-membership primitive (plan 20260619-1139,
+// decision #6): there is no static per-suite test-name listing — suite ids are
+// known up front but method names only post-run — so a membership question
+// ("does any of these tests run in acceptance-ui?") is answered by running those
+// suites filtered to the names and reading what executed, with no per-stack
+// forChannels(...) text parsing.
+//
+// Only suites declaring a TestCountPath contribute names (others write no
+// observable report and are skipped). Each suite runs via the same runOneSuite
+// path as RunTests, so install/filter/report semantics are identical, and an
+// acceptance partition the names don't belong to runs zero tests and exits
+// cleanly — contributing nothing (the same per-partition-empty tolerance the
+// presence check relies on). Callers are responsible for the system being up;
+// the health probe is RunTests's job and is not repeated here.
+//
+// Limitation: membership is read from a clean (zero-exit) run, so a probed test
+// that EXECUTES BUT FAILS surfaces as an error (runOneSuite returns the non-zero
+// exit) rather than a "present" signal. That is acceptable for the membership
+// safety net's backstop role — the in-cycle GATE_CHANNEL_TOUCHED guard (Step 3)
+// avoids probing an untouched channel in the first place — and it fails loud
+// rather than silently mis-deciding.
+//
+// Returns the empty set for empty testNames without running anything.
+func NamesExecutedIn(tests *TestsConfig, testsCwd string, suiteIDs, testNames []string) (map[string]bool, error) {
+	union := map[string]bool{}
+	if len(testNames) == 0 {
+		return union, nil
+	}
+	suites, err := selectSuites(tests, suiteIDs)
+	if err != nil {
+		return nil, err
+	}
+	opts := TestOptions{Test: testNames}
+	for _, suite := range suites {
+		if suite.TestCountPath == "" {
+			continue
+		}
+		_, _, names, err := runOneSuite(suite, tests.TestFilter, tests.TestFilterJoin, testsCwd, opts)
+		if err != nil {
+			return nil, fmt.Errorf("membership probe suite %s: %w", suite.Name, err)
+		}
+		for n := range names {
+			union[n] = true
+		}
+	}
+	return union, nil
+}
+
+// classifyMissingNames splits the requested names that ran in none of the
+// selected suites into those that exist elsewhere (a clean cross-channel skip)
+// and those that exist nowhere (fail loud). It runs the complement of
+// probeUniverse \ selected (restricted to suites the project actually declares)
+// filtered to the missing names and reads what executed there.
+//
+// The net is in force only when probeUniverse is non-empty AND the selection
+// overlaps it (an acceptance/channel run). Otherwise — a non-acceptance
+// selection, an empty probe universe, or no declared complement — every missing
+// name is returned as nowhere, preserving the original fail-loud behaviour.
+func classifyMissingNames(tests *TestsConfig, testsCwd string, missing, selected, probeUniverse []string) (skipped, nowhere []string, err error) {
+	var elsewhere map[string]bool
+	if len(probeUniverse) > 0 && anyIn(selected, probeUniverse) {
+		probeIDs := declaredSuites(tests, complementSuites(probeUniverse, selected))
+		if len(probeIDs) > 0 {
+			elsewhere, err = NamesExecutedIn(tests, testsCwd, probeIDs, missing)
+			if err != nil {
+				return nil, nil, fmt.Errorf("membership probe for %s: %w", strings.Join(missing, ", "), err)
+			}
+		}
+	}
+	for _, want := range missing {
+		if nameExecuted(want, elsewhere) {
+			skipped = append(skipped, want)
+		} else {
+			nowhere = append(nowhere, want)
+		}
+	}
+	return skipped, nowhere, nil
+}
+
+// complementSuites returns the universe ids not present in selected, preserving
+// universe order — the suites a named run did NOT already execute, so the
+// membership probe never re-runs a suite the selection already covered.
+func complementSuites(universe, selected []string) []string {
+	sel := make(map[string]bool, len(selected))
+	for _, s := range selected {
+		sel[s] = true
+	}
+	var out []string
+	for _, u := range universe {
+		if !sel[u] {
+			out = append(out, u)
+		}
+	}
+	return out
+}
+
+// declaredSuites keeps only ids the tests config actually declares, so a probe
+// universe that names a partition this project doesn't define (e.g. the {api,ui}
+// fallback against a single-channel project) can't turn a skip decision into a
+// "suite(s) not found" error.
+func declaredSuites(tests *TestsConfig, ids []string) []string {
+	var out []string
+	for _, id := range ids {
+		if tests.FindSuite(id) != nil {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// anyIn reports whether any value appears in universe.
+func anyIn(values, universe []string) bool {
+	set := make(map[string]bool, len(universe))
+	for _, u := range universe {
+		set[u] = true
+	}
+	for _, v := range values {
+		if set[v] {
+			return true
+		}
+	}
+	return false
 }
 
 // nameExecuted reports whether a requested --test token ran. It is satisfied
