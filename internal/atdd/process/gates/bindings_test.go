@@ -84,6 +84,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"ct-dsl-port-changed",
 		"real-kind",
 		"external-system-touched",
+		"channel-touched",
 		"refactor-type-choice",
 		"approval-outcome",
 		"outputs-and-scopes-valid",

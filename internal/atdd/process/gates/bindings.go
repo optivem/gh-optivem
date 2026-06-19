@@ -188,6 +188,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	// touched. resolve-external-system stamps the bool (it has Config to derive
 	// the names-set); this gate is a pure state-reader.
 	r.Register("external-system-touched", b.externalSystemTouched)
+	// Per-channel clone guard (plan 20260619-1139). Each unrolled per-channel
+	// system / system-driver-adapter clone is guarded by this gate so it runs iff
+	// at least one of the ticket's acceptance tests registered for its baked
+	// channel. resolve-channel stamps the bool (it reads the RED acceptance run's
+	// on-disk acceptance-<ch> report); this gate is a pure state-reader, the exact
+	// mirror of external-system-touched.
+	r.Register("channel-touched", b.channelTouched)
 	r.Register("refactor-type-choice", b.refactorTypeChoice)
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
@@ -567,6 +574,18 @@ func (b bindings) realKind(ctx *statemachine.Context) statemachine.Outcome {
 // before the gate, which is a wiring bug, not a default no.
 func (b bindings) externalSystemTouched(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "external-system-touched")
+}
+
+// channelTouched is the per-clone entry guard for the unrolled per-channel
+// system / system-driver-adapter cycle (plan 20260619-1139). resolve-channel
+// stamps ctx.State["channel-touched"] = (≥1 of the ticket's acceptance tests
+// registered for this clone's baked channel) at the start of every clone; this
+// gate reads it back and routes the clone into the cycle (true) or past it to
+// the skip end-event (false). Strict — a missing key means resolve-channel did
+// not run before the gate, a wiring bug, not a default no. The exact mirror of
+// externalSystemTouched.
+func (b bindings) channelTouched(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "channel-touched")
 }
 
 // boolStateGate is the shared body of the three driver-port-changed

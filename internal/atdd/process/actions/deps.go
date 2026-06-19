@@ -8,6 +8,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
+	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
@@ -40,6 +41,19 @@ type Deps struct {
 	// <repoPath>/gh-optivem.yaml. nil is treated as a wiring bug — the
 	// affected actions surface a hard error.
 	Config *projectconfig.Config
+	// TestsConfig is the already-loaded tests.yaml (runner.TestsConfig),
+	// threaded in by the driver exactly as Config is. resolve-channel /
+	// validate-channels-registered read the RED acceptance run's on-disk
+	// report through runner.NamesInReport (plan 20260619-1139, decision #6) to
+	// answer channel membership without running anything. nil is treated as a
+	// wiring bug — the affected actions hard-error when a baked channel needs it.
+	TestsConfig *runner.TestsConfig
+	// TestsCwd is the directory the test runner resolves suite paths against —
+	// filepath.Dir of the resolved tests.yaml, made absolute against the repo
+	// (the driver joins cfg.SystemTest.Config onto repoPath). The RED acceptance
+	// reports live under <TestsCwd>/<suite.Path>/<testCountPath>, so this is the
+	// base runner.NamesInReport reads from. Empty when no tests.yaml is wired.
+	TestsCwd string
 	// Tracker is the seam tracker-shaped actions (SetStatus, ReadSections,
 	// Classify, Subtypes, FindIssue) route through. Optional — withDefaults
 	// constructs a github adapter from ProjectURL + Gh when unset. Tests

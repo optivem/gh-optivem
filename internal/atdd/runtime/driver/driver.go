@@ -48,6 +48,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/trace"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/factory"
+	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/kernel/gitignore"
@@ -313,14 +314,24 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	gateReg := gates.New()
 	gates.RegisterAll(gateReg, gates.Deps{Approval: opts.Approval})
 
+	// Load the project's tests.yaml so the channel-membership actions
+	// (resolve-channel / validate-channels-registered, plan 20260619-1139) can
+	// read the RED acceptance run's on-disk reports without running anything.
+	testsConfig, testsCwd, err := loadTestsConfig(cfg, repoPath)
+	if err != nil {
+		return fmt.Errorf("driver: %w", err)
+	}
+
 	actionReg := actions.New()
 	actions.RegisterAll(actionReg, actions.Deps{
-		Out:        opts.Out,
-		Stderr:     opts.Stderr,
-		ProjectURL: resolvedProjectURL,
-		RepoPath:   repoPath,
-		Config:     cfg,
-		Engine:     eng,
+		Out:         opts.Out,
+		Stderr:      opts.Stderr,
+		ProjectURL:  resolvedProjectURL,
+		RepoPath:    repoPath,
+		Config:      cfg,
+		TestsConfig: testsConfig,
+		TestsCwd:    testsCwd,
+		Engine:      eng,
 	})
 
 	agentReg := agents.New()
@@ -654,6 +665,33 @@ func loadDriverConfig(configPath, repoPath string) (*projectconfig.Config, error
 		return nil, fmt.Errorf("driver: %w", err)
 	}
 	return cfg, nil
+}
+
+// loadTestsConfig resolves and loads the project's tests.yaml (the path in
+// cfg.SystemTest.Config, anchored to repoPath when relative) and returns it
+// alongside the directory the test runner resolves suite paths against
+// (filepath.Dir of the resolved path). It mirrors the runner CLI's resolution
+// (runner_helpers.go resolveTestsPath + cwdForPath) so the reports the in-cycle
+// channel guard reads (runner.NamesInReport, via actions.Deps.TestsConfig /
+// TestsCwd) are the same files the RED `gh optivem test run` subprocess wrote.
+//
+// Returns (nil, "", nil) when no tests.yaml is wired (cfg nil or
+// system-test.config empty) — the channel actions hard-error only if a baked
+// channel actually needs the config. A declared-but-unloadable tests.yaml fails
+// loud, mirroring loadDriverConfig.
+func loadTestsConfig(cfg *projectconfig.Config, repoPath string) (*runner.TestsConfig, string, error) {
+	if cfg == nil || cfg.SystemTest.Config == "" {
+		return nil, "", nil
+	}
+	path := cfg.SystemTest.Config
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(repoPath, path)
+	}
+	tests, err := runner.LoadTests(path)
+	if err != nil {
+		return nil, "", fmt.Errorf("load tests.yaml (%s): %w", path, err)
+	}
+	return tests, filepath.Dir(path), nil
 }
 
 // printConfig writes a one-shot configuration banner to w so the operator

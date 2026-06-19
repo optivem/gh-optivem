@@ -675,6 +675,69 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	}
 }
 
+// TestChannelTouchedGuard_Wiring asserts the in-cycle channel guard wiring
+// (plan 20260619-1139): both per-channel cycles start with a resolve-channel
+// service-task followed by a GATE_CHANNEL_TOUCHED gateway that routes a touched
+// channel into the cycle and an untouched one to a CHANNEL_SKIPPED end-event,
+// and shared-contract runs validate-channels-registered once after the RED
+// acceptance verify. This is the static template the channel unrolls clone, so
+// the guard rides into every per-channel clone.
+func TestChannelTouchedGuard_Wiring(t *testing.T) {
+	eng, err := process.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// System GREEN step (UnrollSystemChannels target).
+	sys, ok := eng.Processes["implement-and-verify-system"]
+	if !ok {
+		t.Fatalf("process implement-and-verify-system missing")
+	}
+	if got := sys.Start; got != "RESOLVE_CHANNEL" {
+		t.Errorf("implement-and-verify-system start = %q, want RESOLVE_CHANNEL", got)
+	}
+	if got := sys.Nodes["RESOLVE_CHANNEL"].Raw.Action; got != "resolve-channel" {
+		t.Errorf("RESOLVE_CHANNEL action = %q, want resolve-channel", got)
+	}
+	if got := sys.Nodes["GATE_CHANNEL_TOUCHED"].Raw.Binding; got != "channel-touched" {
+		t.Errorf("GATE_CHANNEL_TOUCHED binding = %q, want channel-touched", got)
+	}
+	if n := sys.Nodes["CHANNEL_SKIPPED"]; n.Kind != statemachine.EndEvent {
+		t.Errorf("CHANNEL_SKIPPED kind = %v, want statemachine.EndEvent (a benign skip, not a halt)", n.Kind)
+	}
+	wantEdge(t, sys, "RESOLVE_CHANNEL", "GATE_CHANNEL_TOUCHED", "")
+	wantEdge(t, sys, "GATE_CHANNEL_TOUCHED", "RUN_ACTION", "channel-touched == true")
+	wantEdge(t, sys, "GATE_CHANNEL_TOUCHED", "CHANNEL_SKIPPED", "channel-touched == false")
+
+	// Test-side System Driver adapter step (UnrollSystemDriverAdapterChannels
+	// target) — same guard, gating IMPLEMENT_TEST_LAYER.
+	adapt, ok := eng.Processes["implement-and-verify-system-driver-adapters"]
+	if !ok {
+		t.Fatalf("process implement-and-verify-system-driver-adapters missing")
+	}
+	if got := adapt.Start; got != "RESOLVE_CHANNEL" {
+		t.Errorf("implement-and-verify-system-driver-adapters start = %q, want RESOLVE_CHANNEL", got)
+	}
+	if got := adapt.Nodes["RESOLVE_CHANNEL"].Raw.Action; got != "resolve-channel" {
+		t.Errorf("driver-adapter RESOLVE_CHANNEL action = %q, want resolve-channel", got)
+	}
+	wantEdge(t, adapt, "GATE_CHANNEL_TOUCHED", "IMPLEMENT_TEST_LAYER", "channel-touched == true")
+	wantEdge(t, adapt, "GATE_CHANNEL_TOUCHED", "CHANNEL_SKIPPED", "channel-touched == false")
+
+	// Upfront no-silent-skip guard runs once in shared-contract, between the RED
+	// acceptance verify and the DSL gate (so the report exists and no clone has
+	// run yet).
+	sc, ok := eng.Processes["shared-contract"]
+	if !ok {
+		t.Fatalf("process shared-contract missing")
+	}
+	if got := sc.Nodes["VALIDATE_CHANNELS_REGISTERED"].Raw.Action; got != "validate-channels-registered" {
+		t.Errorf("VALIDATE_CHANNELS_REGISTERED action = %q, want validate-channels-registered", got)
+	}
+	wantEdge(t, sc, "WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE", "VALIDATE_CHANNELS_REGISTERED", "")
+	wantEdge(t, sc, "VALIDATE_CHANNELS_REGISTERED", "GATE_DSL_PORT_CHANGED", "")
+}
+
 func wantEdge(t *testing.T, proc *statemachine.Process, from, to, predicate string) {
 	t.Helper()
 	for _, e := range proc.OutgoingByNode[from] {

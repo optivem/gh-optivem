@@ -755,6 +755,23 @@ processes:
           # is false. Ignored on the change path (verify-mode red).
           verify-pending-on: dsl
 
+      # Upfront no-silent-skip guard for the channel unroll (plan 20260619-1139
+      # Step 5), the channel analog of VALIDATE_EXTERNAL_SYSTEMS_REGISTERED. Runs
+      # ONCE here — after WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE's RED acceptance
+      # verify wrote one report per configured acceptance-<ch> partition, and
+      # before any per-channel clone (the system-driver-adapter unroll downstream
+      # in write-and-verify-acceptance-tests, and the system unroll later in
+      # change-system-behavior). It hard-errors if a ticket acceptance test ran in
+      # NONE of the configured channels — such a test registers for a channel
+      # absent from gh-optivem.yaml channels: (or does not exist) and would be
+      # silently skipped by every per-channel GATE_CHANNEL_TOUCHED, leaving the
+      # criterion unverified. This is the dangerous direction the per-channel gate
+      # cannot catch (it only skips a configured channel with no matching test).
+      - id: VALIDATE_CHANNELS_REGISTERED
+        type: service-task
+        action: validate-channels-registered
+        name: "Validate Touched Channels Are Configured"
+
       - id: GATE_DSL_PORT_CHANGED
         type: gateway
         binding: at-dsl-port-changed
@@ -881,7 +898,8 @@ processes:
         name: "Channel-Shared Acceptance Tests Verified"
 
     sequence-flows:
-      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: GATE_DSL_PORT_CHANGED}
+      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: VALIDATE_CHANNELS_REGISTERED}
+      - {from: VALIDATE_CHANNELS_REGISTERED, to: GATE_DSL_PORT_CHANGED}
       - {from: GATE_DSL_PORT_CHANGED, to: IMPLEMENT_AND_VERIFY_DSL, when: "at-dsl-port-changed == true"}
       - {from: GATE_DSL_PORT_CHANGED, to: SHARED_CONTRACT_END,      when: "at-dsl-port-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED}
@@ -1098,8 +1116,32 @@ processes:
 
   implement-and-verify-system-driver-adapters:
     name: "Implement and Verify System Driver Adapters"
-    start: IMPLEMENT_TEST_LAYER
+    start: RESOLVE_CHANNEL
     nodes:
+      # Per-channel clone guard (plan 20260619-1139 Step 4) — the same guard the
+      # system GREEN step uses, applied to the RED test-side driver-adapter cycle.
+      # UnrollSystemDriverAdapterChannels (channels.go) bakes each clone's
+      # `channel`; resolve-channel stamps channel-touched from the RED acceptance
+      # run's on-disk acceptance-<ch> report (no run, no cache — decision #6) so an
+      # untouched channel's adapter step skips too. The report already exists here:
+      # shared-contract's RED acceptance verify wrote it before this driver-adapter
+      # tail runs (write-and-verify-acceptance-tests: SHARED_CONTRACT precedes
+      # GATE_SYSTEM_DRIVER_PORTS_CHANGED → this clone). An API-only ticket reads an
+      # empty UI report → the UI adapter clone skips.
+      - id: RESOLVE_CHANNEL
+        type: service-task
+        action: resolve-channel
+        name: "Resolve Channel"
+
+      - id: GATE_CHANNEL_TOUCHED
+        type: gateway
+        binding: channel-touched
+        name: "Channel Touched?"
+
+      - id: CHANNEL_SKIPPED
+        type: end-event
+        name: "Channel Untouched — System Driver Adapter Cycle Skipped"
+
       - id: IMPLEMENT_TEST_LAYER
         type: call-activity
         process: implement-test-layer
@@ -1117,6 +1159,9 @@ processes:
         name: "System Driver Adapter Layer Verified"
 
     sequence-flows:
+      - {from: RESOLVE_CHANNEL, to: GATE_CHANNEL_TOUCHED}
+      - {from: GATE_CHANNEL_TOUCHED, to: IMPLEMENT_TEST_LAYER, when: "channel-touched == true"}
+      - {from: GATE_CHANNEL_TOUCHED, to: CHANNEL_SKIPPED,      when: "channel-touched == false"}
       - {from: IMPLEMENT_TEST_LAYER, to: IMPL_SYS_DRIVER_END}
 
   # Contract-test variant of the external driver-adapter impl. Mirrors the
@@ -1408,8 +1453,43 @@ processes:
   # added by Item 2 of this plan).
   implement-and-verify-system:
     name: "Implement and Verify System"
-    start: RUN_ACTION
+    start: RESOLVE_CHANNEL
     nodes:
+      # Per-channel clone guard (plan 20260619-1139 Step 3), the channel analog
+      # of resolve-external-system. UnrollSystemChannels (channels.go) bakes each
+      # clone's `channel` into ctx.Params; resolve-channel reads it and stamps
+      # channel-touched = (≥1 of the ticket's acceptance tests registered for that
+      # channel) by reading the RED acceptance run's on-disk acceptance-<ch>
+      # report — no live run, no cache (decision #6). A failing test still appears
+      # as a <testcase> in that report, so membership is RED-tolerant.
+      #
+      # Ordering invariant: this gate reads the report the RED *filtered*
+      # acceptance verify wrote (in write-and-verify-acceptance-tests, which runs
+      # before this whole change-system-behavior GREEN step). That report exists
+      # before this node and is overwritten for a channel ONLY by that channel's
+      # own system implementer (RUN_ACTION below) — which runs AFTER this gate —
+      # so the gate always reads the RED report, never a later green overwrite.
+      #
+      # Inert for non-channel callers: the structural redesign/refactor cycles
+      # reuse this process without a channel unroll, so they bake no `channel`
+      # and resolve-channel stamps touched=true (run normally).
+      - id: RESOLVE_CHANNEL
+        type: service-task
+        action: resolve-channel
+        name: "Resolve Channel"
+
+      # Self-guard: run this clone's implement+verify iff its baked channel was
+      # touched by the ticket's acceptance tests; otherwise route past everything
+      # to the skip end-event so the linear chain advances to the next channel.
+      - id: GATE_CHANNEL_TOUCHED
+        type: gateway
+        binding: channel-touched
+        name: "Channel Touched?"
+
+      - id: CHANNEL_SKIPPED
+        type: end-event
+        name: "Channel Untouched — System Cycle Skipped"
+
       - id: RUN_ACTION
         type: call-activity
         process: ${action}
@@ -1457,6 +1537,9 @@ processes:
         name: "System Implemented and Verified"
 
     sequence-flows:
+      - {from: RESOLVE_CHANNEL, to: GATE_CHANNEL_TOUCHED}
+      - {from: GATE_CHANNEL_TOUCHED, to: RUN_ACTION,      when: "channel-touched == true"}
+      - {from: GATE_CHANNEL_TOUCHED, to: CHANNEL_SKIPPED, when: "channel-touched == false"}
       - {from: RUN_ACTION, to: BUILD_SYSTEM}
       - {from: BUILD_SYSTEM,      to: START_SYSTEM}
       - {from: START_SYSTEM,      to: VERIFY_TESTS_PASS}

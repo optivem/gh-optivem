@@ -233,6 +233,48 @@ func NamesExecutedIn(tests *TestsConfig, testsCwd string, suiteIDs, testNames []
 	return union, nil
 }
 
+// NamesInReport reads the on-disk test report(s) for the given suite ids and
+// returns the union of bare method names recorded in them, WITHOUT running
+// anything. It is the artifact-read twin of NamesExecutedIn (plan 20260619-1139,
+// decision #6): the in-cycle GATE_CHANNEL_TOUCHED guard (resolve-channel action)
+// must answer "did any of the ticket's tests register for channel <ch>?" at a
+// point where the ticket's new acceptance test is still RED — so a live run is
+// impossible (NamesExecutedIn surfaces a failing test as a runOneSuite error).
+// The earlier RED acceptance verify already wrote one report per acceptance-<ch>
+// partition, and a failing test still appears as a <testcase> in it, so
+// membership is read straight off the file: RED-tolerant by construction.
+//
+// Only suites the project actually declares AND that carry a TestCountPath
+// contribute names; an unknown id (or a TestCountPath-less suite) is skipped,
+// and a report file that does not exist contributes the empty set — the same
+// per-partition-empty tolerance executedTestNames provides. An untouched
+// channel's filtered RED run wrote no report, which correctly reads as "not
+// touched". A report that exists but is malformed IS an error.
+//
+// The suite-dir resolution mirrors runOneSuite exactly (cwd, then suite.Path,
+// then TestCountPath) so the path read here is the same file the RED run wrote.
+func NamesInReport(tests *TestsConfig, testsCwd string, suiteIDs []string) (map[string]bool, error) {
+	union := map[string]bool{}
+	for _, id := range suiteIDs {
+		suite := tests.FindSuite(id)
+		if suite == nil || suite.TestCountPath == "" {
+			continue
+		}
+		suiteDir := testsCwd
+		if suite.Path != "" && suite.Path != "." {
+			suiteDir = filepath.Join(testsCwd, suite.Path)
+		}
+		names, err := executedTestNames(filepath.Join(suiteDir, suite.TestCountPath))
+		if err != nil {
+			return nil, fmt.Errorf("read report for suite %s: %w", suite.Name, err)
+		}
+		for n := range names {
+			union[n] = true
+		}
+	}
+	return union, nil
+}
+
 // classifyMissingNames splits the requested names that ran in none of the
 // selected suites into those that exist elsewhere (a clean cross-channel skip)
 // and those that exist nowhere (fail loud). It runs the complement of

@@ -65,6 +65,19 @@ const (
 //     silently dropped from the per-channel verify. The literal is kept here
 //     (rather than importing testselect) because this generic engine hardcodes
 //     the convention; the group expansion happens downstream in the CLI.
+//
+// In-cycle membership guard (plan 20260619-1139): the unroll stays STATIC (one
+// clone per configured channel), but each clone now self-guards inside the
+// cycle — the implement-and-verify-system process starts with a resolve-channel
+// service-task + GATE_CHANNEL_TOUCHED gateway (mirroring resolve-external-system
+// + GATE_EXTERNAL_SYSTEM_TOUCHED). A channel none of the ticket's acceptance
+// tests registered for no-ops straight to a CHANNEL_SKIPPED end-event, so an
+// API-only ticket does no UI implement and no UI verify. The guard lives inside
+// the clone, not in a preceding gateway here, for the same reason the external
+// unroll does: a gateway preceding the clone cannot read the clone's baked
+// call-activity params (they land in ctx.Params only at sub-process entry,
+// run.go). "Always exercised" is therefore no longer true — membership is read
+// per ticket from the RED acceptance reports (see resolve-channel).
 func (e *Engine) UnrollSystemChannels(channels []string) error {
 	return e.unrollAnchor(
 		changeSystemBehaviorProcess,
@@ -116,6 +129,13 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 // that channel's adapter, leaving the other channels' stubs to their own
 // dispatch.
 //
+// Like the system GREEN step, each per-channel adapter clone self-guards inside
+// the cycle (plan 20260619-1139): implement-and-verify-system-driver-adapters
+// starts with resolve-channel + GATE_CHANNEL_TOUCHED, so an untouched channel's
+// adapter step skips to a CHANNEL_SKIPPED end-event. The RED acceptance report
+// it reads already exists at this point — shared-contract's RED acceptance
+// verify wrote it before this driver-adapter tail runs.
+//
 // The anchor sits on the TRUE branch of GATE_SYSTEM_DRIVER_PORTS_CHANGED, so
 // the rewrite preserves that `when:` predicate on the edge into the first
 // channel node — the gate stays in force (the whole per-channel block runs
@@ -162,13 +182,15 @@ func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 //     enum check is a static, analyzable value. resolve-external-system copies
 //     it into gate-readable state for GATE_CONTRACT_REAL_RED_KIND.
 //
-// Unlike channels — which are *always* exercised — a ticket touches only a
-// subset of external systems, so each clone is guarded INSIDE the cycle (by
+// Like channels (plan 20260619-1139), a ticket touches only a subset of
+// external systems, so each clone is guarded INSIDE the cycle (by
 // resolve-external-system + GATE_EXTERNAL_SYSTEM_TOUCHED) rather than by a
 // per-clone gateway here: a gateway preceding the clone cannot read the clone's
 // baked params (call-activity params land in ctx.Params only at sub-process
 // entry, run.go). An untouched clone no-ops to its skip end-event; the linear
-// chain then advances to the next clone.
+// chain then advances to the next clone. The channel unrolls now use the same
+// in-cycle self-guard (resolve-channel + GATE_CHANNEL_TOUCHED) for the same
+// reason — see UnrollSystemChannels / UnrollSystemDriverAdapterChannels.
 //
 // realKind maps each name to its real-kind string; a missing entry bakes "" and
 // surfaces at the GATE_CONTRACT_REAL_RED_KIND enum check. The driver calls this

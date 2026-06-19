@@ -130,6 +130,8 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"snapshot-working-tree",
 		"validate-external-systems-registered",
 		"resolve-external-system",
+		"validate-channels-registered",
+		"resolve-channel",
 		"move-to-in-refinement",
 		"move-to-ready",
 		"move-to-in-progress",

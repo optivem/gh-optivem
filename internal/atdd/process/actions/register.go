@@ -58,6 +58,22 @@ func RegisterAll(r *Registry, deps Deps) {
 	//     identify-external-system action.
 	r.Register("validate-external-systems-registered", a.validateExternalSystemsRegistered)
 	r.Register("resolve-external-system", a.resolveExternalSystem)
+	// Channel-aware system unroll (plan 20260619-1139). The per-channel system
+	// (UnrollSystemChannels) and system-driver-adapter (UnrollSystemDriverAdapterChannels)
+	// clones are guarded INSIDE the cycle, mirroring the external-system pattern
+	// above:
+	//
+	//   - validate-channels-registered runs ONCE in shared-contract, after the RED
+	//     acceptance verify wrote its per-channel reports, and hard-errors if any
+	//     ticket acceptance test ran in NONE of the configured channels (the
+	//     no-silent-skip guarantee — a test for an unconfigured channel must fail
+	//     loud, never vanish).
+	//   - resolve-channel runs at the START of each clone: it reads the baked
+	//     `channel` and stamps channel-touched (for GATE_CHANNEL_TOUCHED) by
+	//     reading the RED acceptance run's on-disk acceptance-<ch> report — no live
+	//     run, no cache (decision #6).
+	r.Register("validate-channels-registered", a.validateChannelsRegistered)
+	r.Register("resolve-channel", a.resolveChannel)
 	// MARK_* state-transition service tasks (per plan
 	// 20260526-1220-fix-mark-ticket-state-transition-routing.md). Each
 	// dispatches Tracker.SetStatus against the ticketing-system column the

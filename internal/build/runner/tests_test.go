@@ -454,6 +454,49 @@ func TestNamesExecutedInUnionsAcrossSuites(t *testing.T) {
 	}
 }
 
+// TestNamesInReport_ReadsExistingReportsWithoutRunning is the artifact-read
+// primitive (plan 20260619-1139, decision #6): NamesInReport returns the union
+// of method names recorded in the on-disk reports for the named suites, reading
+// the files staged here without running any command. A suite whose report is
+// absent (the api-only ticket's UI partition) contributes nothing, and an
+// unknown suite id is skipped rather than erroring.
+func TestNamesInReport_ReadsExistingReportsWithoutRunning(t *testing.T) {
+	dir := t.TempDir()
+	tests := &TestsConfig{Suites: []Suite{
+		// API partition has the ticket's test on disk.
+		stageSuite(t, dir, "acceptance-parallel-api", `<testsuite tests="1"><testcase name="shouldRejectQty100 [Channel: API]"/></testsuite>`),
+		// UI partition declared but its report never written (the RED filtered run
+		// matched nothing in UI) — declare it with a TestCountPath that does not
+		// exist on disk.
+		{ID: "acceptance-parallel-ui", Name: "acceptance-parallel-ui", Path: ".", TestCountPath: "acceptance-parallel-ui.xml"},
+	}}
+
+	api, err := NamesInReport(tests, dir, []string{"acceptance-parallel-api"})
+	if err != nil {
+		t.Fatalf("NamesInReport(api): %v", err)
+	}
+	if !api["shouldRejectQty100"] {
+		t.Errorf("api report: want shouldRejectQty100 present, got %v", api)
+	}
+
+	ui, err := NamesInReport(tests, dir, []string{"acceptance-parallel-ui"})
+	if err != nil {
+		t.Fatalf("NamesInReport(ui): %v", err)
+	}
+	if len(ui) != 0 {
+		t.Errorf("ui report absent → want empty set, got %v", ui)
+	}
+
+	// An unknown suite id is skipped, not an error.
+	none, err := NamesInReport(tests, dir, []string{"ghost-suite"})
+	if err != nil {
+		t.Fatalf("NamesInReport(ghost): unexpected err %v", err)
+	}
+	if len(none) != 0 {
+		t.Errorf("unknown suite → want empty set, got %v", none)
+	}
+}
+
 // TestNamesExecutedInEmptyNamesRunsNothing: empty names short-circuit before
 // suite resolution, so even a nonexistent suite id can't surface an error.
 func TestNamesExecutedInEmptyNamesRunsNothing(t *testing.T) {
