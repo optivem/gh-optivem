@@ -277,7 +277,10 @@ func callParams(node statemachine.Node, ctx *statemachine.Context) map[string]st
 // Renders from the Event's enter-time fields (D2): the expanded agent name
 // (ev.AgentExpanded) and the pushed call-activity params (ev.CallParams) are
 // pre-resolved by wrap() against the live scope, so this stays a pure
-// formatter.
+// formatter. The field list (via enterParts) also carries inherited-scope
+// discriminator chips (channel / external-system-name) read from ev.Params —
+// the snapshot of what this node received from its enclosing unrolled
+// call-activity — not from the node's own selector metadata.
 func writeEnter(deps Deps, ev *Event) {
 	node := ev.Node
 	fmt.Fprintf(deps.Out, "%s %s %s  %s\n",
@@ -290,6 +293,17 @@ func writeEnter(deps Deps, ev *Event) {
 // enterParts builds the `kind=… <selector>=…` field list shared by the live
 // banner and the tree's enter line. Pure function of the Event so both views
 // agree on the selector vocabulary.
+//
+// After the per-kind selector it appends inherited-scope discriminator chips
+// (channel, external-system-name). These are NOT node selectors — they are
+// call-activity scope params bound by the channel / external-system unrolls and
+// pushed into ctx.Params at sub-process entry, so every node *inside* an
+// unrolled sub-process inherits them in ev.Params. Surfacing them is what makes
+// ASK_HUMAN / gateways / service-tasks under a channel split read
+// `channel=api`; without it the live banner shows only the per-kind selector
+// and drops the discriminator (the tree's `in:` line carried the full scope,
+// but the live banner did not). The chip reads inherited scope (ev.Params), not
+// the node's own metadata.
 func enterParts(ev *Event) []string {
 	node := ev.Node
 	parts := []string{fmt.Sprintf("kind=%s", kindLabel(node.Kind))}
@@ -313,6 +327,23 @@ func enterParts(ev *Event) []string {
 		if len(ev.CallParams) > 0 {
 			parts = append(parts, fmt.Sprintf("params=%s", formatParams(ev.CallParams)))
 		}
+	}
+	// Inherited-scope discriminators (channel headlines; external-system-name
+	// kept symmetric). The CallParams guard skips the chip on a call-activity
+	// that pushes the same key via Raw.Params — it already shows the value in
+	// its `params=` chip, so the inherited chip would duplicate it on one line.
+	// The unrolling call-activity itself never trips this anyway: channel is
+	// pushed only on sub-process entry, after capture, so its ev.Params is the
+	// channel-agnostic parent scope and the chip simply doesn't fire.
+	for _, key := range []string{"channel", "external-system-name"} {
+		v := ev.Params[key]
+		if v == "" {
+			continue
+		}
+		if node.Kind == statemachine.CallActivity && ev.CallParams[key] != "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", key, v))
 	}
 	return parts
 }
@@ -448,7 +479,7 @@ func outcomeDetail(ev *Event) (label string, attr color.Attribute, detail, delta
 // shared ctx.State at the moment TESTS_INFRA_HALT fired:
 //
 //   - test-infra-label  set by runCommand on infra classification
-//                       (see internal/atdd/process/actions/bindings.go)
+//     (see internal/atdd/process/actions/bindings.go)
 //   - command-line      set by runCommand on the failing test-run shell-out
 //   - command-stderr-tail  ditto; the last N lines of the runner's stderr
 //

@@ -526,9 +526,9 @@ func TestStateDelta_LongValuesSortLast(t *testing.T) {
 	// splits two short scalars on the OK line.
 	pre := map[string]string{}
 	post := map[string]string{
-		"phase-changed-files":              "a/long/path/one.java\na/long/path/two.java",
-		"at-external-driver-port-changed":  "false",
-		"at-system-driver-port-changed":    "true",
+		"phase-changed-files":             "a/long/path/one.java\na/long/path/two.java",
+		"at-external-driver-port-changed": "false",
+		"at-system-driver-port-changed":   "true",
 	}
 
 	got := stateDelta(pre, post)
@@ -721,6 +721,137 @@ func TestWrap_CallActivityVerdictPrependsToStateDelta(t *testing.T) {
 	if !strings.Contains(got, wantPrefix) {
 		t.Errorf("trace output should prepend verdict before state delta; want substring %q\nfull output:\n%s", wantPrefix, got)
 	}
+}
+
+func TestWrap_EnterBannerShowsInheritedScopeChips(t *testing.T) {
+	// channel / external-system-name are not node fields — they are
+	// call-activity scope params bound by the channel / external-system
+	// unrolls and pushed into ctx.Params on sub-process entry, so every node
+	// *inside* the unrolled sub-process inherits them in ev.Params. The live
+	// banner must surface them as inherited-scope chips; before this it showed
+	// only the per-kind selector and dropped the discriminator.
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	t.Run("user-task inherits channel", func(t *testing.T) {
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "ASK_HUMAN",
+			Kind: statemachine.UserTask,
+			Raw:  statemachine.RawNode{Agent: "human"},
+			Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		ctx := statemachine.NewContext()
+		ctx.Params["channel"] = "api"
+		wrapped(ctx)
+
+		if got := buf.String(); !strings.Contains(got, "> ASK_HUMAN  kind=user-task agent=human channel=api") {
+			t.Errorf("banner should carry inherited channel chip; got:\n%s", got)
+		}
+	})
+
+	t.Run("gateway inherits channel", func(t *testing.T) {
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "GATE_API",
+			Kind: statemachine.Gateway,
+			Raw:  statemachine.RawNode{Binding: "some-binding"},
+			Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{Value: "yes"} },
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		ctx := statemachine.NewContext()
+		ctx.Params["channel"] = "api"
+		wrapped(ctx)
+
+		if got := buf.String(); !strings.Contains(got, "> GATE_API  kind=gateway binding=some-binding channel=api") {
+			t.Errorf("banner should carry inherited channel chip; got:\n%s", got)
+		}
+	})
+
+	t.Run("no channel in scope emits no chip", func(t *testing.T) {
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "ASK_HUMAN",
+			Kind: statemachine.UserTask,
+			Raw:  statemachine.RawNode{Agent: "human"},
+			Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		wrapped(statemachine.NewContext())
+
+		if got := buf.String(); strings.Contains(got, "channel=") {
+			t.Errorf("node with no channel in scope must emit no channel chip; got:\n%s", got)
+		}
+	})
+
+	t.Run("unrolling call-activity shows params= but no duplicate chip", func(t *testing.T) {
+		// The unrolling call-activity pushes channel via Raw.Params — it shows
+		// `channel=api` inside its `params=` chip. The inherited-scope chip must
+		// not also fire (it would duplicate channel on the same line). Here the
+		// param is in both Raw.Params (→ CallParams) and ctx.Params to prove the
+		// CallParams guard suppresses the separate chip even when both are set.
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "IMPLEMENT_AND_VERIFY_SYSTEM_API",
+			Kind: statemachine.CallActivity,
+			Raw: statemachine.RawNode{
+				Process: "implement-and-verify-system",
+				Params:  map[string]string{"channel": "api"},
+			},
+			Fn: func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		ctx := statemachine.NewContext()
+		ctx.Params["channel"] = "api"
+		wrapped(ctx)
+
+		got := buf.String()
+		if !strings.Contains(got, "params=channel=api") {
+			t.Errorf("call-activity should show channel via params= chip; got:\n%s", got)
+		}
+		if strings.Contains(got, "params=channel=api channel=api") {
+			t.Errorf("inherited chip must not duplicate the params= channel on a call-activity; got:\n%s", got)
+		}
+	})
+
+	t.Run("external-system-name chip mirrors channel", func(t *testing.T) {
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "ASK_HUMAN",
+			Kind: statemachine.UserTask,
+			Raw:  statemachine.RawNode{Agent: "human"},
+			Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		ctx := statemachine.NewContext()
+		ctx.Params["external-system-name"] = "stripe"
+		wrapped(ctx)
+
+		if got := buf.String(); !strings.Contains(got, "external-system-name=stripe") {
+			t.Errorf("banner should carry inherited external-system-name chip; got:\n%s", got)
+		}
+	})
+
+	t.Run("channel headlines before external-system-name", func(t *testing.T) {
+		var buf bytes.Buffer
+		node := statemachine.Node{
+			ID:   "ASK_HUMAN",
+			Kind: statemachine.UserTask,
+			Raw:  statemachine.RawNode{Agent: "human"},
+			Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+		}
+		wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+		ctx := statemachine.NewContext()
+		ctx.Params["channel"] = "api"
+		ctx.Params["external-system-name"] = "stripe"
+		wrapped(ctx)
+
+		if got := buf.String(); !strings.Contains(got, "channel=api external-system-name=stripe") {
+			t.Errorf("channel should headline before external-system-name; got:\n%s", got)
+		}
+	})
 }
 
 func TestWrapAll_DecoratesEveryNodeInEveryFlow(t *testing.T) {

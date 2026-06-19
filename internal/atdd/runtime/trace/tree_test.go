@@ -180,6 +180,41 @@ func TestTree_EmitsInOutAndCmdLines(t *testing.T) {
 	}
 }
 
+func TestTree_HeaderCarriesInheritedChannelChip(t *testing.T) {
+	// Shared-formatter guarantee (enterParts): the tree's header line carries
+	// the same inherited-scope channel chip as the live banner, so the two
+	// views name things identically. The full inherited scope still appears on
+	// the `in:` line — channel belonging to both is correct (header = quick
+	// glance, in: = full-scope-by-contract).
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	deps := treeDeps(&buf)
+	node := wrap(statemachine.Node{
+		ID:   "ASK_HUMAN",
+		Kind: statemachine.UserTask,
+		Raw:  statemachine.RawNode{Agent: "human"},
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+	}, deps)
+
+	ctx := statemachine.NewContext()
+	ctx.Params["channel"] = "api"
+	node(ctx)
+
+	got := buf.String()
+	wantSubs := []string{
+		"> ASK_HUMAN  kind=user-task agent=human channel=api",
+		"  in: channel=api",
+	}
+	for _, s := range wantSubs {
+		if !strings.Contains(got, s) {
+			t.Errorf("tree missing %q\nfull output:\n%s", s, got)
+		}
+	}
+}
+
 func TestTree_InfraHaltRendersDiagnosticInline(t *testing.T) {
 	prevNow := nowFn
 	nowFn = fixedClock
