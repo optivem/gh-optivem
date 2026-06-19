@@ -85,7 +85,7 @@ func newSystemStartCmd() *cobra.Command {
 			exitOnError(runner.Up(sys, cwdForPath(resolved), opts))
 		},
 	}
-	cmd.Flags().BoolVar(&restart, "restart", false, "Force tear-down + restart even if the system is already up")
+	cmd.Flags().BoolVar(&restart, "restart", false, "Recreate changed services to pick up new code/stubs/migrations; keeps the database running (incremental, no full down/up)")
 	cmd.Flags().IntVar(&logLines, "log-lines", 50, "Lines of compose logs to dump on health-probe failure")
 	cmd.Flags().DurationVar(&upTimeout, "up-timeout", 0, "Per-attempt timeout for `docker compose up -d` (zero = 5m default)")
 	return cmd

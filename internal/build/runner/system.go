@@ -24,9 +24,11 @@ type SystemOptions struct {
 	// LogLines controls how many trailing lines of compose logs are dumped on
 	// a health-probe failure during Up. Zero defaults to 50.
 	LogLines int
-	// Restart, when true, makes Up tear down the system before starting it
-	// again. When false, Up first checks IsAnyURLUp; if the system already
-	// responds, Up is a no-op.
+	// Restart, when true, recreates the changed services in place so a freshly
+	// built image (and changed stubs/migrations) is picked up, while leaving the
+	// persistent services (postgres + its data volume) running — an incremental
+	// recreate rather than a full down/up. When false, Up first checks
+	// IsAnyURLUp; if the system already responds, Up is a no-op.
 	Restart bool
 	// Health overrides default polling parameters.
 	Health HealthOptions
@@ -119,12 +121,17 @@ func Build(sys *SystemConfig, cwd string, opts BuildOptions) error {
 
 // Up brings up every system in sys. For each entry, behavior depends on opts:
 //
-//   - opts.Restart=true     → unconditional `down` then `up -d`, then health-wait.
+//   - opts.Restart=true     → incremental recreate: rebuild and force-recreate
+//     every non-persistent service (`up -d --build --force-recreate --no-deps`)
+//     while leaving postgres (and its data volume) running, then health-wait. On
+//     a cold stack (postgres not up yet) it falls back to a full `up -d --build`
+//     so postgres + deps start first. No `down`, so the loop stays fast.
 //   - opts.Restart=false    → if IsAnyURLUp returns true, skip the entry; else
 //     `down` + `up -d` + health-wait. (Mirrors the PS1 runner's behavior so
 //     local re-runs are fast when the stack is already healthy.)
 //
-// `up -d` is wrapped in a small retry loop for transient network errors.
+// The `up` invocation is wrapped in a small retry loop for transient network
+// errors.
 func Up(sys *SystemConfig, cwd string, opts SystemOptions) error {
 	for _, s := range sys.Systems {
 		fmt.Fprintf(os.Stdout, "\n=== System: %s ===\n", s.Label)
@@ -139,11 +146,18 @@ func Up(sys *SystemConfig, cwd string, opts SystemOptions) error {
 	return nil
 }
 
+// persistentServices are the compose services that a --restart must never
+// recreate: they own durable state (postgres + its data volume), and recreating
+// them would re-pay the healthcheck wait and risk the data. Hard-coded for v1 —
+// matches every current shop stack. Upgrade path if a stack ever adds a
+// differently-named stateful service: promote to an optional persistentServices
+// field on SystemEntry, defaulting to {"postgres"}.
+var persistentServices = map[string]bool{"postgres": true}
+
 func upOne(s SystemEntry, cwd string, opts SystemOptions) error {
-	if err := downOne(s, cwd); err != nil {
-		// Down errors during a restart are not fatal — the system may already
-		// be down. Log and continue to the up step.
-		fmt.Fprintf(os.Stderr, "warn: down %s: %v\n", s.Label, err)
+	upArgs, err := upComposeArgs(s, cwd, opts)
+	if err != nil {
+		return fmt.Errorf("up %s: %w", s.Label, err)
 	}
 
 	const maxAttempts = 3
@@ -151,7 +165,7 @@ func upOne(s SystemEntry, cwd string, opts SystemOptions) error {
 	timeout := opts.upTimeout()
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		err := runComposeCtx(cwd, timeout, "-f", s.ComposeFile, "up", "-d")
+		err := runComposeCtx(cwd, timeout, upArgs...)
 		if err == nil {
 			lastErr = nil
 			break
@@ -183,6 +197,96 @@ func upOne(s SystemEntry, cwd string, opts SystemOptions) error {
 
 	printEndpointsForEntry(os.Stdout, s)
 	return nil
+}
+
+// upComposeArgs decides how upOne brings one stack up and performs any required
+// pre-up cleanup, returning the `docker compose` argument list for the retry
+// loop.
+//
+//   - Non-restart (opts.Restart == false): only reached when the stack is not
+//     already healthy. Tear it down first (clearing stray containers), then a
+//     plain `up -d`. Unchanged legacy behaviour.
+//   - Restart: query the stack's services and which are running, then delegate
+//     to buildUpArgs for the incremental-vs-cold-start decision. No `down`.
+func upComposeArgs(s SystemEntry, cwd string, opts SystemOptions) ([]string, error) {
+	if !opts.Restart {
+		if err := downOne(s, cwd); err != nil {
+			// Down errors are not fatal — the system may already be down.
+			fmt.Fprintf(os.Stderr, "warn: down %s: %v\n", s.Label, err)
+		}
+		return []string{"-f", s.ComposeFile, "up", "-d"}, nil
+	}
+	services, err := composeServices(s.ComposeFile, cwd)
+	if err != nil {
+		return nil, err
+	}
+	running, err := composeRunningServices(s.ComposeFile, cwd)
+	if err != nil {
+		return nil, err
+	}
+	return buildUpArgs(s.ComposeFile, services, running), nil
+}
+
+// buildUpArgs is the pure arg-selection core of the --restart path: given the
+// stack's full service list and the set of currently-running services, it
+// returns the `docker compose up` arguments. Split out from upComposeArgs so the
+// incremental / cold-start / degenerate decisions are unit-testable without
+// docker. Service order from `services` is preserved.
+func buildUpArgs(composeFile string, services []string, running map[string]bool) []string {
+	base := []string{"-f", composeFile, "up", "-d"}
+	var recreate, persistentInStack []string
+	for _, svc := range services {
+		if persistentServices[svc] {
+			persistentInStack = append(persistentInStack, svc)
+		} else {
+			recreate = append(recreate, svc)
+		}
+	}
+	// No persistent service to protect, or nothing else to recreate → just bring
+	// the whole stack up with a fresh build.
+	if len(persistentInStack) == 0 || len(recreate) == 0 {
+		return append(base, "--build")
+	}
+	// Cold start: a persistent service isn't running yet, so bring the whole
+	// stack up so postgres + its dependents start in dependency order. The next
+	// --restart then takes the incremental path below.
+	for _, p := range persistentInStack {
+		if !running[p] {
+			return append(base, "--build")
+		}
+	}
+	// Incremental: rebuild and force-recreate only the non-persistent services.
+	// --no-deps keeps postgres (already running) out of the recreate, so its
+	// healthcheck is not re-waited and its data volume is preserved. --build
+	// picks up new app/simulator code; --force-recreate re-runs Flyway (new
+	// migrations) and reloads WireMock's mounted mappings (changed stubs).
+	args := append(base, "--build", "--force-recreate", "--no-deps")
+	return append(args, recreate...)
+}
+
+// composeServices returns every service defined in the compose file, via
+// `docker compose config --services`.
+func composeServices(composeFile, cwd string) ([]string, error) {
+	out, err := dockerCaptureChecked(cwd, "compose", "-f", composeFile, "config", "--services")
+	if err != nil {
+		return nil, fmt.Errorf("enumerate services for %s: %w", composeFile, err)
+	}
+	return strings.Fields(out), nil
+}
+
+// composeRunningServices returns the set of services with at least one running
+// container, via `docker compose ps --services --status running`. An empty set
+// (project never created, or all stopped) is a normal result, not an error.
+func composeRunningServices(composeFile, cwd string) (map[string]bool, error) {
+	out, err := dockerCaptureChecked(cwd, "compose", "-f", composeFile, "ps", "--services", "--status", "running")
+	if err != nil {
+		return nil, fmt.Errorf("list running services for %s: %w", composeFile, err)
+	}
+	set := make(map[string]bool)
+	for _, name := range strings.Fields(out) {
+		set[name] = true
+	}
+	return set, nil
 }
 
 // PrintEndpoints writes the component and external-system endpoint URLs for
@@ -342,4 +446,20 @@ func dockerCapture(cwd string, args ...string) (string, error) {
 	cmd.Dir = cwd
 	out, err := cmd.Output()
 	return string(out), err
+}
+
+// dockerCaptureChecked is dockerCapture for queries whose failure must surface:
+// it captures stdout and, on a non-zero exit, folds the child's stderr into the
+// returned error so the cause (bad compose file, daemon down) is self-contained
+// rather than a bare "exit status N".
+func dockerCaptureChecked(cwd string, args ...string) (string, error) {
+	cmd := exec.Command("docker", args...)
+	cmd.Dir = cwd
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("docker %s: %w\nstderr:\n%s", strings.Join(args, " "), err, stderr.String())
+	}
+	return string(out), nil
 }

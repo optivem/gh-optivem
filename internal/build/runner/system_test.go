@@ -40,6 +40,52 @@ func TestRunComposeError_SurfacesStderr(t *testing.T) {
 	}
 }
 
+// TestBuildUpArgs pins the --restart arg-selection: postgres is always excluded
+// from the recreate set, a running postgres takes the incremental path, and a
+// not-yet-running (cold) or postgres-less stack falls back to a full `up --build`.
+func TestBuildUpArgs(t *testing.T) {
+	const file = "docker-compose.yml"
+	cases := []struct {
+		name     string
+		services []string
+		running  map[string]bool
+		want     string
+	}{
+		{
+			name:     "incremental recreate when postgres already running",
+			services: []string{"postgres", "db-migrate", "external-system-stubs", "system"},
+			running:  map[string]bool{"postgres": true},
+			want:     "-f docker-compose.yml up -d --build --force-recreate --no-deps db-migrate external-system-stubs system",
+		},
+		{
+			name:     "cold start falls back to full up --build when postgres not running",
+			services: []string{"postgres", "db-migrate", "external-system-stubs", "system"},
+			running:  map[string]bool{},
+			want:     "-f docker-compose.yml up -d --build",
+		},
+		{
+			name:     "multitier frontend joins the recreate set, order preserved",
+			services: []string{"postgres", "db-migrate", "system", "frontend"},
+			running:  map[string]bool{"postgres": true},
+			want:     "-f docker-compose.yml up -d --build --force-recreate --no-deps db-migrate system frontend",
+		},
+		{
+			name:     "stack without a persistent service just builds and ups",
+			services: []string{"system", "external-system-simulators"},
+			running:  map[string]bool{},
+			want:     "-f docker-compose.yml up -d --build",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := strings.Join(buildUpArgs(file, c.services, c.running), " ")
+			if got != c.want {
+				t.Errorf("buildUpArgs() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 func TestTransientNetRE(t *testing.T) {
 	cases := []struct {
 		name string

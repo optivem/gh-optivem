@@ -2357,12 +2357,16 @@ processes:
   # a system build (RED-side test-write phases, pre-verify safety calls).
   #
   # `start-system-restart` — callers that run *after* `build-system` MUST
-  # use this variant to force `runner.Up` to tear down the stale container
-  # and bring up the freshly-built image. Without `--restart`, `Up` skips
-  # the restart, the new image is never instantiated, and the verify step
-  # runs against the stale container — every test then exercises pre-build
-  # code and the orchestrator mis-routes the resulting failures to
-  # `fix-unexpected-failing-tests`.
+  # use this variant so `runner.Up` recreates the changed services from the
+  # freshly-built image. `--restart` is *incremental*: it rebuilds and
+  # force-recreates every non-persistent service in place
+  # (`up -d --build --force-recreate --no-deps`) while leaving postgres and its
+  # data volume running — no full down/up — so new app code, changed stubs and
+  # new migrations are all picked up cheaply. Without `--restart`, `Up`
+  # short-circuits on the already-healthy stack, the new image is never
+  # instantiated, and the verify step runs against stale code — every test then
+  # exercises pre-build code and the orchestrator mis-routes the resulting
+  # failures to `fix-unexpected-failing-tests`.
   #
   # Current restart-required callers (all dispatch `start-system-restart`):
   #
