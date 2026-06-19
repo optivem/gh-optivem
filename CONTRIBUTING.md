@@ -28,7 +28,7 @@ cd ../shop
 bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh
 
 # A subset, in the given order:
-bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh 72 71 69 76 61
+bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh 72 71 69 76 61 65 68 70 78 79 80 81 --config gh-optivem-multitier-java.yaml
 
 # Delete each worktree after its run instead of keeping them:
 bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh --keep never
