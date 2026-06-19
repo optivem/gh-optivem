@@ -942,6 +942,107 @@ func TestEffectiveSuiteResolution_NilEngineSkips(t *testing.T) {
 // preflight, naming the node — so a bad suite can never silently reach the
 // runner. A sibling flow that DOES bind a concrete suite at the call site must
 // pass, proving the sweep only flags the genuinely unresolvable case.
+// fullMultitierCfg returns a multitier config whose system-test.paths carries
+// every canonical Family B key, so every writing-agent MID's read:/write: list
+// in the real engine resolves. Backend/Frontend paths and the shared migration
+// path are set, so the system-path surface resolves non-empty.
+func fullMultitierCfg() *projectconfig.Config {
+	paths := map[string]string{}
+	for _, k := range projectconfig.CanonicalPathKeys() {
+		paths[k] = "system-test/java/" + k
+	}
+	cfg := &projectconfig.Config{}
+	cfg.System.Architecture = projectconfig.ArchMultitier
+	cfg.System.DbMigrationPath = "system/db/migrations"
+	cfg.System.Backend = projectconfig.TierSpec{Path: "system/multitier/backend-java"}
+	cfg.System.Frontend = projectconfig.TierSpec{Path: "system/multitier/frontend-typescript"}
+	cfg.SystemTest.Paths = paths
+	return cfg
+}
+
+// TestRun_ScopeSweepCatchesCollapsedMultitierSurface covers the per-layer
+// non-empty gate (this plan's Item 3): a writing-agent MID whose write list
+// resolves to no real path on a multitier config — the bug class where the
+// system-path surface silently collapses — is flagged statically, while a
+// well-formed multitier config passes. A synthetic single-layer write:
+// [system-path] is used because the real implement-system pairs system-path
+// with the always-present system-db-migration-path, so its list never fully
+// collapses; the gate's value is catching a layer that DOES collapse to
+// nothing.
+func TestRun_ScopeSweepCatchesCollapsedMultitierSurface(t *testing.T) {
+	t.Parallel()
+
+	const flow = `
+processes:
+  root:
+    name: "Root"
+    start: CALL_IMPL
+    nodes:
+      - id: CALL_IMPL
+        type: call-activity
+        process: impl-system
+        name: "Call Impl"
+      - id: ROOT_END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: CALL_IMPL, to: ROOT_END}
+  impl-system:
+    name: "Implement System"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: implement-system
+          agent: system-implementer
+          category: prod-agent
+        write: [system-path]
+      - id: IMPL_END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: IMPL_END}
+`
+	eng, err := statemachine.LoadBytes([]byte(flow))
+	if err != nil {
+		t.Fatalf("load synthetic flow: %v", err)
+	}
+
+	t.Run("collapsed multitier surface (empty tiers) is flagged", func(t *testing.T) {
+		cfg := &projectconfig.Config{}
+		cfg.System.Architecture = projectconfig.ArchMultitier // backend/frontend paths left empty
+		got := runScopeResolutionChecks(cfg, eng)
+		joined := strings.Join(got, "\n")
+		if !strings.Contains(joined, "impl-system") || !strings.Contains(joined, "layer collapsed") {
+			t.Errorf("expected a layer-collapsed failure naming impl-system, got: %v", got)
+		}
+	})
+
+	t.Run("well-formed multitier surface passes", func(t *testing.T) {
+		cfg := &projectconfig.Config{}
+		cfg.System.Architecture = projectconfig.ArchMultitier
+		cfg.System.Backend = projectconfig.TierSpec{Path: "system/multitier/backend-java"}
+		cfg.System.Frontend = projectconfig.TierSpec{Path: "system/multitier/frontend-typescript"}
+		if got := runScopeResolutionChecks(cfg, eng); len(got) != 0 {
+			t.Errorf("well-formed multitier write: [system-path] must resolve non-empty, got: %v", got)
+		}
+	})
+}
+
+// TestRun_ScopeSweepRealEngineMultitierPasses guards that the real embedded
+// engine's full set of writing-agent MIDs resolves cleanly on a well-formed
+// multitier config — the system-path layers now expand to the tier surface
+// instead of collapsing to nothing.
+func TestRun_ScopeSweepRealEngineMultitierPasses(t *testing.T) {
+	t.Parallel()
+	if got := runScopeResolutionChecks(fullMultitierCfg(), loadDefaultEngine(t)); len(got) != 0 {
+		t.Errorf("real engine on a well-formed multitier config must pass the scope sweep, got: %v", got)
+	}
+}
+
 func TestEffectiveSuiteResolution_StateSourcedSuiteFlagged(t *testing.T) {
 	t.Parallel()
 

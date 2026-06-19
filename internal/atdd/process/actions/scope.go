@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/atdd"
@@ -100,6 +101,10 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
 	}
 	allowed, err = narrowAdapterScopeByChannel(write, allowed, ctx.Params["channel"], cfg)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
+	}
+	allowed, err = AddSystemSurfaceScope(write, allowed, ctx.Params["channel"], cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope (%s): %w", phaseID, err)}
 	}
@@ -224,6 +229,39 @@ func narrowAdapterScopeByChannel(write, allowed []string, channel string, cfg *p
 		out[i] = member
 	}
 	return out, nil
+}
+
+// AddSystemSurfaceScope resolves the monolith-only system-path layer to the
+// concrete tier surface a multitier dispatch writes, and appends it to the
+// allowed set. It closes the multitier write-scope collapse: ResolveLayerPaths
+// skips system-path on multitier (it's monolith-only by construction), so a
+// writing-agent's `write: [system-path, …]` would otherwise resolve with the
+// production surface absent — every correct backend/frontend write then lands
+// out of scope.
+//
+// It acts only when the architecture is multitier AND system-path is a
+// declared write layer (monolith already resolves system-path via
+// ResolveLayerPaths; an absent layer is a no-op). It calls the kernel resolver
+// cfg.SystemSurfacePaths(channel) — the single home for the channel→tier
+// mapping (api→backend, ui→frontend, whole-system→both) — and appends the
+// returned paths. An unknown channel (ok==false) is a hard error, mirroring
+// narrowAdapterScopeByChannel's "no silent widen".
+//
+// Append (not index-rewrite) keeps it independent of the write/allowed
+// index-alignment narrowAdapterScopeByChannel relies on, so the two narrows
+// compose in either order.
+func AddSystemSurfaceScope(write, allowed []string, channel string, cfg *projectconfig.Config) ([]string, error) {
+	if cfg.System.Architecture != projectconfig.ArchMultitier {
+		return allowed, nil
+	}
+	if !slices.Contains(write, "system-path") {
+		return allowed, nil
+	}
+	surface, ok := cfg.SystemSurfacePaths(channel)
+	if !ok {
+		return nil, fmt.Errorf("channel %q has no system-path surface on this multitier config (expected one of api, ui, or whole-system) — cannot resolve write-scope to the tier folder", channel)
+	}
+	return append(allowed, surface...), nil
 }
 
 // pathInScope returns true if diffPath is within any allowed path P

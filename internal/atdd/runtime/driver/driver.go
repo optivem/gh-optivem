@@ -1536,45 +1536,34 @@ func resolveDispatchModel(tuning agents.Tuning, nodeParams map[string]string) st
 	return tuning.Model
 }
 
-// resolveSystemSurface computes the ${system-surface} placeholder for a
+// resolveSystemSurface formats the ${system-surface} placeholder for a
 // dispatch — the production-code surface the GREEN/redesign/refactor
-// system prompts name. The channel→tier mapping is pinned in Go here
-// (plan 20260619-1120 A1); the config schema is unchanged, the surface is
-// read off the existing System.Path / System.Backend / System.Frontend.
+// system prompts name. It is a thin formatter over the kernel resolver
+// projectconfig.Config.SystemSurfacePaths (the single home for the
+// architecture+channel→surface mapping: monolith→system path; multitier
+// api→backend, ui→frontend, whole-system→both tiers): it joins the resolved
+// path list into the reader-friendly display string the prompt expects —
+// a single surface verbatim ("backend"), multiple surfaces as
+// "backend/ and frontend/".
 //
-//   - monolith → the single System.Path.
-//   - multitier + channel → that channel's tier path: api→backend,
-//     ui→frontend.
-//   - multitier + no channel (whole-system updater/refactorer dispatch) →
-//     both tier paths joined in reader-friendly form ("backend/ and frontend/").
-//
-// Returns ok=false for an unknown channel on multitier (and for the
-// not-yet-supported microservices / unset architectures) so the caller
-// leaves ${system-surface} unfilled and findUnfilledPlaceholders fail-fasts,
-// rather than silently substituting "" and writing code to an empty path.
+// Returns ok=false whenever the resolver does (unknown channel on multitier,
+// the not-yet-supported microservices / unset architectures, nil cfg) so the
+// caller leaves ${system-surface} unfilled and findUnfilledPlaceholders
+// fail-fasts, rather than silently substituting "" and writing code to an
+// empty path.
 func resolveSystemSurface(cfg *projectconfig.Config, channel string) (string, bool) {
-	if cfg == nil {
+	paths, ok := cfg.SystemSurfacePaths(channel)
+	if !ok {
 		return "", false
 	}
-	switch cfg.System.Architecture {
-	case projectconfig.ArchMonolith:
-		return cfg.System.Path, true
-	case projectconfig.ArchMultitier:
-		switch channel {
-		case "":
-			// Whole-system dispatch (updater/refactorer walk the Checklist
-			// across every tier) — name both surfaces.
-			return fmt.Sprintf("%s/ and %s/", cfg.System.Backend.Path, cfg.System.Frontend.Path), true
-		case "api":
-			return cfg.System.Backend.Path, true
-		case "ui":
-			return cfg.System.Frontend.Path, true
-		default:
-			return "", false
-		}
-	default:
-		return "", false
+	if len(paths) == 1 {
+		return paths[0], true
 	}
+	withSlash := make([]string, len(paths))
+	for i, p := range paths {
+		withSlash[i] = p + "/"
+	}
+	return strings.Join(withSlash, " and "), true
 }
 
 // fixChangedFiles returns the working-tree dirty-file listing (one

@@ -530,6 +530,48 @@ func (c *Config) PlaceholderMap() map[string]string {
 	return out
 }
 
+// SystemSurfacePaths returns the production-code surface a writing-agent
+// dispatch may touch, resolved from the architecture + the dispatch's
+// channel. It is the single source of the architecture+channel→surface
+// mapping shared by every consumer that needs it: the runtime scope check
+// (actions.AddSystemSurfaceScope appends these paths to the allowed set),
+// the preflight per-layer non-empty assertion, and the driver prompt
+// (driver.resolveSystemSurface formats them into the ${system-surface}
+// display string). Keeping the mapping here — on the config, the lowest
+// layer with no import cycle — kills the "mapping lives twice" drift.
+//
+//   - monolith → the single System.Path.
+//   - multitier + channel "api" → System.Backend.Path; "ui" → System.Frontend.Path.
+//   - multitier + no channel (whole-system updater/refactorer dispatch) →
+//     both tier paths [Backend.Path, Frontend.Path].
+//
+// Returns ok=false (never a silent "") for an unknown channel on multitier,
+// the not-yet-supported microservices / unset architectures, or a nil
+// receiver — callers fail-fast rather than scoping or rendering an empty
+// surface.
+func (c *Config) SystemSurfacePaths(channel string) ([]string, bool) {
+	if c == nil {
+		return nil, false
+	}
+	switch c.System.Architecture {
+	case ArchMonolith:
+		return []string{c.System.Path}, true
+	case ArchMultitier:
+		switch channel {
+		case "":
+			return []string{c.System.Backend.Path, c.System.Frontend.Path}, true
+		case "api":
+			return []string{c.System.Backend.Path}, true
+		case "ui":
+			return []string{c.System.Frontend.Path}, true
+		default:
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
+}
+
 // lastPathSegment returns the substring after the last "/" in s. Used by
 // SutNamespace to derive ${sut-namespace} from a "owner/repo" slug; an
 // absent slash returns s itself.

@@ -277,8 +277,41 @@ func runScopeResolutionChecks(cfg *projectconfig.Config, eng *statemachine.Engin
 				if len(list.layers) == 0 {
 					continue
 				}
-				if _, err := actions.ResolveLayerPaths(list.layers, cfg); err != nil {
+				resolved, err := actions.ResolveLayerPaths(list.layers, cfg)
+				if err != nil {
 					failures = append(failures, fmt.Sprintf("MID %s %s scope: %v", processName, list.name, err))
+					continue
+				}
+				// Channel-blind whole-system expansion through the SAME resolver
+				// the runtime scope check uses (actions.AddSystemSurfaceScope with
+				// channel=""): on multitier this appends the system-path layer's
+				// tier surface (both tiers) so a non-empty declared list no longer
+				// collapses to zero paths after ResolveLayerPaths skips the
+				// monolith-only system-path key. No duplicate mapping logic.
+				resolved, err = actions.AddSystemSurfaceScope(list.layers, resolved, "", cfg)
+				if err != nil {
+					failures = append(failures, fmt.Sprintf("MID %s %s scope: %v", processName, list.name, err))
+					continue
+				}
+				// Emptiness gate: a declared, non-empty layer list that resolves
+				// to no real path means the write/read scope silently collapsed —
+				// the bug class this plan closes (a re-introduced monolith-only
+				// skip, or a misconfigured multitier whose tier surfaces are
+				// blank). ResolveLayerPaths errors on a blank Family A/B value, so
+				// the only way an empty string reaches `resolved` is an
+				// architecture-shaped surface collapse — count non-empty paths so
+				// a [""] / ["",""] surface is flagged, not silently treated as a
+				// resolved scope. Surface it statically in <1s instead of leaving
+				// it to a live dispatch's scope-diff halt.
+				hasPath := false
+				for _, p := range resolved {
+					if p != "" {
+						hasPath = true
+						break
+					}
+				}
+				if !hasPath {
+					failures = append(failures, fmt.Sprintf("MID %s %s scope: resolves to no paths on this %s config (layer collapsed)", processName, list.name, cfg.System.Architecture))
 				}
 			}
 			break

@@ -207,6 +207,10 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
+	allowed, err = AddSystemSurfaceScope(write, allowed, ctx.Params["channel"], cfg)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
+	}
 	snapshot, ok := ctx.State[CtxKeyPreAgentFingerprint].(WorkingTreeFingerprint)
 	if !ok {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: pre-agent-fingerprint not set — execute-agent must run snapshot-working-tree before RUN_AGENT")}

@@ -332,6 +332,97 @@ func TestNarrowAdapterScopeByChannel(t *testing.T) {
 	})
 }
 
+// TestAddSystemSurfaceScope covers the multitier system-path surface
+// resolution that closes the write-scope collapse: ResolveLayerPaths skips
+// the monolith-only system-path on multitier, so this helper appends the
+// channel's tier surface (api→backend, ui→frontend, whole-system→both) so the
+// production-code write the agent must make lands in scope. Monolith and the
+// system-path-absent case are no-ops; an unknown channel is a hard error
+// (no silent widen), mirroring narrowAdapterScopeByChannel.
+func TestAddSystemSurfaceScope(t *testing.T) {
+	multitier := &projectconfig.Config{}
+	multitier.System.Architecture = projectconfig.ArchMultitier
+	multitier.System.Backend = projectconfig.TierSpec{Path: "system/multitier/backend-java"}
+	multitier.System.Frontend = projectconfig.TierSpec{Path: "system/multitier/frontend-typescript"}
+
+	monolith := &projectconfig.Config{}
+	monolith.System.Architecture = projectconfig.ArchMonolith
+	monolith.System.Path = "system/monolith"
+
+	// write list as implement-system declares it; allowed is the
+	// ResolveLayerPaths output (system-path skipped on multitier, so only the
+	// migration path survives the base resolve).
+	write := []string{"system-path", "system-db-migration-path"}
+	base := []string{"system/db/migrations"}
+
+	t.Run("multitier api appends backend surface", func(t *testing.T) {
+		got, err := AddSystemSurfaceScope(write, base, "api", multitier)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		want := []string{"system/db/migrations", "system/multitier/backend-java"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("multitier ui appends frontend surface", func(t *testing.T) {
+		got, err := AddSystemSurfaceScope(write, base, "ui", multitier)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		want := []string{"system/db/migrations", "system/multitier/frontend-typescript"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("multitier whole-system appends both tiers", func(t *testing.T) {
+		got, err := AddSystemSurfaceScope(write, base, "", multitier)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		want := []string{"system/db/migrations", "system/multitier/backend-java", "system/multitier/frontend-typescript"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("monolith is a no-op (system-path already resolved upstream)", func(t *testing.T) {
+		got, err := AddSystemSurfaceScope(write, base, "api", monolith)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if !reflect.DeepEqual(got, base) {
+			t.Errorf("got %v, want unchanged %v", got, base)
+		}
+	})
+
+	t.Run("system-path absent from write is a no-op", func(t *testing.T) {
+		writeNoSystemPath := []string{"system-db-migration-path"}
+		got, err := AddSystemSurfaceScope(writeNoSystemPath, base, "api", multitier)
+		if err != nil {
+			t.Fatalf("unexpected err: %v", err)
+		}
+		if !reflect.DeepEqual(got, base) {
+			t.Errorf("got %v, want unchanged %v", got, base)
+		}
+	})
+
+	t.Run("unknown channel errors, no silent widen", func(t *testing.T) {
+		got, err := AddSystemSurfaceScope(write, base, "mobile", multitier)
+		if err == nil {
+			t.Fatalf("expected error for unknown channel, got %v", got)
+		}
+		if got != nil {
+			t.Errorf("on error the scope must be nil (no widen), got %v", got)
+		}
+		if !strings.Contains(err.Error(), "mobile") {
+			t.Errorf("error should name the offending channel: %v", err)
+		}
+	})
+}
+
 // writePhaseScopeTestConfig writes a minimal gh-optivem.yaml containing
 // the system.path + Family B `paths:` entries process-flow.yaml's MID
 // `read:` / `write:` scope lists reference. Used by the integration
@@ -1475,6 +1566,68 @@ func TestValidateOutputsAndScopes_AllInScope_StashesChangedFiles(t *testing.T) {
 	if got := ctx.GetString("phase-changed-files"); got != wantChanged {
 		t.Errorf("phase-changed-files: got %q, want %q", got, wantChanged)
 	}
+}
+
+// TestValidateOutputsAndScopes_MultitierSystemPathSurface is the #72
+// regression: on a multitier config, implement-system's
+// write: [system-path, system-db-migration-path] used to collapse to just the
+// migration path (ResolveLayerPaths skips the monolith-only system-path), so
+// the agent's correct backend/frontend tier writes landed out of scope and
+// halted on scope-diff. AddSystemSurfaceScope now resolves system-path to the
+// dispatch channel's tier surface, so the tier write is in scope — and
+// precision is preserved: an api dispatch writing the frontend tier is still
+// out of scope.
+func TestValidateOutputsAndScopes_MultitierSystemPathSurface(t *testing.T) {
+	newMultitierCfg := func() *projectconfig.Config {
+		cfg := &projectconfig.Config{}
+		cfg.System.Architecture = projectconfig.ArchMultitier
+		cfg.System.DbMigrationPath = "system/db/migrations"
+		cfg.System.Backend = projectconfig.TierSpec{Path: "system/multitier/backend-java"}
+		cfg.System.Frontend = projectconfig.TierSpec{Path: "system/multitier/frontend-typescript"}
+		return cfg
+	}
+	// validate runs implement-system on a multitier cfg with the given channel
+	// and dirty file, returning the resulting outputs-and-scopes-valid verdict.
+	validate := func(t *testing.T, channel, dirtyFile string) bool {
+		t.Helper()
+		repoPath := t.TempDir()
+		git := newFakeRunner(t, "git")
+		git.on([]string{"-C", repoPath, "status", "--porcelain"},
+			[]byte("?? "+dirtyFile+"\n"), nil)
+		a := newActions(Deps{Git: git, RepoPath: repoPath, Config: newMultitierCfg(), Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+		ctx := statemachine.NewContext()
+		ctx.Params["task-name"] = "implement-system"
+		ctx.Params["channel"] = channel
+		// Empty snapshot → the dirty path is attributed to this phase.
+		ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+		out := a.validateOutputsAndScopes(ctx)
+		if out.Err != nil {
+			t.Fatalf("unexpected err: %v", out.Err)
+		}
+		v, _ := ctx.Get("outputs-and-scopes-valid").(bool)
+		return v
+	}
+
+	t.Run("api dispatch writing backend tier is in scope (the #72 fix)", func(t *testing.T) {
+		if !validate(t, "api", "system/multitier/backend-java/src/main/java/com/acme/core/services/OrderService.java") {
+			t.Error("backend write on an api dispatch must be in scope")
+		}
+	})
+	t.Run("api dispatch writing the shared migration set is in scope", func(t *testing.T) {
+		if !validate(t, "api", "system/db/migrations/V3__add_shipping_fee_to_orders.sql") {
+			t.Error("migration write on an api dispatch must be in scope")
+		}
+	})
+	t.Run("ui dispatch writing frontend tier is in scope", func(t *testing.T) {
+		if !validate(t, "ui", "system/multitier/frontend-typescript/src/pages/Cart.tsx") {
+			t.Error("frontend write on a ui dispatch must be in scope")
+		}
+	})
+	t.Run("api dispatch writing frontend tier is still out of scope (precision preserved)", func(t *testing.T) {
+		if validate(t, "api", "system/multitier/frontend-typescript/src/pages/Cart.tsx") {
+			t.Error("frontend write on an api dispatch must remain out of scope")
+		}
+	})
 }
 
 func TestValidateOutputsAndScopes_ExternalDriverPortChange_PreservesPortPaths(t *testing.T) {
