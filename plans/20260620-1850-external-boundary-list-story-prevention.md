@@ -65,11 +65,85 @@ The recommendation is settled: **A** (External System Contract Criteria on the t
 
 > **Note — superseded idea.** An earlier draft of B had the `dsl-implementer` agent *silently* build an enumerable source when it spotted a list-shaped AC. Dropped: silent recovery masks the incomplete ticket and relies on a fragile mid-flow inference. The fail-loud guard above is preferred — it pushes the fix back to the ticket (where A wants it) and teaches correct authoring.
 
+## Flow — two sequential loops (not nested)
+
+The boundary is established as **its own loop that greens and commits before the acceptance test is written** — not nested under the acceptance loop.
+
+```
+PHASE 1 — contract loop (from ESCC)          PHASE 2 — acceptance loop (from AC)
+┌─────────────────────────────────────┐      ┌─────────────────────────────────────┐
+│ write ALL contract tests for the     │      │ write acceptance test        → RED   │
+│ ticket's declared boundary:          │      │ implement DSL + system-driver        │
+│   • shared register (stub + real)    │ then │   adapters + system                  │
+│   • stub-only register (fidelity)    │ ───► │   (on the green, committed boundary) │
+│                               → RED   │      │                                      │
+│ build stub (+ real/simulator) → GREEN│      │ acceptance test              → GREEN │
+│ commit: boundary proven              │      │ commit: feature done                 │
+└─────────────────────────────────────┘      └─────────────────────────────────────┘
+```
+
+- **Scope of Phase 1** = the boundary capability **this ticket's ESCC declares** (not every contract test globally), greened on **both** drivers — incl. the real/simulator side (for #65 the simulator already serves the list, so no real-side work).
+- **Why sequential, not nested:** ESCC gives the contract its own spec, so Phase 1 no longer needs the acceptance test to *discover* what to build (the only reason nesting exists). Payoff: unambiguous failure (a red AT in Phase 2 can only mean the system, never the stub), a reusable committed boundary, and two visible/teachable commits.
+- **Caveat (discovery):** sequential assumes ESCC is complete. If Phase 2 reveals an undeclared boundary need (e.g. the feature needs product *name*, ESCC declared only `id + price`), revise the ESCC and re-run Phase 1 — the guard-B path. The price of going explicit; fine for a specified corpus.
+- **Execution implication — this is a flow REORDER.** Today the acceptance test is authored first (`WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL` early in `implement-ticket`), with the contract/stub room interleaved after. The sequential model moves the contract loop **ahead** of acceptance-test authoring, with its own green + commit. That is a larger change to the top-level `implement-ticket` ordering than "stop skipping the room" — call it out for execution and confirm against `process-flow.yaml`.
+
+### Logic
+
+Top-level `implement-ticket`:
+
+```
+parse-ticket(ticket)                         # → Acceptance Criteria + ESCC (named systems)
+
+# PHASE 1 — CONTRACT LOOP (only if ESCC declared)
+if ticket.has_ESCC:
+    validate-external-systems-registered(ESCC.systems)   # fail loud on unknown name
+    for system S in ESCC.systems:
+        write-contract-tests(S, from=ESCC)   # shared + stub-only registers → RED
+        repeat until GREEN (cap N):
+            implement-external-stub(S)        # + real/simulator if not present
+            run-contract-suite(S)             # shared: stub & real agree;
+                                              # stub-only: stub faithful to staging
+        commit("boundary proven: " + S)       # Phase 1 closes GREEN + committed
+
+# PHASE 2 — ACCEPTANCE LOOP
+write-acceptance-tests(from=AC)              # → RED
+repeat until GREEN (cap N):
+    implement-dsl()
+    for channel C in touched_channels:
+        implement-system-driver-adapters(C)
+        implement-system(C)                   # production code, on the GREEN boundary
+    run-acceptance-suite()
+commit("feature done")
+```
+
+Gateway change (the #65 fix — footprint cascade stops being the only entry):
+
+```
+# OLD — footprint-derived (skipped #65):
+if at-external-driver-port-changed: enter contract room   else: skip   # ← #65 wrongly skipped
+
+# NEW — ESCC-driven, cascade kept as fallback:
+if ticket.has_ESCC:                 run Phase 1 contract loop   # override, cannot skip
+elif at-external-driver-port-changed: enter contract room      # cascade still serves the 90%
+else:                               skip                       # legitimately nothing external
+```
+
+Guard B (loud backstop, at the system step):
+
+```
+on system-implementer scope-exception(files, reason):
+    if files under external contract/stub paths AND not ticket.has_ESCC:
+        HARD FAIL: "needs External System Contract Criteria for <S> — add it and re-run"
+    else:
+        STOP_SCOPE_VIOLATION        # existing generic halt, unchanged
+```
+
 ## Steps
 
 - [ ] Step 1: Define the `## External System Contract Criteria` ticket format — exact `External System: <name>` label + Given/Then body (no `When`), with up to two registers per system: **Shared (stub + real)** = containment/shape (`id + price`), and **Stub-only** = exact-set + empty (fidelity). **Authoring is manual for now** — the corpus tickets carry ESCC explicitly; the `acceptance-criteria-refiner` auto-surface hook is a future enhancement, out of scope here.
 - [ ] Step 2 (A): Wire `parse-ticket` to detect a `## External System Contract Criteria` block, extract the named external system(s), and emit the "contract-needed" signal; route `GATE_EXTERNAL_DRIVER_PORTS_CHANGED` (`process-flow.yaml:905-913`) to open the contract/stub room on that signal (override the cascade); confirm the named system flows into `VALIDATE_EXTERNAL_SYSTEMS_REGISTERED`.
-- [ ] Step 3 (A): Feed the External System Contract Criteria to `contract-test-writer` so it authors **both registers** from the criteria (not inferred) — a **shared** contract test (stub + real, containment) and, when declared, a **stub-only** fidelity test (exact-set + empty). Confirm the red tests drive `external-system-stub-implementer` to build the list stub, and that **both go green before** system implementation depends on the boundary (boundary-first ordering).
+- [ ] Step 3 (A): Feed the External System Contract Criteria to `contract-test-writer` so it authors **both registers** from the criteria (not inferred) — a **shared** contract test (stub + real, containment) and, when declared, a **stub-only** fidelity test (exact-set + empty). The red tests drive `external-system-stub-implementer` to build the list stub.
+- [ ] Step 3b (A): **Reorder `implement-ticket`** so the contract loop (Phase 1) runs as its own green **+ commit** phase *ahead of* acceptance-test authoring, rather than interleaved after it (see "Flow — two sequential loops"). Confirm against `process-flow.yaml`'s top-level `implement-ticket` ordering; this is the larger structural change in the plan.
 - [ ] Step 4 (B): Make the "contract needed but undeclared" path fail loud — when the `system-implementer` scope-exception names external contract/stub files and no External System Contract Criteria was declared, replace the generic `STOP_SCOPE_VIOLATION` message with the actionable "add a `## External System Contract Criteria` section for `<system>` and re-run" guidance (`process-flow.yaml:2786-2795` + `validate-outputs-and-scopes` file categorization).
 - [ ] Step 5: Add `## External System Contract Criteria` to the #65 corpus ticket (ERP list) so the corpus exercises the new path.
 - [ ] Step 6: Re-run the #65 rehearsal (`scripts/atdd-rehearsal.sh 65 …`, multitier-java) and confirm it walks past `IMPLEMENT_AND_VERIFY_SYSTEM_API` without `STOP_SCOPE_VIOLATION`, the list contract test + stub exist, and the per-SKU stories still pass. *(Operator-driven verification.)*
