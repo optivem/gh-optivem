@@ -76,8 +76,10 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 
 // parseTicket runs the deterministic markdown parser against the picked
 // issue's body and stashes the canonical sections into Context state
-// under four kebab-cased keys (description, acceptance-criteria,
-// steps-to-reproduce, checklist). YAML placeholders consume these
+// under kebab-cased keys (description, acceptance-criteria,
+// steps-to-reproduce, checklist, plus the External System Contract Criteria
+// triple: ticket-has-escc, escc-systems, external-system-contract-criteria).
+// YAML placeholders consume these
 // directly via ExpandParams's state-fallback path; agent prompt bodies
 // consume them via the renderer's struct→params translation in
 // clauderun.go, which exposes them under the matching kebab-cased
@@ -107,6 +109,15 @@ func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
 	ctx.Set("acceptance-criteria", r.AcceptanceCriteria.Body)
 	ctx.Set("steps-to-reproduce", r.StepsToReproduce.Body)
 	ctx.Set("checklist", r.Checklist.Body)
+	// External System Contract Criteria (optional). `ticket-has-escc` is the
+	// routing signal the contract/stub room reads to open regardless of the
+	// file-change-derived `at-external-driver-port-changed` cascade;
+	// `escc-systems` feeds validate-external-systems-registered; the verbatim
+	// body flows to the contract-test writers via ${external-system-contract-
+	// criteria}. parse-ticket stays dumb — it reads only presence + names.
+	ctx.Set("ticket-has-escc", r.ExternalSystemContractCriteria.Found)
+	ctx.Set("escc-systems", r.ExternalSystemContractCriteria.Systems)
+	ctx.Set("external-system-contract-criteria", r.ExternalSystemContractCriteria.Body)
 	return statemachine.Outcome{}
 }
 

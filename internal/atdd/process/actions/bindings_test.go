@@ -2160,6 +2160,50 @@ func TestParseTicket_ChecklistSectionStashed(t *testing.T) {
 	}
 }
 
+func TestParseTicket_ESCCStashedAndFlagged(t *testing.T) {
+	esccBody := "External System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\n  Stub only:\n    Given no products\n    Then ERP has no products"
+	tk := &fakeTracker{sections: map[string]string{
+		"Acceptance Criteria":               "Scenario: list",
+		"External System Contract Criteria": esccBody,
+	}}
+	a := newActions(Deps{Tracker: tk})
+	ctx := statemachine.NewContext()
+	seedIssue(ctx)
+
+	if out := a.parseTicket(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got, _ := ctx.Get("ticket-has-escc").(bool); !got {
+		t.Errorf("ticket-has-escc: got %v, want true", ctx.Get("ticket-has-escc"))
+	}
+	systems, _ := ctx.Get("escc-systems").([]string)
+	if len(systems) != 1 || systems[0] != "ERP" {
+		t.Errorf("escc-systems: got %v, want [ERP]", systems)
+	}
+	if got := ctx.GetString("external-system-contract-criteria"); got != esccBody {
+		t.Errorf("external-system-contract-criteria not verbatim:\n got %q\nwant %q", got, esccBody)
+	}
+}
+
+func TestParseTicket_NoESCC_FlagFalse(t *testing.T) {
+	tk := &fakeTracker{sections: map[string]string{
+		"Acceptance Criteria": "Scenario: x",
+	}}
+	a := newActions(Deps{Tracker: tk})
+	ctx := statemachine.NewContext()
+	seedIssue(ctx)
+
+	if out := a.parseTicket(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	if got, _ := ctx.Get("ticket-has-escc").(bool); got {
+		t.Errorf("ticket-has-escc: got true, want false (no ESCC section)")
+	}
+	if systems, _ := ctx.Get("escc-systems").([]string); len(systems) != 0 {
+		t.Errorf("escc-systems: got %v, want none", systems)
+	}
+}
+
 func TestParseTicket_BothACAndChecklist_XORViolation(t *testing.T) {
 	tk := &fakeTracker{sections: map[string]string{
 		"Acceptance Criteria": "Scenario: x",

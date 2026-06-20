@@ -19,7 +19,19 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-**All design questions are resolved (see `## Resolved decisions`); the ESCC format is pinned and Steps 1–6 are concrete edits.** The three format/authoring questions are closed: parse-ticket stays dumb (presence + `External System: <name>` only), the register keyword vocabulary is fixed, and the two registers are authored by **two writers** (`contract-test-writer` for shared, new `stub-fidelity-test-writer` for stub-only). Re-enter with `/clear` then `/execute-plan plans/20260620-1850-external-boundary-list-story-prevention.md`. **Start at Step 1** — write the canonical `## External System Contract Criteria` format/keyword reference (it grounds Steps 2–4) — then Step 2 (`parse-ticket` + `GATE_EXTERNAL_DRIVER_PORTS_CHANGED` override), Step 3 (the two writers), Step 3b (reorder `implement-ticket` into two sequential loops), Step 4 (guard B fail-loud), Step 5 (#65 corpus ticket). Step 6 is operator-driven rehearsal.
+**Slice A is DONE and committed** (Step 1 + the Go half of Step 2): `escc-format.md` reference; `intake` parses the optional `## External System Contract Criteria` section (verbatim body + `External System: <name>` extraction via `ESCCResult`); `parse-ticket` stamps `ticket-has-escc` / `escc-systems` / `external-system-contract-criteria`; tests green in `intake` + `actions`.
+
+**Remaining = Slice B: one coupled Go+YAML engine change** (Steps 2-YAML, 3, 3b, 4). This is larger than "a flow reorder" — it touches Go too, and should get its own focused session. **Before coding, refine the plan to pin the Go scope** (then `/execute-plan` it). Concretely, Slice B must:
+- **`process-flow.yaml`** — route the contract/stub room open on `ticket-has-escc` (override the `GATE_EXTERNAL_DRIVER_PORTS_CHANGED` cascade); add the `stub-fidelity-test-writer` MID (EXECUTE_AGENT node + scope block + `${expected-outputs}`); reorder into Phase-1 (contract loop, own green + commit) ahead of acceptance-test authoring; guard-B message.
+- **`internal/engine/statemachine/channels.go`** — `UnrollExternalSystems` hardcodes the anchor to the `shared-contract` process + `IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS` node; an ESCC-first Phase-1 loop needs the unroll re-targeted.
+- **`internal/atdd/process/actions/external.go`** — `resolve-external-system` / `validate-external-systems-registered` key touched-ness off `external-driver-port-changed-paths` (set by the DSL impl); a Phase-1 that runs *before* any DSL impl must key off `escc-systems` instead.
+- **`internal/atdd/process/gates/bindings.go`** — register the new `ticket-has-escc` binding (land it *with* its YAML gateway so the registered-vs-referenced cross-check test stays green).
+- **`contract-test-writer.md`** — consume verbatim `${external-system-contract-criteria}`; wire `escc-format.md` into both writer prompts.
+- Re-validate load **invariants** (`commit-must-be-verified`, `halt-terminals-are-error-end`) and the `at-`/`ct-` namespacing; watch statemachine-test deadlock/RAM hazards.
+
+Steps 5 (edit GitHub issue #65 in the `shop` repo) and 6 (rehearsal re-run) are outward/operator-driven, not local edits.
+
+Re-enter with `/clear` then `/refine-plan plans/20260620-1850-external-boundary-list-story-prevention.md` (to pin Slice B's Go scope), then `/execute-plan` the same file.
 
 ## Root cause (pinned)
 
@@ -140,8 +152,7 @@ on system-implementer scope-exception(files, reason):
 
 ## Steps
 
-- [ ] Step 1: Define the `## External System Contract Criteria` ticket format — exact `External System: <name>` label + Given/Then body (no `When`), with up to two registers per system: **Shared (stub + real)** = containment/shape (`id + price`), and **Stub-only** = exact-set + empty (fidelity). **Authoring is manual for now** — the corpus tickets carry ESCC explicitly; the `acceptance-criteria-refiner` auto-surface hook is a future enhancement, out of scope here.
-- [ ] Step 2 (A): Wire `parse-ticket` to detect a `## External System Contract Criteria` block, extract the named external system(s), and emit the "contract-needed" signal; route `GATE_EXTERNAL_DRIVER_PORTS_CHANGED` (`process-flow.yaml:905-913`) to open the contract/stub room on that signal (override the cascade); confirm the named system flows into `VALIDATE_EXTERNAL_SYSTEMS_REGISTERED`.
+- [ ] Step 2 (A) — **YAML routing only (Go half DONE, committed).** Done: `parse-ticket` detects the `## External System Contract Criteria` block, extracts the named system(s), and stamps `ticket-has-escc` / `escc-systems` / `external-system-contract-criteria` (see `intake/parse.go` `ESCCResult`, `actions/tracker.go`). Remaining: route `GATE_EXTERNAL_DRIVER_PORTS_CHANGED` (`shared-contract`, ~`process-flow.yaml:910-911`) to open the contract/stub room on `ticket-has-escc` (override the cascade); register the `ticket-has-escc` gate binding (`gates/bindings.go`) **with** its YAML gateway; confirm `escc-systems` flows into `VALIDATE_EXTERNAL_SYSTEMS_REGISTERED` (keying off ESCC systems, not the port-change paths — `external.go`).
 - [ ] Step 3 (A): Author **both registers** from the ESCC (not inferred) via **two writers** (see Resolved decisions → "Register → test artifacts → two writers"):
   - Extend existing **`contract-test-writer`** to consume the verbatim `escc_body` and author the **Shared (stub + real)** register — containment, by key, both drivers. Its absolute by-key invariant (`contract-test-writer.md:22-24`) stays **unchanged**.
   - Add new agent **`stub-fidelity-test-writer`** that consumes `escc_body` and authors the **Stub only** register — exact-set (`has exactly products`) + empty (`has no products`), stub driver only — with its own clean absolute invariant. Wire it as a new EXECUTE_AGENT node + service-task + scope block + `${expected-outputs}` in `process-flow.yaml`, ordered inside the Phase 1 contract loop alongside `contract-test-writer`.

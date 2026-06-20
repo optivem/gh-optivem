@@ -16,4 +16,11 @@ const (
 	SectionAcceptanceCriteria = "Acceptance Criteria"
 	SectionChecklist          = "Checklist"
 	SectionStepsToReproduce   = "Steps to Reproduce"
+	// SectionExternalSystemContractCriteria is the optional spec for the
+	// inner / contract loop — present only on stories that cross an external
+	// system boundary. Its presence opens the contract/stub room and each
+	// `External System: <name>` line names a boundary. The register bodies
+	// pass through verbatim to the contract-test writers (the parser stays
+	// dumb — see internal/atdd/assets/runtime/shared/escc-format.md).
+	SectionExternalSystemContractCriteria = "External System Contract Criteria"
 )

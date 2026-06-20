@@ -34,6 +34,17 @@ type ChecklistItem struct {
 	Checked bool
 }
 
+// ESCCResult is the External System Contract Criteria section with its
+// `External System: <name>` lines pre-parsed into Systems. The embedded
+// Section carries the raw body verbatim so the contract-test writers receive
+// the register bodies unaltered (the parser stays dumb — it interprets only
+// presence + the named systems, never the Given/Then bodies). Systems is empty
+// when the section is absent or declares no `External System:` line.
+type ESCCResult struct {
+	Section
+	Systems []string
+}
+
 // CheckedCount returns the number of items with Checked == true.
 func (c ChecklistResult) CheckedCount() int {
 	n := 0
@@ -53,10 +64,11 @@ func (c ChecklistResult) CheckedCount() int {
 // structural cycles require Checklist) — the parser itself enforces only
 // shape rules (see Parse / ParseSections).
 type Result struct {
-	Description        Section
-	AcceptanceCriteria Section
-	StepsToReproduce   Section
-	Checklist          ChecklistResult
+	Description                    Section
+	AcceptanceCriteria             Section
+	StepsToReproduce               Section
+	Checklist                      ChecklistResult
+	ExternalSystemContractCriteria ESCCResult
 }
 
 // CanonicalHeadings is the ordered list of section headings every ticket
@@ -69,6 +81,7 @@ var CanonicalHeadings = []string{
 	SectionAcceptanceCriteria,
 	SectionStepsToReproduce,
 	SectionChecklist,
+	SectionExternalSystemContractCriteria,
 }
 
 // Parse extracts canonical sections from issue-body markdown and runs
@@ -85,10 +98,11 @@ var CanonicalHeadings = []string{
 // before GATE_TICKET_KIND.
 func Parse(body string) (*Result, error) {
 	sections := map[string]string{
-		SectionDescription:        ExtractSection(body, SectionDescription).Body,
-		SectionAcceptanceCriteria: ExtractSection(body, SectionAcceptanceCriteria).Body,
-		SectionStepsToReproduce:   ExtractSection(body, SectionStepsToReproduce).Body,
-		SectionChecklist:          ExtractSection(body, SectionChecklist).Body,
+		SectionDescription:                    ExtractSection(body, SectionDescription).Body,
+		SectionAcceptanceCriteria:             ExtractSection(body, SectionAcceptanceCriteria).Body,
+		SectionStepsToReproduce:               ExtractSection(body, SectionStepsToReproduce).Body,
+		SectionChecklist:                      ExtractSection(body, SectionChecklist).Body,
+		SectionExternalSystemContractCriteria: ExtractSection(body, SectionExternalSystemContractCriteria).Body,
 	}
 	return ParseSections(sections)
 }
@@ -113,11 +127,14 @@ func ParseSections(sections map[string]string) (*Result, error) {
 			}
 		}
 	}
+	esccSec := section(SectionExternalSystemContractCriteria)
+	escc := ESCCResult{Section: esccSec, Systems: externalSystemNames(esccSec.Body)}
 	r := &Result{
-		Description:        section(SectionDescription),
-		AcceptanceCriteria: section(SectionAcceptanceCriteria),
-		StepsToReproduce:   section(SectionStepsToReproduce),
-		Checklist:          checklist,
+		Description:                    section(SectionDescription),
+		AcceptanceCriteria:             section(SectionAcceptanceCriteria),
+		StepsToReproduce:               section(SectionStepsToReproduce),
+		Checklist:                      checklist,
+		ExternalSystemContractCriteria: escc,
 	}
 	if r.AcceptanceCriteria.Found && r.Checklist.Found {
 		return nil, fmt.Errorf("ticket body declares both Acceptance Criteria and Checklist; pick one matching the ticket-kind")
@@ -182,6 +199,37 @@ func ExtractChecklist(body string) ChecklistResult {
 		}
 	}
 	return res
+}
+
+// ExtractESCC extracts the External System Contract Criteria section and
+// pre-parses every `External System: <name>` line into Systems. The embedded
+// Section carries the raw body verbatim so the contract-test writers receive
+// the register bodies unaltered. The parser interprets only presence + the
+// named systems — never the Given/Then register bodies.
+func ExtractESCC(body string) ESCCResult {
+	sec := ExtractSection(body, SectionExternalSystemContractCriteria)
+	return ESCCResult{Section: sec, Systems: externalSystemNames(sec.Body)}
+}
+
+// externalSystemNamesRE matches an `External System: <name>` line (optional
+// leading indent, case-insensitive label). The captured name is trimmed; the
+// register bodies on surrounding lines are ignored — the parser stays dumb.
+var externalSystemNamesRE = regexp.MustCompile(`(?i)^\s*External System:\s*(.+?)\s*$`)
+
+// externalSystemNames returns the names declared by every `External System:`
+// line in an ESCC body, in declaration order. Returns nil when the body
+// declares none (an absent or register-only section).
+func externalSystemNames(body string) []string {
+	if body == "" {
+		return nil
+	}
+	var names []string
+	for line := range strings.SplitSeq(body, "\n") {
+		if m := externalSystemNamesRE.FindStringSubmatch(line); m != nil {
+			names = append(names, m[1])
+		}
+	}
+	return names
 }
 
 // checklistLineRE matches a markdown task-list line: optional indent, a
