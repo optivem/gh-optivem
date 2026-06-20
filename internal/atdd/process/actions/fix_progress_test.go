@@ -40,6 +40,32 @@ func TestFixFailureSignature(t *testing.T) {
 		}
 	})
 
+	t.Run("run-#65 Suite-Results: MM:SS.mmm duration column collapses to one signature", func(t *testing.T) {
+		// The runner's Suite Results table prints a per-suite MM:SS.mmm
+		// duration that varies run-to-run for a byte-identical failure. The
+		// four #65 variants (.145 / .158 / .259 / .405) must all collapse.
+		line := func(dur string) string {
+			return "Suite Results:\nlatest - Contract (real)  FAILED  " + dur + "\nTests run: 5, Failures: 1"
+		}
+		variants := []string{"00:02.145", "00:02.158", "00:02.259", "00:02.405"}
+		want := fixFailureSignature(line(variants[0]))
+		for _, v := range variants[1:] {
+			if got := fixFailureSignature(line(v)); got != want {
+				t.Errorf("suite-duration %q: signature %q != baseline %q", v, got, want)
+			}
+		}
+	})
+
+	t.Run("MM:SS.mmm strip does not over-normalise real content differences", func(t *testing.T) {
+		// Same volatile duration column, genuinely different failing suite →
+		// the new token must not flatten them to one signature.
+		a := "latest - Contract (real)  FAILED  00:02.158\nshouldRejectQuantity100 FAILED"
+		b := "latest - Contract (real)  FAILED  00:02.158\nshouldRejectQuantity200 FAILED"
+		if fixFailureSignature(a) == fixFailureSignature(b) {
+			t.Errorf("distinct failures collapsed despite identical suite-duration: %q", fixFailureSignature(a))
+		}
+	})
+
 	t.Run("different failures → distinct", func(t *testing.T) {
 		a := "PlaceOrderNegativeTest > shouldRejectQuantity100() FAILED\nBUILD FAILED in 12s"
 		b := "PlaceOrderNegativeTest > shouldRejectQuantity200() FAILED\nBUILD FAILED in 12s"

@@ -96,6 +96,9 @@ func fixFailureSignature(s string) string {
 	}
 	s = ansiSeq.ReplaceAllString(s, "")
 	s = clockToken.ReplaceAllString(s, "<time>")
+	// Applied AFTER clockToken so a full HH:MM:SS clock is already "<time>"
+	// and the MM:SS shape can't eat its "MM:SS" tail.
+	s = suiteDurationToken.ReplaceAllString(s, "<suite-dur>")
 	s = durationToken.ReplaceAllString(s, "<dur>")
 	// Collapse each line's internal whitespace and drop blank lines so
 	// cosmetic reflow doesn't perturb the key.
@@ -117,6 +120,13 @@ var (
 	// partially eaten by the duration rule ("29" is not unit-suffixed, so it
 	// would survive anyway, but ordering keeps the intent explicit).
 	clockToken = regexp.MustCompile(`\b\d{1,2}:\d{2}:\d{2}(\.\d+)?\b`)
+	// The runner's Suite-Results duration column, MM:SS with an optional
+	// millisecond fraction ("00:02.158", "01:04"). This is the timing column
+	// in lines like "latest - Contract (real)  FAILED  00:02.158", which
+	// varies run-to-run for a byte-identical failure. Matched after
+	// clockToken (above) so an HH:MM:SS clock — already "<time>" — can't be
+	// re-matched on its trailing MM:SS segment.
+	suiteDurationToken = regexp.MustCompile(`\b\d{1,2}:\d{2}(\.\d{1,3})?\b`)
 	// A duration: one or more number+time-unit parts ("12s", "1.234 s",
 	// "350ms", composite "1m 4s 300ms"). Composite runs collapse to a single
 	// <dur> so "1m 4s" and "12s" — the same build, different wall-clock —
