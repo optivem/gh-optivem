@@ -62,7 +62,7 @@ system-test:
     dsl-core: system-test/java/src/main/java/testkit/dsl/core/shop
     ct-test: system-test/java/src/test/java/shop/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shop/shared
-    testkit-common: system-test/java/src/main/java/testkit/common/shop
+    common: system-test/java/src/main/java/testkit/common/shop
 `
 
 // validMicroservicesConfig returns a Config that passes Validate — the

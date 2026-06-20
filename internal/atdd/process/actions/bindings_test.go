@@ -464,7 +464,7 @@ system-test:
     external-system-driver-port: driver/typescript/src/external-port
     external-system-driver-adapter: driver/typescript/src/external-adapter
     system-driver-adapter-shared: driver/typescript/src/adapter/shared
-    testkit-common: driver/typescript/src/common
+    common: driver/typescript/src/common
 `
 	if err := os.WriteFile(filepath.Join(repoPath, "gh-optivem.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write gh-optivem.yaml: %v", err)
@@ -2531,7 +2531,7 @@ system-test:
     external-system-driver-port: driver/typescript/src/external-port
     external-system-driver-adapter: driver/typescript/src/external-adapter
     system-driver-adapter-shared: driver/typescript/src/adapter/shared
-    testkit-common: driver/typescript/src/common
+    common: driver/typescript/src/common
 
 external-systems:
   warehouse:

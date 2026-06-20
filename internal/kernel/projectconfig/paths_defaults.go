@@ -23,7 +23,7 @@ const DefaultDbMigrationPath = "system/db/migrations"
 // `internal/atdd/process/process-flow.yaml`: system-driver-port,
 // system-driver-adapter, external-system-driver-port,
 // external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test,
-// system-driver-adapter-shared, testkit-common.
+// system-driver-adapter-shared, common.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
 // the scaffolder leaves `paths:` absent for partial configs (no
@@ -167,7 +167,7 @@ func CanonicalPathKeys() []string {
 		"dsl-core",
 		"ct-test",
 		"system-driver-adapter-shared",
-		"testkit-common",
+		"common",
 	}
 }
 

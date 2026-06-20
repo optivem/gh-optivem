@@ -41,7 +41,7 @@ compile failure — so self-compiling never touches that red.
 Call only methods that exist on a type — never fake a conventional-looking
 call (`flatMap`, `orElse`, …) to a method that isn't there. If a type you
 depend on genuinely lacks what you need and it is in your write scope
-(e.g. a `testkit-common` primitive — `Result`, `Converter`, `Closer`,
+(e.g. a `common` primitive — `Result`, `Converter`, `Closer`,
 `ResultAssert`), add the method there and prove it compiles; if the type
 is out of scope, emit the scope-exception envelope instead of leaving a
 broken call for downstream.
