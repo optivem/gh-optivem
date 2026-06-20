@@ -804,6 +804,24 @@ processes:
           # " (external: ...)" suffix that disambiguates the two.
           layer-suffix: ""
 
+      # ESCC-first contract-room entry (plan 20260620-1850). The external
+      # contract/stub room opens when EITHER the ticket declares External System
+      # Contract Criteria (the explicit, reviewable signal — parse-ticket stamps
+      # `ticket-has-escc`) OR the file-change proxy `at-external-driver-port-changed`
+      # fired (the legacy 90% path, now demoted to a FALLBACK). ESCC is checked
+      # FIRST so a list-shaped externally-backed story (the #65 class) that changes
+      # no external-driver PORT file still enters the room and gets its list stub +
+      # contract test built before system implementation — the halt this plan
+      # closes. Both true-branches land on VALIDATE_EXTERNAL_SYSTEMS_REGISTERED;
+      # validate-external-systems-registered / resolve-external-system then derive
+      # the touched-system set by PRECEDENCE (escc-systems when declared, else the
+      # port-change paths — see external.go), so the explicit declaration is
+      # authoritative when present.
+      - id: GATE_TICKET_HAS_ESCC
+        type: gateway
+        binding: ticket-has-escc
+        name: "Ticket Declares External System Contract Criteria?"
+
       - id: GATE_EXTERNAL_DRIVER_PORTS_CHANGED
         type: gateway
         binding: at-external-driver-port-changed
@@ -814,9 +832,12 @@ processes:
       # external-driver-port change touches any external system absent from the
       # external-systems: registry — such a system would have no unrolled clone
       # and be silently skipped (the #65-class bug plan 20260613-1835 closed,
-      # now seeing the whole changed-set against the whole registry). The
-      # zero-names case is covered by the gate above (a port change is
-      # guaranteed whenever this is reached).
+      # now seeing the whole changed-set against the whole registry). Reached via
+      # either entry gate (ESCC-declared or port-changed); the touched-system set
+      # it validates is derived by precedence (escc-systems when ticket-has-escc,
+      # else the port-change paths — external.go). On the port-changed branch a
+      # non-empty change is guaranteed; on the ESCC branch the declared systems
+      # are the source.
       - id: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED
         type: service-task
         action: validate-external-systems-registered
@@ -846,7 +867,8 @@ processes:
       # cycle (resolve-external-system + GATE_EXTERNAL_SYSTEM_TOUCHED), so a
       # ticket runs only the cycles for the external systems it touched. On a
       # project with no external systems the node stays single+static and is
-      # never reached (its entry gate is port-keyed).
+      # never reached (its entry gates are ESCC- and port-keyed, and a
+      # project with no external systems declares neither).
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
         type: call-activity
         process: implement-and-verify-external-system-driver-adapters-contract-tests
@@ -902,11 +924,15 @@ processes:
       - {from: VALIDATE_CHANNELS_REGISTERED, to: GATE_DSL_PORT_CHANGED}
       - {from: GATE_DSL_PORT_CHANGED, to: IMPLEMENT_AND_VERIFY_DSL, when: "at-dsl-port-changed == true"}
       - {from: GATE_DSL_PORT_CHANGED, to: SHARED_CONTRACT_END,      when: "at-dsl-port-changed == false"}
-      - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED}
-      # true-branch routes through the upfront registration check, then into the
-      # external-system clones (UnrollExternalSystems rewrites the anchor into
-      # one guarded clone per registered external system at load time; the seam
-      # predicate is preserved onto VALIDATE → clone0).
+      - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_TICKET_HAS_ESCC}
+      # ESCC-first OR-entry (plan 20260620-1850): an explicit ESCC declaration
+      # opens the room directly; otherwise fall through to the legacy port-changed
+      # proxy. Both true-branches route through the upfront registration check,
+      # then into the external-system clones (UnrollExternalSystems rewrites the
+      # anchor into one guarded clone per registered external system at load time;
+      # the seam predicate is preserved onto VALIDATE → clone0).
+      - {from: GATE_TICKET_HAS_ESCC, to: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED,    when: "ticket-has-escc == true"}
+      - {from: GATE_TICKET_HAS_ESCC, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED,      when: "ticket-has-escc == false"}
       - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED, when: "at-external-driver-port-changed == true"}
       - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: SHARED_CONTRACT_END,                  when: "at-external-driver-port-changed == false"}
       - {from: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS}
@@ -1963,6 +1989,12 @@ processes:
           agent: contract-test-writer
           # test-agent tier: writing tests is the test-contract step.
           category: test-agent
+          # External System Contract Criteria (plan 20260620-1850). The verbatim
+          # ESCC body parse-ticket stamped into State flows here via ExpandParams's
+          # state-fallback and reaches the prompt as ${external-system-contract-
+          # criteria}. Empty on the non-ESCC (port-changed fallback) path — the
+          # writer then models on the existing sibling contract test, unchanged.
+          external-system-contract-criteria: ${external-system-contract-criteria}
         read:  [ct-test, dsl-port, common]
         write: [ct-test, dsl-port, dsl-core, common]
         scope-rationale: |

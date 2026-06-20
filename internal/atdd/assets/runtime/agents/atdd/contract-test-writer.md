@@ -13,6 +13,19 @@ ${scope-block}
 
 - No per-invocation parameters; the contract-test (`${ct-test}`) target is the existing DSL surface (`${dsl-port}`) visible in scope.
 
+### External System Contract Criteria (optional)
+
+${external-system-contract-criteria}
+
+When the block above is **non-empty**, it is the ticket's contract spec — author the contract tests **from it** rather than inferring them. Translate **only** the `Shared (stub + real):` register: it runs against both drivers, so it is the by-key / containment register your absolute invariant below already requires.
+
+- `Given products <A> (<price>), <B> (<price>)` → stage those products in the test's `given()`.
+- `Then <System> has products <A>, <B>` → assert each named product is **present** (containment, by key) — exactly the isolation-safe shape Step 1 mandates. The `Then` pins the shape the feature depends on (e.g. `id + price`), not the whole external payload.
+
+Leave any `Stub only:` register (`has exactly products` / `has no products`) **untouched** — a separate writer owns the stub-only fidelity tests, and authoring exact-set / empty here would break your by-key invariant against the shared, never-reset real system.
+
+When the block is **empty** (no External System Contract Criteria declared — the file-change-proxy path), ignore this section and model each test on the existing sibling contract test, as Step 1 describes.
+
 ## Steps
 
 1. Write External System Contract Tests (`${ct-test}`) against the existing DSL surface (`${dsl-port}`). If new DSL methods (`${dsl-port}`) are needed, call them in the test as if they exist.

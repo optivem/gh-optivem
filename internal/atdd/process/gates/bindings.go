@@ -169,6 +169,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("at-system-driver-port-changed", b.atSystemDriverPortChanged)
 	r.Register("at-external-driver-port-changed", b.atExternalDriverPortChanged)
 	r.Register("ct-dsl-port-changed", b.ctDslPortChanged)
+	// ESCC-first contract-room entry (plan 20260620-1850). GATE_TICKET_HAS_ESCC
+	// in shared-contract opens the external contract/stub room when the ticket
+	// declares External System Contract Criteria, regardless of the file-change
+	// proxy at-external-driver-port-changed (now the fallback). parse-ticket
+	// stamps the bool into State; this gate is a pure state-reader.
+	r.Register("ticket-has-escc", b.ticketHasESCC)
 	// Cover-path mode-aware acceptance-test verify gate + its case-D
 	// terminal-verify gate (plan 20260606-1518). The shared verify gate
 	// routes on at-verify-expectation so the cover path expects AT green
@@ -426,6 +432,18 @@ func (b bindings) atExternalDriverPortChanged(ctx *statemachine.Context) statema
 
 func (b bindings) ctDslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "ct-dsl-port-changed")
+}
+
+// ticketHasESCC is GATE_TICKET_HAS_ESCC, the ESCC-first entry to the external
+// contract/stub room (plan 20260620-1850). parse-ticket stamps
+// ctx.State["ticket-has-escc"] = (the ## External System Contract Criteria
+// section is present) once per ticket, well upstream of shared-contract; this
+// gate reads it back so a story that declares ESCC enters the room even when no
+// external-driver PORT file changed (the #65 list-shaped-story halt). Strict —
+// parse-ticket always sets the key (false when absent), so a missing key is a
+// wiring bug, not a default no.
+func (b bindings) ticketHasESCC(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "ticket-has-escc")
 }
 
 // atVerifyExpectation is the mode-aware acceptance-test verify gate (plan

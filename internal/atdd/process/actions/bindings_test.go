@@ -2692,6 +2692,69 @@ func TestResolveExternalSystem_IgnoresSharedResidual(t *testing.T) {
 	}
 }
 
+func TestResolveExternalSystem_ESCCPrecedence_CaseInsensitive_NoPortChange(t *testing.T) {
+	// The #65 fix (plan 20260620-1850): when the ticket declares ESCC, the
+	// touched-set comes from escc-systems, NOT the port-change paths — which are
+	// empty here (a list-shaped story that changed no external-driver PORT file).
+	// The clone's baked name is the lowercase registry key "warehouse"; the
+	// ticket declares "Warehouse" — matched case-insensitively → touched.
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := resolveCtx("warehouse", "simulator", "") // no port-changed paths
+	ctx.Set("ticket-has-escc", true)
+	ctx.Set("escc-systems", []string{"Warehouse"})
+	if out := a.resolveExternalSystem(ctx); out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got, _ := ctx.State["external-system-touched"].(bool); !got {
+		t.Errorf("external-system-touched: got false, want true (ESCC declares Warehouse, no port change)")
+	}
+}
+
+func TestResolveExternalSystem_ESCCPrecedence_UndeclaredCloneUntouched(t *testing.T) {
+	// ESCC declares only warehouse; the payments clone is not in escc-systems →
+	// untouched, even if a port path mentions payments (the explicit declaration
+	// is authoritative when present — never a union).
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := resolveCtx("payments", "test-instance",
+		"driver/typescript/src/external-port/payments/dtos/ChargeRequest.ts")
+	ctx.Set("ticket-has-escc", true)
+	ctx.Set("escc-systems", []string{"warehouse"})
+	if out := a.resolveExternalSystem(ctx); out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	if got, _ := ctx.State["external-system-touched"].(bool); got {
+		t.Errorf("external-system-touched: got true, want false (payments not in ESCC)")
+	}
+}
+
+func TestValidateExternalSystemsRegistered_ESCC_CaseInsensitive_OK(t *testing.T) {
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket-has-escc", true)
+	ctx.Set("escc-systems", []string{"Warehouse", "PAYMENTS"})
+	if out := a.validateExternalSystemsRegistered(ctx); out.Err != nil {
+		t.Errorf("unexpected err for registered ESCC systems (case-insensitive): %v", out.Err)
+	}
+}
+
+func TestValidateExternalSystemsRegistered_ESCC_Unregistered_Errors(t *testing.T) {
+	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
+	a := newActions(Deps{Config: cfg})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket-has-escc", true)
+	ctx.Set("escc-systems", []string{"Mystery"})
+	out := a.validateExternalSystemsRegistered(ctx)
+	if out.Err == nil {
+		t.Fatalf("want error for unregistered ESCC system, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "External System Contract Criteria") || !strings.Contains(out.Err.Error(), "mystery") {
+		t.Errorf("error should name the ESCC source and the unregistered system, got: %v", out.Err)
+	}
+}
+
 func TestResolveExternalSystem_MissingBakedName_HardErrors(t *testing.T) {
 	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})

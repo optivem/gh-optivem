@@ -234,6 +234,11 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 			"common":               "true",
 			"external-system-name": "erp",
 			"test-category":        "contract",
+			// ESCC body the contract-test-writer renders into its optional
+			// ${external-system-contract-criteria} input (plan 20260620-1850).
+			// Non-empty here so the maximally-seeded matrix fills the placeholder;
+			// production passes it via the write-contract-tests node param.
+			"external-system-contract-criteria": "External System: erp\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then erp has products Apple (1.00)",
 		},
 		Headless: true,
 		Stdout:   io.Discard,
@@ -350,6 +355,10 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 			"common":                "true",
 			"test-category":         "acceptance",
 			"external-system-name":  "erp",
+			//   - ${external-system-contract-criteria} — contract-test-writer's
+			//     optional ESCC input, bound from State via the write-contract-tests
+			//     node param (plan 20260620-1850).
+			"external-system-contract-criteria": "External System: erp",
 		}
 
 		got, err := renderPrompt(opts)

@@ -82,6 +82,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"at-system-driver-port-changed",
 		"at-external-driver-port-changed",
 		"ct-dsl-port-changed",
+		"ticket-has-escc",
 		"real-kind",
 		"external-system-touched",
 		"channel-touched",
