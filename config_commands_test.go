@@ -461,7 +461,7 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		"system-test/java",
 		"external-systems/stubs",
 		"external-systems/simulators",
-		// system-test.paths.* — the nine canonical Family B testkit
+		// system-test.paths.* — the ten canonical Family B testkit
 		// locations DefaultPaths emits for (java, "system-test/java",
 		// "com/acme/pageturner"). The Java source package is a MIDDLE
 		// segment (src/main/java/<pkg>/testkit/…, src/test/java/<pkg>/
@@ -481,6 +481,9 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		// system-test.paths.system-driver-adapter-shared — the shared
 		// test-transport foundation DefaultPaths now emits; preflight stats it.
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/driver/adapter/shared",
+		// system-test.paths.testkit-common — the shared common primitives
+		// (Result/Converter/Closer/ResultAssert) DefaultPaths now emits.
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/common",
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/dsl/port",
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/dsl/core",
 		"system-test/java/src/test/java/com/acme/pageturner/systemtest/latest/acceptance",
@@ -806,6 +809,7 @@ system-test:
     dsl-core: system-test/src/main/java/testkit/dsl/core/shop-tests
     ct-test: system-test/src/test/java/shop-tests/latest/contract
     system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop-tests/shared
+    testkit-common: system-test/src/main/java/testkit/common/shop-tests
 `
 
 // multiRepoMultitierBody is a pre-repos:-field config of the canonical
@@ -850,6 +854,7 @@ system-test:
     dsl-core: system-test/src/main/java/testkit/dsl/core/shop-tests
     ct-test: system-test/src/test/java/shop-tests/latest/contract
     system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop-tests/shared
+    testkit-common: system-test/src/main/java/testkit/common/shop-tests
 `
 
 // monoRepoMonolithBody is the canonical mono-repo monolith config —
@@ -961,6 +966,7 @@ func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
     dsl-core: system-test/java/src/main/java/testkit/dsl/core
     ct-test: system-test/java/src/test/java/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shared
+    testkit-common: system-test/java/src/main/java/testkit/common
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1096,6 +1102,7 @@ const dbMigrationPathTestBody = monoRepoMonolithBody + `  paths:
     dsl-core: system-test/java/src/main/java/testkit/dsl/core
     ct-test: system-test/java/src/test/java/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shared
+    testkit-common: system-test/java/src/main/java/testkit/common
 `
 
 func TestRunConfigMigrate_BackfillsDbMigrationPathWhenAbsent(t *testing.T) {

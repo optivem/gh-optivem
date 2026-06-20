@@ -17,13 +17,13 @@ import (
 const DefaultDbMigrationPath = "system/db/migrations"
 
 // DefaultPaths returns the canonical Family B `paths:` entries for the
-// given system-test language, root, and Java source package. The nine keys
+// given system-test language, root, and Java source package. The ten keys
 // match the doctrine referenced by the inline `read:` / `write:` scope
 // on writing-agent MID nodes in
 // `internal/atdd/process/process-flow.yaml`: system-driver-port,
 // system-driver-adapter, external-system-driver-port,
 // external-system-driver-adapter, at-test, dsl-port, dsl-core, ct-test,
-// system-driver-adapter-shared.
+// system-driver-adapter-shared, testkit-common.
 //
 // Returns nil when testLang is unsupported or systemTestRoot is empty —
 // the scaffolder leaves `paths:` absent for partial configs (no
@@ -167,6 +167,7 @@ func CanonicalPathKeys() []string {
 		"dsl-core",
 		"ct-test",
 		"system-driver-adapter-shared",
+		"testkit-common",
 	}
 }
 
@@ -195,6 +196,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			"src/testkit/dsl/core",
 			"tests/latest/contract",
 			"src/testkit/driver/adapter/shared",
+			"src/testkit/common",
 		}, true
 	case LangJava:
 		main := path.Join("src/main/java", javaPackage, "testkit")
@@ -209,6 +211,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			path.Join(main, "dsl/core"),
 			path.Join(test, "latest/contract"),
 			path.Join(main, "driver/adapter/shared"),
+			path.Join(main, "common"),
 		}, true
 	case LangDotnet:
 		return []string{
@@ -221,6 +224,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			"Dsl.Core",
 			"SystemTests/Latest/ExternalSystemContractTests",
 			"Driver.Adapter/Shared",
+			"Common",
 		}, true
 	default:
 		return nil, false

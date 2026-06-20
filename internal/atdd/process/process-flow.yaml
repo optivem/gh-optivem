@@ -1877,8 +1877,8 @@ processes:
           agent: acceptance-test-writer
           # test-agent tier: writing tests is the test-contract step.
           category: test-agent
-        read:  [at-test, dsl-port]
-        write: [at-test, dsl-port, dsl-core]
+        read:  [at-test, dsl-port, testkit-common]
+        write: [at-test, dsl-port, dsl-core, testkit-common]
         scope-rationale: |
           dsl-core is write-only because the test-writer appends `TODO: DSL`
           stubs there so the project compiles; reading existing dsl-core
@@ -1916,8 +1916,8 @@ processes:
           agent: contract-test-writer
           # test-agent tier: writing tests is the test-contract step.
           category: test-agent
-        read:  [ct-test, dsl-port]
-        write: [ct-test, dsl-port, dsl-core]
+        read:  [ct-test, dsl-port, testkit-common]
+        write: [ct-test, dsl-port, dsl-core, testkit-common]
         scope-rationale: |
           dsl-core is write-only because the test-writer appends `TODO: DSL`
           stubs there so the project compiles; reading existing dsl-core
@@ -1959,8 +1959,8 @@ processes:
         # signature to a port (interfaces hold signatures only).
         # implement-{system,external-system}-driver-adapters then replaces
         # those stubs with real impls in the downstream cascade.
-        read:  [dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter]
-        write: [dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter]
+        read:  [dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, testkit-common]
+        write: [dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, testkit-common]
 
       - id: IMPL_DSL_END
         type: end-event
@@ -2059,7 +2059,7 @@ processes:
           agent: system-driver-adapter-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared]
+        read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared, testkit-common]
         # This node is shared: UnrollSystemDriverAdapterChannels clones it
         # once per channel (binding a `channel` param). The scope checker
         # (validate-outputs-and-scopes) narrows this whole-layer write down
@@ -2070,7 +2070,9 @@ processes:
         # (driver/adapter/shared); it is NOT narrowed by channel (the
         # narrower rewrites only the exact system-driver-adapter entry), so
         # every per-channel dispatch can extend the shared foundation.
-        write: [system-driver-adapter, system-driver-adapter-shared]
+        # testkit-common (Result/Converter/Closer/ResultAssert) is the shared
+        # primitive layer every channel adapter may extend (NOT narrowed).
+        write: [system-driver-adapter, system-driver-adapter-shared, testkit-common]
 
       - id: IMPL_SYS_DA_END
         type: end-event
@@ -2096,8 +2098,8 @@ processes:
           agent: system-driver-adapter-updater
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared]
-        write: [system-driver-adapter, system-driver-adapter-shared]
+        read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared, testkit-common]
+        write: [system-driver-adapter, system-driver-adapter-shared, testkit-common]
 
       - id: UPDATE_SYS_DA_END
         type: end-event
@@ -2124,8 +2126,8 @@ processes:
         # be driven via Playwright, and the HTTP wrappers under
         # driver/adapter/shared are shared across api + every external adapter,
         # so external adapter implementers read and extend the foundation too.
-        read:  [external-system-driver-port, external-system-driver-adapter, system-driver-adapter-shared]
-        write: [external-system-driver-adapter, system-driver-adapter-shared]
+        read:  [external-system-driver-port, external-system-driver-adapter, system-driver-adapter-shared, testkit-common]
+        write: [external-system-driver-adapter, system-driver-adapter-shared, testkit-common]
 
       - id: IMPL_EXT_DA_END
         type: end-event
@@ -2152,8 +2154,8 @@ processes:
           agent: external-system-driver-adapter-updater
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        read:  [external-system-driver-port, external-system-driver-adapter, system-driver-adapter-shared]
-        write: [external-system-driver-adapter, system-driver-adapter-shared]
+        read:  [external-system-driver-port, external-system-driver-adapter, system-driver-adapter-shared, testkit-common]
+        write: [external-system-driver-adapter, system-driver-adapter-shared, testkit-common]
 
       - id: UPDATE_EXT_DA_END
         type: end-event
@@ -2178,8 +2180,8 @@ processes:
         # External stub clients sit on the shared HTTP/WireMock transport
         # (e.g. TaxStubClient imports shared.client.http / shared.client.wiremock),
         # so the stub implementer reads and may extend the shared foundation.
-        read:  [external-system-driver-adapter, system-driver-adapter-shared]
-        write: [external-system-driver-adapter, system-driver-adapter-shared]
+        read:  [external-system-driver-adapter, system-driver-adapter-shared, testkit-common]
+        write: [external-system-driver-adapter, system-driver-adapter-shared, testkit-common]
 
       - id: IMPL_STUBS_END
         type: end-event
@@ -2210,8 +2212,8 @@ processes:
         # Faithful mirror of implement-external-system-stubs: the simulator-backed
         # real side likewise sits on the shared HTTP transport, so it reads and
         # may extend the shared foundation (kept in lockstep with the stub MID).
-        read:  [external-system-driver-adapter, system-driver-adapter-shared]
-        write: [external-system-driver-adapter, system-driver-adapter-shared]
+        read:  [external-system-driver-adapter, system-driver-adapter-shared, testkit-common]
+        write: [external-system-driver-adapter, system-driver-adapter-shared, testkit-common]
 
       - id: IMPL_REAL_SIM_END
         type: end-event
@@ -2236,8 +2238,8 @@ processes:
           agent: unexpected-passing-tests-fixer
           # human tier: fix-flow dispatch — signals upstream defect, never bypassable.
           category: human
-        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
-        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path, testkit-common]
+        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path, testkit-common]
 
       - id: FIX_PASS_END
         type: end-event
@@ -2261,8 +2263,8 @@ processes:
           agent: unexpected-failing-tests-fixer
           # human tier: fix-flow dispatch — signals upstream defect, never bypassable.
           category: human
-        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
-        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path, testkit-common]
+        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path, testkit-common]
 
       - id: FIX_FAIL_END
         type: end-event
@@ -2285,8 +2287,8 @@ processes:
           agent: test-refactorer
           # test-agent tier: edits the test contract.
           category: test-agent
-        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter]
-        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter]
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, testkit-common]
+        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, testkit-common]
 
       - id: REFACTOR_TESTS_END
         type: end-event

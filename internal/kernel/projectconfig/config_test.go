@@ -58,6 +58,7 @@ system-test:
     dsl-core: system-test/java/src/main/java/testkit/dsl/core/shop
     ct-test: system-test/java/src/test/java/shop/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shop/shared
+    testkit-common: system-test/java/src/main/java/testkit/common/shop
 
 external-systems:
   warehouse:
@@ -108,6 +109,7 @@ system-test:
     dsl-core: system-test/java/src/main/java/testkit/dsl/core/shop
     ct-test: system-test/java/src/test/java/shop/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shop/shared
+    testkit-common: system-test/java/src/main/java/testkit/common/shop
 
 external-systems:
   warehouse:
@@ -152,6 +154,7 @@ system-test:
     dsl-core: system-test/src/main/java/testkit/dsl/core/shop
     ct-test: system-test/src/test/java/shop/latest/contract
     system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop/shared
+    testkit-common: system-test/src/main/java/testkit/common/shop
 
 external-systems:
   warehouse:
@@ -202,6 +205,7 @@ system-test:
     dsl-core: system-test/src/main/java/testkit/dsl/core/shop-backend
     ct-test: system-test/src/test/java/shop-backend/latest/contract
     system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop-backend/shared
+    testkit-common: system-test/src/main/java/testkit/common/shop-backend
 
 external-systems:
   warehouse:

@@ -70,6 +70,7 @@ key from `CanonicalPathKeys()` in
 | `dsl-core` | DSL core (implementation) |
 | `ct-test` | contract test files |
 | `system-driver-adapter-shared` | shared System Driver adapter foundation (`driver/adapter/shared/**`) — the test-transport wrappers (Playwright/HTTP clients, base `Client`, shared DTOs, serialization, config) consumed by every channel adapter, the API driver, and external adapters |
+| `testkit-common` | shared testkit common primitives (`testkit/common/**` — `.NET`: `Common/**`) — the cross-cutting functional types (`Result`, `Converter`, `Closer`, `ResultAssert`) consumed across the whole testkit by test writers, the DSL, and every driver adapter; any testkit-writing agent may extend them in place |
 
 Values are **fully-resolved physical paths** set at scaffold time
 (per plan 20260518-1530 item 3). No runtime `${...}` substitution.
@@ -164,7 +165,7 @@ unaffected.
 `gh optivem init` writes the `system-test.paths:` block as the
 **authoritative initial value matching the directory tree the same
 scaffolder just created**. The scaffolder owns both sides of the join
-(YAML + tree), so the nine Family B values are correct by construction
+(YAML + tree), so the ten Family B values are correct by construction
 at that moment — they are not "defaults the operator never asked for".
 
 After `init`, the block is operator-owned at every other layer:
@@ -218,6 +219,7 @@ system-test:
     dsl-core: system-test/typescript/src/testkit/dsl/core
     ct-test: system-test/typescript/tests/latest/contract
     system-driver-adapter-shared: system-test/typescript/src/testkit/driver/adapter/shared
+    testkit-common: system-test/typescript/src/testkit/common
   channels: [api, ui]
   system-driver-adapter-channels:
     api: system-test/typescript/src/testkit/driver/adapter/api
