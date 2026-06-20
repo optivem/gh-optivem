@@ -142,3 +142,74 @@ func TestValidateChannelsRegistered_OrphanTestFailsLoud(t *testing.T) {
 		t.Errorf("error should name the orphan test, got: %v", out.Err)
 	}
 }
+
+// TestValidateChannelsRegistered_StringListShape_OK is the rehearsal #72 repro at
+// the gate. The PRODUCTION shape of `at-test-names` is a `[]string` (it lands as
+// a declared `string-list` output, outputs.go coerceJSONOutputValue), NOT the
+// plain `string` the older OK test above used. Pre-fix, GetString rendered the
+// slice as "[shouldRejectQty100]" (fmt.Sprint), splitTestNames comma-split that
+// into one bracketed junk token, it matched nothing in the report, and the gate
+// false-halted. With GetString sharing coerceValueToString, the slice
+// comma-joins and each method name is recovered.
+func TestValidateChannelsRegistered_StringListShape_OK(t *testing.T) {
+	dir := t.TempDir()
+	tests, cfg := apiOnlyTestsConfig(t, dir, "shouldRejectQty100")
+	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
+
+	ctx := statemachine.NewContext()
+	ctx.Set("at-test-names", []string{"shouldRejectQty100"})
+	if out := a.validateChannelsRegistered(ctx); out.Err != nil {
+		t.Fatalf("validate-channels-registered ([]string shape): unexpected err %v", out.Err)
+	}
+}
+
+// TestValidateChannelsRegistered_StringListShape_OrphanFailsLoud: the `[]string`
+// shape must still hard-error on a genuinely-absent name — the comma-join fix
+// recovers the real method names, it does not paper over a true orphan.
+func TestValidateChannelsRegistered_StringListShape_OrphanFailsLoud(t *testing.T) {
+	dir := t.TempDir()
+	tests, cfg := apiOnlyTestsConfig(t, dir, "shouldRejectQty100")
+	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
+
+	ctx := statemachine.NewContext()
+	ctx.Set("at-test-names", []string{"shouldDoMobileThing"})
+	out := a.validateChannelsRegistered(ctx)
+	if out.Err == nil {
+		t.Fatalf("validate-channels-registered ([]string shape): want hard error for an absent name, got nil")
+	}
+	if !strings.Contains(out.Err.Error(), "shouldDoMobileThing") {
+		t.Errorf("error should name the orphan test, got: %v", out.Err)
+	}
+}
+
+// TestSplitTestNames covers the hardened parser: the production comma-joined
+// input, the bracketed space-separated blob a fmt.Sprint slip would emit (the
+// #72 shape), a mixed/whitespace input, and noise tokens that must be dropped
+// rather than surfaced as phantom orphans.
+func TestSplitTestNames(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want []string
+	}{
+		{"comma-joined", "Foo,Bar,Baz", []string{"Foo", "Bar", "Baz"}},
+		{"bracketed-space-separated", "[Foo Bar Baz]", []string{"Foo", "Bar", "Baz"}},
+		{"mixed-separators", "Foo, Bar\tBaz", []string{"Foo", "Bar", "Baz"}},
+		{"empties-dropped", "Foo,,  ,Bar", []string{"Foo", "Bar"}},
+		{"blank", "", nil},
+		{"brackets-only", "[]", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := splitTestNames(tc.raw)
+			if len(got) != len(tc.want) {
+				t.Fatalf("splitTestNames(%q) = %v, want %v", tc.raw, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Fatalf("splitTestNames(%q) = %v, want %v", tc.raw, got, tc.want)
+				}
+			}
+		})
+	}
+}

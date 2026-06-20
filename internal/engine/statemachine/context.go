@@ -1,7 +1,5 @@
 package statemachine
 
-import "fmt"
-
 // Context is the live state of one pipeline run. It carries:
 //
 //   - State: a key/value map read by predicate evaluation. Initial values
@@ -50,24 +48,19 @@ func (c *Context) Get(key string) any {
 	return c.State[key]
 }
 
-// GetString returns the state value for key coerced to string (best-effort:
-// strings pass through; bools become "true"/"false"; everything else is
-// rendered via fmt). Predicate evaluation uses this for `==` and `in`
-// comparisons.
+// GetString returns the state value for key coerced to string. It delegates
+// to coerceValueToString — the same helper backing coerceStateValue /
+// ExpandParams — so the predicate-read path and the substitution path render
+// a value of a given type identically (strings pass through; bools become
+// "true"/"false"; `[]string` and `[]any`-of-strings comma-join; everything
+// else via fmt). Predicate evaluation uses this for `==` and `in`
+// comparisons; the slice arms also let a comma-list reader (e.g.
+// validateChannelsRegistered's splitTestNames) recover the original method
+// names rather than a bracketed junk token.
 func (c *Context) GetString(key string) string {
 	v, ok := c.State[key]
 	if !ok {
 		return ""
 	}
-	switch t := v.(type) {
-	case string:
-		return t
-	case bool:
-		if t {
-			return "true"
-		}
-		return "false"
-	default:
-		return fmt.Sprint(v)
-	}
+	return coerceValueToString(v)
 }

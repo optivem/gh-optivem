@@ -2,7 +2,9 @@ package actions
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 	"github.com/optivem/gh-optivem/internal/build/runner"
@@ -153,13 +155,32 @@ func (a actions) acceptanceSuiteIDs(alias string, channels []string) []string {
 	return testselect.ExpandSuiteGroups([]string{alias}, projectGroups, channels)
 }
 
-// splitTestNames parses the comma-separated `test-names` list the writing agent
-// emits (and the unroll carries onto each clone's params) into trimmed bare
-// method names, dropping empties.
+// methodIdentRE matches a bare test-method identifier (the shape acceptance /
+// contract test method names take across Java, .NET, and TypeScript). A token
+// that fails this is dropped rather than reported as a phantom orphan.
+var methodIdentRE = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)
+
+// splitTestNames parses the `test-names` list the writing agent emits (and the
+// unroll carries onto each clone's params) into trimmed bare method names.
+//
+// The production input is the comma-joined form coerceValueToString produces
+// for a `[]string` (e.g. "Foo,Bar,Baz"). This helper is also a belt-and-
+// suspenders safety net for an upstream stringify slip: it strips a surrounding
+// `[...]` (the bracketed `[Foo Bar Baz]` shape a fmt.Sprint on a slice produced
+// in the rehearsal #72 false-halt), splits on commas OR whitespace, and drops
+// any token that isn't a valid method identifier. So a bracketed or
+// space-separated blob parses correctly instead of collapsing into one
+// unmatchable token, and genuine noise is dropped rather than surfaced as a
+// phantom orphan. The already-correct comma-joined input is unaffected.
 func splitTestNames(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimPrefix(raw, "[")
+	raw = strings.TrimSuffix(raw, "]")
 	var out []string
-	for _, t := range strings.Split(raw, ",") {
-		if t = strings.TrimSpace(t); t != "" {
+	for _, t := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	}) {
+		if methodIdentRE.MatchString(t) {
 			out = append(out, t)
 		}
 	}

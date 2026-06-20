@@ -423,6 +423,28 @@ func ExpandParams(s string, params map[string]string, state map[string]any) (str
 // this case, fmt.Sprint on a slice renders `[foo bar]` which no flag
 // parses.
 func coerceStateValue(v any) string {
+	return coerceValueToString(v)
+}
+
+// coerceValueToString is the single value→string coercion shared by the
+// substitution layer (coerceStateValue / ExpandParams) and the
+// predicate-evaluation layer (Context.GetString). Keeping one helper means
+// the two paths can never silently diverge on how a value of a given type
+// renders — the exact bug behind rehearsal #72, where a `[]string` rendered
+// as `[a b c]` on the GetString side but `a,b,c` on the substitution side,
+// so a comma-split read collapsed the bracketed blob into one junk token.
+//
+// `[]string` and `[]any`-of-strings both join on ',' so writer-agent outputs
+// typed as string slices (e.g. ctx.State["test-names"], a declared
+// `string-list` output that lands as `[]string`) render as comma-separated
+// values that downstream CLI flags consuming repeatable / comma-list inputs
+// (e.g. `gh optivem test run --test=foo,bar`) accept directly, and so a
+// state-read of the same key parses identically. The `[]any` arm covers an
+// undeclared JSON array (json.Unmarshal yields `[]any`) so it does not fall
+// to fmt.Sprint's `[foo bar]` rendering. Non-string `[]any` elements still
+// fall back to per-element fmt.Sprint. `string`/`bool` keep their existing
+// contract (predicate `==`/`in` callers depend on `"true"`/`"false"`).
+func coerceValueToString(v any) string {
 	switch t := v.(type) {
 	case string:
 		return t
@@ -433,6 +455,16 @@ func coerceStateValue(v any) string {
 		return "false"
 	case []string:
 		return strings.Join(t, ",")
+	case []any:
+		parts := make([]string, len(t))
+		for i, e := range t {
+			if s, ok := e.(string); ok {
+				parts[i] = s
+			} else {
+				parts[i] = fmt.Sprint(e)
+			}
+		}
+		return strings.Join(parts, ",")
 	default:
 		return fmt.Sprint(v)
 	}
