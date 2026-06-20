@@ -1063,6 +1063,13 @@ processes:
 `
 
 func TestApproveDispatcher_YesWritesApproved(t *testing.T) {
+	// Force a TTY: the category:human approve gate yields to pending-human
+	// when stdin is not a terminal (the no-TTY yield has its own test below),
+	// and `go test` has no TTY. This case exercises the interactive y/n path.
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
 	opts := newDriverOpts(clauderun.Deps{})
 	opts.Stdin = strings.NewReader("y\n")
 	var stdout bytes.Buffer
@@ -1082,6 +1089,12 @@ func TestApproveDispatcher_YesWritesApproved(t *testing.T) {
 func TestApproveDispatcher_NoWritesRejected_NoErr(t *testing.T) {
 	// CRITICAL: this is the asymmetry from newHumanStopDispatcher.
 	// approve's NO must NOT halt — the gateway routes the reject branch.
+	// Force a TTY so the interactive reject path runs rather than the
+	// no-TTY pending-human yield (covered separately below).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
 	opts := newDriverOpts(clauderun.Deps{})
 	opts.Stdin = strings.NewReader("n\n")
 	opts.Stdout = &bytes.Buffer{}
@@ -1100,6 +1113,12 @@ func TestApproveDispatcher_NoWritesRejected_NoErr(t *testing.T) {
 func TestApproveDispatcher_QuestionExpandsParams(t *testing.T) {
 	// The YAML's ${task-name} placeholder in the documentation field
 	// must be resolved against ctx.Params before the prompt is printed.
+	// Force a TTY so the interactive path runs (no-TTY would yield before
+	// printing the prompt).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
 	opts := newDriverOpts(clauderun.Deps{})
 	opts.Stdin = strings.NewReader("y\n")
 	var stdout bytes.Buffer
@@ -1115,6 +1134,53 @@ func TestApproveDispatcher_QuestionExpandsParams(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "agent write-acceptance-tests") {
 		t.Fatalf("stdout missing expanded task-name: %q", stdout.String())
+	}
+}
+
+func TestApproveDispatcher_YieldsWhenNoTTY(t *testing.T) {
+	// Regression for plan 20260620-1624: the root cause was
+	// newApproveDispatcher lacking the non-TTY guard newClaudeRunDispatcher
+	// already carried. An unattended category:human approve gate must yield
+	// ErrPendingHuman via the shared guard — NOT read stdin EOF and silently
+	// record approval-outcome=rejected (the bug that misfired FIX_LOOP_EXHAUSTED).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return false }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
+	opts := newDriverOpts(clauderun.Deps{})
+	opts.Stdin = strings.NewReader("") // unattended: no operator input
+	opts.Stdout = &bytes.Buffer{}
+	fn := buildEngineFromApprove(t, opts)
+
+	ctx := statemachine.NewContext()
+	out := fn(ctx)
+	if !errors.Is(out.Err, ErrPendingHuman) {
+		t.Fatalf("expected ErrPendingHuman, got %v", out.Err)
+	}
+	// The whole point: the gate must not have been answered. approval-outcome
+	// must be unset (certainly not "rejected").
+	if got := ctx.GetString("approval-outcome"); got == "rejected" {
+		t.Fatalf("approval-outcome must NOT be rejected on a no-TTY yield; got %q", got)
+	}
+}
+
+func TestHumanStopDispatcher_YieldsWhenNoTTY(t *testing.T) {
+	// A human-STOP gate is unconditionally human-tier; unattended (no TTY) it
+	// must yield ErrPendingHuman through the SAME shared guard rather than
+	// reading stdin EOF and hard-aborting the run as "user aborted". Covers
+	// the human-STOP path alongside the approve and clauderun paths so all
+	// three route through one guard (plan 20260620-1624).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return false }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
+	opts := newDriverOpts(clauderun.Deps{}).withDefaults() // populate opts.Out
+	opts.Stdin = strings.NewReader("")
+
+	fn := newHumanStopDispatcher(opts, statemachine.RawNode{Name: "Proceed?"}, "STOP")
+	out := fn(statemachine.NewContext())
+	if !errors.Is(out.Err, ErrPendingHuman) {
+		t.Fatalf("expected ErrPendingHuman, got %v", out.Err)
 	}
 }
 
@@ -1746,6 +1812,13 @@ processes:
 // repo and returns the rendered summary.md plus the error Run returned.
 func runDigestForSmoke(t *testing.T, stdin string) (digest string, runErr error) {
 	t.Helper()
+	// The smoke flow's STOP node is a human user-task; force a TTY so it runs
+	// the interactive y/n path rather than yielding to pending-human (the
+	// no-TTY yield is covered by TestEmbeddedDriver / the dispatcher tests).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
 	oldNow := nowFn
 	defer func() { nowFn = oldNow }()
 	nowFn = func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }

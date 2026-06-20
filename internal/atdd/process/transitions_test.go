@@ -237,8 +237,14 @@ func TestVerifyTests_InfraOutcomeRoutesToHalt(t *testing.T) {
 //
 //	execute-command   : FIX → RUN_COMMAND
 //	execute-agent     : FIX → RUN_AGENT
-//	verify-tests-pass : FIX_UNEXPECTED_FAILING_TESTS → RUN_TESTS
-//	verify-tests-fail : FIX_UNEXPECTED_PASSING_TESTS → RUN_TESTS
+//	verify-tests-pass : FIX_UNEXPECTED_FAILING_TESTS → GATE_FIX_FLOW_APPROVED → RUN_TESTS
+//	verify-tests-fail : FIX_UNEXPECTED_PASSING_TESTS → GATE_FIX_FLOW_APPROVED → RUN_TESTS
+//
+// The two verify loops route the fixer back through GATE_FIX_FLOW_APPROVED:
+// the predicateless default edge continues to RUN_TESTS (re-verify), while
+// a rejected dispatch diverts to FIX_FLOW_NOT_APPROVED instead of counting
+// as a fix attempt. We pin both hops so the re-verification cycle stays
+// intact and the reject diversion can't silently swallow the back-edge.
 //
 // A regression that re-points any of these edges back to an end-event
 // would silently strip the re-verification — the fix would dispatch
@@ -256,8 +262,10 @@ func TestFixDispatch_LoopsBackToOriginatingStep(t *testing.T) {
 	}{
 		{"execute-command", "FIX", "RUN_COMMAND"},
 		{"execute-agent", "FIX", "RUN_AGENT"},
-		{"verify-tests-pass", "FIX_UNEXPECTED_FAILING_TESTS", "RUN_TESTS"},
-		{"verify-tests-fail", "FIX_UNEXPECTED_PASSING_TESTS", "RUN_TESTS"},
+		{"verify-tests-pass", "FIX_UNEXPECTED_FAILING_TESTS", "GATE_FIX_FLOW_APPROVED"},
+		{"verify-tests-pass", "GATE_FIX_FLOW_APPROVED", "RUN_TESTS"},
+		{"verify-tests-fail", "FIX_UNEXPECTED_PASSING_TESTS", "GATE_FIX_FLOW_APPROVED"},
+		{"verify-tests-fail", "GATE_FIX_FLOW_APPROVED", "RUN_TESTS"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.proc, func(t *testing.T) {
@@ -360,8 +368,9 @@ func TestFixDispatch_LoopsAreBounded(t *testing.T) {
 // routes through CHECK_FIX_PROGRESS → GATE_FIX_PROGRESSING, which either
 // re-dispatches the fixer (progressing == true) or halts at a distinct
 // error-end terminal (progressing == false) when two consecutive runs fail
-// identically. The fixer's own loop-back (FIX → RUN_TESTS) and the count cap
-// stay intact — this guard layers under them, it does not replace them.
+// identically. The fixer's own loop-back (FIX → GATE_FIX_FLOW_APPROVED →
+// RUN_TESTS) and the count cap stay intact — this guard layers under them, it
+// does not replace them.
 func TestVerifyTestsPass_NoProgressGuardWiring(t *testing.T) {
 	eng := loadSnapshot(t)
 	p, ok := eng.Processes["verify-tests-pass"]
@@ -394,10 +403,74 @@ func TestVerifyTestsPass_NoProgressGuardWiring(t *testing.T) {
 		t.Errorf("FIX_LOOP_NO_PROGRESS_EXHAUSTED kind = %v, want statemachine.ErrorEndEvent", k)
 	}
 
-	// 5. The fixer loop-back and count cap are untouched.
-	wantEdge(t, p, "FIX_UNEXPECTED_FAILING_TESTS", "RUN_TESTS", "")
+	// 5. The fixer loop-back routes through GATE_FIX_FLOW_APPROVED: the
+	//    predicateless default continues to RUN_TESTS (re-verify), while a
+	//    rejected dispatch diverts to FIX_FLOW_NOT_APPROVED so it is not
+	//    counted as a fix attempt. The count cap is untouched.
+	wantEdge(t, p, "FIX_UNEXPECTED_FAILING_TESTS", "GATE_FIX_FLOW_APPROVED", "")
+	wantEdge(t, p, "GATE_FIX_FLOW_APPROVED", "RUN_TESTS", "")
+	wantEdge(t, p, "GATE_FIX_FLOW_APPROVED", "FIX_FLOW_NOT_APPROVED", "approval-outcome == rejected")
+	if k := p.Nodes["FIX_FLOW_NOT_APPROVED"].Kind; k != statemachine.ErrorEndEvent {
+		t.Errorf("FIX_FLOW_NOT_APPROVED kind = %v, want statemachine.ErrorEndEvent", k)
+	}
 	if fix := p.Nodes["FIX_UNEXPECTED_FAILING_TESTS"]; fix.Raw.MaxVisits != 2 || fix.Raw.OnMaxVisits != "FIX_LOOP_EXHAUSTED" {
 		t.Errorf("FIX_UNEXPECTED_FAILING_TESTS cap = (%d, %q), want (2, FIX_LOOP_EXHAUSTED)", fix.Raw.MaxVisits, fix.Raw.OnMaxVisits)
+	}
+}
+
+// TestVerifyLoops_RejectedFixDispatchNotCounted is the structural guarantee for
+// plan 20260620-1624 Step 3 (Option 2): a rejected fixer dispatch must NOT
+// count as a fix attempt and must NOT masquerade as FIX_LOOP_EXHAUSTED. Both
+// verify loops route the fixer through GATE_FIX_FLOW_APPROVED, where a
+// rejected dispatch diverts to the FIX_FLOW_NOT_APPROVED terminal instead of
+// looping back to RUN_TESTS. We pin, for each loop:
+//
+//  1. the reject branch lands on FIX_FLOW_NOT_APPROVED (distinct from the
+//     FIX_LOOP_EXHAUSTED count cap);
+//  2. FIX_FLOW_NOT_APPROVED is a terminal error-end-event with NO outgoing
+//     edge — so a reject leaves the loop and can never re-arrive at the fixer
+//     node, which is what makes it "not a counted visit";
+//  3. the gateway's predicateless default still continues to RUN_TESTS so the
+//     approved-fix re-verification cycle is intact;
+//  4. the reject terminal is NOT the count-cap terminal — they are different
+//     nodes so an honest decline never reads as "2 fix attempts".
+func TestVerifyLoops_RejectedFixDispatchNotCounted(t *testing.T) {
+	eng := loadSnapshot(t)
+	cases := []struct {
+		proc, fixer string
+	}{
+		{"verify-tests-pass", "FIX_UNEXPECTED_FAILING_TESTS"},
+		{"verify-tests-fail", "FIX_UNEXPECTED_PASSING_TESTS"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.proc, func(t *testing.T) {
+			p, ok := eng.Processes[tc.proc]
+			if !ok {
+				t.Fatalf("process %q missing", tc.proc)
+			}
+			// Fixer routes through the approval gateway, never straight to RUN_TESTS.
+			wantEdge(t, p, tc.fixer, "GATE_FIX_FLOW_APPROVED", "")
+			notEdge(t, p, tc.fixer, "RUN_TESTS")
+			// Reject diverts to the honest terminal; default continues the loop.
+			wantEdge(t, p, "GATE_FIX_FLOW_APPROVED", "FIX_FLOW_NOT_APPROVED", "approval-outcome == rejected")
+			wantEdge(t, p, "GATE_FIX_FLOW_APPROVED", "RUN_TESTS", "")
+			// The reject terminal is a halt with no outgoing edge — a rejected
+			// dispatch leaves the loop, so it never re-arrives at the fixer and
+			// is never counted toward max-visits.
+			term, ok := p.Nodes["FIX_FLOW_NOT_APPROVED"]
+			if !ok {
+				t.Fatalf("%s: FIX_FLOW_NOT_APPROVED node missing", tc.proc)
+			}
+			if term.Kind != statemachine.ErrorEndEvent {
+				t.Errorf("%s: FIX_FLOW_NOT_APPROVED kind = %v, want statemachine.ErrorEndEvent", tc.proc, term.Kind)
+			}
+			if outs := p.OutgoingByNode["FIX_FLOW_NOT_APPROVED"]; len(outs) != 0 {
+				t.Errorf("%s: FIX_FLOW_NOT_APPROVED must be terminal (no outgoing edges), got %d", tc.proc, len(outs))
+			}
+			// The reject terminal must be distinct from the count-cap terminal,
+			// so a deliberate decline can never surface as FIX_LOOP_EXHAUSTED.
+			notEdge(t, p, "GATE_FIX_FLOW_APPROVED", "FIX_LOOP_EXHAUSTED")
+		})
 	}
 }
 

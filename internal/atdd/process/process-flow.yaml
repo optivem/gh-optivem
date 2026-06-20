@@ -1775,6 +1775,32 @@ processes:
         type: error-end-event
         name: "Fix Loop Exhausted — failing tests still red after 2 fix attempts (review the last test output; adjudicate system code vs. test)"
 
+      # A rejected fixer dispatch is NOT a fix attempt. The fixer call-
+      # activity is category:human; when the operator declines it (or any
+      # future reject-without-run path fires), execute-agent's PRE gate
+      # writes approval-outcome=rejected and returns via the soft
+      # EXECUTE_AGENT_REJECTED_END — approval-outcome is shared State, so it
+      # is observable here. Without this gateway the rejected (never-run)
+      # dispatch would loop back to RUN_TESTS, count as a max-visits visit,
+      # and after two such laps fire a misleading FIX_LOOP_EXHAUSTED
+      # ("2 fix attempts" that never happened). Routing reject to its own
+      # honest terminal keeps the count truthful. Same reasoning as the
+      # `fix` process's FIX_REJECTED_END: reject must halt, not loop,
+      # because the downstream (RUN_TESTS) is a re-run of the failing step.
+      - id: GATE_FIX_FLOW_APPROVED
+        type: gateway
+        binding: approval-outcome
+        name: "Fixer Dispatch Approved?"
+
+      # Honest terminal for a declined fixer dispatch — distinct from
+      # FIX_LOOP_EXHAUSTED (the genuine count cap). error-end-event so the
+      # decline halts the run instead of looking like a clean finish; the id
+      # is deliberately NOT an _EXHAUSTED/STOP_ halt-marker (it is a reject-
+      # halt, exactly like the `fix` process's FIX_REJECTED_END).
+      - id: FIX_FLOW_NOT_APPROVED
+        type: error-end-event
+        name: "Fixer Dispatch Not Approved — operator declined the fix; run halted (this is not a counted fix attempt)"
+
     sequence-flows:
       - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
       - {from: GATE_TESTS_OUTCOME, to: VERIFY_PASS_END,    when: "test-outcome == pass"}
@@ -1784,7 +1810,9 @@ processes:
       - {from: CHECK_FIX_PROGRESS,   to: GATE_FIX_PROGRESSING}
       - {from: GATE_FIX_PROGRESSING, to: FIX_UNEXPECTED_FAILING_TESTS,   when: "fix-loop-progressing == true"}
       - {from: GATE_FIX_PROGRESSING, to: FIX_LOOP_NO_PROGRESS_EXHAUSTED, when: "fix-loop-progressing == false"}
-      - {from: FIX_UNEXPECTED_FAILING_TESTS, to: RUN_TESTS}
+      - {from: FIX_UNEXPECTED_FAILING_TESTS, to: GATE_FIX_FLOW_APPROVED}
+      - {from: GATE_FIX_FLOW_APPROVED, to: FIX_FLOW_NOT_APPROVED, when: "approval-outcome == rejected"}
+      - {from: GATE_FIX_FLOW_APPROVED, to: RUN_TESTS}
 
   # Inverted: run tests under suite/test-names; on PASS, dispatch
   # `fix-unexpected-passing-tests`.
@@ -1838,13 +1866,32 @@ processes:
         type: error-end-event
         name: "Fix Loop Exhausted — must-fail tests still green after 2 fix attempts (no failure output exists; adjudicate system behaviour vs. test expectation)"
 
+      # Mirror of the verify-tests-pass guard: a rejected fixer dispatch is
+      # NOT a fix attempt. The fixer is category:human; a decline writes
+      # approval-outcome=rejected (shared State) and returns via the soft
+      # EXECUTE_AGENT_REJECTED_END. Without this gateway the never-run
+      # dispatch loops back to RUN_TESTS, counts a max-visits visit, and
+      # eventually fires a misleading FIX_LOOP_EXHAUSTED. Route reject to its
+      # own honest terminal instead. See the verify-tests-pass twin for the
+      # full rationale.
+      - id: GATE_FIX_FLOW_APPROVED
+        type: gateway
+        binding: approval-outcome
+        name: "Fixer Dispatch Approved?"
+
+      - id: FIX_FLOW_NOT_APPROVED
+        type: error-end-event
+        name: "Fixer Dispatch Not Approved — operator declined the fix; run halted (this is not a counted fix attempt)"
+
     sequence-flows:
       - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
       - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_PASSING_TESTS, when: "test-outcome == pass"}
       - {from: GATE_TESTS_OUTCOME, to: VERIFY_FAIL_END,              when: "test-outcome == fail"}
       - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,             when: "test-outcome == infra"}
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
-      - {from: FIX_UNEXPECTED_PASSING_TESTS, to: RUN_TESTS}
+      - {from: FIX_UNEXPECTED_PASSING_TESTS, to: GATE_FIX_FLOW_APPROVED}
+      - {from: GATE_FIX_FLOW_APPROVED, to: FIX_FLOW_NOT_APPROVED, when: "approval-outcome == rejected"}
+      - {from: GATE_FIX_FLOW_APPROVED, to: RUN_TESTS}
 
   write-acceptance-tests:
     name: "Write Acceptance Tests"

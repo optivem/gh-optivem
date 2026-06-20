@@ -207,6 +207,13 @@ func TestEmbeddedDispatch_RunsInConsumerEmptyDir(t *testing.T) {
 func TestEmbeddedDriver_RunBypassesConsumerScaffolding(t *testing.T) {
 	tempDir := t.TempDir()
 
+	// The flow's STOP node is a human user-task; force a TTY so it runs the
+	// interactive approve path rather than yielding to pending-human (the
+	// no-TTY yield has its own test, RunYieldsToPendingHumanWhenNoTTY).
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
 	// Single-node manual-agents flow: no clauderun call, no board call.
 	// The point is to assert Run() doesn't reach for consumer files
 	// during its setup (engine-load, register, bind, wrap).

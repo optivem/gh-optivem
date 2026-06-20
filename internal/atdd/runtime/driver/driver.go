@@ -1036,6 +1036,30 @@ func wrapAgentDispatchers(eng *statemachine.Engine, opts Options, cfg *projectco
 	}
 }
 
+// pendIfUnattendedHuman is the single non-TTY guard shared by every
+// human-tier gate dispatcher (approve, human-STOP, and clauderun). When
+// the resolved category is the human tier and stdin is not an interactive
+// terminal, no operator can answer the y/n prompt: the guard returns the
+// ErrPendingHuman sentinel (and true) so the caller yields WITHOUT
+// prompting. Run then discards the uncommitted edits and the CLI maps the
+// sentinel to ExitCodePendingHuman; a later resume re-enters the gate from
+// the clean committed tree with an operator present. For any non-human
+// gate, or a human gate with a real TTY, it returns (zero Outcome, false)
+// and the caller proceeds to the interactive prompt.
+//
+// Keeping the TTY check + notice + sentinel in exactly one place is the
+// whole point: the root cause was newApproveDispatcher lacking the guard
+// newClaudeRunDispatcher already carried inline, so an unattended approval
+// gate read io.EOF and silently rejected. Routing all three dispatchers
+// here makes that drift structurally impossible.
+func pendIfUnattendedHuman(category, label string, stderr io.Writer) (statemachine.Outcome, bool) {
+	if category == approval.CategoryHuman.String() && !stdinIsTTYFn() {
+		fmt.Fprintf(stderr, "Human gate reached (%s) with no operator TTY — yielding to pending-human; run is resumable from the last committed phase.\n", label)
+		return statemachine.Outcome{Err: ErrPendingHuman}, true
+	}
+	return statemachine.Outcome{}, false
+}
+
 // newHumanStopDispatcher returns a NodeFn for `agent: human` STOP
 // nodes. It prints the node ID and the YAML description (with any
 // ${...} placeholders expanded against the live Context.Params) so
@@ -1064,6 +1088,13 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		// always delegates to the interactive prompt regardless of --auto.
 		// The BPMN human-STOP author chose this STOP precisely because no
 		// machine decides it; --auto explicitly cannot opt out.
+		//
+		// But with no operator TTY (unattended run) there is no one to
+		// answer y/n — yield to pending-human via the shared guard rather
+		// than blocking forever or reading io.EOF as an abort.
+		if out, pend := pendIfUnattendedHuman(approval.CategoryHuman.String(), nodeID, opts.Stderr); pend {
+			return out
+		}
 		ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Out.Phase, "  Approve?")
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read STOP confirmation at %s: %w", nodeID, err)}
@@ -1114,6 +1145,15 @@ func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string)
 		cat, err := classifyApproveCategory(raw, ctx)
 		if err != nil {
 			return statemachine.Outcome{Err: err}
+		}
+		// Same unattended-gate guard newClaudeRunDispatcher and
+		// newHumanStopDispatcher use: a human-tier approve with no operator
+		// TTY yields to pending-human instead of letting promptio read
+		// io.EOF and silently record approval-outcome=rejected (the exact
+		// bug this routing fixes). Non-human categories fall through to the
+		// normal confirm path.
+		if out, pend := pendIfUnattendedHuman(cat.String(), nodeID, opts.Stderr); pend {
+			return out
 		}
 		ok, err := approval.Confirm(opts.Approval, cat, opts.Stdin, opts.Out.Phase, "  Approve?")
 		if err != nil {
@@ -1207,10 +1247,10 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// the machine is freed immediately. Run discards the uncommitted edits
 		// and the CLI maps the sentinel to ExitCodePendingHuman; a later resume
 		// (scoped.go) re-enters this gate from the clean committed tree with an
-		// operator present.
-		if nodeParams["category"] == "human" && !stdinIsTTYFn() {
-			fmt.Fprintf(opts.Stderr, "Human gate reached (%s) with no operator TTY — yielding to pending-human; run is resumable from the last committed phase.\n", agentName)
-			return statemachine.Outcome{Err: ErrPendingHuman}
+		// operator present. Routed through the shared guard so the approve and
+		// human-STOP gates use the identical TTY check (no path drift).
+		if out, pend := pendIfUnattendedHuman(nodeParams["category"], agentName, opts.Stderr); pend {
+			return out
 		}
 		tuning, err := opts.AgentSet.LoadTuning(agentName)
 		if err != nil {
