@@ -1509,6 +1509,8 @@ func TestClassifyRunError(t *testing.T) {
 		{name: "not authenticated", stderr: "Error: not authenticated", wantSub: "claude /login"},
 		{name: "please login", stderr: "Please log in to continue", wantSub: "claude /login"},
 		{name: "invalid api key", stderr: "Error: invalid api key", wantSub: "claude /login"},
+		// The literal line observed mid-run in rehearsal #65.
+		{name: "mid-run 401", stderr: "Failed to authenticate. API Error: 401 Invalid authentication credentials", wantSub: "claude /login"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1526,6 +1528,15 @@ func TestClassifyRunError(t *testing.T) {
 				t.Errorf("error %q does not contain %q", got.Error(), tt.wantSub)
 			}
 		})
+	}
+}
+
+func TestHardFailStderrRegex_MatchesObserved401(t *testing.T) {
+	// The mid-run 401 line from rehearsal #65 must land in the hard-fail set
+	// so RetryWithPolicy fast-fails it instead of retrying a dead token.
+	const line = "Failed to authenticate. API Error: 401 Invalid authentication credentials"
+	if !hardFailStderrRegex.MatchString(line) {
+		t.Errorf("hardFailStderrRegex must match the observed mid-run 401 line %q", line)
 	}
 }
 

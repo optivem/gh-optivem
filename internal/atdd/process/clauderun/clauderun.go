@@ -1445,6 +1445,9 @@ var authSignatures = []string{
 	"please run /login",
 	"please log in",
 	"please login",
+	"invalid authentication credentials", // rehearsal-65 logged "API Error: 401 Invalid authentication credentials"
+	"failed to authenticate",
+	"api error: 401",
 }
 
 // classifyRunError inspects the captured stderr from a non-zero claude

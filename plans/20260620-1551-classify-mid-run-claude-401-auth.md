@@ -20,9 +20,9 @@ Edit `internal/atdd/process/clauderun/clauderun.go` — extend the `authSignatur
 
 ## Steps
 
-- [ ] Step 1: In `internal/atdd/process/clauderun/clauderun.go`, add `"invalid authentication credentials"`, `"failed to authenticate"`, and `"api error: 401"` to the `authSignatures` slice (~line 1440), keeping them lowercase literals consistent with the existing entries (matched case-insensitively, regexp-quoted via `compileSignatureRegex`).
-- [ ] Step 2: Add/extend a `classifyRunError` unit test in `clauderun_test.go` asserting the literal observed line `Failed to authenticate. API Error: 401 Invalid authentication credentials` returns the auth ("run `claude /login`") message; add a `hardFailStderrRegex` match assertion for the same line. (Coverage shape is executor's discretion.)
-- [ ] Step 3: Run `go test` scoped to the `internal/atdd/process/clauderun` package only (never unbounded `go test ./...` on Windows) and confirm green.
+- [x] Step 1: In `internal/atdd/process/clauderun/clauderun.go`, add `"invalid authentication credentials"`, `"failed to authenticate"`, and `"api error: 401"` to the `authSignatures` slice (~line 1440), keeping them lowercase literals consistent with the existing entries (matched case-insensitively, regexp-quoted via `compileSignatureRegex`).
+- [x] Step 2: Add/extend a `classifyRunError` unit test in `clauderun_test.go` asserting the literal observed line `Failed to authenticate. API Error: 401 Invalid authentication credentials` returns the auth ("run `claude /login`") message; add a `hardFailStderrRegex` match assertion for the same line. (Coverage shape is executor's discretion.)
+- [x] Step 3: Run `go test` scoped to the `internal/atdd/process/clauderun` package only (never unbounded `go test ./...` on Windows) and confirm green.
 
 ## Out of scope (do not include)
 
