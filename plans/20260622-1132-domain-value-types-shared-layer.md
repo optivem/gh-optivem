@@ -1,6 +1,6 @@
 # 2026-06-22 11:32:57 CEST — `domain-value-types`: a shared, universally-writable domain-vocabulary layer
 
-🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-22T10:47:50Z`
+> **Status: code-complete (2026-06-22).** All agent work shipped in two commits — shop `325979f1` (Steps 1–2: OrderStatus relocation + 12 config keys) and gh-optivem `07f594e` (Steps 3–4: process-flow scopes, CanonicalPathKeys/pathStems, fixtures, path-keys.md). Only the operator rehearsal re-runs in `## Verification` remain.
 
 ## TL;DR
 
@@ -21,13 +21,7 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-**Step 5 — Review gate, then per-repo commit.** All agent work (Steps 1–4) is done and the gh-optivem Go suite passes (`go build ./...` clean; affected packages green). What remains is the human review gate: surface the shop-repo diff (Steps 1–2: `OrderStatus` relocation across 3 scaffolds + `domain-value-types` key in 12 configs) and the gh-optivem diff (Steps 3–4: process-flow scopes, `CanonicalPathKeys`/`pathStems`, fixture updates, `path-keys.md`), get approval, then make **two separate per-repo commits** (raw git, whole files). Operator verification (rehearsal re-runs) is in `## Verification`.
-
-## Steps
-
-> **Repo split:** Steps 1–2 land in the **shop repo** (testkit code + `gh-optivem*.yaml` configs live there — gh-optivem has no copy). Steps 3–4 land in **gh-optivem** (process-flow scopes, docs, test fixtures). Step 5 is the cross-repo review+commit gate.
-
-- [ ] **Step 5 — Review gate, then commit (per repo).** Surface diffs for review before committing — structural content change, gate per [[feedback_renames_autonomous_content_gated]] / [[feedback_no_commit_without_approval]]. Commit the shop-repo changes (Steps 1–2) and the gh-optivem changes (Steps 3–4) as **separate, per-repo commits** ([[feedback_never_create_patches]], [[reference_commit_sh_path_stale]] — raw git for surgical commits).
+**No agent steps remain — operator verification only.** All five steps shipped (shop `325979f1`, gh-optivem `07f594e`). The next action is the operator's: run the rehearsals in `## Verification` below to prove the #70-class halt is gone and nothing regressed. There is nothing left for `/execute-plan` to do.
 
 ## Verification (operator, not agent steps)
 
