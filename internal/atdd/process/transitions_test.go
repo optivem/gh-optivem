@@ -825,9 +825,10 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 
 	// 5. The new simulator MID dispatches the mirror agent and scopes writes
 	//    to external-system-driver-adapter (fork #2) plus the shared
-	//    test-transport foundation (system-driver-adapter-shared) and the
-	//    shared common primitives (common), which the simulator sits
-	//    on (mirrors the stub MID).
+	//    test-transport foundation (system-driver-adapter-shared), the
+	//    shared common primitives (common), and the shared domain value
+	//    types (domain-value-types) — both travel with common — which the
+	//    simulator sits on (mirrors the stub MID).
 	sim, ok := eng.Processes["implement-external-system-real-simulator"]
 	if !ok {
 		t.Fatalf("process implement-external-system-real-simulator missing")
@@ -839,8 +840,8 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	if got := ea.Raw.Params["agent"]; got != "external-system-real-simulator-implementer" {
 		t.Errorf("simulator MID agent = %q, want external-system-real-simulator-implementer", got)
 	}
-	if got := ea.Raw.Write; len(got) != 3 || got[0] != "external-system-driver-adapter" || got[1] != "system-driver-adapter-shared" || got[2] != "common" {
-		t.Errorf("simulator MID write scope = %v, want [external-system-driver-adapter system-driver-adapter-shared common]", got)
+	if got := ea.Raw.Write; len(got) != 4 || got[0] != "external-system-driver-adapter" || got[1] != "system-driver-adapter-shared" || got[2] != "common" || got[3] != "domain-value-types" {
+		t.Errorf("simulator MID write scope = %v, want [external-system-driver-adapter system-driver-adapter-shared common domain-value-types]", got)
 	}
 }
 

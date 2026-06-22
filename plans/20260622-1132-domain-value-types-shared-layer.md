@@ -1,5 +1,7 @@
 # 2026-06-22 11:32:57 CEST — `domain-value-types`: a shared, universally-writable domain-vocabulary layer
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-22T10:47:50Z`
+
 ## TL;DR
 
 **Why:** Rehearsal #70 ("Return a delivered order") crashed at `STOP_SCOPE_VIOLATION` because `OrderStatus` — a **domain** value type (business vocabulary the system models and tests assert on) — is lumped under `driver/port/dtos`, a layer owned solely by the `dsl-implementer`. So the `acceptance-test-writer` (and any other agent) cannot add a new status value its test references without a fatal scope-exception. Root cause: a **classification error** — domain vocabulary is gated like implementation.
@@ -19,22 +21,12 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-Start with **Step 1 (shop repo) — relocate domain value types**. In the shop repo's testkit, the domain value type trapped in the unwritable `driver-port` is `driver/port/dtos/OrderStatus` (audit for any other **domain** enums/value objects; the only enums present are `OrderStatus` [domain → move], `dsl/port/ChannelMode` + `dsl/port/ExternalSystemMode` [harness → **stay**], and a private enum in `driver/adapter/ui/MyShopUiDriver` [implementation → **stay**]). Create a new `testkit/.../domainvaluetypes` directory as a sibling of the existing `common` directory, move `OrderStatus` (+ any other domain value types) there, update package/namespace + every import/usage, and confirm the testkit compiles. Structural move across the java / dotnet / typescript scaffolds — do it per language, deriving each `domainvaluetypes` location from that language's existing `common` location. Stop at a review gate before committing. It unblocks Steps 2–3 (the config key + scope wiring that make `domain-value-types` a recognized layer).
+**Step 5 — Review gate, then per-repo commit.** All agent work (Steps 1–4) is done and the gh-optivem Go suite passes (`go build ./...` clean; affected packages green). What remains is the human review gate: surface the shop-repo diff (Steps 1–2: `OrderStatus` relocation across 3 scaffolds + `domain-value-types` key in 12 configs) and the gh-optivem diff (Steps 3–4: process-flow scopes, `CanonicalPathKeys`/`pathStems`, fixture updates, `path-keys.md`), get approval, then make **two separate per-repo commits** (raw git, whole files). Operator verification (rehearsal re-runs) is in `## Verification`.
 
 ## Steps
 
 > **Repo split:** Steps 1–2 land in the **shop repo** (testkit code + `gh-optivem*.yaml` configs live there — gh-optivem has no copy). Steps 3–4 land in **gh-optivem** (process-flow scopes, docs, test fixtures). Step 5 is the cross-repo review+commit gate.
 
-- [ ] **Step 1 — (shop) Relocate domain value types.** Per language scaffold (java, dotnet, typescript): identify the system's **domain** value types and move only those. Classify each type explicitly:
-  - **Move** (domain vocabulary): `driver/port/dtos/OrderStatus`, plus any other domain enums/value objects the audit finds.
-  - **Stay** (harness/infra config): `dsl/port/ChannelMode`, `dsl/port/ExternalSystemMode` — a different kind, already in writable `dsl-port`.
-  - **Stay** (implementation detail): private enums inside adapters, e.g. the nested enum in `driver/adapter/ui/MyShopUiDriver`.
-  - **Stay** (call contract): Request/Response DTOs in `driver/port/dtos`.
-
-  Move the domain value types to a new `testkit/.../domainvaluetypes` dir (sibling of `common`), update package/namespace + all imports, confirm compile.
-- [ ] **Step 2 — (shop) Add the `domain-value-types` config key.** In every `gh-optivem*.yaml` (monolith/multitier × java/dotnet/typescript × legacy — ~12 files), add one `system-test.paths:` entry. **Deterministic rule:** `domain-value-types` = that file's existing `common:` path with the trailing `common` segment replaced by `domainvaluetypes`. (E.g. multitier-java: `system-test/java/src/main/java/com/mycompany/myshop/testkit/domainvaluetypes`.)
-- [ ] **Step 3 — (gh-optivem) Wire `domain-value-types` into `process-flow.yaml` scopes.** Add `domain-value-types` alongside `common` in both `read:` and `write:` of every phase that lists `common`: `write-acceptance-tests` (2043-2044), `write-contract-tests`, `write-stub-fidelity-tests`, `implement-dsl`, the system/external driver-adapter implementers, the fix passes, and `refactor-tests`. **Resolve the one edge:** `implement-system` reads `system-driver-port` (where `OrderStatus` lived) but has no `common` — verify whether the production implementer must open a domain value type that moved out of `system-driver-port`; if so, add `domain-value-types` to its `read:` only (it never writes test-kit types), otherwise leave it out. No `*-changed` flag, no gateway.
-- [ ] **Step 4 — (gh-optivem) Docs + test fixtures.** (a) Define `domain-value-types` in the live testkit-architecture docs (`docs/atdd/...` — verify exact file vs the archived `archive/references/code/testkit-architecture-rules.md`) and add a `domainvaluetypes` row to the `language-equivalents` tables (java/csharp/typescript): *the system's domain value types (enums + value objects) — universally writable like `common`; **not** harness enums (those live in `dsl-port`), **not** the C# CLR value type / JVM value class*. (b) Update any gh-optivem test that pins exact scope lists or resolves layers against a fixture config — `internal/atdd/phase_scopes_test.go`, `internal/atdd/process/transitions_test.go`, and any preflight/clauderun fixture that must now know the `domain-value-types` key.
 - [ ] **Step 5 — Review gate, then commit (per repo).** Surface diffs for review before committing — structural content change, gate per [[feedback_renames_autonomous_content_gated]] / [[feedback_no_commit_without_approval]]. Commit the shop-repo changes (Steps 1–2) and the gh-optivem changes (Steps 3–4) as **separate, per-repo commits** ([[feedback_never_create_patches]], [[reference_commit_sh_path_stale]] — raw git for surgical commits).
 
 ## Verification (operator, not agent steps)
@@ -49,8 +41,5 @@ Start with **Step 1 (shop repo) — relocate domain value types**. In the shop r
 - **Scope rule = "travels with `common`"** — read+write wherever `common` appears; the lone exception (`implement-system`, read-only) is resolved in Step 3.
 - **No routing** — domain value types are shared vocabulary; no `domain-value-types-changed` flag/gateway, no Go logic change.
 - **Supersedes** the agent-prompt approach (drafted then dropped: a "compile-safe string pattern" would have institutionalized a `hasStatus(String)` divergence from every existing typed-enum test, degrading the keystone artifact, and would have left the same wall for the contract-test-writer).
-
-## Open questions
-
-- **`error/` types:** are the DTOs under `dtos/error/` domain value types (relocate) or response-shaped DTOs (stay)? Resolve during the Step 1 audit per-type.
-- **Plan home:** the plan lives in gh-optivem but most edits are shop-repo. Acceptable (the scope mechanism is gh-optivem's), but flag if the shop repo should carry a cross-reference copy.
+- **`dtos/error/SystemError` stays in `dtos/`.** It's a generic error-response envelope (message + field errors), value-semantic but not the system's business vocabulary and not per-story-extensible like `OrderStatus` — the same domain-scoped boundary that excludes `ChannelMode` excludes it.
+- **Single plan in gh-optivem.** No copy/pointer in the shop repo — the scope mechanism is gh-optivem's, the shop-repo work is driven by `/execute-plan` reading this file, and a duplicate would only drift.

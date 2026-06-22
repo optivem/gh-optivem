@@ -59,6 +59,7 @@ system-test:
     ct-test: system-test/java/src/test/java/shop/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shop/shared
     common: system-test/java/src/main/java/testkit/common/shop
+    domain-value-types: system-test/java/src/main/java/testkit/domainvaluetypes/shop
 
 external-systems:
   warehouse:
@@ -110,6 +111,7 @@ system-test:
     ct-test: system-test/java/src/test/java/shop/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shop/shared
     common: system-test/java/src/main/java/testkit/common/shop
+    domain-value-types: system-test/java/src/main/java/testkit/domainvaluetypes/shop
 
 external-systems:
   warehouse:
@@ -155,6 +157,7 @@ system-test:
     ct-test: system-test/src/test/java/shop/latest/contract
     system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop/shared
     common: system-test/src/main/java/testkit/common/shop
+    domain-value-types: system-test/src/main/java/testkit/domainvaluetypes/shop
 
 external-systems:
   warehouse:
@@ -206,6 +209,7 @@ system-test:
     ct-test: system-test/src/test/java/shop-backend/latest/contract
     system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop-backend/shared
     common: system-test/src/main/java/testkit/common/shop-backend
+    domain-value-types: system-test/src/main/java/testkit/domainvaluetypes/shop-backend
 
 external-systems:
   warehouse:
