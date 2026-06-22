@@ -384,6 +384,7 @@ flowchart TD
     GATE_EXTERNAL_SYSTEM_TOUCHED{External System Touched?}
     WRITE_CONTRACT_TESTS["Write External System Contract Tests<br/>expected-test-result = success"]
     EXTERNAL_SYSTEM_SKIPPED(( ))
+    WRITE_STUB_FIDELITY_TESTS["Write External System Stub-Fidelity Tests<br/>expected-test-result = success"]
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
     IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External System Driver Adapters]
@@ -400,18 +401,26 @@ flowchart TD
     CONTRACT_REAL_UPSTREAM_GAP_HALT((⚡))
     GATE_CONTRACT_STUB_OUTCOME{Contract-Stub Outcome?}
     BUILD_SYSTEM_AFTER_SIMULATOR[Build System]
-    IMPL_EXT_DRIVER_CT_END(( ))
+    GATE_STUB_FIDELITY_PRESENT{Stub-Fidelity Tests Authored?}
     IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External System Stubs]
     START_SYSTEM_AFTER_SIMULATOR[Start System — see § start-system-restart]
+    PROBE_CONTRACT_STUB_ISOLATED["Probe Stub-Fidelity Tests Against the Stub — see § run-tests<br/>suite = contract-stub"]
+    IMPL_EXT_DRIVER_CT_END(( ))
     BUILD_SYSTEM_AFTER_STUBS[Build System]
     VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR["Verify External System Contract Tests Pass Against the Real Simulator — see § verify-tests-pass<br/>suite = contract-real"]
+    GATE_CONTRACT_STUB_ISOLATED_OUTCOME{Stub-Fidelity Outcome?}
     START_SYSTEM_AFTER_STUBS[Start System — see § start-system-restart]
+    IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED[Implement External System Stubs]
     VERIFY_TESTS_PASS_CONTRACT_STUB["Verify External System Contract Tests Pass Against the Stub — see § verify-tests-pass<br/>suite = contract-stub"]
+    BUILD_SYSTEM_AFTER_STUBS_ISOLATED[Build System]
+    START_SYSTEM_AFTER_STUBS_ISOLATED[Start System — see § start-system-restart]
+    VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED["Verify Stub-Fidelity Tests Pass Against the Stub — see § verify-tests-pass<br/>suite = contract-stub"]
 
     RESOLVE_EXTERNAL_SYSTEM --> GATE_EXTERNAL_SYSTEM_TOUCHED
     GATE_EXTERNAL_SYSTEM_TOUCHED -- Yes --> WRITE_CONTRACT_TESTS
     GATE_EXTERNAL_SYSTEM_TOUCHED -- No --> EXTERNAL_SYSTEM_SKIPPED
-    WRITE_CONTRACT_TESTS --> GATE_DSL_PORT_CHANGED
+    WRITE_CONTRACT_TESTS --> WRITE_STUB_FIDELITY_TESTS
+    WRITE_STUB_FIDELITY_TESTS --> GATE_DSL_PORT_CHANGED
     GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
     GATE_DSL_PORT_CHANGED -- No --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
     IMPLEMENT_AND_VERIFY_DSL --> IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
@@ -431,14 +440,25 @@ flowchart TD
     VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR --> START_SYSTEM_BEFORE_STUB_PROBE
     START_SYSTEM_BEFORE_STUB_PROBE --> PROBE_CONTRACT_STUB
     PROBE_CONTRACT_STUB --> GATE_CONTRACT_STUB_OUTCOME
-    GATE_CONTRACT_STUB_OUTCOME -- Pass --> IMPL_EXT_DRIVER_CT_END
+    GATE_CONTRACT_STUB_OUTCOME -- Pass --> GATE_STUB_FIDELITY_PRESENT
     GATE_CONTRACT_STUB_OUTCOME -- Fail --> IMPLEMENT_EXTERNAL_SYSTEM_STUBS
     GATE_CONTRACT_STUB_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_CONTRACT_STUB_OUTCOME --> UNKNOWN_TESTS_OUTCOME
     IMPLEMENT_EXTERNAL_SYSTEM_STUBS --> BUILD_SYSTEM_AFTER_STUBS
     BUILD_SYSTEM_AFTER_STUBS --> START_SYSTEM_AFTER_STUBS
     START_SYSTEM_AFTER_STUBS --> VERIFY_TESTS_PASS_CONTRACT_STUB
-    VERIFY_TESTS_PASS_CONTRACT_STUB --> IMPL_EXT_DRIVER_CT_END
+    VERIFY_TESTS_PASS_CONTRACT_STUB --> GATE_STUB_FIDELITY_PRESENT
+    GATE_STUB_FIDELITY_PRESENT -- Yes --> PROBE_CONTRACT_STUB_ISOLATED
+    GATE_STUB_FIDELITY_PRESENT -- No --> IMPL_EXT_DRIVER_CT_END
+    PROBE_CONTRACT_STUB_ISOLATED --> GATE_CONTRACT_STUB_ISOLATED_OUTCOME
+    GATE_CONTRACT_STUB_ISOLATED_OUTCOME -- Pass --> IMPL_EXT_DRIVER_CT_END
+    GATE_CONTRACT_STUB_ISOLATED_OUTCOME -- Fail --> IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED
+    GATE_CONTRACT_STUB_ISOLATED_OUTCOME -- Infra --> TESTS_INFRA_HALT
+    GATE_CONTRACT_STUB_ISOLATED_OUTCOME --> UNKNOWN_TESTS_OUTCOME
+    IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED --> BUILD_SYSTEM_AFTER_STUBS_ISOLATED
+    BUILD_SYSTEM_AFTER_STUBS_ISOLATED --> START_SYSTEM_AFTER_STUBS_ISOLATED
+    START_SYSTEM_AFTER_STUBS_ISOLATED --> VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED
+    VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED --> IMPL_EXT_DRIVER_CT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class RESOLVE_EXTERNAL_SYSTEM serviceNode
@@ -960,5 +980,20 @@ flowchart TD
     UPDATE_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_SYS_DA_END
+```
+
+## Write External System Stub-Fidelity Tests
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = stub-fidelity-test-writer<br/>category = test-agent<br/>task-name = write-stub-fidelity-tests"]
+    WSFT_END(( ))
+
+    EXECUTE_AGENT --> WSFT_END
+    WRITE-STUB-FIDELITY-TESTS_OUTPUTS[/"isolated-test-names?: string-list<br/>scope-exception-files?: string-list<br/>scope-exception-reason?: string"/]
+    WSFT_END -. produces .-> WRITE-STUB-FIDELITY-TESTS_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class WRITE-STUB-FIDELITY-TESTS_OUTPUTS outputNode
 ```
 
