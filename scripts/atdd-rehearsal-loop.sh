@@ -232,10 +232,21 @@ log "Config:  $CONFIG"
 log "Mode:    --auto --headless, $FAILURE_POLICY, logs kept; worktrees: keep=$KEEP_WORKTREES"
 echo ""
 
-# Each iteration appends "<ticket> <PASS|FAIL>"; printed as a table at the end.
+# Exit code atdd-rehearsal.sh yields when its `implement` run paused at a
+# category:human approval gate (no operator TTY) instead of completing — a
+# pause, not a crash. Kept in sync with WRAPPER_EXIT_PENDING_HUMAN in
+# atdd-rehearsal.sh (which in turn mirrors ExitCodePendingHuman in
+# internal/atdd/runtime/driver/driver.go). A pause did not complete, so it is
+# treated as not-successful here: a distinct PENDING row, a non-zero loop exit,
+# and the same stop-by-default control flow as a failure — but labelled as an
+# awaiting-human pause, never as a crash.
+WRAPPER_EXIT_PENDING_HUMAN=32
+
+# Each iteration appends "<ticket> <PASS|PENDING|FAIL>"; printed as a table at
+# the end.
 RESULTS=()
 # Exit code carried out of the loop: 0 if every ticket passed, else the exit
-# code of the last failing rehearsal.
+# code of the last ticket that failed or paused without completing.
 LOOP_RC=0
 print_summary() {
   echo ""
@@ -248,12 +259,28 @@ print_summary() {
 for ticket in "${TICKETS[@]}"; do
   log "${C_BOLD}=== Rehearsing #${ticket} ===${C_RESET}"
   # Cleanup policy per KEEP_WORKTREES; never prompt, never read stdin.
-  if REHEARSAL_CLEANUP="$CLEANUP_MODE" bash "$REHEARSAL" "$ticket" \
-        --config "$CONFIG" --auto --headless </dev/null; then
+  # Capture the child rc explicitly (|| rc=$? keeps set -e from aborting and
+  # preserves the exact code) so a pause (WRAPPER_EXIT_PENDING_HUMAN) is
+  # distinguishable from a crash (any other non-zero).
+  rc=0
+  REHEARSAL_CLEANUP="$CLEANUP_MODE" bash "$REHEARSAL" "$ticket" \
+        --config "$CONFIG" --auto --headless </dev/null || rc=$?
+  if [[ $rc -eq 0 ]]; then
     RESULTS+=("#${ticket}  PASS")
     log "#${ticket} PASS"
+  elif [[ $rc -eq $WRAPPER_EXIT_PENDING_HUMAN ]]; then
+    # Paused at a human-approval gate: did not complete, so counted as
+    # not-successful (non-zero LOOP_RC, stop-by-default) — but labelled as a
+    # pause awaiting an operator, never as a crash.
+    LOOP_RC=$rc
+    RESULTS+=("#${ticket}  PENDING (exit $rc — did not complete, awaiting operator)")
+    if [[ -z "$CONTINUE_ON_FAILURE" ]]; then
+      log "#${ticket} PAUSED (exit $rc) — reached a human-approval gate, did not complete; stopping (default; pass --continue-on-failure to keep going)."
+      print_summary
+      exit "$rc"
+    fi
+    log "#${ticket} PAUSED (exit $rc) — reached a human-approval gate, did not complete; continuing to next ticket per --continue-on-failure."
   else
-    rc=$?
     LOOP_RC=$rc
     RESULTS+=("#${ticket}  FAIL (exit $rc)")
     if [[ -z "$CONTINUE_ON_FAILURE" ]]; then
@@ -269,7 +296,10 @@ print_summary
 if [[ $LOOP_RC -eq 0 ]]; then
   log "All ${#TICKETS[@]} ticket(s) passed."
 else
-  log "Some ticket(s) failed — see FAIL rows above. Exiting $LOOP_RC."
+  # Reached only under --continue-on-failure (otherwise the loop exits early on
+  # the first non-zero ticket). LOOP_RC is the last non-zero child rc, which may
+  # be a crash or a pause — phrase the close to cover both honestly.
+  log "Some ticket(s) did not complete — failed or paused awaiting a human; see FAIL / PENDING rows above. Exiting $LOOP_RC."
 fi
 exit "$LOOP_RC"
 

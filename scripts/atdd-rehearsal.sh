@@ -386,17 +386,36 @@ IMPL_FLAGS=(--log-file "$LOG_FILE")
 [[ $HEADLESS -eq 1 ]] && IMPL_FLAGS+=(--headless)
 
 log "Running implement --issue $ISSUE${IMPL_FLAGS[*]:+ ${IMPL_FLAGS[*]}}${ROOT_FLAGS[*]:+ (with root flags: ${ROOT_FLAGS[*]})} in $(display_path "$WORKTREE_PATH")..."
+
+# Exit code the `implement` BINARY yields when it reaches a category:human
+# approval gate on an unattended (no-TTY) run: a normal, expected pause that
+# yields cleanly — NOT a crash. Mirrors ExitCodePendingHuman in
+# internal/atdd/runtime/driver/driver.go (keep the two in sync).
+EXIT_PENDING_HUMAN=2
+# Exit code THIS WRAPPER yields upward for that pause. Deliberately distinct
+# from the binary's 2: the wrapper already uses `exit 2` for its own usage /
+# config errors (config-not-found, bad args — see the validation blocks
+# above), so re-mapping the pause to a dedicated code lets the loop tell a
+# real "awaiting human" pause apart from a wrapper error. Kept in sync with
+# WRAPPER_EXIT_PENDING_HUMAN in atdd-rehearsal-loop.sh.
+WRAPPER_EXIT_PENDING_HUMAN=32
+
 RC=0
 ( cd "$WORKTREE_PATH" && GH_OPTIVEM_CONFIG="$CONFIG_FULL" "$BIN" "${ROOT_FLAGS[@]}" implement --issue "$ISSUE" --log-file "$LOG_FILE" "${IMPL_FLAGS[@]}" ) || RC=$?
 
 if [[ $RC -eq 0 ]]; then
   VERDICT="$(grep -oE 'verdict=[a-z-]+' "$LOG_FILE" | tail -1)"
   log "implement finished (rc=0, ${VERDICT:-verdict=unknown}). See trace for test outcome."
+  EXIT_RC=0
+elif [[ $RC -eq $EXIT_PENDING_HUMAN ]]; then
+  log "implement paused (rc=$RC): reached a human-approval gate with no operator TTY — did not complete; expected for an unattended rehearsal. Resume with an operator present. See trace."
+  EXIT_RC=$WRAPPER_EXIT_PENDING_HUMAN
 else
   log "implement crashed (rc=$RC). Runtime error, not a test failure — see trace."
+  EXIT_RC=$RC
 fi
 log "Log file: $(display_path "$LOG_FILE")"
 
-exit $RC
+exit $EXIT_RC
 
 } && exit 0
