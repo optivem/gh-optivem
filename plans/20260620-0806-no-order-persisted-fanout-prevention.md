@@ -1,3 +1,6 @@
+> ⚠️ **DECISION NEEDED — do we want to go ahead in this direction or not?**
+> Review this plan before any further execution. The root fix (Layer 1 / Step 2) commits `shop` to a **response-level** absence-assertion primitive mirrored ×3 and a fan-out-complete shared-port reference. Confirm this is the direction we want before `/execute-plan` runs against `shop`. If not, stop and revise here.
+
 # 2026-06-20 08:06:00 UTC — Prevent the "no order is persisted" absence-assertion fan-out failure (defense in depth)
 
 ## TL;DR
