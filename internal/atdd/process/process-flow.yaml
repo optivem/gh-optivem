@@ -1567,6 +1567,22 @@ processes:
   # `refactor-system-structure` passes `refactor-system`. The templated
   # `process: ${action}` resolves at dispatch time (runtime support
   # added by Item 2 of this plan).
+  #
+  # Independent-verdict contract (plan 20260622-1123): when `action` is
+  # `implement-system`, the system-implementer now self-verifies inside its
+  # own dispatch — it runs the same build → start --restart →
+  # acceptance-${channel} trio and converges its slice to green before
+  # exiting. The post-implement BUILD_SYSTEM → START_SYSTEM →
+  # VERIFY_TESTS_PASS below is deliberately KEPT as an independent
+  # *confirmation* of that self-report (never trusted on faith) — same trio,
+  # run fresh by the engine. It is no longer expected to be where a
+  # compile-only miss is first discovered; on a converged dispatch it
+  # confirms green on the first run. It still owns the authoritative verdict
+  # and the bounded escalation: only when the agent exits not-green (its
+  # budget / no-progress stop rule fired) does VERIFY_TESTS_PASS go red and
+  # route — through its human-approval gate — to the unexpected-failing-
+  # tests-fixer. No branch/gateway change here; the agent's inner loop just
+  # makes a red outer run the rare, genuinely-stuck case.
   implement-and-verify-system:
     name: "Implement and Verify System"
     start: RESOLVE_CHANNEL

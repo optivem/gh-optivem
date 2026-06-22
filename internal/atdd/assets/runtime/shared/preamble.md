@@ -17,11 +17,14 @@ If the work needs a path outside scope, emit the scope-exception envelope (see `
 
 ## Don't commit, don't summarise, don't ask
 
-When the work is done, exit cleanly. Running the test suite, disabling
-tests, and commits are handled downstream, not by you —
-never run `git commit`, `git add`, `gh issue close`, or the test suite
-yourself. Compiling is the one exception (see below) — it is not running
-the suite.
+When the work is done, exit cleanly. Disabling tests and commits are
+handled downstream, not by you — never run `git commit`, `git add`, or
+`gh issue close` yourself. The test suite is also a downstream
+concern for author agents; compiling is their one exception (see below)
+— it is not running the suite. The single role-scoped carve-out is the
+`system-implementer`, which self-verifies by running its own acceptance
+slice (see "System-running roles" below); that carve-out covers running
+the suite **only**, never the commit / issue-close prohibition above.
 
 Do not stop mid-dispatch to present a plan or ask for approval —
 approvals are gated downstream, between phases. If genuinely blocked (an
@@ -45,6 +48,21 @@ depend on genuinely lacks what you need and it is in your write scope
 `ResultAssert`), add the method there and prove it compiles; if the type
 is out of scope, emit the scope-exception envelope instead of leaving a
 broken call for downstream.
+
+## System-running roles: self-verify by running your slice
+
+Compiling is the **floor** for author agents — the stateless ones that
+write code and exit. The `system-implementer` role is the deliberate
+exception: compile-green is not its done-signal. After implementing, it
+is expected to build, (re)start the system, and run its own
+`acceptance-<channel>` slice via the existing
+`gh optivem system build` → `gh optivem system start --restart` →
+`gh optivem test run --suite=acceptance-<channel>` commands, then debug
+and re-run until that slice passes. For this role, running that slice is
+part of the job, not a downstream-only step — your own task body owns the
+loop and its stop rule. This carve-out is scoped to the
+`system-implementer` alone: every other agent stays compile-only and never
+runs the suite.
 
 ## Edit cohesion
 
