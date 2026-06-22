@@ -41,6 +41,36 @@ func externalSystemNamesFromChangedPaths(changedPaths, root string) map[string]s
 	return names
 }
 
+// touchedExternalSystemNames derives the set of external-system names this
+// ticket touched, by PRECEDENCE (plan 20260620-1850): when the ticket declares
+// External System Contract Criteria (ticket-has-escc), the explicit escc-systems
+// names are authoritative — the contract/stub room may have opened with NO
+// external-driver PORT file changed (the #65 list-shaped story), so the
+// port-change paths would be empty and must not be the source. Otherwise fall
+// back to the names the port change touched (the legacy 90% path). The explicit
+// declaration is authoritative when present; an undeclared port change is never
+// silently merged in.
+//
+// ESCC names are matched case-INSENSITIVELY against the registry: tickets read
+// "External System: ERP" while the registry key is the lowercase "erp", so the
+// declared names are lowercased here — matching the lowercase first path segment
+// externalSystemNamesFromChangedPaths returns. Both sources therefore yield the
+// same lowercase registry-key space.
+func touchedExternalSystemNames(ctx *statemachine.Context, root string) map[string]struct{} {
+	if hasESCC, _ := ctx.State["ticket-has-escc"].(bool); hasESCC {
+		names := map[string]struct{}{}
+		systems, _ := ctx.State["escc-systems"].([]string)
+		for _, s := range systems {
+			s = strings.ToLower(strings.TrimSpace(s))
+			if s != "" {
+				names[s] = struct{}{}
+			}
+		}
+		return names
+	}
+	return externalSystemNamesFromChangedPaths(ctx.GetString("external-driver-port-changed-paths"), root)
+}
+
 // validateExternalSystemsRegistered is the upfront no-silent-skip guard for the
 // unrolled external-system contract cycle (plan 20260615-0755 Item 3). It runs
 // ONCE in shared-contract, before the per-system clones, and hard-errors if any
@@ -63,7 +93,8 @@ func (a actions) validateExternalSystemsRegistered(ctx *statemachine.Context) st
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-external-systems-registered: %w", err)}
 	}
-	names := externalSystemNamesFromChangedPaths(ctx.GetString("external-driver-port-changed-paths"), roots[0])
+	hasESCC, _ := ctx.State["ticket-has-escc"].(bool)
+	names := touchedExternalSystemNames(ctx, roots[0])
 
 	unregistered := map[string]struct{}{}
 	for name := range names {
@@ -72,7 +103,11 @@ func (a actions) validateExternalSystemsRegistered(ctx *statemachine.Context) st
 		}
 	}
 	if len(unregistered) > 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("validate-external-systems-registered: the external-driver-port change touches external system(s) %s not registered in gh-optivem.yaml external-systems: — onboard them (declaring their real-kind) before running the contract-test cycle", strings.Join(sortedSetKeys(unregistered), ", "))}
+		source := "the external-driver-port change touches"
+		if hasESCC {
+			source = "the ticket's External System Contract Criteria name"
+		}
+		return statemachine.Outcome{Err: fmt.Errorf("validate-external-systems-registered: %s external system(s) %s not registered in gh-optivem.yaml external-systems: — onboard them (declaring their real-kind) before running the contract-test cycle", source, strings.Join(sortedSetKeys(unregistered), ", "))}
 	}
 	return statemachine.Outcome{}
 }
@@ -114,7 +149,7 @@ func (a actions) resolveExternalSystem(ctx *statemachine.Context) statemachine.O
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("resolve-external-system: %w", err)}
 	}
-	names := externalSystemNamesFromChangedPaths(ctx.GetString("external-driver-port-changed-paths"), roots[0])
+	names := touchedExternalSystemNames(ctx, roots[0])
 	_, touched := names[name]
 	ctx.Set("external-system-touched", touched)
 	return statemachine.Outcome{}

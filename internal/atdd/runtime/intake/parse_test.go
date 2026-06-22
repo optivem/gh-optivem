@@ -156,6 +156,83 @@ func TestExtractChecklist_IgnoresNonCheckboxBullets(t *testing.T) {
 	}
 }
 
+// --- External System Contract Criteria ---------------------------------------
+
+func TestParse_ESCCExtracted_NamesAndVerbatimBody(t *testing.T) {
+	escBody := "External System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\n  Stub only:\n    Given no products\n    Then ERP has no products"
+	body := "## Acceptance Criteria\n\nScenario: list\n\n## External System Contract Criteria\n\n" + escBody + "\n"
+	r, err := Parse(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	escc := r.ExternalSystemContractCriteria
+	if !escc.Found {
+		t.Fatalf("ESCC.Found: got false, want true")
+	}
+	if got, want := escc.Systems, []string{"ERP"}; len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("Systems: got %v, want %v", got, want)
+	}
+	// Body passes through verbatim — the parser does not interpret the registers.
+	if escc.Body != escBody {
+		t.Fatalf("Body not verbatim:\n got %q\nwant %q", escc.Body, escBody)
+	}
+}
+
+func TestParse_ESCCMultipleSystems_InOrder(t *testing.T) {
+	body := "## Acceptance Criteria\n\nScenario: x\n\n## External System Contract Criteria\n\nExternal System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\nExternal System: Tax\n  Shared (stub + real):\n    Given rate 0.2\n    Then Tax has rate 0.2\n"
+	r, err := Parse(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	got := r.ExternalSystemContractCriteria.Systems
+	want := []string{"ERP", "Tax"}
+	if len(got) != len(want) {
+		t.Fatalf("Systems length: got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Systems[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestParse_ESCCAbsent_NoSystems(t *testing.T) {
+	body := "## Acceptance Criteria\n\nScenario: x\n"
+	r, err := Parse(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	escc := r.ExternalSystemContractCriteria
+	if escc.Found {
+		t.Fatalf("ESCC.Found: got true, want false")
+	}
+	if len(escc.Systems) != 0 {
+		t.Fatalf("Systems: got %v, want none", escc.Systems)
+	}
+}
+
+func TestExtractESCC_CaseInsensitiveLabel(t *testing.T) {
+	body := "## External System Contract Criteria\n\nexternal system:  ERP \n  Stub only:\n    Given no products\n    Then ERP has no products\n"
+	got := ExtractESCC(body)
+	if !got.Found {
+		t.Fatalf("Found: got false, want true")
+	}
+	// Name is trimmed even with odd spacing / casing on the label.
+	if len(got.Systems) != 1 || got.Systems[0] != "ERP" {
+		t.Fatalf("Systems: got %v, want [ERP]", got.Systems)
+	}
+}
+
+func TestExtractESCC_AbsentReturnsEmpty(t *testing.T) {
+	got := ExtractESCC("## Description\n\nno escc here\n")
+	if got.Found {
+		t.Fatalf("Found: got true, want false")
+	}
+	if len(got.Systems) != 0 {
+		t.Fatalf("Systems: got %d, want 0", len(got.Systems))
+	}
+}
+
 func TestExtractSection_NestedSubheading(t *testing.T) {
 	body := "## Acceptance Criteria\n\n- a\n- b\n\n### Notes\n\nnested\n\n## Checklist\n\n- [ ] step\n"
 	got := ExtractSection(body, "Acceptance Criteria")
