@@ -45,7 +45,12 @@ log "go build -o gh-optivem.exe . (version=${DEV_VERSION})"
 go build -ldflags "-X github.com/optivem/gh-optivem/internal/kernel/version.Version=${DEV_VERSION}" -o gh-optivem.exe .
 
 log "gh extension install (remove first if already installed)"
-gh extension remove optivem 2>/dev/null || true
+if ! rm_err=$(gh extension remove optivem 2>&1); then
+  case "$rm_err" in
+    *"not installed"*|*"no such extension"*|*"not found"*) : ;;  # expected — nothing to remove
+    *) echo "${C_RED}[install] WARNING:${C_RESET} gh extension remove failed (continuing to install): $rm_err" >&2 ;;
+  esac
+fi
 gh extension install --force .
 
 log "verifying"
