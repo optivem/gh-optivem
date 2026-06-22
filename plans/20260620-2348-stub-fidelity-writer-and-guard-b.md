@@ -1,5 +1,7 @@
 # 2026-06-20 21:48:35 UTC — stub-fidelity-test-writer + Guard B (deferred pieces of the ESCC plan)
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-22T07:19:30Z`
+
 ## TL;DR
 
 **Why:** The ESCC plan (`plans/20260620-1850-external-boundary-list-story-prevention.md`) shipped Slice A + Step 2 + the `contract-test-writer` half of Step 3, which already removes the #65 halt. Two pieces were deferred because each needs a design decision before coding: the **`stub-fidelity-test-writer`** (Stub-only / exact-set + empty register) and **Guard B** (loud "contract needed but undeclared" halt). Both are blocked on plumbing/categorization choices, not on prompt authoring.
@@ -18,14 +20,13 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-**Resolve the two design questions first (they're in `## Open questions`), then implement in two independent slices.** The recommended resolutions are pre-filled below — confirm or adjust them, then a fresh `/execute-plan` can act on the Steps without re-deriving.
+**Slice 1 (stub-fidelity-test-writer) is DONE and committed (2026-06-22).** Slice 2 (Guard B) remains — it is independent of Slice 1, so a fresh `/execute-plan` can pick it up directly. Steps 6–8 below are fully specified (Q3/Q4 resolved). Concretely:
 
-Concretely, **Slice 1 (stub-fidelity-test-writer)** is the larger, higher-value piece and is independent of Slice 2; start there:
-1. Add the stub-only test-names landing key (so it doesn't collide with `ct-test-names` at `internal/atdd/process/actions/outputs.go:140`).
-2. Add the `stub-fidelity-test-writer` agent prompt + its `write-stub-fidelity-tests` process + the in-callee node (beside `WRITE_CONTRACT_TESTS`, `process-flow.yaml:1232`) + a stub-only probe/verify pair selecting the new key against `suite: contract-stub`.
-3. Wire `${external-system-contract-criteria}` + `escc-format.md` into the new prompt; seed the render-matrix tests.
+1. **Step 6** — add a path categorizer + new `scope-exception-needs-escc` boolStateGate binding in `internal/atdd/process/gates/bindings.go` (+ `TestRegisterAll_AllBindingsRegistered` want-list). It returns `true` iff (≥1 `scope-exception-files` entry sits under a contract/stub Family-B path family) AND (`ticket-has-escc == false`). The contract/stub families are the union of the *write* paths of `contract-test-writer` (`ct-test`, `dsl-port`, `dsl-core`), the now-shipped `stub-fidelity-test-writer` (`ct-test`), and `external-system-stub-implementer`. Resolve via `ResolveLayerPaths` + directory-prefix match (`[[feedback_port_changed_flags_directory_keyed]]`).
+2. **Step 7** — insert `GATE_SCOPE_EXCEPTION_NEEDS_ESCC` on the `scope-exception-requested == true` edge (search `STOP_SCOPE_VIOLATION` in `process-flow.yaml`, was ~line 2847 before Slice 1's edits shifted line numbers): `true` → new `ESCC_UNDECLARED_HALT` error-end with the actionable message; `false` → existing `STOP_SCOPE_VIOLATION` unchanged.
+3. **Step 8** — statemachine coverage for the three reroute cases.
 
-**Slice 2 (Guard B)** is independent: a new Go binding categorizing `scope-exception-files` by path family + a gateway/error-end off the `scope-exception-requested == true` branch (`process-flow.yaml:2847`).
+Reference precedents from Slice 1: presence-style binding shape (`stubFidelityTestsPresent`, `gates/bindings.go`), strict `boolStateGate`, the `ResolveLayerPaths`-driven scope categorization in `internal/atdd/process/actions/outputs.go`.
 
 ## Background — where the deferred pieces sit
 
@@ -36,7 +37,7 @@ From the parent plan's deferred Steps 3-remainder and 4 (`plans/20260620-1850-�
 
 ## Open questions
 
-> Recommendations pre-filled per `[[feedback_resolve_questions_upfront]]` / `[[feedback_autonomous_best_long_term]]`. Confirm or override.
+> **RESOLVED 2026-06-22 — all four pre-filled recommendations accepted by operator before execution.** Q1: separate `ct-isolated-test-names` key (add `isolated-test-names` to `namespacedLandingKeys`), reuse `contract-stub` suite, no new suite group. Q2: probe/verify after `VERIFY_TESTS_PASS_CONTRACT_STUB`, reuse `implement-external-system-stubs` for red→green. Q3: union of write paths of `contract-test-writer` + `stub-fidelity-test-writer` + `external-system-stub-implementer`. Q4: new `scope-exception-needs-escc` boolStateGate binding. Detail retained below for reference.
 
 1. **Stub-only test-names: separate key + reuse `contract-stub` suite, or a whole new `contract-stub-isolated` suite group?**
    **Recommendation: separate test-names key, reuse the existing `contract-stub` suite.** The new writer lands its names under a distinct key (e.g. `ct-isolated-test-names`) — achieved by either emitting a differently-named output (`isolated-test-names`, left at identity by `landingStateKey`) or by adding it to `namespacedLandingKeys`. A new stub-only probe/verify pair runs `suite: contract-stub, test-names: ${ct-isolated-test-names}` against the already-running stub; the `@Isolated` class marker provides serialization, so **no new runner suite is required**. A `contract-stub-isolated` *suite group* (runner `SuiteGroups` alias) is a config nicety — add it only if a human will run the isolated set standalone; default is to skip it. *(This is the parent plan's option 2, minus the unneeded suite.)*
@@ -49,13 +50,7 @@ From the parent plan's deferred Steps 3-remainder and 4 (`plans/20260620-1850-�
 
 ## Steps
 
-### Slice 1 — `stub-fidelity-test-writer` (resolves Q1/Q2, then implements)
-
-- [ ] Step 1: **Separate the stub-only test-names key.** Per Q1, give the new writer's `test-names` a landing key distinct from `ct-test-names` (either a distinct output name left at identity, or a new entry in `namespacedLandingKeys`/`landingStateKey` in `internal/atdd/process/actions/outputs.go`). Add/adjust the unit coverage in `outputs_test.go` so the shared and stub-only lists provably don't clobber each other.
-- [ ] Step 2: **Add the `stub-fidelity-test-writer` agent prompt.** New body under `internal/atdd/assets/runtime/agents/atdd/`, parallel to `contract-test-writer.md`: consumes the verbatim `${external-system-contract-criteria}` body + `escc-format.md`; authors **only** the `Stub only:` register as `<Sys>StubContractIsolatedTest` with `@Isolated` at class level (pull `isolated-marker-{java,csharp}.md`); clean non-conditional invariant — assert exact-set (`has exactly products`) + empty (`has no products`), stub only. No layer-coding in the name (`[[feedback_no_layer_coding_in_names]]`).
-- [ ] Step 3: **Add the `write-stub-fidelity-tests` process + in-callee node + scope block + `${expected-outputs}`.** New `EXECUTE_AGENT`-backed node inside `implement-and-verify-external-system-driver-adapters-contract-tests`, beside `WRITE_CONTRACT_TESTS` (`process-flow.yaml:1232`); the existing `UnrollExternalSystems` clone picks it up per system for free (`channels.go` untouched — `[[reference_system_path_monolith_only_resolver]]` pattern, no re-anchor). Its scope block lists only the stub-only test path.
-- [ ] Step 4: **Add the stub-only probe/verify pair.** Per Q2: after `VERIFY_TESTS_PASS_CONTRACT_STUB` (`process-flow.yaml:1402`), a `PROBE_CONTRACT_STUB_ISOLATED` → `GATE_…_OUTCOME` → (red) `implement-external-system-stubs` → rebuild/restart → `VERIFY_…_ISOLATED`, all `suite: contract-stub, test-names: ${ct-isolated-test-names}`. Wire `${external-system-contract-criteria}` into the new write node's params (mirror the `contract-test-writer` wiring done in the parent plan's Step 3).
-- [ ] Step 5: **Seed the render-matrix + binding tests.** Extend `renderMatrixOpts` (TestRenderMatrix_NoUnfilledPlaceholders) for the new prompt's placeholders (`[[project_test_fixtures_monolith_only_gap]]`); add any new gate binding to `gates/bindings.go` want-list. Run scoped tests only (`-p 2` / `scripts/test.sh`, never unbounded `go test ./...` — `[[feedback_go_test_windows]]`), and watch for statemachine loop hazards on the new probe back-edges (`[[feedback_statemachine_test_loop_hazard]]`).
+> **Slice 1 (`stub-fidelity-test-writer`, Steps 1–5) — DONE, committed 2026-06-22.** Shipped: `isolated-test-names` added to `namespacedLandingKeys` (lands `ct-isolated-test-names`); new `stub-fidelity-test-writer.md` prompt (Stub-only register only, `<Sys>StubContractIsolatedTest`, `@Isolated`); `write-stub-fidelity-tests` process + `WRITE_STUB_FIDELITY_TESTS` node + the stub-only probe/verify leg gated by a new `stub-fidelity-tests-present` presence binding (handles the *optional* `Stub only:` register without crashing strict ExpandParams — a refinement beyond the plan's literal Q2). Render-matrix needed no new seeding (new prompt reuses already-seeded placeholders). All scoped tests green; no statemachine loop hazard (forward-only leg).
 
 ### Slice 2 — Guard B (resolves Q3/Q4, then implements)
 

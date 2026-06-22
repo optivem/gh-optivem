@@ -24,8 +24,8 @@ What we get out of this — the goals and deliverables:
 **The #65 halt is fixed.** DONE so far: Slice A (intake + `parse-ticket`) and, this session, **Step 2** (ESCC-first room-entry routing + `ticket-has-escc` binding + `external.go` case-insensitive precedence) and the **`contract-test-writer` half of Step 3** (consumes the verbatim ESCC Shared register). With ESCC on the #65 ticket, the room now opens, the containment contract test drives the list stub into existence, and `system-implementer` no longer halts.
 
 **Next move = execute the already-drafted follow-up plan** for the two deferred pieces. That plan — **`plans/20260620-2348-stub-fidelity-writer-and-guard-b.md`** — is written with both blocking design decisions pre-resolved in its `## Open questions` (separate stub-only test-names key + reuse `contract-stub` suite; Guard-B path families = union of the contract/stub writers' write-scopes). It covers:
-1. **`stub-fidelity-test-writer`** (Stub-only / exact-set + empty fidelity register) — Slice 1 there.
-2. **Guard B** (loud "contract needed but undeclared" halt) — Slice 2 there.
+1. **`stub-fidelity-test-writer`** (Stub-only / exact-set + empty fidelity register) — Slice 1 there. ✅ **DONE & committed 2026-06-22** (the new writer + `write-stub-fidelity-tests` process + stub-only probe/verify leg + `ct-isolated-test-names` key + `stub-fidelity-tests-present` presence gate all shipped; scoped tests green). **Do not resume this parent until the child plan is fully done** — its remaining work IS this parent's deferral.
+2. **Guard B** (loud "contract needed but undeclared" halt) — Slice 2 there. ⏳ remaining.
 
 Then the operator items: **Step 5** (add `## External System Contract Criteria` to GitHub issue #65 in the `shop` repo) and **Step 6** (re-run the #65 rehearsal, multitier-java) — also carried in the follow-up plan's operator hand-off.
 

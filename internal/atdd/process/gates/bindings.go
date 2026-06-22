@@ -194,6 +194,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	// touched. resolve-external-system stamps the bool (it has Config to derive
 	// the names-set); this gate is a pure state-reader.
 	r.Register("external-system-touched", b.externalSystemTouched)
+	// Stub-only fidelity leg guard (plan 20260620-2348). The stub-fidelity-test-
+	// writer authors the `Stub only:` register only when the ticket declares one
+	// (optional), so GATE_STUB_FIDELITY_PRESENT routes into the stub-only
+	// probe/verify iff it emitted a non-empty ct-isolated-test-names list, and
+	// past it otherwise — which also keeps an unset ${ct-isolated-test-names} away
+	// from the probe's strict ExpandParams. Presence-style (absent → false).
+	r.Register("stub-fidelity-tests-present", b.stubFidelityTestsPresent)
 	// Per-channel clone guard (plan 20260619-1139). Each unrolled per-channel
 	// system / system-driver-adapter clone is guarded by this gate so it runs iff
 	// at least one of the ticket's acceptance tests registered for its baked
@@ -604,6 +611,31 @@ func (b bindings) externalSystemTouched(ctx *statemachine.Context) statemachine.
 // externalSystemTouched.
 func (b bindings) channelTouched(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "channel-touched")
+}
+
+// stubFidelityTestsPresent is GATE_STUB_FIDELITY_PRESENT, the optional-register
+// guard on the stub-only fidelity leg of the external-system contract cycle
+// (plan 20260620-2348). The stub-fidelity-test-writer authors tests ONLY when
+// the ticket declares a `Stub only:` register (optional per escc-format.md), so
+// this gate reads whether it emitted a non-empty `ct-isolated-test-names` list
+// and routes into the stub-only probe/verify (true) or straight past it to the
+// cycle end (false). The false branch is load-bearing for more than skipping
+// wasted work: it prevents PROBE_CONTRACT_STUB_ISOLATED from receiving an unset
+// `${ct-isolated-test-names}`, which strict ExpandParams (run.go) would reject.
+//
+// Presence-style, NOT strict: absent / nil / empty all mean "no fidelity tests"
+// → false (no error), mirroring scopeExceptionRequested. The list lands as
+// []string (validate-outputs-and-scopes coerces the string-list output); the
+// []any arm covers a hand-crafted-JSONL test fixture that skips that coercion.
+func (b bindings) stubFidelityTestsPresent(ctx *statemachine.Context) statemachine.Outcome {
+	switch v := ctx.Get("ct-isolated-test-names").(type) {
+	case []string:
+		return statemachine.Outcome{Bool: len(v) > 0}
+	case []any:
+		return statemachine.Outcome{Bool: len(v) > 0}
+	default:
+		return statemachine.Outcome{Bool: false}
+	}
 }
 
 // boolStateGate is the shared body of the three driver-port-changed

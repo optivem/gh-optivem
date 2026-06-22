@@ -1438,6 +1438,12 @@ func TestLandingStateKey_CascadeNamespacing(t *testing.T) {
 		// test-names is namespaced too (plan 20260608-1231).
 		{"test-names", "acceptance", "at-test-names"},
 		{"test-names", "contract", "ct-test-names"},
+		// isolated-test-names (stub-fidelity-test-writer, plan 20260620-2348) is
+		// namespaced under its OWN key — `ct-isolated-test-names`, distinct from
+		// `ct-test-names` — so the stub-only fidelity list never collides with the
+		// shared register's list under the same contract cascade.
+		{"isolated-test-names", "acceptance", "at-isolated-test-names"},
+		{"isolated-test-names", "contract", "ct-isolated-test-names"},
 		// Genuinely non-namespaced outputs are the identity.
 		{"scope-exception-reason", "contract", "scope-exception-reason"},
 		// Unrecognised / absent cascade falls back to the bare key (the
@@ -1492,6 +1498,54 @@ func TestValidateOutputsAndScopes_PortChangedVerdicts_CascadeNamespaced(t *testi
 	}
 	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
 		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
+	}
+}
+
+// The two contract-side test-name lists land under DISTINCT cascade keys so the
+// stub-fidelity-test-writer's isolated register never clobbers the
+// contract-test-writer's shared register (plan 20260620-2348). Both writers run
+// under test-category=contract inside the same external-system contract cycle;
+// without the dedicated `isolated-test-names` landing key they would both write
+// `ct-test-names` and last-write-wins would feed the wrong list to the probes
+// (and the @Isolated exact-set/empty tests would reach PROBE_CONTRACT_REAL —
+// which must never happen against the never-reset real driver).
+func TestValidateOutputsAndScopes_ContractTestNames_SeparateIsolatedKey(t *testing.T) {
+	repoPath := t.TempDir()
+	cfg := writePhaseScopeTestConfig(t, repoPath)
+	git := newFakeRunner(t, "git")
+	git.on([]string{"-C", repoPath, "status", "--porcelain"}, []byte(""), nil)
+	a := newActions(Deps{Git: git, RepoPath: repoPath, Config: cfg, Stderr: &bytes.Buffer{}, Engine: loadTestEngine(t)})
+
+	ctx := statemachine.NewContext()
+	ctx.Params["test-category"] = "contract"
+	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
+	dir := t.TempDir()
+
+	// 1. The shared-register writer (contract-test-writer) lands ct-test-names.
+	sharedJSONL := filepath.Join(dir, "001-contract-test-writer.outputs.jsonl")
+	writeJSONL(t, sharedJSONL, `{"dsl-port-changed":false,"test-names":["sharedA","sharedB"]}`)
+	ctx.Params["task-name"] = "write-contract-tests"
+	ctx.State["output-file-path"] = sharedJSONL
+	if out := a.validateOutputsAndScopes(ctx); out.Err != nil {
+		t.Fatalf("shared-register writer: unexpected err: %v", out.Err)
+	}
+
+	// 2. The stub-only writer (stub-fidelity-test-writer) lands its list under
+	//    the DISTINCT ct-isolated-test-names key.
+	isoJSONL := filepath.Join(dir, "002-stub-fidelity-test-writer.outputs.jsonl")
+	writeJSONL(t, isoJSONL, `{"isolated-test-names":["isoX","isoY"]}`)
+	ctx.Params["task-name"] = "write-stub-fidelity-tests"
+	ctx.State["output-file-path"] = isoJSONL
+	if out := a.validateOutputsAndScopes(ctx); out.Err != nil {
+		t.Fatalf("stub-only writer: unexpected err: %v", out.Err)
+	}
+
+	// Both lists coexist under distinct keys — neither clobbered the other.
+	if got, _ := ctx.Get("ct-test-names").([]string); len(got) != 2 || got[0] != "sharedA" {
+		t.Errorf("ct-test-names: got %v, want [sharedA sharedB]", ctx.Get("ct-test-names"))
+	}
+	if got, _ := ctx.Get("ct-isolated-test-names").([]string); len(got) != 2 || got[0] != "isoX" {
+		t.Errorf("ct-isolated-test-names: got %v, want [isoX isoY]", ctx.Get("ct-isolated-test-names"))
 	}
 }
 

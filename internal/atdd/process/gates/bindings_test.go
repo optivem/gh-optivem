@@ -85,6 +85,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"ticket-has-escc",
 		"real-kind",
 		"external-system-touched",
+		"stub-fidelity-tests-present",
 		"channel-touched",
 		"refactor-type-choice",
 		"approval-outcome",
@@ -191,6 +192,66 @@ func TestScopeExceptionRequested_EmptyFalse(t *testing.T) {
 				ctx.Set("scope-exception-files", tc.val)
 			}
 			out := b.scopeExceptionRequested(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if out.Bool {
+				t.Fatalf("Bool: got true, want false")
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// stub-fidelity-tests-present — GATE_STUB_FIDELITY_PRESENT (plan 20260620-2348)
+// ---------------------------------------------------------------------------
+
+func TestStubFidelityTestsPresent_NonEmptyTrue(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	cases := []struct {
+		name string
+		val  any
+	}{
+		{name: "string_slice", val: []string{"shouldHaveExactly"}},
+		{name: "any_slice", val: []any{"shouldHaveExactly"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := statemachine.NewContext()
+			ctx.Set("ct-isolated-test-names", tc.val)
+			out := b.stubFidelityTestsPresent(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			if !out.Bool {
+				t.Fatalf("Bool: got false, want true")
+			}
+		})
+	}
+}
+
+// Absent / nil / empty all mean "no Stub only register authored" → false, with
+// no error (presence-style, unlike the strict driver-port-changed gates). The
+// false routing is what keeps an unset ${ct-isolated-test-names} away from the
+// stub-only probe's strict ExpandParams.
+func TestStubFidelityTestsPresent_AbsentOrEmptyFalse(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	cases := []struct {
+		name string
+		val  any
+	}{
+		{name: "unset", val: nil},
+		{name: "nil_slice", val: ([]string)(nil)},
+		{name: "empty_string_slice", val: []string{}},
+		{name: "empty_any_slice", val: []any{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := statemachine.NewContext()
+			if tc.val != nil {
+				ctx.Set("ct-isolated-test-names", tc.val)
+			}
+			out := b.stubFidelityTestsPresent(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected error: %v", out.Err)
 			}

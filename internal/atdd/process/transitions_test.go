@@ -725,8 +725,49 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 		t.Errorf("GATE_CONTRACT_STUB_OUTCOME binding = %q, want test-outcome", got)
 	}
 	wantEdge(t, ct, "PROBE_CONTRACT_STUB", "GATE_CONTRACT_STUB_OUTCOME", "")
-	wantEdge(t, ct, "GATE_CONTRACT_STUB_OUTCOME", "IMPL_EXT_DRIVER_CT_END", "test-outcome == pass")
+	// Both stub-green paths (already-green and implemented+verified) now converge
+	// on the stub-fidelity leg's presence gate (plan 20260620-2348), not directly
+	// on the cycle end.
+	wantEdge(t, ct, "GATE_CONTRACT_STUB_OUTCOME", "GATE_STUB_FIDELITY_PRESENT", "test-outcome == pass")
 	wantEdge(t, ct, "GATE_CONTRACT_STUB_OUTCOME", "IMPLEMENT_EXTERNAL_SYSTEM_STUBS", "test-outcome == fail")
+	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_STUB", "GATE_STUB_FIDELITY_PRESENT", "")
+
+	// 4c. The stub-only fidelity leg (plan 20260620-2348): a presence gate skips
+	//     the whole leg when no `Stub only:` register was authored (empty
+	//     ct-isolated-test-names), otherwise an outcome-driven probe → implement
+	//     stubs → rebuild/restart → verify, all selecting the isolated register
+	//     (test-names: ${ct-isolated-test-names}) against suite contract-stub.
+	presGate, ok := ct.Nodes["GATE_STUB_FIDELITY_PRESENT"]
+	if !ok {
+		t.Fatalf("CT-HIGH: GATE_STUB_FIDELITY_PRESENT node missing")
+	}
+	if got := presGate.Raw.Binding; got != "stub-fidelity-tests-present" {
+		t.Errorf("GATE_STUB_FIDELITY_PRESENT binding = %q, want stub-fidelity-tests-present", got)
+	}
+	wantEdge(t, ct, "GATE_STUB_FIDELITY_PRESENT", "PROBE_CONTRACT_STUB_ISOLATED", "stub-fidelity-tests-present == true")
+	wantEdge(t, ct, "GATE_STUB_FIDELITY_PRESENT", "IMPL_EXT_DRIVER_CT_END", "stub-fidelity-tests-present == false")
+	if got := ct.Nodes["WRITE_STUB_FIDELITY_TESTS"].Raw.Process; got != "write-stub-fidelity-tests" {
+		t.Errorf("WRITE_STUB_FIDELITY_TESTS process = %q, want write-stub-fidelity-tests", got)
+	}
+	wantEdge(t, ct, "WRITE_CONTRACT_TESTS", "WRITE_STUB_FIDELITY_TESTS", "")
+	wantEdge(t, ct, "WRITE_STUB_FIDELITY_TESTS", "GATE_DSL_PORT_CHANGED", "")
+	isoGate, ok := ct.Nodes["GATE_CONTRACT_STUB_ISOLATED_OUTCOME"]
+	if !ok {
+		t.Fatalf("CT-HIGH: GATE_CONTRACT_STUB_ISOLATED_OUTCOME node missing")
+	}
+	if got := isoGate.Raw.Binding; got != "test-outcome" {
+		t.Errorf("GATE_CONTRACT_STUB_ISOLATED_OUTCOME binding = %q, want test-outcome", got)
+	}
+	wantEdge(t, ct, "PROBE_CONTRACT_STUB_ISOLATED", "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "")
+	wantEdge(t, ct, "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "IMPL_EXT_DRIVER_CT_END", "test-outcome == pass")
+	wantEdge(t, ct, "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "test-outcome == fail")
+	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "")
+	wantEdge(t, ct, "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "START_SYSTEM_AFTER_STUBS_ISOLATED", "")
+	wantEdge(t, ct, "START_SYSTEM_AFTER_STUBS_ISOLATED", "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "")
+	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "IMPL_EXT_DRIVER_CT_END", "")
+	if n := ct.Nodes["VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED"]; n.Raw.Params["test-names"] != "${ct-isolated-test-names}" {
+		t.Errorf("isolated verify test-names = %q, want ${ct-isolated-test-names}", n.Raw.Params["test-names"])
+	}
 
 	// 5. The new simulator MID dispatches the mirror agent and scopes writes
 	//    to external-system-driver-adapter (fork #2) plus the shared

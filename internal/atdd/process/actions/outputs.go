@@ -300,11 +300,21 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 // selects on. The map's meaning is "outputs that namespace by cascade tag," so
 // any future per-cascade output joins this one set rather than growing a
 // second allowlist.
+//
+// isolated-test-names is the stub-fidelity-test-writer's own per-cascade list
+// (plan 20260620-2348): it lands under `ct-isolated-test-names`, a key DISTINCT
+// from `ct-test-names`, so the stub-only fidelity register the new writer emits
+// never leaks into the shared-register PROBE_CONTRACT_REAL / PROBE_CONTRACT_STUB
+// (which select `${ct-test-names}`). The dedicated stub-only probe/verify pair
+// selects `${ct-isolated-test-names}` instead, keeping clean failure
+// localization (shared red ⇒ stub/real disagree; stub-only red ⇒ stub broken)
+// and keeping the never-resettable real driver away from exact-set/empty asserts.
 var namespacedLandingKeys = map[string]bool{
 	"dsl-port-changed":             true,
 	"system-driver-port-changed":   true,
 	"external-driver-port-changed": true,
 	"test-names":                   true,
+	"isolated-test-names":          true,
 }
 
 // landingStateKey returns the ctx.State key a flattened agent output lands
