@@ -133,6 +133,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	//   - Layer 2: phase-scope-clean runs after the agent commits; reads the
 	//     check-phase-scope action's structured result; false → STOP_SCOPE_VIOLATION.
 	r.Register("scope-exception-requested", b.scopeExceptionRequested)
+	// Guard B — GATE_SCOPE_EXCEPTION_NEEDS_ESCC (plan 20260620-2348). Pure
+	// state-reader of the bool the categorize-scope-exception action stamps on
+	// the scope-exception==true branch; true → ESCC_UNDECLARED_HALT, false →
+	// STOP_SCOPE_VIOLATION. Strict (the action runs immediately upstream).
+	r.Register("scope-exception-needs-escc", b.scopeExceptionNeedsESCC)
 	r.Register("phase-scope-clean", b.phaseScopeClean)
 	// Post-RED-DSL flag-presence validation (per plan 20260518-1144 item 4):
 	// the two RED-DSL phase-output flags (system_driver_interface_changed,
@@ -263,6 +268,23 @@ func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 func (b bindings) scopeExceptionRequested(ctx *statemachine.Context) statemachine.Outcome {
 	files, _ := ctx.Get("scope-exception-files").([]string)
 	return statemachine.Outcome{Bool: len(files) > 0}
+}
+
+// scopeExceptionNeedsESCC is GATE_SCOPE_EXCEPTION_NEEDS_ESCC, Guard B's reroute
+// gate (plan 20260620-2348). The categorize-scope-exception action — which has
+// the Config the bindings package lacks — runs immediately upstream on the
+// scope-exception==true branch and stamps ctx.State["scope-exception-needs-escc"]
+// = (the refused files are external contract/stub work AND the ticket declared
+// no External System Contract Criteria). This gate reads it back: true →
+// ESCC_UNDECLARED_HALT (actionable "add a ## External System Contract Criteria
+// section"); false → STOP_SCOPE_VIOLATION (the generic refusal halt, unchanged).
+//
+// Strict (boolStateGate) — the action always runs immediately before this gate
+// on the scope-exception branch, so a missing key is a wiring bug, not a default
+// no. Same doctrine as externalSystemTouched / channelTouched (action stamps,
+// gate reads).
+func (b bindings) scopeExceptionNeedsESCC(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "scope-exception-needs-escc")
 }
 
 // dslFlagsPresent is the flag-presence-validation gateway sitting

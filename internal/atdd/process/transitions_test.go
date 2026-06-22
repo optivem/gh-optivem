@@ -200,9 +200,63 @@ func TestExecuteAgent_ScopeExceptionRoutesToStopViolation(t *testing.T) {
 	wantEdge(t, proc, "VALIDATE_OUTPUTS_AND_SCOPES", "GATE_SCOPE_EXCEPTION_REQUESTED", "")
 	notEdge(t, proc, "VALIDATE_OUTPUTS_AND_SCOPES", "GATE_OUTPUTS_AND_SCOPES_VALID")
 
-	// 4. Exception requested -> hard halt; not requested -> normal validation.
-	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "STOP_SCOPE_VIOLATION", "scope-exception-requested == true")
+	// 4. Exception requested -> Guard B categorizer (which then forks the halt);
+	//    not requested -> normal validation. The old direct
+	//    GATE_SCOPE_EXCEPTION_REQUESTED -> STOP_SCOPE_VIOLATION edge is gone:
+	//    STOP_SCOPE_VIOLATION is now reached via GATE_SCOPE_EXCEPTION_NEEDS_ESCC
+	//    (see TestExecuteAgent_GuardB_ESCCReroute).
+	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "CATEGORIZE_SCOPE_EXCEPTION", "scope-exception-requested == true")
+	notEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "STOP_SCOPE_VIOLATION")
 	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "GATE_OUTPUTS_AND_SCOPES_VALID", "scope-exception-requested == false")
+}
+
+// Guard B (plan 20260620-2348): a scope-exception is categorized before it
+// halts. CATEGORIZE_SCOPE_EXCEPTION stamps scope-exception-needs-escc, and
+// GATE_SCOPE_EXCEPTION_NEEDS_ESCC forks the loud ESCC_UNDECLARED_HALT (the
+// ticket lacks its ## External System Contract Criteria section) from the
+// generic STOP_SCOPE_VIOLATION (the BPMN scope: is too narrow). This pins the
+// three reroute cases at the graph level; the categorizer's bool decision for
+// each case is unit-tested in actions/TestCategorizeScopeException.
+func TestExecuteAgent_GuardB_ESCCReroute(t *testing.T) {
+	eng := loadSnapshot(t)
+	proc, ok := eng.Processes["execute-agent"]
+	if !ok {
+		t.Fatalf("process execute-agent missing")
+	}
+
+	// 1. The categorizer is a service-task bound to the Guard B action.
+	cat, ok := proc.Nodes["CATEGORIZE_SCOPE_EXCEPTION"]
+	if !ok {
+		t.Fatalf("execute-agent: CATEGORIZE_SCOPE_EXCEPTION node missing")
+	}
+	if cat.Kind != statemachine.ServiceTask {
+		t.Errorf("CATEGORIZE_SCOPE_EXCEPTION kind = %v, want statemachine.ServiceTask", cat.Kind)
+	}
+	if cat.Raw.Action != "categorize-scope-exception" {
+		t.Errorf("CATEGORIZE_SCOPE_EXCEPTION action = %q, want %q", cat.Raw.Action, "categorize-scope-exception")
+	}
+
+	// 2. The reroute gate binds the categorizer's stamped bool.
+	gate, ok := proc.Nodes["GATE_SCOPE_EXCEPTION_NEEDS_ESCC"]
+	if !ok {
+		t.Fatalf("execute-agent: GATE_SCOPE_EXCEPTION_NEEDS_ESCC node missing")
+	}
+	if gate.Raw.Binding != "scope-exception-needs-escc" {
+		t.Errorf("GATE_SCOPE_EXCEPTION_NEEDS_ESCC binding = %q, want %q", gate.Raw.Binding, "scope-exception-needs-escc")
+	}
+
+	// 3. ESCC_UNDECLARED_HALT is an error-end-event so the halt bubbles up (its
+	//    id ends `_HALT` but not `_INFRA_HALT`, so the quantified
+	//    halt-terminals-are-error-end rule does not cover it — pinned here,
+	//    mirroring CONTRACT_REAL_UPSTREAM_GAP_HALT).
+	if n := proc.Nodes["ESCC_UNDECLARED_HALT"]; n.Kind != statemachine.ErrorEndEvent {
+		t.Errorf("ESCC_UNDECLARED_HALT kind = %v, want statemachine.ErrorEndEvent", n.Kind)
+	}
+
+	// 4. The categorizer feeds the reroute gate; the gate forks the two halts.
+	wantEdge(t, proc, "CATEGORIZE_SCOPE_EXCEPTION", "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "")
+	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "ESCC_UNDECLARED_HALT", "scope-exception-needs-escc == true")
+	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "STOP_SCOPE_VIOLATION", "scope-exception-needs-escc == false")
 }
 
 // Both verify-tests-pass and verify-tests-fail must route

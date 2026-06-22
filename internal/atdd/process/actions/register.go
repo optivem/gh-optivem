@@ -96,4 +96,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	// GATE_FIX_PROGRESSING halts a fixer that keeps editing without changing
 	// the failure. See fix_progress.go.
 	r.Register("check-fix-progress", a.checkFixProgress)
+	// Guard B — ESCC-undeclared scope-exception categorizer (plan
+	// 20260620-2348). Runs on the execute-agent scope-exception==true branch,
+	// before GATE_SCOPE_EXCEPTION_NEEDS_ESCC. Resolves the contract/stub Family
+	// B path families and stamps scope-exception-needs-escc = (the refused files
+	// are contract/stub work AND the ticket declares no External System Contract
+	// Criteria), routing the loud ESCC_UNDECLARED_HALT instead of the generic
+	// STOP_SCOPE_VIOLATION. See scope_exception.go.
+	r.Register("categorize-scope-exception", a.categorizeScopeException)
 }

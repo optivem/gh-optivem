@@ -2947,6 +2947,26 @@ processes:
         binding: scope-exception-requested
         name: "Scope Exception Requested?"
 
+      # Guard B (plan 20260620-2348). On a scope-exception, categorize WHY: a
+      # system-implementer that refuses because it must touch external
+      # contract/stub files on a ticket with NO External System Contract
+      # Criteria is the #65-class halt — the generic STOP_SCOPE_VIOLATION below
+      # is cryptic for it. categorize-scope-exception resolves the contract/stub
+      # Family B path families and stamps scope-exception-needs-escc; the gate
+      # then forks the loud, teaching ESCC_UNDECLARED_HALT vs the unchanged
+      # generic halt. Sits ONLY on the exception==true branch, so a vanilla
+      # scope-exception (non-contract files, or ESCC already declared) is
+      # untouched.
+      - id: CATEGORIZE_SCOPE_EXCEPTION
+        type: service-task
+        action: categorize-scope-exception
+        name: "Categorize Scope Exception"
+
+      - id: GATE_SCOPE_EXCEPTION_NEEDS_ESCC
+        type: gateway
+        binding: scope-exception-needs-escc
+        name: "Scope Exception Needs ESCC?"
+
       - id: GATE_OUTPUTS_AND_SCOPES_VALID
         type: gateway
         binding: outputs-and-scopes-valid
@@ -3020,6 +3040,20 @@ processes:
         type: error-end-event
         name: "Scope Violation — Agent Refused"
 
+      # Guard B's teaching halt (plan 20260620-2348). Reached when a
+      # scope-exception names external contract/stub files but the ticket
+      # declares no External System Contract Criteria. Distinct from
+      # STOP_SCOPE_VIOLATION (which means "the BPMN scope: is too narrow, widen
+      # it") — here the scope is correct and the *ticket* is missing its ESCC
+      # section. The actionable, system-named guidance is emitted on stderr by
+      # categorize-scope-exception (terminal-event names are not param-expanded);
+      # this label carries the static instruction. The `_HALT` id keeps it
+      # error-end (its kind is pinned in transitions_test.go, mirroring
+      # CONTRACT_REAL_UPSTREAM_GAP_HALT).
+      - id: ESCC_UNDECLARED_HALT
+        type: error-end-event
+        name: "External System Contract Criteria Undeclared — add a ## External System Contract Criteria section naming the external system and re-run"
+
       # Halt target for the fixer-retry cap (plan 20260530-1604). Reached on
       # the 3rd FIX arrival, before re-dispatch — the agent's output is
       # still invalid after 2 fix passes, so the BPMN scope is likely too
@@ -3038,8 +3072,11 @@ processes:
       - {from: SNAPSHOT_WORKING_TREE,         to: RUN_AGENT}
       - {from: RUN_AGENT,                     to: VALIDATE_OUTPUTS_AND_SCOPES}
       - {from: VALIDATE_OUTPUTS_AND_SCOPES,   to: GATE_SCOPE_EXCEPTION_REQUESTED}
-      - {from: GATE_SCOPE_EXCEPTION_REQUESTED, to: STOP_SCOPE_VIOLATION,           when: "scope-exception-requested == true"}
+      - {from: GATE_SCOPE_EXCEPTION_REQUESTED, to: CATEGORIZE_SCOPE_EXCEPTION,      when: "scope-exception-requested == true"}
       - {from: GATE_SCOPE_EXCEPTION_REQUESTED, to: GATE_OUTPUTS_AND_SCOPES_VALID,  when: "scope-exception-requested == false"}
+      - {from: CATEGORIZE_SCOPE_EXCEPTION,     to: GATE_SCOPE_EXCEPTION_NEEDS_ESCC}
+      - {from: GATE_SCOPE_EXCEPTION_NEEDS_ESCC, to: ESCC_UNDECLARED_HALT,           when: "scope-exception-needs-escc == true"}
+      - {from: GATE_SCOPE_EXCEPTION_NEEDS_ESCC, to: STOP_SCOPE_VIOLATION,           when: "scope-exception-needs-escc == false"}
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: APPROVE_POST,        when: "outputs-and-scopes-valid == true"}
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: GATE_FIX_ON_FAILURE, when: "outputs-and-scopes-valid == false"}
       - {from: GATE_FIX_ON_FAILURE,           to: FIX,             when: "fix-on-failure-enabled == true"}

@@ -71,6 +71,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 	RegisterAll(r, Deps{Prompter: &fakePrompter{}, Gh: fakeGh{}, Git: fakeGit{}})
 	want := []string{
 		"scope-exception-requested",
+		"scope-exception-needs-escc",
 		"phase-scope-clean",
 		"dsl-flags-present",
 		"command-succeeded",
@@ -199,6 +200,35 @@ func TestScopeExceptionRequested_EmptyFalse(t *testing.T) {
 				t.Fatalf("Bool: got true, want false")
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// scope-exception-needs-escc — GATE_SCOPE_EXCEPTION_NEEDS_ESCC (Guard B,
+// plan 20260620-2348). Strict reader of the bool categorize-scope-exception
+// stamps; same doctrine as the other boolStateGate readers.
+// ---------------------------------------------------------------------------
+
+func TestScopeExceptionNeedsESCC_ReadsStampedBool(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	for _, want := range []bool{true, false} {
+		ctx := statemachine.NewContext()
+		ctx.Set("scope-exception-needs-escc", want)
+		out := b.scopeExceptionNeedsESCC(ctx)
+		if out.Err != nil {
+			t.Fatalf("unexpected error: %v", out.Err)
+		}
+		if out.Bool != want {
+			t.Fatalf("Bool: got %v, want %v", out.Bool, want)
+		}
+	}
+}
+
+func TestScopeExceptionNeedsESCC_UnsetIsError(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	out := b.scopeExceptionNeedsESCC(statemachine.NewContext())
+	if out.Err == nil {
+		t.Fatalf("expected error on unset key (the categorizer action must run upstream), got nil")
 	}
 }
 

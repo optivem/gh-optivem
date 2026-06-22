@@ -138,11 +138,112 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"move-to-in-acceptance",
 		"parse-ticket",
 		"check-fix-progress",
+		"categorize-scope-exception",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
 			t.Errorf("action %q not registered", name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// categorizeScopeException — Guard B (plan 20260620-2348)
+// ---------------------------------------------------------------------------
+
+// TestCategorizeScopeException covers the three reroute cases the gate forks on:
+// contract/stub files + no ESCC → needs-escc (ESCC_UNDECLARED_HALT); the same
+// files + ESCC declared → not (generic STOP_SCOPE_VIOLATION); non-contract files
+// → not. Path layers resolve via writePhaseScopeTestConfig (ct-test =
+// .../tests/latest/contract, external-system-driver-adapter =
+// driver/.../external-adapter, system path = system/monolith/typescript).
+func TestCategorizeScopeException(t *testing.T) {
+	cfg := writePhaseScopeTestConfig(t, t.TempDir())
+	cases := []struct {
+		name    string
+		files   []string
+		hasESCC bool
+		want    bool
+	}{
+		{
+			name:  "contract_test_file_no_escc_needs",
+			files: []string{"system-test/typescript/tests/latest/contract/ErpContractTest.ts"},
+			want:  true,
+		},
+		{
+			name:  "external_stub_adapter_file_no_escc_needs",
+			files: []string{"driver/typescript/src/external-adapter/erp/ErpStub.ts"},
+			want:  true,
+		},
+		{
+			name:  "dsl_port_file_no_escc_needs",
+			files: []string{"dsl/typescript/src/port/ErpDriver.ts"},
+			want:  true,
+		},
+		{
+			name:    "contract_file_with_escc_does_not_need",
+			files:   []string{"system-test/typescript/tests/latest/contract/ErpContractTest.ts"},
+			hasESCC: true,
+			want:    false,
+		},
+		{
+			name:  "non_contract_file_does_not_need",
+			files: []string{"system/monolith/typescript/src/ProductController.ts"},
+			want:  false,
+		},
+		{
+			name:  "no_files_does_not_need",
+			files: nil,
+			want:  false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			a := newActions(Deps{Config: cfg, Stderr: &bytes.Buffer{}})
+			ctx := statemachine.NewContext()
+			if tc.files != nil {
+				ctx.Set("scope-exception-files", tc.files)
+			}
+			ctx.Set("ticket-has-escc", tc.hasESCC)
+			out := a.categorizeScopeException(ctx)
+			if out.Err != nil {
+				t.Fatalf("unexpected error: %v", out.Err)
+			}
+			got, _ := ctx.Get("scope-exception-needs-escc").(bool)
+			if got != tc.want {
+				t.Fatalf("scope-exception-needs-escc: got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The ESCC-undeclared diagnostic names the external system derived from the
+// stub-adapter file's <root>/<name>/ segment, and tells the author to add the
+// ## External System Contract Criteria section — the actionable guidance the
+// literal ESCC_UNDECLARED_HALT label cannot carry (terminal names are not
+// param-expanded).
+func TestCategorizeScopeException_DiagnosticNamesSystemAndAction(t *testing.T) {
+	cfg := writePhaseScopeTestConfig(t, t.TempDir())
+	var stderr bytes.Buffer
+	a := newActions(Deps{Config: cfg, Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Set("scope-exception-files", []string{"driver/typescript/src/external-adapter/erp/ErpStub.ts"})
+	ctx.Set("ticket-has-escc", false)
+	if out := a.categorizeScopeException(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	for _, want := range []string{"erp", "External System Contract Criteria"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("diagnostic should mention %q; got:\n%s", want, stderr.String())
+		}
+	}
+}
+
+func TestCategorizeScopeException_NoConfigIsHardError(t *testing.T) {
+	a := newActions(Deps{Stderr: &bytes.Buffer{}})
+	out := a.categorizeScopeException(statemachine.NewContext())
+	if out.Err == nil {
+		t.Fatalf("expected hard error when Config is nil, got nil")
 	}
 }
 
