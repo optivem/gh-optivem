@@ -1,5 +1,12 @@
 # 2026-06-23 15:16:00 UTC — Static gate: a clock-driving acceptance test must be `@isolated` (hard-fail at compile)
 
+> ⏸️ **ON HOLD — direction undecided (2026-06-23).** The author is not yet sure
+> this approach is worth pursuing. Do **not** execute. Pre-flight grounding is
+> done (identifiers/markers confirmed below; see "Open question 1 — findings"),
+> but the core fork — *where the check lives / how it's invoked* — is unresolved
+> AND the prior question of *whether to build this at all* is reopened. Resolve
+> the go/no-go before any `/execute-plan`.
+
 > **Supersedes** `plans/deferred/20260618-1601-clock-driving-scenario-isolated-gate.md`.
 > That plan's decision gate said *"build it once a real near-miss occurs."* Rehearsal run
 > `20260623-100107` (#76) is that occurrence — an un-isolated clock-driving test flaked on the
@@ -44,6 +51,30 @@ What we get out of this:
 - **Hard-fail, not auto-fix.** A missing `@isolated` on a clock-driving test is a deterministic *authoring* defect, not a transient condition. The gate hard-fails loud; it does **not** auto-add the tag. Auto-tagging would be silent normalization (against the repo's fail-loud rule) and would reintroduce the isolation *judgement* the `acceptance-test-writer` was deliberately stripped of (it only mirrors).
 - **Early, at compile time.** Fire at/around `compile-tests` (seconds in), not at verify — so the run dies before the ~30m / $3.66 of implement work.
 - **Layer scope = static-check only.** No BPMN changes (no channel-unroll change, no AC-isolation-pass node) and no agent-prompt changes (the writer does not learn to self-judge isolation). Selected deliberately during the postmortem.
+
+## Open question 1 — findings (grounding done 2026-06-23, decision still open)
+
+Pre-flight grounding against today's shop source resolved Q2 and Q3; Q1 (the home/hook) remains the open fork, gated behind the reopened go/no-go.
+
+**Confirmed identifiers & markers (Q2):**
+
+| Lang | Clock-*driving* call (mutates the singleton clock) | Isolation marker |
+|---|---|---|
+| TS | `.given()…clock()…withTime(` / `.withWeekday()` / `.withWeekend()` | wrapped in `test.describe('@isolated', …)` |
+| Java | `.given().clock().withTime(` / `.withWeekday()` / `.withWeekend()` | class-level `@Isolated(` (shared `com.optivem.testing`) |
+| .NET | `.Given().Clock().WithTime(` / `.WithWeekday()` / `.WithWeekend()` | class-level `[Collection("Isolated")]` + method `[Isolated(` |
+
+- The driving set is `withTime` **and** `withWeekday`/`withWeekend` — not just `withTime` as Step 1 originally said. Key on the **Given-clock stage**, not the `withTime` literal.
+- Read-only clock calls (`.then().clock().hasTime()`, `.assume().clock().shouldBeRunning()`) must **not** trip the gate. The discriminator is the `given` stage.
+
+**Detection approach (Q3):** start source-text (per the plan's existing decision); escalate to AST only if false negatives appear.
+
+**Invocation reality (informs Q1):** each ATDD run pins **one** system-test language (shop has 6 single-language config variants); `compile-tests` → `gh optivem test compile` → `compileSystemTests()` compiles only that one language's tree. So the check only ever needs to scan the active language.
+
+**The open fork (Q1) — three candidate homes, all fire inside `compile-tests` and hard-fail early:**
+1. **gh-optivem generic engine + shop-declared patterns** — source-scan engine in `compileSystemTests()`, driving/marker patterns in shop `tests.yaml` (new `isolationGuards` block). One Go impl, one regression test, auto-fires for every project; keeps gh-optivem generic (learns the clock DSL from config like it already learns suites/testFilter). *Most reusable.*
+2. **gh-optivem check, shop patterns inline** — same Go check but shop clock-DSL identifiers hardcoded in gh-optivem. Least work, one regression test, auto-fires — but couples the generic tool to one project's domain DSL.
+3. **Shop-side, per-language native** — TS lint script, Java gradle task, .NET analyzer/MSBuild target, each wired into its language's compile chain. Most idiomatic per ecosystem, keeps DSL knowledge shop-side — but 3 impls + 3 fixtures.
 
 ## Open questions
 
