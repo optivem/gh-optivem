@@ -1296,6 +1296,47 @@ processes:
         process: implement-external-system-driver-adapters
         name: "Implement External System Driver Adapters"
 
+      # Probe-driven contract-real / contract-stub reconciliation of the
+      # simulated producer (plan 20260622-1739 Step 4a). The inline leg that
+      # used to live here is extracted verbatim into
+      # reconcile-external-contract-producer so the redesign-external cycle
+      # can reuse it after its consumer reshape; the CT cycle reaches it here
+      # exactly where the leg used to sit, so its behaviour is unchanged.
+      - id: RECONCILE_EXTERNAL_CONTRACT_PRODUCER
+        type: call-activity
+        process: reconcile-external-contract-producer
+        name: "Reconcile External Contract Producer"
+
+      - id: IMPL_EXT_DRIVER_CT_END
+        type: end-event
+        name: "External System Driver Contract Tests Verified"
+
+    sequence-flows:
+      - {from: RESOLVE_EXTERNAL_SYSTEM,  to: GATE_EXTERNAL_SYSTEM_TOUCHED}
+      - {from: GATE_EXTERNAL_SYSTEM_TOUCHED, to: WRITE_CONTRACT_TESTS,     when: "external-system-touched == true"}
+      - {from: GATE_EXTERNAL_SYSTEM_TOUCHED, to: EXTERNAL_SYSTEM_SKIPPED,  when: "external-system-touched == false"}
+      - {from: WRITE_CONTRACT_TESTS,    to: WRITE_STUB_FIDELITY_TESTS}
+      - {from: WRITE_STUB_FIDELITY_TESTS, to: GATE_DSL_PORT_CHANGED}
+      - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_AND_VERIFY_DSL,                     when: "ct-dsl-port-changed == true"}
+      - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS,    when: "ct-dsl-port-changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_DSL,                  to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: RECONCILE_EXTERNAL_CONTRACT_PRODUCER}
+      - {from: RECONCILE_EXTERNAL_CONTRACT_PRODUCER,      to: IMPL_EXT_DRIVER_CT_END}
+
+  # reconcile-external-contract-producer (plan 20260622-1739 Step 4a) is the
+  # probe-driven leg that brings the simulated producer into lockstep with the
+  # consumer's contract: build/start the system, PROBE contract-real, and on a
+  # red branch on real-kind (own-it simulator -> reshape; vendor test-instance
+  # -> upstream-gap halt), then the stub + stub-fidelity legs. Extracted from
+  # the CT-HIGH cycle so both that cycle AND redesign-external-system-structure
+  # call it. Everything it reads (real-kind, ct-test-names,
+  # ct-isolated-test-names, test-outcome, stub-fidelity-tests-present) is shared
+  # across the call-activity frame (run.go: state is shared, params merge), so
+  # no params are threaded at the call site.
+  reconcile-external-contract-producer:
+    name: "Reconcile External Contract Producer"
+    start: BUILD_SYSTEM_AFTER_DRIVER
+    nodes:
       # GREEN-shape: impl edited system source → rebuild and restart
       # before verifying. `system start` brings up both real and stub.
       #
@@ -1480,9 +1521,9 @@ processes:
           suite: contract-stub
           test-names: ${ct-isolated-test-names}
 
-      - id: IMPL_EXT_DRIVER_CT_END
+      - id: RECONCILE_PRODUCER_END
         type: end-event
-        name: "External System Driver Contract Tests Verified"
+        name: "External Contract Producer Reconciled"
 
       # Shared infra/unknown halts for both outcome gates (mirror
       # verify-tests-pass). A test-runner infra failure or an unrecognised
@@ -1504,15 +1545,6 @@ processes:
         name: "Contract-Real Red on a Real Instance — upstream/provider has not yet shipped this contract; not fixable in this repo"
 
     sequence-flows:
-      - {from: RESOLVE_EXTERNAL_SYSTEM,  to: GATE_EXTERNAL_SYSTEM_TOUCHED}
-      - {from: GATE_EXTERNAL_SYSTEM_TOUCHED, to: WRITE_CONTRACT_TESTS,     when: "external-system-touched == true"}
-      - {from: GATE_EXTERNAL_SYSTEM_TOUCHED, to: EXTERNAL_SYSTEM_SKIPPED,  when: "external-system-touched == false"}
-      - {from: WRITE_CONTRACT_TESTS,    to: WRITE_STUB_FIDELITY_TESTS}
-      - {from: WRITE_STUB_FIDELITY_TESTS, to: GATE_DSL_PORT_CHANGED}
-      - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_AND_VERIFY_DSL,                     when: "ct-dsl-port-changed == true"}
-      - {from: GATE_DSL_PORT_CHANGED,   to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS,    when: "ct-dsl-port-changed == false"}
-      - {from: IMPLEMENT_AND_VERIFY_DSL,                  to: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS}
-      - {from: IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: BUILD_SYSTEM_AFTER_DRIVER}
       - {from: BUILD_SYSTEM_AFTER_DRIVER,                 to: START_SYSTEM_AFTER_DRIVER}
       - {from: START_SYSTEM_AFTER_DRIVER,                 to: PROBE_CONTRACT_REAL}
       # Probe, then branch on the observed outcome — no expected polarity.
@@ -1548,10 +1580,10 @@ processes:
       # Stub-only fidelity leg (plan 20260620-2348). Skip it entirely when the
       # ticket declared no `Stub only:` register (the writer authored nothing).
       - {from: GATE_STUB_FIDELITY_PRESENT,               to: PROBE_CONTRACT_STUB_ISOLATED,      when: "stub-fidelity-tests-present == true"}
-      - {from: GATE_STUB_FIDELITY_PRESENT,               to: IMPL_EXT_DRIVER_CT_END,            when: "stub-fidelity-tests-present == false"}
+      - {from: GATE_STUB_FIDELITY_PRESENT,               to: RECONCILE_PRODUCER_END,            when: "stub-fidelity-tests-present == false"}
       - {from: PROBE_CONTRACT_STUB_ISOLATED,             to: GATE_CONTRACT_STUB_ISOLATED_OUTCOME}
       # GREEN: stub already faithful (exact-set/empty) → done.
-      - {from: GATE_CONTRACT_STUB_ISOLATED_OUTCOME,      to: IMPL_EXT_DRIVER_CT_END,            when: "test-outcome == pass"}
+      - {from: GATE_CONTRACT_STUB_ISOLATED_OUTCOME,      to: RECONCILE_PRODUCER_END,            when: "test-outcome == pass"}
       # RED: implement the stub mappings → rebuild/restart → GREEN.
       - {from: GATE_CONTRACT_STUB_ISOLATED_OUTCOME,      to: IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED, when: "test-outcome == fail"}
       - {from: GATE_CONTRACT_STUB_ISOLATED_OUTCOME,      to: TESTS_INFRA_HALT,                  when: "test-outcome == infra"}
@@ -1559,7 +1591,7 @@ processes:
       - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED, to: BUILD_SYSTEM_AFTER_STUBS_ISOLATED}
       - {from: BUILD_SYSTEM_AFTER_STUBS_ISOLATED,        to: START_SYSTEM_AFTER_STUBS_ISOLATED}
       - {from: START_SYSTEM_AFTER_STUBS_ISOLATED,        to: VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED}
-      - {from: VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED, to: IMPL_EXT_DRIVER_CT_END}
+      - {from: VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED, to: RECONCILE_PRODUCER_END}
 
   # Parameterised system impl: the caller picks the MID agent task by
   # supplying `action`. Two known callers today —

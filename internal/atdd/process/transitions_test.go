@@ -48,6 +48,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"implement-and-verify-dsl",
 		"implement-and-verify-system-driver-adapters",
 		"implement-and-verify-external-system-driver-adapters-contract-tests",
+		"reconcile-external-contract-producer",
 		"implement-and-verify-system",
 		"refactor-and-verify-tests",
 		"implement-test-layer",
@@ -589,6 +590,10 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	if !ok {
 		t.Fatalf("CT-HIGH process missing")
 	}
+	recon, ok := eng.Processes["reconcile-external-contract-producer"]
+	if !ok {
+		t.Fatalf("reconcile-external-contract-producer process missing")
+	}
 	if ct.Start != "RESOLVE_EXTERNAL_SYSTEM" {
 		t.Errorf("CT-HIGH start = %q, want RESOLVE_EXTERNAL_SYSTEM", ct.Start)
 	}
@@ -613,7 +618,7 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	// 4. The CT-HIGH walks the contract-real -> contract-stub probe split
 	//    (plan 20260606-1943): both legs run the suite via run-tests and branch
 	//    on the observed test-outcome — no asserted polarity.
-	realNode, ok := ct.Nodes["PROBE_CONTRACT_REAL"]
+	realNode, ok := recon.Nodes["PROBE_CONTRACT_REAL"]
 	if !ok {
 		t.Fatalf("CT-HIGH: PROBE_CONTRACT_REAL node missing")
 	}
@@ -623,7 +628,7 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	if got := realNode.Raw.Params["suite"]; got != "contract-real" {
 		t.Errorf("contract-real probe suite = %q, want contract-real", got)
 	}
-	stubProbe, ok := ct.Nodes["PROBE_CONTRACT_STUB"]
+	stubProbe, ok := recon.Nodes["PROBE_CONTRACT_STUB"]
 	if !ok {
 		t.Fatalf("CT-HIGH: PROBE_CONTRACT_STUB node missing")
 	}
@@ -635,8 +640,8 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	}
 	// real-green precedes the stub probe (the split: if the real system already
 	// honors the contract, proceed to the stub side; restart between them).
-	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "START_SYSTEM_BEFORE_STUB_PROBE", "test-outcome == pass")
-	wantEdge(t, ct, "START_SYSTEM_BEFORE_STUB_PROBE", "PROBE_CONTRACT_STUB", "")
+	wantEdge(t, recon, "GATE_CONTRACT_REAL_OUTCOME", "START_SYSTEM_BEFORE_STUB_PROBE", "test-outcome == pass")
+	wantEdge(t, recon, "START_SYSTEM_BEFORE_STUB_PROBE", "PROBE_CONTRACT_STUB", "")
 
 	// 5. The CT-HIGH's nested DSL step verifies against suite `contract-real`,
 	//    decoupled from the `test-category: contract` path discriminator. Guards
@@ -690,6 +695,10 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	if !ok {
 		t.Fatalf("CT-HIGH process missing")
 	}
+	recon, ok := eng.Processes["reconcile-external-contract-producer"]
+	if !ok {
+		t.Fatalf("reconcile-external-contract-producer process missing")
+	}
 
 	// 1. IDENTIFY is retired (plan 20260615-0755): identity + real-kind are
 	//    baked at load by UnrollExternalSystems. The cycle starts with the
@@ -714,20 +723,20 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 		t.Errorf("CT-HIGH: IDENTIFY_EXTERNAL_SYSTEM should be retired")
 	}
 	// The driver-adapter impl now flows straight into build/start → probe.
-	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "BUILD_SYSTEM_AFTER_DRIVER", "")
-	wantEdge(t, ct, "START_SYSTEM_AFTER_DRIVER", "PROBE_CONTRACT_REAL", "")
+	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "RECONCILE_EXTERNAL_CONTRACT_PRODUCER", "")
+	wantEdge(t, recon, "START_SYSTEM_AFTER_DRIVER", "PROBE_CONTRACT_REAL", "")
 
 	// 2. The probe runs the suite via run-tests (no asserted polarity); the
 	//    outcome gateway routes on the stamped test-outcome.
-	probe, ok := ct.Nodes["PROBE_CONTRACT_REAL"]
+	probe, ok := recon.Nodes["PROBE_CONTRACT_REAL"]
 	if !ok {
 		t.Fatalf("CT-HIGH: PROBE_CONTRACT_REAL node missing")
 	}
 	if got := probe.Raw.Process; got != "run-tests" {
 		t.Errorf("PROBE_CONTRACT_REAL process = %q, want run-tests", got)
 	}
-	wantEdge(t, ct, "PROBE_CONTRACT_REAL", "GATE_CONTRACT_REAL_OUTCOME", "")
-	outGate, ok := ct.Nodes["GATE_CONTRACT_REAL_OUTCOME"]
+	wantEdge(t, recon, "PROBE_CONTRACT_REAL", "GATE_CONTRACT_REAL_OUTCOME", "")
+	outGate, ok := recon.Nodes["GATE_CONTRACT_REAL_OUTCOME"]
 	if !ok {
 		t.Fatalf("CT-HIGH: GATE_CONTRACT_REAL_OUTCOME node missing")
 	}
@@ -737,13 +746,13 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 
 	// 3. GREEN: external system already honors the contract → straight to the
 	//    stub side. infra/unknown halt.
-	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "START_SYSTEM_BEFORE_STUB_PROBE", "test-outcome == pass")
-	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "GATE_CONTRACT_REAL_RED_KIND", "test-outcome == fail")
-	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "TESTS_INFRA_HALT", "test-outcome == infra")
-	wantEdge(t, ct, "GATE_CONTRACT_REAL_OUTCOME", "UNKNOWN_TESTS_OUTCOME", "")
+	wantEdge(t, recon, "GATE_CONTRACT_REAL_OUTCOME", "START_SYSTEM_BEFORE_STUB_PROBE", "test-outcome == pass")
+	wantEdge(t, recon, "GATE_CONTRACT_REAL_OUTCOME", "GATE_CONTRACT_REAL_RED_KIND", "test-outcome == fail")
+	wantEdge(t, recon, "GATE_CONTRACT_REAL_OUTCOME", "TESTS_INFRA_HALT", "test-outcome == infra")
+	wantEdge(t, recon, "GATE_CONTRACT_REAL_OUTCOME", "UNKNOWN_TESTS_OUTCOME", "")
 
 	// 4. RED: the red-kind sub-gateway routes on the stamped real-kind.
-	redKind, ok := ct.Nodes["GATE_CONTRACT_REAL_RED_KIND"]
+	redKind, ok := recon.Nodes["GATE_CONTRACT_REAL_RED_KIND"]
 	if !ok {
 		t.Fatalf("CT-HIGH: GATE_CONTRACT_REAL_RED_KIND node missing")
 	}
@@ -751,20 +760,20 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 		t.Errorf("GATE_CONTRACT_REAL_RED_KIND binding = %q, want real-kind", got)
 	}
 	// simulator: we own it → implement → rebuild/restart → GREEN → stub side.
-	wantEdge(t, ct, "GATE_CONTRACT_REAL_RED_KIND", "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "real-kind == simulator")
-	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "BUILD_SYSTEM_AFTER_SIMULATOR", "")
-	wantEdge(t, ct, "BUILD_SYSTEM_AFTER_SIMULATOR", "START_SYSTEM_AFTER_SIMULATOR", "")
-	wantEdge(t, ct, "START_SYSTEM_AFTER_SIMULATOR", "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "")
-	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "START_SYSTEM_BEFORE_STUB_PROBE", "")
+	wantEdge(t, recon, "GATE_CONTRACT_REAL_RED_KIND", "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "real-kind == simulator")
+	wantEdge(t, recon, "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "BUILD_SYSTEM_AFTER_SIMULATOR", "")
+	wantEdge(t, recon, "BUILD_SYSTEM_AFTER_SIMULATOR", "START_SYSTEM_AFTER_SIMULATOR", "")
+	wantEdge(t, recon, "START_SYSTEM_AFTER_SIMULATOR", "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "")
+	wantEdge(t, recon, "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "START_SYSTEM_BEFORE_STUB_PROBE", "")
 	// test-instance: we do NOT own it → upstream contract-gap hard halt (an
 	// error-end-event so it bubbles up, never the code-fixer).
-	wantEdge(t, ct, "GATE_CONTRACT_REAL_RED_KIND", "CONTRACT_REAL_UPSTREAM_GAP_HALT", "real-kind == test-instance")
-	if n := ct.Nodes["CONTRACT_REAL_UPSTREAM_GAP_HALT"]; n.Kind != statemachine.ErrorEndEvent {
+	wantEdge(t, recon, "GATE_CONTRACT_REAL_RED_KIND", "CONTRACT_REAL_UPSTREAM_GAP_HALT", "real-kind == test-instance")
+	if n := recon.Nodes["CONTRACT_REAL_UPSTREAM_GAP_HALT"]; n.Kind != statemachine.ErrorEndEvent {
 		t.Errorf("CONTRACT_REAL_UPSTREAM_GAP_HALT kind = %v, want statemachine.ErrorEndEvent", n.Kind)
 	}
 
 	// The post-sim GREEN verify targets contract-real (verify-tests-pass).
-	if n := ct.Nodes["VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR"]; n.Raw.Process != "verify-tests-pass" {
+	if n := recon.Nodes["VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR"]; n.Raw.Process != "verify-tests-pass" {
 		t.Errorf("post-sim verify process = %q, want verify-tests-pass", n.Raw.Process)
 	} else if got := n.Raw.Params["suite"]; got != "contract-real" {
 		t.Errorf("simulator GREEN-verify suite = %q, want contract-real", got)
@@ -772,55 +781,55 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 
 	// 4b. The contract-stub leg is likewise an outcome probe (no fail-verify):
 	//     GREEN → done, RED → implement stubs → red→green.
-	stubGate, ok := ct.Nodes["GATE_CONTRACT_STUB_OUTCOME"]
+	stubGate, ok := recon.Nodes["GATE_CONTRACT_STUB_OUTCOME"]
 	if !ok {
 		t.Fatalf("CT-HIGH: GATE_CONTRACT_STUB_OUTCOME node missing")
 	}
 	if got := stubGate.Raw.Binding; got != "test-outcome" {
 		t.Errorf("GATE_CONTRACT_STUB_OUTCOME binding = %q, want test-outcome", got)
 	}
-	wantEdge(t, ct, "PROBE_CONTRACT_STUB", "GATE_CONTRACT_STUB_OUTCOME", "")
+	wantEdge(t, recon, "PROBE_CONTRACT_STUB", "GATE_CONTRACT_STUB_OUTCOME", "")
 	// Both stub-green paths (already-green and implemented+verified) now converge
 	// on the stub-fidelity leg's presence gate (plan 20260620-2348), not directly
 	// on the cycle end.
-	wantEdge(t, ct, "GATE_CONTRACT_STUB_OUTCOME", "GATE_STUB_FIDELITY_PRESENT", "test-outcome == pass")
-	wantEdge(t, ct, "GATE_CONTRACT_STUB_OUTCOME", "IMPLEMENT_EXTERNAL_SYSTEM_STUBS", "test-outcome == fail")
-	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_STUB", "GATE_STUB_FIDELITY_PRESENT", "")
+	wantEdge(t, recon, "GATE_CONTRACT_STUB_OUTCOME", "GATE_STUB_FIDELITY_PRESENT", "test-outcome == pass")
+	wantEdge(t, recon, "GATE_CONTRACT_STUB_OUTCOME", "IMPLEMENT_EXTERNAL_SYSTEM_STUBS", "test-outcome == fail")
+	wantEdge(t, recon, "VERIFY_TESTS_PASS_CONTRACT_STUB", "GATE_STUB_FIDELITY_PRESENT", "")
 
 	// 4c. The stub-only fidelity leg (plan 20260620-2348): a presence gate skips
 	//     the whole leg when no `Stub only:` register was authored (empty
 	//     ct-isolated-test-names), otherwise an outcome-driven probe → implement
 	//     stubs → rebuild/restart → verify, all selecting the isolated register
 	//     (test-names: ${ct-isolated-test-names}) against suite contract-stub.
-	presGate, ok := ct.Nodes["GATE_STUB_FIDELITY_PRESENT"]
+	presGate, ok := recon.Nodes["GATE_STUB_FIDELITY_PRESENT"]
 	if !ok {
 		t.Fatalf("CT-HIGH: GATE_STUB_FIDELITY_PRESENT node missing")
 	}
 	if got := presGate.Raw.Binding; got != "stub-fidelity-tests-present" {
 		t.Errorf("GATE_STUB_FIDELITY_PRESENT binding = %q, want stub-fidelity-tests-present", got)
 	}
-	wantEdge(t, ct, "GATE_STUB_FIDELITY_PRESENT", "PROBE_CONTRACT_STUB_ISOLATED", "stub-fidelity-tests-present == true")
-	wantEdge(t, ct, "GATE_STUB_FIDELITY_PRESENT", "IMPL_EXT_DRIVER_CT_END", "stub-fidelity-tests-present == false")
+	wantEdge(t, recon, "GATE_STUB_FIDELITY_PRESENT", "PROBE_CONTRACT_STUB_ISOLATED", "stub-fidelity-tests-present == true")
+	wantEdge(t, recon, "GATE_STUB_FIDELITY_PRESENT", "RECONCILE_PRODUCER_END", "stub-fidelity-tests-present == false")
 	if got := ct.Nodes["WRITE_STUB_FIDELITY_TESTS"].Raw.Process; got != "write-stub-fidelity-tests" {
 		t.Errorf("WRITE_STUB_FIDELITY_TESTS process = %q, want write-stub-fidelity-tests", got)
 	}
 	wantEdge(t, ct, "WRITE_CONTRACT_TESTS", "WRITE_STUB_FIDELITY_TESTS", "")
 	wantEdge(t, ct, "WRITE_STUB_FIDELITY_TESTS", "GATE_DSL_PORT_CHANGED", "")
-	isoGate, ok := ct.Nodes["GATE_CONTRACT_STUB_ISOLATED_OUTCOME"]
+	isoGate, ok := recon.Nodes["GATE_CONTRACT_STUB_ISOLATED_OUTCOME"]
 	if !ok {
 		t.Fatalf("CT-HIGH: GATE_CONTRACT_STUB_ISOLATED_OUTCOME node missing")
 	}
 	if got := isoGate.Raw.Binding; got != "test-outcome" {
 		t.Errorf("GATE_CONTRACT_STUB_ISOLATED_OUTCOME binding = %q, want test-outcome", got)
 	}
-	wantEdge(t, ct, "PROBE_CONTRACT_STUB_ISOLATED", "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "")
-	wantEdge(t, ct, "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "IMPL_EXT_DRIVER_CT_END", "test-outcome == pass")
-	wantEdge(t, ct, "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "test-outcome == fail")
-	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "")
-	wantEdge(t, ct, "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "START_SYSTEM_AFTER_STUBS_ISOLATED", "")
-	wantEdge(t, ct, "START_SYSTEM_AFTER_STUBS_ISOLATED", "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "")
-	wantEdge(t, ct, "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "IMPL_EXT_DRIVER_CT_END", "")
-	if n := ct.Nodes["VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED"]; n.Raw.Params["test-names"] != "${ct-isolated-test-names}" {
+	wantEdge(t, recon, "PROBE_CONTRACT_STUB_ISOLATED", "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "")
+	wantEdge(t, recon, "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "RECONCILE_PRODUCER_END", "test-outcome == pass")
+	wantEdge(t, recon, "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "test-outcome == fail")
+	wantEdge(t, recon, "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "")
+	wantEdge(t, recon, "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "START_SYSTEM_AFTER_STUBS_ISOLATED", "")
+	wantEdge(t, recon, "START_SYSTEM_AFTER_STUBS_ISOLATED", "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "")
+	wantEdge(t, recon, "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "RECONCILE_PRODUCER_END", "")
+	if n := recon.Nodes["VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED"]; n.Raw.Params["test-names"] != "${ct-isolated-test-names}" {
 		t.Errorf("isolated verify test-names = %q, want ${ct-isolated-test-names}", n.Raw.Params["test-names"])
 	}
 
