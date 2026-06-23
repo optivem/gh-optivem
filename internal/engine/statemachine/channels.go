@@ -38,6 +38,20 @@ const (
 	sharedContractProcess                         = "shared-contract"
 	implementExternalDriverAdaptersAnchor         = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"
 	implementAndVerifyExternalDriverAdaptersProc  = "implement-and-verify-external-system-driver-adapters-contract-tests"
+
+	// Redesign-external per-system cycle — redesign-external-system-structure's
+	// REDESIGN_EXTERNAL_SYSTEM anchor (plan 20260622-1739 Step 4b). The SECOND
+	// external-system anchor UnrollExternalSystems rewrites: the redesign cycle
+	// reshapes an external response contract per registered system, so — exactly
+	// like the shared-contract CT anchor — its single per-system call-activity is
+	// replaced at load time by one cloned, guarded call-activity per registered
+	// external system, baking the same external-system-name + real-kind. Both seam
+	// edges (VALIDATE_EXTERNAL_SYSTEMS_REGISTERED → anchor, anchor →
+	// IMPLEMENT_AND_VERIFY_SYSTEM) are unconditional, so predicate preservation is
+	// a no-op here.
+	redesignExternalSystemStructureProcess = "redesign-external-system-structure"
+	redesignExternalSystemAnchor           = "REDESIGN_EXTERNAL_SYSTEM"
+	redesignExternalSystemPerSystemProcess = "redesign-external-system-per-system"
 )
 
 // UnrollSystemChannels statically unrolls the channel loop in the
@@ -196,21 +210,43 @@ func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 // surfaces at the GATE_CONTRACT_REAL_RED_KIND enum check. The driver calls this
 // only when len(cfg.ExternalSystems) > 0, so the empty-list guard in unrollAnchor
 // is never reached here.
+//
+// TWO anchors are unrolled with the identical per-clone baking (plan 20260622-1739
+// Step 4b): the shared-contract CT cycle anchor, and the
+// redesign-external-system-structure REDESIGN_EXTERNAL_SYSTEM anchor. Both bake
+// external-system-name + real-kind per registered system, so both reach the same
+// resolve-external-system self-guard and the same real-kind-driven reconcile leg.
+// They target different processes, so the two rewrites are independent; if the
+// redesign anchor is missing/drifted the whole call errors (fail-loud), matching
+// the CT anchor's contract.
 func (e *Engine) UnrollExternalSystems(names []string, realKind map[string]string) error {
-	return e.unrollAnchor(
+	bakeNameAndKind := func(_ int, name string, anchorParams map[string]string) map[string]string {
+		params := make(map[string]string, len(anchorParams)+2)
+		maps.Copy(params, anchorParams)
+		params["external-system-name"] = name
+		params["real-kind"] = realKind[name]
+		return params
+	}
+	if err := e.unrollAnchor(
 		sharedContractProcess,
 		implementExternalDriverAdaptersAnchor,
 		implementAndVerifyExternalDriverAdaptersProc,
 		names,
-		func(_ int, name string, anchorParams map[string]string) map[string]string {
-			params := make(map[string]string, len(anchorParams)+2)
-			maps.Copy(params, anchorParams)
-			params["external-system-name"] = name
-			params["real-kind"] = realKind[name]
-			return params
-		},
+		bakeNameAndKind,
 		func(name string) string {
 			return fmt.Sprintf("Implement and Verify External System Driver Adapters Contract Tests (%s)", name)
+		},
+	); err != nil {
+		return err
+	}
+	return e.unrollAnchor(
+		redesignExternalSystemStructureProcess,
+		redesignExternalSystemAnchor,
+		redesignExternalSystemPerSystemProcess,
+		names,
+		bakeNameAndKind,
+		func(name string) string {
+			return fmt.Sprintf("Redesign External System (%s)", name)
 		},
 	)
 }

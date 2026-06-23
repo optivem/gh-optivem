@@ -559,25 +559,61 @@ processes:
       - {from: UPDATE_SYSTEM_DRIVER_ADAPTERS,  to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,    to: REDESIGN_END}
 
-  # External-side sibling of `redesign-system-structure`. Step 1 calls
-  # MID `update-external-system-driver-adapters` (reshape Ext* DTOs +
-  # Real/Stub driver impls to match the new external API). Step 2 reuses
-  # HIGH `implement-and-verify-system` with `action: update-system`
-  # because either side of the boundary can shift the system's port
-  # surface — an external-system contract change usually requires the
-  # acceptance tests to re-verify against the new stub behavior, and
-  # update-system absorbs whatever surface reshape that implies.
+  # External-side sibling of `redesign-system-structure`. Reshapes an external
+  # response contract on BOTH sides of the boundary, per registered external
+  # system, then re-greens the whole system (plan 20260622-1739 Step 4b/4c):
+  #
+  #   1. VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC — the redesign path runs no
+  #      AT/CT cascade, so external-driver-port-changed-paths is never populated;
+  #      the ONLY selection source for which external system(s) the reshape
+  #      targets is the ticket's External System Contract Criteria
+  #      (escc-systems, stamped by parse-ticket). This guard hard-errors up front
+  #      when the ticket declares no ESCC — without it every clone's touched-guard
+  #      is false and the cycle silently no-ops (the #65-class bug).
+  #   2. VALIDATE_EXTERNAL_SYSTEMS_REGISTERED — the same upfront no-silent-skip
+  #      guard the CT cycle uses, here seeing the ESCC-named systems against the
+  #      registry (an ESCC name with no registry entry would have no clone).
+  #   3. REDESIGN_EXTERNAL_SYSTEM — the per-system anchor. Statically unrolled at
+  #      load by UnrollExternalSystems (channels.go) into one guarded clone per
+  #      registered external system, each baking external-system-name + real-kind,
+  #      exactly like the shared-contract CT anchor. Each clone reshapes the
+  #      consumer adapter (update-external-system-driver-adapters, the Ext* DTOs +
+  #      Real/Stub driver impls) then reuses the extracted
+  #      reconcile-external-contract-producer leg to bring the simulated producer
+  #      back into lockstep (probe contract-real; on a behaviour-preserving
+  #      reshape it is already GREEN, on a real-kind: simulator reshape it gets
+  #      reshaped, on a test-instance it halts on an upstream gap).
+  #   4. IMPLEMENT_AND_VERIFY_SYSTEM — after the unrolled clones, reuse HIGH
+  #      `implement-and-verify-system` with `action: update-system` for the final
+  #      full-regression re-green: either side of the boundary can shift the
+  #      system's port surface, and update-system absorbs whatever surface reshape
+  #      that implies.
   #
   # Verb-split note (plan 20260526-1448 Item 10): the redesign call sites
   # dispatch `update-*` variants (Checklist-driven reshape).
   redesign-external-system-structure:
     name: "Redesign External System Structure"
-    start: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+    start: VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC
     nodes:
-      - id: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+      - id: VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC
+        type: service-task
+        action: validate-redesign-external-requires-escc
+        name: "Validate Redesign-External Declares ESCC"
+
+      - id: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED
+        type: service-task
+        action: validate-external-systems-registered
+        name: "Validate External Systems Registered"
+
+      # Per-system anchor — UnrollExternalSystems rewrites this single
+      # call-activity into one guarded clone per registered external system at
+      # load time, baking external-system-name + real-kind into each clone's
+      # params (the SECOND UnrollExternalSystems anchor; the first is
+      # shared-contract's IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS).
+      - id: REDESIGN_EXTERNAL_SYSTEM
         type: call-activity
-        process: update-external-system-driver-adapters
-        name: "Update External System Driver Adapters"
+        process: redesign-external-system-per-system
+        name: "Redesign External System"
         tdd-stage: red
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
@@ -600,8 +636,74 @@ processes:
         name: "External System Structure Redesigned"
 
     sequence-flows:
-      - {from: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: IMPLEMENT_AND_VERIFY_SYSTEM}
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: REDESIGN_EXTERNAL_END}
+      - {from: VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC, to: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED}
+      - {from: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED,     to: REDESIGN_EXTERNAL_SYSTEM}
+      - {from: REDESIGN_EXTERNAL_SYSTEM,                 to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,              to: REDESIGN_EXTERNAL_END}
+
+  # Per-external-system reshape body unrolled by UnrollExternalSystems from the
+  # redesign-external-system-structure REDESIGN_EXTERNAL_SYSTEM anchor (plan
+  # 20260622-1739 Step 4b). Mirrors the CT cycle's per-clone shape: the same
+  # resolve-external-system + GATE_EXTERNAL_SYSTEM_TOUCHED self-guard fronts the
+  # body, so a clone for an external system this ticket did not touch no-ops to
+  # its skip end-event and the linear chain advances to the next clone. A touched
+  # clone reshapes the consumer adapter, then calls the extracted
+  # reconcile-external-contract-producer leg to reconcile the simulated producer.
+  redesign-external-system-per-system:
+    name: "Redesign External System (per system)"
+    start: RESOLVE_EXTERNAL_SYSTEM
+    nodes:
+      # Per-clone entry: reads the baked external-system-name + real-kind, stamps
+      # external-system-touched (for the guard) and copies real-kind into state
+      # (for reconcile's GATE_CONTRACT_REAL_RED_KIND). Identical to the CT clone.
+      - id: RESOLVE_EXTERNAL_SYSTEM
+        type: service-task
+        action: resolve-external-system
+        name: "Resolve External System"
+
+      - id: GATE_EXTERNAL_SYSTEM_TOUCHED
+        type: gateway
+        binding: external-system-touched
+        name: "External System Touched?"
+
+      - id: EXTERNAL_SYSTEM_SKIPPED
+        type: end-event
+        name: "External System Untouched — Redesign Skipped"
+
+      # Consumer reshape: the Ext* DTOs + Real/Stub driver impls to match the new
+      # external API (the existing consumer-side MID, untouched per the chosen
+      # scope).
+      - id: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS
+        type: call-activity
+        process: update-external-system-driver-adapters
+        name: "Update External System Driver Adapters"
+        tdd-stage: red
+
+      # Producer reconcile: reuse the extracted leg verbatim. The redesign path
+      # writes no contract tests, so it has no ct-test-names list to select on —
+      # pin it empty here so the leg's strict ${ct-test-names} expansions resolve
+      # and its probes run the WHOLE contract-real / contract-stub suite for the
+      # touched system (the honest behaviour when no new tests were authored; an
+      # empty test-names omits --test and runs the full suite, runCommand). The
+      # stub-fidelity leg self-skips: ct-isolated-test-names stays unset, so
+      # GATE_STUB_FIDELITY_PRESENT (presence-style) routes past it.
+      - id: RECONCILE_EXTERNAL_CONTRACT_PRODUCER
+        type: call-activity
+        process: reconcile-external-contract-producer
+        name: "Reconcile External Contract Producer"
+        params:
+          ct-test-names: ""
+
+      - id: REDESIGN_EXTERNAL_PER_SYSTEM_END
+        type: end-event
+        name: "External System Redesigned"
+
+    sequence-flows:
+      - {from: RESOLVE_EXTERNAL_SYSTEM,      to: GATE_EXTERNAL_SYSTEM_TOUCHED}
+      - {from: GATE_EXTERNAL_SYSTEM_TOUCHED, to: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, when: "external-system-touched == true"}
+      - {from: GATE_EXTERNAL_SYSTEM_TOUCHED, to: EXTERNAL_SYSTEM_SKIPPED,                when: "external-system-touched == false"}
+      - {from: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: RECONCILE_EXTERNAL_CONTRACT_PRODUCER}
+      - {from: RECONCILE_EXTERNAL_CONTRACT_PRODUCER,   to: REDESIGN_EXTERNAL_PER_SYSTEM_END}
 
   # Step 1 calls HIGH `implement-and-verify-system` with
   # `action: refactor-system`. Was the prototype encoded in Item 1 of

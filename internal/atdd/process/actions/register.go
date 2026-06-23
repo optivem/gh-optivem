@@ -58,6 +58,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	//     identify-external-system action.
 	r.Register("validate-external-systems-registered", a.validateExternalSystemsRegistered)
 	r.Register("resolve-external-system", a.resolveExternalSystem)
+	// Redesign-external entry guard (plan 20260622-1739 Step 4c). The
+	// redesign-external-system-structure cycle runs no AT/CT cascade, so the only
+	// source for which external system(s) the reshape targets is the ticket's
+	// ESCC; this runs ONCE before the unrolled per-system clones and hard-errors
+	// when the ticket declares no ESCC (else every clone's touched-guard is false
+	// and the cycle silently no-ops). See external.go.
+	r.Register("validate-redesign-external-requires-escc", a.validateRedesignExternalRequiresESCC)
 	// Channel-aware system unroll (plan 20260619-1139). The per-channel system
 	// (UnrollSystemChannels) and system-driver-adapter (UnrollSystemDriverAdapterChannels)
 	// clones are guarded INSIDE the cycle, mirroring the external-system pattern

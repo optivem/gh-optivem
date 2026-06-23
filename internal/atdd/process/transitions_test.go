@@ -37,6 +37,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"change-system-behavior",
 		"cover-system-behavior",
 		"redesign-system-structure",
+		"redesign-external-system-structure",
 		"refactor-system-structure",
 		"refactor-test-structure",
 		// HIGH
@@ -49,6 +50,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"implement-and-verify-system-driver-adapters",
 		"implement-and-verify-external-system-driver-adapters-contract-tests",
 		"reconcile-external-contract-producer",
+		"redesign-external-system-per-system",
 		"implement-and-verify-system",
 		"refactor-and-verify-tests",
 		"implement-test-layer",
@@ -880,6 +882,92 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	if got := stubEA.Raw.Write; !slices.Equal(got, wantStubWrite) {
 		t.Errorf("stub MID write scope = %v, want %v", got, wantStubWrite)
 	}
+}
+
+// TestRedesignExternalSystemStructure_Wiring pins the redesign-external cycle's
+// reuse of the extracted reconcile leg (plan 20260622-1739 Step 4b/4c): the cycle
+// fronts the per-system unroll anchor with the ESCC-required guard + the
+// registered-systems guard, the anchor is a call-activity into the per-system
+// body, and the body runs the same resolve+touched self-guard as the CT clone,
+// then reshapes the consumer adapter and calls reconcile-external-contract-producer
+// with ct-test-names pinned empty (whole-suite probe; no contract tests are
+// authored on the redesign path). The final full regression runs after the
+// unrolled clones. Loaded from the static (un-unrolled) snapshot, so the anchor is
+// still the single template node here.
+func TestRedesignExternalSystemStructure_Wiring(t *testing.T) {
+	eng, err := process.Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cyc, ok := eng.Processes["redesign-external-system-structure"]
+	if !ok {
+		t.Fatalf("redesign-external-system-structure process missing")
+	}
+
+	// 1. Upfront guards: ESCC-required (the redesign path's only selection source)
+	//    then the shared registered-systems guard, before the per-system anchor.
+	if cyc.Start != "VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC" {
+		t.Errorf("redesign-external start = %q, want VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC", cyc.Start)
+	}
+	if got := cyc.Nodes["VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC"].Raw.Action; got != "validate-redesign-external-requires-escc" {
+		t.Errorf("ESCC guard action = %q, want validate-redesign-external-requires-escc", got)
+	}
+	if got := cyc.Nodes["VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"].Raw.Action; got != "validate-external-systems-registered" {
+		t.Errorf("registered guard action = %q, want validate-external-systems-registered", got)
+	}
+	wantEdge(t, cyc, "VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC", "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED", "")
+	wantEdge(t, cyc, "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED", "REDESIGN_EXTERNAL_SYSTEM", "")
+
+	// 2. The per-system anchor is a call-activity into the per-system body, and the
+	//    final full-regression re-green runs after it (after the unrolled clones).
+	anchor, ok := cyc.Nodes["REDESIGN_EXTERNAL_SYSTEM"]
+	if !ok {
+		t.Fatalf("redesign-external: REDESIGN_EXTERNAL_SYSTEM anchor missing")
+	}
+	if anchor.Raw.Process != "redesign-external-system-per-system" {
+		t.Errorf("anchor calls %q, want redesign-external-system-per-system", anchor.Raw.Process)
+	}
+	wantEdge(t, cyc, "REDESIGN_EXTERNAL_SYSTEM", "IMPLEMENT_AND_VERIFY_SYSTEM", "")
+	if got := cyc.Nodes["IMPLEMENT_AND_VERIFY_SYSTEM"].Raw.Params["action"]; got != "update-system" {
+		t.Errorf("final regression action = %q, want update-system", got)
+	}
+
+	// 3. The per-system body: resolve + touched self-guard (the CT clone's), then
+	//    reshape consumer adapter → reconcile producer with ct-test-names pinned
+	//    empty; an untouched clone skips.
+	body, ok := eng.Processes["redesign-external-system-per-system"]
+	if !ok {
+		t.Fatalf("redesign-external-system-per-system process missing")
+	}
+	if body.Start != "RESOLVE_EXTERNAL_SYSTEM" {
+		t.Errorf("per-system start = %q, want RESOLVE_EXTERNAL_SYSTEM", body.Start)
+	}
+	if got := body.Nodes["RESOLVE_EXTERNAL_SYSTEM"].Raw.Action; got != "resolve-external-system" {
+		t.Errorf("per-system resolve action = %q, want resolve-external-system", got)
+	}
+	if got := body.Nodes["GATE_EXTERNAL_SYSTEM_TOUCHED"].Raw.Binding; got != "external-system-touched" {
+		t.Errorf("per-system guard binding = %q, want external-system-touched", got)
+	}
+	wantEdge(t, body, "RESOLVE_EXTERNAL_SYSTEM", "GATE_EXTERNAL_SYSTEM_TOUCHED", "")
+	wantEdge(t, body, "GATE_EXTERNAL_SYSTEM_TOUCHED", "UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "external-system-touched == true")
+	wantEdge(t, body, "GATE_EXTERNAL_SYSTEM_TOUCHED", "EXTERNAL_SYSTEM_SKIPPED", "external-system-touched == false")
+	if got := body.Nodes["UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS"].Raw.Process; got != "update-external-system-driver-adapters" {
+		t.Errorf("consumer reshape process = %q, want update-external-system-driver-adapters", got)
+	}
+	wantEdge(t, body, "UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "RECONCILE_EXTERNAL_CONTRACT_PRODUCER", "")
+	reconCall, ok := body.Nodes["RECONCILE_EXTERNAL_CONTRACT_PRODUCER"]
+	if !ok {
+		t.Fatalf("per-system: RECONCILE_EXTERNAL_CONTRACT_PRODUCER node missing")
+	}
+	if reconCall.Raw.Process != "reconcile-external-contract-producer" {
+		t.Errorf("reconcile call process = %q, want reconcile-external-contract-producer", reconCall.Raw.Process)
+	}
+	// ct-test-names pinned empty so the reused leg's strict ${ct-test-names}
+	// expansions resolve and the probes run the whole suite (no new tests written).
+	if got, ok := reconCall.Raw.Params["ct-test-names"]; !ok || got != "" {
+		t.Errorf("reconcile call ct-test-names param = %q (present=%v), want \"\" (present)", got, ok)
+	}
+	wantEdge(t, body, "RECONCILE_EXTERNAL_CONTRACT_PRODUCER", "REDESIGN_EXTERNAL_PER_SYSTEM_END", "")
 }
 
 // TestChannelTouchedGuard_Wiring asserts the in-cycle channel guard wiring

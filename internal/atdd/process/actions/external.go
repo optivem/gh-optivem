@@ -112,6 +112,29 @@ func (a actions) validateExternalSystemsRegistered(ctx *statemachine.Context) st
 	return statemachine.Outcome{}
 }
 
+// validateRedesignExternalRequiresESCC is the upfront no-silent-no-op guard for
+// the redesign-external-system-structure cycle (plan 20260622-1739 Step 4c). The
+// redesign path runs no AT/CT cascade, so external-driver-port-changed-paths is
+// never populated; the ONLY selection source for which external system(s) the
+// reshape targets is the ticket's External System Contract Criteria (escc-systems,
+// stamped by parse-ticket). Without ESCC, touchedExternalSystemNames returns the
+// empty set, every unrolled clone's external-system-touched is false, and the
+// whole cycle silently no-ops (the #65-class bug). This guard hard-errors up front
+// so a redesign-external ticket missing its ESCC section fails loud with an
+// actionable message rather than completing as a no-op.
+//
+// parse-ticket always stamps ticket-has-escc (false when the section is absent),
+// so a missing key reads as false and surfaces the same actionable error — never a
+// silent default-yes. Deterministic — no agent. Mirrors
+// validate-external-systems-registered (which runs immediately after and checks
+// the ESCC-named systems against the registry).
+func (a actions) validateRedesignExternalRequiresESCC(ctx *statemachine.Context) statemachine.Outcome {
+	if hasESCC, _ := ctx.State["ticket-has-escc"].(bool); !hasESCC {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-redesign-external-requires-escc: a redesign-external-system ticket must declare an `## External System Contract Criteria` section naming the external system(s) whose response contract is being reshaped — without it the redesign has no target system and would silently no-op; add the section (with `External System: <name>`) and re-run")}
+	}
+	return statemachine.Outcome{}
+}
+
 // resolveExternalSystem runs at the START of each unrolled external-system
 // contract-cycle clone (plan 20260615-0755 Items 2 + 4). Each clone bakes its
 // own external-system-name + real-kind into ctx.Params at the call-activity

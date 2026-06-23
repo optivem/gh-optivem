@@ -2942,6 +2942,35 @@ func TestValidateExternalSystemsRegistered_ESCC_Unregistered_Errors(t *testing.T
 	}
 }
 
+func TestValidateRedesignExternalRequiresESCC_HasESCC_OK(t *testing.T) {
+	a := newActions(Deps{})
+	ctx := statemachine.NewContext()
+	ctx.Set("ticket-has-escc", true)
+	if out := a.validateRedesignExternalRequiresESCC(ctx); out.Err != nil {
+		t.Errorf("unexpected err when ticket declares ESCC: %v", out.Err)
+	}
+}
+
+func TestValidateRedesignExternalRequiresESCC_NoESCC_HardErrors(t *testing.T) {
+	a := newActions(Deps{})
+	// false and absent both mean "no ESCC" → the same fail-loud error (never a
+	// silent no-op).
+	for _, seed := range []func(*statemachine.Context){
+		func(ctx *statemachine.Context) { ctx.Set("ticket-has-escc", false) },
+		func(ctx *statemachine.Context) {}, // key absent
+	} {
+		ctx := statemachine.NewContext()
+		seed(ctx)
+		out := a.validateRedesignExternalRequiresESCC(ctx)
+		if out.Err == nil {
+			t.Fatalf("want hard error when redesign-external ticket declares no ESCC")
+		}
+		if !strings.Contains(out.Err.Error(), "External System Contract Criteria") {
+			t.Errorf("error should name the missing ESCC section, got: %v", out.Err)
+		}
+	}
+}
+
 func TestResolveExternalSystem_MissingBakedName_HardErrors(t *testing.T) {
 	cfg := writeExternalSystemsTestConfig(t, t.TempDir())
 	a := newActions(Deps{Config: cfg})

@@ -369,6 +369,59 @@ func TestUnrollExternalSystems_Guards(t *testing.T) {
 	})
 }
 
+// TestUnrollExternalSystems_RedesignAnchor proves the SECOND external-system
+// anchor — redesign-external-system-structure's REDESIGN_EXTERNAL_SYSTEM (plan
+// 20260622-1739 Step 4b) — is unrolled by the same UnrollExternalSystems call,
+// with the same per-clone external-system-name + real-kind baking and the same
+// linear, loopback-free stitching as the shared-contract CT anchor. Both seam
+// edges are unconditional (the guards live inside the per-system sub-process and
+// the upfront validate nodes), so predicate preservation is a no-op here.
+func TestUnrollExternalSystems_RedesignAnchor(t *testing.T) {
+	const (
+		redesignAnchorERP   = "REDESIGN_EXTERNAL_SYSTEM_ERP"
+		redesignAnchorCLOCK = "REDESIGN_EXTERNAL_SYSTEM_CLOCK"
+		redesignValidate    = "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"
+		redesignSuccessor   = "IMPLEMENT_AND_VERIFY_SYSTEM"
+	)
+	eng := loadSnapshot(t)
+	realKind := map[string]string{"erp": "simulator", "clock": "test-instance"}
+	if err := eng.UnrollExternalSystems([]string{"erp", "clock"}, realKind); err != nil {
+		t.Fatalf("UnrollExternalSystems: %v", err)
+	}
+	proc := eng.Processes[redesignExternalSystemStructureProcess]
+	if proc == nil {
+		t.Fatalf("process %q missing", redesignExternalSystemStructureProcess)
+	}
+	if _, ok := proc.Nodes[redesignExternalSystemAnchor]; ok {
+		t.Errorf("template anchor %q should be gone after unroll", redesignExternalSystemAnchor)
+	}
+
+	erp := requireNode(t, proc, redesignAnchorERP)
+	clock := requireNode(t, proc, redesignAnchorCLOCK)
+	if erp.Kind != CallActivity {
+		t.Errorf("ERP node kind = %v, want CallActivity", erp.Kind)
+	}
+	if erp.Raw.Process != redesignExternalSystemPerSystemProcess {
+		t.Errorf("ERP node calls %q, want %q", erp.Raw.Process, redesignExternalSystemPerSystemProcess)
+	}
+	checkParam(t, erp, "external-system-name", "erp")
+	checkParam(t, erp, "real-kind", "simulator")
+	checkParam(t, clock, "external-system-name", "clock")
+	checkParam(t, clock, "real-kind", "test-instance")
+
+	// validate → erp → clock → implement-and-verify-system, all unconditional.
+	entry := findEdge(t, proc, redesignValidate, redesignAnchorERP)
+	if entry.Predicate != "" {
+		t.Errorf("validate → first-clone edge should be unconditional, got predicate %q", entry.Predicate)
+	}
+	chain := findEdge(t, proc, redesignAnchorERP, redesignAnchorCLOCK)
+	if chain.Predicate != "" {
+		t.Errorf("intermediate erp→clock edge should be unconditional, got predicate %q", chain.Predicate)
+	}
+	assertSingleEdge(t, proc, redesignAnchorERP, redesignAnchorCLOCK)
+	assertSingleEdge(t, proc, redesignAnchorCLOCK, redesignSuccessor)
+}
+
 // TestUnrollExternalSystems_BindsEndToEnd proves the synthesized per-system
 // clones are valid CallActivity nodes the engine can bind, and that the
 // external unroll composes with the channel unrolls (different processes).

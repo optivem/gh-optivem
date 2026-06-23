@@ -14,7 +14,7 @@ The process model is structured as five nested levels. Each level is built by
 | Level | Holds | Examples |
 |-------|-------|----------|
 | **TOP** | Operator entry points. | `refine-ticket`, `implement-ticket`, `refactor` |
-| **CYCLE** | Per-ticket sub-processes — one classification maps to exactly one cycle. | `change-system-behavior`, `cover-system-behavior`, `redesign-system-structure`, `refactor-system-structure`, `refactor-test-structure`, `onboard-external-system`, `refine-backlog` |
+| **CYCLE** | Per-ticket sub-processes — one classification maps to exactly one cycle. | `change-system-behavior`, `cover-system-behavior`, `redesign-system-structure`, `redesign-external-system-structure`, `refactor-system-structure`, `refactor-test-structure`, `onboard-external-system`, `refine-backlog` |
 | **HIGH** | Orchestrations that compose MID tasks with compile/verify discipline. | `write-and-verify-acceptance-tests`, `implement-and-verify-system`, `refactor-and-verify-tests` |
 | **MID** | Concrete tasks; each calls a LOW primitive. | `write-acceptance-tests`, `implement-dsl`, `run-tests`, `compile`, `commit` |
 | **LOW** | The four reusable primitives. | `execute-agent`, `execute-command`, `approve`, `fix` |
@@ -81,6 +81,7 @@ refinement, never dispatched as one.
 | `story`, `bug` | `change-system-behavior` |
 | `task/cover-legacy` | `cover-system-behavior` |
 | `task/redesign-system` | `redesign-system-structure` |
+| `task/redesign-external-system` | `redesign-external-system-structure` |
 | `task/refactor-system` | `refactor-system-structure` |
 | `task/refactor-tests` | `refactor-test-structure` |
 | `task/onboard-external-system` | `onboard-external-system` |
@@ -97,6 +98,44 @@ Refactoring is reachable at three ceremony levels, all calling the same refactor
 
 Only `change-system-behavior` gets the opportunistic step — the other cycles have no
 GREEN moment that triggers a follow-on refactor.
+
+## Redesign-external reshapes both sides of the contract
+
+A `redesign-external-system-structure` ticket reshapes an external response
+*contract* (e.g. restructuring ERP's `GetProductResponse`) without changing
+behaviour. The contract is one interface seen from three sides — the consumer
+driver-adapter, the simulated producer, and the stub — so reshaping only the
+consumer leaves the simulated producer emitting the old shape and the
+real-contract test goes red. The cycle therefore reshapes **both** sides, per
+registered external system:
+
+1. **ESCC is the selection source, required up front.** The redesign path runs no
+   acceptance/contract cascade, so the file-change proxy (`external-driver-port-changed-paths`)
+   that the change cascade populates is empty here. The only signal for *which*
+   external system the reshape targets is the ticket's `## External System
+   Contract Criteria` (the same `escc-systems` the contract room keys on). A
+   `validate-redesign-external-requires-escc` guard hard-errors when ESCC is
+   absent — without it every per-system clone's touched-guard is false and the
+   cycle would silently no-op.
+2. **Per-system unroll, reusing the CT cycle's machinery.** The per-system body is
+   a single call-activity anchor that `UnrollExternalSystems` clones once per
+   registered system at load time — the *second* anchor that transform rewrites,
+   alongside the shared-contract contract cycle — baking `external-system-name` +
+   `real-kind` into each clone exactly as the contract cycle does. Each clone runs
+   the same `resolve-external-system` + `external-system-touched` self-guard, so a
+   system this ticket did not touch skips.
+3. **Consumer reshape, then probe-driven producer reconcile.** A touched clone
+   reshapes the consumer adapter, then reuses the extracted
+   `reconcile-external-contract-producer` leg verbatim: it probes contract-real and
+   only acts on a red. `real-kind: simulator` (we own the mock-server) reshapes the
+   simulator; `real-kind: test-instance` (a vendor sandbox we cannot restructure)
+   halts on an upstream contract gap. A behaviour-preserving reshape that the
+   in-process stub already honours passes the probe at zero cost. The redesign path
+   writes no contract tests, so the reused leg's test-name selector is pinned empty
+   — its probes run the whole contract suite for the touched system.
+4. **Full regression last.** After the unrolled clones, the cycle re-greens the
+   whole system via `implement-and-verify-system` (`action: update-system`), because
+   either side of the boundary can shift the system's port surface.
 
 ## Open explorations
 
