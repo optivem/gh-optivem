@@ -85,8 +85,10 @@ runs:
         node-version: 22.x
 
     # Install actionlint for the scaffolder's "Verify scaffolded workflows"
-    # step (steps.VerifyScaffoldWorkflows). Pinned to @v1 (latest v1.x.y) —
-    # same major-version float convention as our `uses: actions/*@vN` lines.
+    # step (steps.VerifyScaffoldWorkflows). Pinned to an exact version that
+    # MUST match shop's .github/workflows/lint-workflows.yml — a floating @v1
+    # let the two linters drift apart, so shop went green while this scaffold
+    # verify went red on the same files (the if-cond rule landed post-1.7.7).
     # Use `go install` so the binary lands in $(go env GOPATH)/bin on both
     # Linux and Windows runners — Go is already set up by the previous
     # step, and GOPATH/bin is on PATH.
@@ -94,7 +96,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        go install github.com/rhysd/actionlint/cmd/actionlint@v1
+        go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
         actionlint --version
 
     # Cache package-registry downloads so repeated scaffolding runs survive

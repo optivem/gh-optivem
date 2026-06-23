@@ -156,7 +156,8 @@ jobs:
       # GH_TOKEN/GITHUB_TOKEN and reports "Logged in via env") so CI exercises
       # the same command path a real user runs, not a CI-only shortcut.
       - name: Install actionlint
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1
+        # Pinned to match shop's lint-workflows.yml — see acceptance-test/action.yml.
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 
       - name: Verify acceptance pipeline environment
         env:
