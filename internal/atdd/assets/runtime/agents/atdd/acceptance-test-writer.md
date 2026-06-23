@@ -21,7 +21,7 @@ ${acceptance-criteria}
 
    ${gate-marker-example}
 
-   The gate stays in the committed code for the test's whole lifetime — it is never removed. It keys on the `GH_OPTIVEM_RUN_WIP_TESTS` environment variable, which the ATDD orchestrator sets to `1` only when it runs verify steps, lifting the gate for that invocation. Feature-branch CI, local `mvn test` / `dotnet test` / `npx playwright test`, and IDE runs leave it unset, so the test is silently skipped there.
+   The gate stays in the committed code for the test's whole lifetime — it is never removed. It keys on the `GH_OPTIVEM_RUN_WIP_TESTS` environment variable, which the ATDD orchestrator sets to `1` only when it runs verify steps, lifting the gate for that invocation. Feature-branch CI, a local test run, and IDE runs leave it unset, so the test is silently skipped there.
 
    Separately, mirror the scenario's isolation tag: when the source Acceptance Criterion's scenario carries the bare Gherkin `@isolated` tag, emit its Acceptance Test with the language isolation shape below; an untagged scenario stays plain. This is mechanical mirroring of the tag the refiner/author already set — *not* a judgement about whether the test should be isolated. The Gherkin tag is bare (`@isolated`, no free text); the isolation **reason** lives separately as an adjacent comment / scenario-description line (e.g. a `# isolated: …` line above `Scenario:`). When such a reason line is present, lift it **verbatim** into the code annotation's reason argument; when absent, emit the bare-reason form. **Never invent a reason** — if no reason line accompanies the tag, do not fabricate one. Follow the language-specific shape exactly:
 

@@ -13,7 +13,7 @@ ${scope-block}
 
 ### Parameters
 
-- `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `architecture` — architecture profile for the target project (monolith/multitier).
 - `checklist` — the parsed list of changes to apply, surfaced verbatim below.
 
 ### Checklist
@@ -27,5 +27,5 @@ ${checklist}
    - **UI**: page structure, form fields, navigation, copy, selectors.
    - **Other**: channel-specific equivalents (commands/flags for CLI, screens for mobile, admin pages, …).
 
-   Apply across **all parallel implementations** (Java/.NET/TS × monolith/multitier — see [architecture/system.md](../../../architecture/system.md)). After editing the source of truth, grep the system tree (`${system-surface}`) for residual references (e.g. the old URL string) before moving on.
-2. When the Checklist requires a schema change (e.g. extracting a column into a join table, renaming a persisted field, splitting a table along a new boundary), add a schema migration under the shared migration set (`${system-db-migration-path}`) — a single timestamped SQL file in the Flyway naming convention (`V{YYYYMMDDHHMMSS}__{description}.sql`, forward-only, no undo) following the expand-contract pattern so the previous app version's invariants stay satisfied across the deploy. Read the existing migrations first to see the current schema. The migration set is shared across every SUT (3 languages × 2 architectures); your one file is consumed by all of them.
+   After editing the source of truth, grep the system tree (`${system-surface}`) for residual references (e.g. the old URL string) before moving on.
+2. When the Checklist requires a schema change (e.g. extracting a column into a join table, renaming a persisted field, splitting a table along a new boundary), add a schema migration under the shared migration set (`${system-db-migration-path}`) — a single timestamped SQL file in the Flyway naming convention (`V{YYYYMMDDHHMMSS}__{description}.sql`, forward-only, no undo) following the expand-contract pattern so the previous app version's invariants stay satisfied across the deploy. Read the existing migrations first to see the current schema. Author a single timestamped file in the migration set.

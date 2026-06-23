@@ -17,7 +17,7 @@ ${scope-block}
 
 ### Parameters
 
-- `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `architecture` — architecture profile for the target project (monolith/multitier).
 - `channel` — the delivery channel this dispatch must green (e.g. `api`, `ui`). The acceptance run is scoped to this channel's suite (`acceptance-${channel}`), so you only need to satisfy the `${channel}` slice of the failing test.
 - `common` — whether this is the first channel of the cycle. `true` → build the channel-agnostic **common** layer plus the `${channel}` adapter; `false` → the `${channel}` adapter delta only (the common layer already landed in an earlier channel's dispatch).
 
@@ -29,7 +29,7 @@ ${scope-block}
 2. Do the simplest implementation possible under the system surface (`${system-surface}`) that greens the `${channel}` acceptance slice. Scope the work by the `common` flag:
    - **`common: true`** (first channel of the cycle): implement the channel-agnostic **common** layer — the DTO / entity / service logic the behaviour needs, shared across every channel — **and** the `${channel}` adapter that exposes it through this channel.
    - **`common: false`** (a later channel): implement **only** the `${channel}` adapter delta that wires this channel to the already-built common layer. Do not re-touch the common layer or its migration — they landed in the first channel's dispatch and are verified by their own commit.
-3. When the AT asserts persisted state (a column read/written, an audit-log entry, a soft-delete tombstone, etc.) **and** `common: true`, also add a schema migration under the shared migration set (`${system-db-migration-path}`) — a single timestamped SQL file in the Flyway naming convention (`V{YYYYMMDDHHMMSS}__{description}.sql`, forward-only, no undo). The migration belongs to the common layer, so it is authored once on the first channel and not repeated on later channels. Read the existing migrations first to see the current schema; do not redeclare columns that already exist. The migration set is shared across every SUT (3 languages × 2 architectures); your one file is consumed by all of them.
+3. When the AT asserts persisted state (a column read/written, an audit-log entry, a soft-delete tombstone, etc.) **and** `common: true`, also add a schema migration under the shared migration set (`${system-db-migration-path}`) — a single timestamped SQL file in the Flyway naming convention (`V{YYYYMMDDHHMMSS}__{description}.sql`, forward-only, no undo). The migration belongs to the common layer, so it is authored once on the first channel and not repeated on later channels. Read the existing migrations first to see the current schema; do not redeclare columns that already exist. Author a single timestamped file in the migration set.
 4. **Self-verify by running your `${channel}` acceptance slice — the run is the gate, not your own judgment.** Compile-green is not done; a passing `acceptance-${channel}` run is. After implementing, converge your slice to green against a real test run:
 
    1. Build, (re)start the system, then run **only** your channel's slice:

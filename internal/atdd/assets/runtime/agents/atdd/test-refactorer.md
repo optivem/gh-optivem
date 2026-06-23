@@ -15,7 +15,7 @@ ${scope-block}
 
 ### Parameters
 
-- `architecture` — architecture profile for the target project (Java/.NET/TS × monolith/multitier).
+- `architecture` — architecture profile for the target project (monolith/multitier).
 - `checklist` — the parsed list of changes to apply, surfaced verbatim below.
 
 ### Checklist
