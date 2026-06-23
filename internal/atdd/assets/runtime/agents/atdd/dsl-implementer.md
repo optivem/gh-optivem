@@ -12,6 +12,8 @@ This dispatch implements DSL for the **`${test-category}`** test layer.
 
 > **CT-path guard.** If you are implementing CT-side DSL (`test-category=contract`), the System Driver port (`${system-driver-port}`) will **not** legitimately need new methods — do **not** add System Driver prototypes there and do **not** emit `system-driver-port-changed=true`. Contract tests stimulate the External-System Driver only (`${external-system-driver-port}`). On the AT path (`test-category=acceptance`) System Driver prototypes are fine.
 
+> **Distinct default identity per instance.** When the DSL auto-assigns a *default* identity to an entity seeded in a `given()` step (the scenario named the entity but not its identifier), each instance of the **same** entity within one scenario must receive a **distinct** default identity — never one shared constant across all instances. The real, id-enforcing external simulator rejects a duplicate id, so two same-entity instances sharing one default identity fail contract-real on the first verify (a stub would silently tolerate the collision, hiding the defect until the real driver runs). This holds for **every** domain entity — products (SKU), orders (order-number), coupons (coupon-code), and any future entity — not just products. State it at the requirement level: stay faithful to the shop reference testkit DSL and mirror the reference's concrete scheme for distinct defaults (e.g. a per-entity counter, or a value derived from the entity's name) — do **not** invent a bespoke scheme.
+
 ## Inputs
 
 ### Scope
