@@ -7,6 +7,7 @@
 package process_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/process"
@@ -823,12 +824,14 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 		t.Errorf("isolated verify test-names = %q, want ${ct-isolated-test-names}", n.Raw.Params["test-names"])
 	}
 
-	// 5. The new simulator MID dispatches the mirror agent and scopes writes
-	//    to external-system-driver-adapter (fork #2) plus the shared
-	//    test-transport foundation (system-driver-adapter-shared), the
-	//    shared common primitives (common), and the shared domain value
-	//    types (domain-value-types) — both travel with common — which the
-	//    simulator sits on (mirrors the stub MID).
+	// 5. The simulator MID dispatches the mirror agent and WRITES the
+	//    producer-side simulator stand-in dir (external-system-simulator — the
+	//    registry-projected scope key, plan 20260622-1739 Step 3), NOT the
+	//    consumer testkit driver-adapter, plus the shared test-transport
+	//    foundation (system-driver-adapter-shared), the shared common primitives
+	//    (common), and the shared domain value types (domain-value-types). It
+	//    READS the full coupled trio (driver-adapter + simulator + stub) so it
+	//    emits a shape consistent with the consumer DTO and the sibling stub.
 	sim, ok := eng.Processes["implement-external-system-real-simulator"]
 	if !ok {
 		t.Fatalf("process implement-external-system-real-simulator missing")
@@ -840,8 +843,33 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	if got := ea.Raw.Params["agent"]; got != "external-system-real-simulator-implementer" {
 		t.Errorf("simulator MID agent = %q, want external-system-real-simulator-implementer", got)
 	}
-	if got := ea.Raw.Write; len(got) != 4 || got[0] != "external-system-driver-adapter" || got[1] != "system-driver-adapter-shared" || got[2] != "common" || got[3] != "domain-value-types" {
-		t.Errorf("simulator MID write scope = %v, want [external-system-driver-adapter system-driver-adapter-shared common domain-value-types]", got)
+	wantSimRead := []string{"external-system-driver-adapter", "external-system-simulator", "external-system-stub", "system-driver-adapter-shared", "common", "domain-value-types"}
+	if got := ea.Raw.Read; !slices.Equal(got, wantSimRead) {
+		t.Errorf("simulator MID read scope = %v, want %v", got, wantSimRead)
+	}
+	wantSimWrite := []string{"external-system-simulator", "system-driver-adapter-shared", "common", "domain-value-types"}
+	if got := ea.Raw.Write; !slices.Equal(got, wantSimWrite) {
+		t.Errorf("simulator MID write scope = %v, want %v", got, wantSimWrite)
+	}
+
+	// 5b. The stub MID is the sibling of the simulator MID: it WRITES the
+	//    producer-side stub stand-in dir (external-system-stub), NOT the
+	//    consumer testkit driver-adapter, and READS the same coupled trio.
+	stub, ok := eng.Processes["implement-external-system-stubs"]
+	if !ok {
+		t.Fatalf("process implement-external-system-stubs missing")
+	}
+	stubEA, ok := stub.Nodes["EXECUTE_AGENT"]
+	if !ok {
+		t.Fatalf("implement-external-system-stubs: EXECUTE_AGENT node missing")
+	}
+	wantStubRead := []string{"external-system-driver-adapter", "external-system-simulator", "external-system-stub", "system-driver-adapter-shared", "common", "domain-value-types"}
+	if got := stubEA.Raw.Read; !slices.Equal(got, wantStubRead) {
+		t.Errorf("stub MID read scope = %v, want %v", got, wantStubRead)
+	}
+	wantStubWrite := []string{"external-system-stub", "system-driver-adapter-shared", "common", "domain-value-types"}
+	if got := stubEA.Raw.Write; !slices.Equal(got, wantStubWrite) {
+		t.Errorf("stub MID write scope = %v, want %v", got, wantStubWrite)
 	}
 }
 

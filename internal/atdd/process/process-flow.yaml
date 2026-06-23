@@ -2427,11 +2427,19 @@ processes:
           agent: external-system-stub-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        # External stub clients sit on the shared HTTP/WireMock transport
-        # (e.g. TaxStubClient imports shared.client.http / shared.client.wiremock),
-        # so the stub implementer reads and may extend the shared foundation.
-        read:  [external-system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
-        write: [external-system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
+        # The stub implementer WRITES the stub stand-in dir (the WireMock mapping
+        # set, external-system-stub — the registry-projected scope key from the
+        # external-systems: registry's stub.path), NOT the testkit driver-adapter:
+        # the stub mappings are the producer side of the contract, dockerized
+        # alongside the simulator (plan 20260622-1739 Step 3; fixes the latent
+        # CT-cycle gap where this MID was mis-scoped to external-system-driver-
+        # adapter, the consumer testkit). It READS the full coupled interface —
+        # driver-adapter ↔ simulator ↔ stub seen from three sides — so it emits a
+        # stub shape consistent with the consumer DTO and the sibling simulator.
+        # External stub clients sit on the shared HTTP/WireMock transport, so it
+        # also reads and may extend the shared foundation + common primitives.
+        read:  [external-system-driver-adapter, external-system-simulator, external-system-stub, system-driver-adapter-shared, common, domain-value-types]
+        write: [external-system-stub, system-driver-adapter-shared, common, domain-value-types]
 
       - id: IMPL_STUBS_END
         type: end-event
@@ -2442,10 +2450,13 @@ processes:
 
   # Mirror of implement-external-system-stubs for the simulator-backed real
   # side (plan 20260606-1356). Teaches the simulator we author the new
-  # contract so contract-real goes GREEN. Same Family B scope key as the stub
-  # MID (external-system-driver-adapter — fork #2): the scope mechanism only
-  # understands Family B path keys, and a faithful mirror of the stub MID
-  # writes there.
+  # contract so contract-real goes GREEN. Like the stub MID, it WRITES the
+  # producer-side simulator stand-in dir (external-system-simulator — the
+  # registry-projected scope key from the external-systems: registry's
+  # simulator.path), NOT the testkit driver-adapter (plan 20260622-1739 Step 3;
+  # fixes the latent CT-cycle mis-scope that pointed this MID at external-system-
+  # driver-adapter, the consumer testkit, while its prose described a dockerized
+  # simulator it could not actually write).
   implement-external-system-real-simulator:
     name: "Implement External System Real Simulator"
     start: EXECUTE_AGENT
@@ -2459,11 +2470,14 @@ processes:
           agent: external-system-real-simulator-implementer
           # prod-agent tier: production-code writing agent.
           category: prod-agent
-        # Faithful mirror of implement-external-system-stubs: the simulator-backed
-        # real side likewise sits on the shared HTTP transport, so it reads and
-        # may extend the shared foundation (kept in lockstep with the stub MID).
-        read:  [external-system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
-        write: [external-system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
+        # Faithful mirror of implement-external-system-stubs: WRITES the simulator
+        # stand-in dir and READS the full coupled interface (driver-adapter ↔
+        # simulator ↔ stub seen from three sides) so it emits a simulator shape
+        # consistent with the consumer DTO and the sibling stub. The simulator
+        # likewise sits on the shared HTTP transport, so it also reads/extends the
+        # shared foundation + common primitives (kept in lockstep with the stub MID).
+        read:  [external-system-driver-adapter, external-system-simulator, external-system-stub, system-driver-adapter-shared, common, domain-value-types]
+        write: [external-system-simulator, system-driver-adapter-shared, common, domain-value-types]
 
       - id: IMPL_REAL_SIM_END
         type: end-event

@@ -122,6 +122,21 @@ func (f *fakeGit) hasGitArg(prefix ...string) bool {
 	return false
 }
 
+// shopExternalSystems returns a shop-shaped external-systems: registry (one
+// simulator-backed system) so cfg.PlaceholderMap() emits the registry-projected
+// scope keys ${external-system-simulator} / ${external-system-stub} the
+// simulator/stub implementer prompts reference (plan 20260622-1739). The paths
+// mirror the shop template (shared, language-/architecture-agnostic dirs).
+func shopExternalSystems() projectconfig.ExternalSystems {
+	return projectconfig.ExternalSystems{
+		"erp": projectconfig.ExternalSystem{
+			RealKind:  projectconfig.RealKindSimulator,
+			Stub:      projectconfig.ExternalSpec{Path: "external-systems/stubs", Repo: "optivem/shop"},
+			Simulator: projectconfig.ExternalSpec{Path: "external-systems/simulators", Repo: "optivem/shop"},
+		},
+	}
+}
+
 func newOpts() Options {
 	// Minimal monolith Java shop-shaped config — production dispatch wires
 	// Placeholders from cfg.PlaceholderMap(), so seed both consistently so
@@ -138,6 +153,7 @@ func newOpts() Options {
 			Lang:  "java",
 			Paths: projectconfig.DefaultPaths(projectconfig.LangJava, "system-test", "shop"),
 		},
+		ExternalSystems: shopExternalSystems(),
 	}
 	// ${system-surface} is driver-resolved per dispatch (driver.resolveSystemSurface),
 	// not emitted by PlaceholderMap — on this monolith fixture it is System.Path.
@@ -202,6 +218,9 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 			Lang:  projectconfig.LangJava,
 			Paths: projectconfig.DefaultPaths(projectconfig.LangJava, "system-test", "shop"),
 		},
+		// Registry so PlaceholderMap emits ${external-system-simulator} /
+		// ${external-system-stub} for the simulator/stub implementer prompts.
+		ExternalSystems: shopExternalSystems(),
 	}
 	ph := cfg.PlaceholderMap()
 	ph["system-surface"] = surface // driver-resolved per dispatch (see driver.resolveSystemSurface)
@@ -377,17 +396,20 @@ func TestRenderPrompt_NoLegacyCommitGatingLeaksAcrossAgents(t *testing.T) {
 	}
 }
 
-// TestRenderPrompt_ExternalSystemRealSimulatorImplementer proves the new
+// TestRenderPrompt_ExternalSystemRealSimulatorImplementer proves the
 // simulator-implementer agent (plan 20260606-1356) is embedded and
-// dispatchable: its body renders with ${external-system-driver-adapter} +
+// dispatchable: its body renders with the registry-projected
+// ${external-system-simulator} (its WRITE dir, plan 20260622-1739 Step 3), the
+// read-only ${external-system-driver-adapter} consumer context, and
 // ${scope-block} expanded, mirroring the stub implementer. The
 // implement-external-system-real-simulator MID dispatches this agent.
 func TestRenderPrompt_ExternalSystemRealSimulatorImplementer(t *testing.T) {
 	opts := newOpts()
 	opts.Agent = "external-system-real-simulator-implementer"
-	// Same Family B scope key as the stub MID (fork #2).
-	opts.ScopeRead = []string{"external-system-driver-adapter"}
-	opts.ScopeWrite = []string{"external-system-driver-adapter"}
+	// Producer-side simulator dir is the WRITE scope; the coupled consumer
+	// driver-adapter + sibling stub are read-only context (plan 20260622-1739).
+	opts.ScopeRead = []string{"external-system-driver-adapter", "external-system-simulator", "external-system-stub"}
+	opts.ScopeWrite = []string{"external-system-simulator"}
 	// Body references ${external-system-name}, bound per external system by
 	// UnrollExternalSystems (plan 20260615-0755); supply it for the render.
 	opts.NodeParams = map[string]string{"external-system-name": "erp"}
@@ -400,9 +422,8 @@ func TestRenderPrompt_ExternalSystemRealSimulatorImplementer(t *testing.T) {
 	// implementer's "reflect the real Test Instance's contract" line).
 	mustContain(t, got, "real simulator")
 	mustContain(t, got, "stands in for the real Test Instance")
-	// ${external-system-driver-adapter} expanded to the configured path
-	// (language-stable suffix of the external-system-driver-adapter layer).
-	mustContain(t, got, "driver/adapter/external")
+	// ${external-system-simulator} expanded to the configured registry path.
+	mustContain(t, got, "external-systems/simulators")
 	mustContain(t, got, "### Scope")
 	if strings.Contains(got, "${") {
 		t.Errorf("prompt still contains ${...} placeholder:\n%s", got)

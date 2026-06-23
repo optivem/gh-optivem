@@ -291,6 +291,36 @@ func TestResolveLayerPaths_FamilyAKeysAllHaveAccessor(t *testing.T) {
 	}
 }
 
+// TestResolveLayerPaths_ExternalRegistryKeysProjected is the drift guard
+// between atdd.ExternalRegistryPathKeysInScope and the registry branch in
+// ResolveLayerPaths. Every admitted registry key must (a) be recognised by
+// projectconfig.IsExternalRegistryPathKey (so the render path drops it
+// symmetrically when not applicable) and (b) resolve through the registry
+// branch without error — to the declared dir(s) when the external-systems:
+// registry backs it, and to an empty (skipped) set on a registry-less project,
+// the not-applicable case the always-present shared write keys cover.
+func TestResolveLayerPaths_ExternalRegistryKeysProjected(t *testing.T) {
+	withRegistry := writeExternalSystemsTestConfig(t, t.TempDir())
+	registryLess := writePhaseScopeTestConfig(t, t.TempDir())
+	for key := range atdd.ExternalRegistryPathKeysInScope {
+		if !projectconfig.IsExternalRegistryPathKey(key) {
+			t.Errorf("ExternalRegistryPathKeysInScope[%q] is not recognised by projectconfig.IsExternalRegistryPathKey — the render path will not drop it on a registry-less config", key)
+		}
+		got, err := ResolveLayerPaths([]string{key}, withRegistry)
+		if err != nil {
+			t.Errorf("ResolveLayerPaths(%q) with registry: %v — wire it into the registry branch of ResolveLayerPaths", key, err)
+		} else if len(got) == 0 {
+			t.Errorf("ResolveLayerPaths(%q) with registry: got no paths, want the declared simulator/stub dir(s)", key)
+		}
+		got, err = ResolveLayerPaths([]string{key}, registryLess)
+		if err != nil {
+			t.Errorf("ResolveLayerPaths(%q) registry-less: %v — must skip (not error) when the optional registry is absent", key, err)
+		} else if len(got) != 0 {
+			t.Errorf("ResolveLayerPaths(%q) registry-less: got %v, want empty (skipped not-applicable layer)", key, got)
+		}
+	}
+}
+
 // TestMonolithOnlyPathKeysAreInScope is the drift guard between
 // atdd.MonolithOnlyPathKeys and atdd.FamilyAPathKeysInScope: the skip
 // gate in ResolveLayerPaths only fires for layers it already knows how to

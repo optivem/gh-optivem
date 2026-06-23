@@ -8,12 +8,15 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
-// contractStubScopeLayers are the Family B write-scope layers of the three
-// external-contract / external-stub writing agents (plan 20260620-2348, Q3):
+// contractStubScopeLayers are the write-scope layers of the external-contract /
+// external-stub writing agents (plan 20260620-2348, Q3; producer dirs added by
+// plan 20260622-1739 Step 3):
 //
-//   - contract-test-writer       — ct-test, dsl-port, dsl-core
-//   - stub-fidelity-test-writer  — ct-test
-//   - external-system-stub-implementer — external-system-driver-adapter
+//   - contract-test-writer              — ct-test, dsl-port, dsl-core
+//   - stub-fidelity-test-writer         — ct-test
+//   - external-system-driver-adapter-updater / -implementer — external-system-driver-adapter
+//   - external-system-stub-implementer  — external-system-stub
+//   - external-system-real-simulator-implementer — external-system-simulator
 //
 // A scope-exception that names a file under any of these is "external
 // contract/stub work" — exactly the work that requires a ## External System
@@ -21,14 +24,17 @@ import (
 // agents ALSO write (common, system-driver-adapter-shared) are deliberately
 // EXCLUDED: a shared-foundation edit is not contract/stub-specific and must not
 // route a vanilla scope-exception into the ESCC-undeclared halt. The set is
-// pinned as explicit Family B placeholder keys (resolved via ResolveLayerPaths),
-// never prose patterns ([[feedback_paths_deterministic_no_guessing]],
+// pinned as explicit placeholder keys (resolved via ResolveLayerPaths — the
+// registry-projected simulator/stub keys skip cleanly on a registry-less
+// project), never prose patterns ([[feedback_paths_deterministic_no_guessing]],
 // [[feedback_substitutable_paths_in_docs]]).
 var contractStubScopeLayers = []string{
 	"ct-test",
 	"dsl-port",
 	"dsl-core",
 	"external-system-driver-adapter",
+	"external-system-stub",
+	"external-system-simulator",
 }
 
 // categorizeScopeException is Guard B (plan 20260620-2348). It runs on the

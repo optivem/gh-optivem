@@ -168,6 +168,22 @@ func ResolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, er
 		if atdd.MonolithOnlyPathKeys[layer] && cfg.System.Architecture == projectconfig.ArchMultitier {
 			continue
 		}
+		// Registry-projected key (external-system simulator / stub stand-in
+		// dir): resolve from the external-systems: registry, not a top-level
+		// field or system-test.paths: entry. An empty result means the
+		// optional registry declares no backing path (no simulator-kind system
+		// / no external-systems: at all) — the layer is not applicable on this
+		// config, so skip it (mirrors the monolith-only skip above). The
+		// always-present shared write keys keep the scope non-empty, so a
+		// registry-less project does not false-fail the preflight collapse gate.
+		if atdd.ExternalRegistryPathKeysInScope[layer] {
+			paths, ok := cfg.ExternalRegistryPaths(layer)
+			if !ok {
+				return nil, fmt.Errorf("layer %q is in ExternalRegistryPathKeysInScope but has no Config projection", layer)
+			}
+			out = append(out, paths...)
+			continue
+		}
 		if atdd.FamilyAPathKeysInScope[layer] {
 			switch layer {
 			case "system-path":

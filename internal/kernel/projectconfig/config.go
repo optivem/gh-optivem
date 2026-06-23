@@ -389,6 +389,75 @@ type ExternalSpec struct {
 	Repo string `yaml:"repo,omitempty"`
 }
 
+// External-system registry-projected scope keys. Unlike Family A (top-level
+// gh-optivem.yaml fields) and Family B (system-test.paths: testkit layers),
+// these resolve from the external-systems: registry's per-system
+// simulator.path / stub.path — they name the producer-side stand-in dirs (the
+// dockerized simulator we author, the WireMock stub mappings) so a
+// writing-agent MID can be scoped to WRITE them. Projected into scope so no
+// duplicate system-test.paths: key is needed. Consumed by
+// internal/atdd/phase_scopes.go (ExternalRegistryPathKeysInScope), the
+// ResolveLayerPaths branch in internal/atdd/process/actions/scope.go, and
+// PlaceholderMap below (render view).
+const (
+	ExternalSimulatorPathKey = "external-system-simulator"
+	ExternalStubPathKey      = "external-system-stub"
+)
+
+// IsExternalRegistryPathKey reports whether key is one of the two
+// registry-projected scope keys. Shared by the consumers that must treat such
+// a key as not-applicable (and drop it) when the optional external-systems:
+// registry declares no backing path — the render-side counterpart of
+// ResolveLayerPaths' skip.
+func IsExternalRegistryPathKey(key string) bool {
+	return key == ExternalSimulatorPathKey || key == ExternalStubPathKey
+}
+
+// ExternalRegistryPaths returns the distinct, sorted, non-empty paths the
+// external-systems: registry declares for the given registry-projected scope
+// key: the simulator dirs of every real-kind: simulator system
+// (ExternalSimulatorPathKey), or the stub dirs of every registered system
+// (ExternalStubPathKey). The registry is per-system, but a project's
+// simulator/stub dirs are shared and language-/architecture-agnostic by
+// convention (shop declares external-systems/simulators + external-systems/stubs
+// identically across clock/erp/tax, all langs, both archs), so the result is
+// normally a single path; a future per-system-distinct layout would surface all
+// of them.
+//
+// ok=false for an unrecognised key. An empty slice (ok=true) means the registry
+// declares no path for that representation — no simulator-kind system, or no
+// external-systems: at all (the registry is optional; init does not scaffold
+// it). Callers treat the empty case as "layer not applicable on this config"
+// and skip/drop it, mirroring the monolith-only path-key skip.
+func (c *Config) ExternalRegistryPaths(key string) ([]string, bool) {
+	if c == nil {
+		return nil, false
+	}
+	set := map[string]struct{}{}
+	switch key {
+	case ExternalSimulatorPathKey:
+		for _, name := range c.ExternalSystemNames() {
+			if p := c.ExternalSystems[name].Simulator.Path; p != "" {
+				set[p] = struct{}{}
+			}
+		}
+	case ExternalStubPathKey:
+		for _, name := range c.ExternalSystemNames() {
+			if p := c.ExternalSystems[name].Stub.Path; p != "" {
+				set[p] = struct{}{}
+			}
+		}
+	default:
+		return nil, false
+	}
+	out := make([]string, 0, len(set))
+	for p := range set {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out, true
+}
+
 // ExternalSystemNames returns the external-system map keys in sorted order.
 // Used wherever deterministic iteration matters — Validate's error messages,
 // preflight existence checks, the driver config banner.
@@ -516,6 +585,16 @@ func (c *Config) PlaceholderMap() map[string]string {
 	// map, so a layer reference must name the member explicitly to resolve it.
 	for ch, p := range c.SystemTest.SystemDriverAdapterChannels {
 		out["system-driver-adapter-channels."+ch] = p
+	}
+	// Registry-projected external-system scope keys (simulator / stub stand-in
+	// dirs). Emitted only when the optional external-systems: registry declares
+	// a backing path, joined when distinct (normally a single shared dir). A
+	// registry-less project omits them, and renderScopeBlock drops the
+	// not-applicable key rather than erroring (IsExternalRegistryPathKey).
+	for _, key := range []string{ExternalSimulatorPathKey, ExternalStubPathKey} {
+		if paths, _ := c.ExternalRegistryPaths(key); len(paths) > 0 {
+			out[key] = strings.Join(paths, ", ")
+		}
 	}
 	out["architecture"] = c.System.Architecture
 	out["system-path"] = c.System.Path

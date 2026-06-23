@@ -7,6 +7,8 @@
 // still consume.
 package atdd
 
+import "github.com/optivem/gh-optivem/internal/kernel/projectconfig"
+
 // NonWritingAgents are agent names that do not need a phase-scope entry.
 // `human` is the trusted-actor case — the operator is trusted to scope
 // their own edits.
@@ -44,4 +46,26 @@ var FamilyAPathKeysInScope = map[string]bool{
 // Every entry must also appear in FamilyAPathKeysInScope.
 var MonolithOnlyPathKeys = map[string]bool{
 	"system-path": true,
+}
+
+// ExternalRegistryPathKeysInScope lists the registry-projected path-shaped
+// scope keys — the third key family, alongside Family A (FamilyAPathKeysInScope)
+// and Family B (projectconfig.CanonicalPathKeys). Unlike the other two, these
+// resolve from the external-systems: registry's per-system simulator.path /
+// stub.path rather than a top-level field or system-test.paths: entry, so a
+// writing-agent MID can be scoped to write the producer-side stand-in dirs (the
+// dockerized simulator, the WireMock stub mappings) without a duplicate
+// system-test.paths: key.
+//
+// ResolveLayerPaths (internal/atdd/process/actions/scope.go) routes these
+// through projectconfig.Config.ExternalRegistryPaths and SKIPS them when the
+// optional registry declares no backing path (no simulator-kind system / no
+// external-systems: at all) — the layer is not applicable on that config,
+// mirroring the monolith-only skip. The render path drops them the same way
+// (projectconfig.IsExternalRegistryPathKey). Every key here must be recognised
+// by projectconfig.IsExternalRegistryPathKey (drift-guarded in
+// internal/atdd/process/actions/bindings_test.go).
+var ExternalRegistryPathKeysInScope = map[string]bool{
+	projectconfig.ExternalSimulatorPathKey: true,
+	projectconfig.ExternalStubPathKey:      true,
 }

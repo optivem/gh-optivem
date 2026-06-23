@@ -42,6 +42,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/expand"
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 	"github.com/optivem/gh-optivem/internal/userstate"
 )
@@ -1080,6 +1081,27 @@ func renderAttemptBlock(number, max int) string {
 // existing strict-placeholder policy (statemachine load/run); the prior
 // `(unresolved)` fallback was the lone outlier (plan 20260619-1953).
 func renderScopeBlock(read, write []string, paths map[string]string, rationale string, systemSurface []string) (string, error) {
+	// Drop registry-projected scope keys (external-system simulator / stub)
+	// that are not applicable on this config: the optional external-systems:
+	// registry declares no backing path, so PlaceholderMap omits the key. The
+	// owning MID (simulator / stub implementer) is never dispatched without the
+	// registry, so dropping the key here — rather than failing as unresolved —
+	// is correct, mirroring ResolveLayerPaths' not-applicable skip. A registry
+	// key WITH a configured path stays and resolves normally below.
+	applicable := func(keys []string) []string {
+		out := make([]string, 0, len(keys))
+		for _, k := range keys {
+			if projectconfig.IsExternalRegistryPathKey(k) {
+				if v, ok := paths[k]; !ok || v == "" {
+					continue
+				}
+			}
+			out = append(out, k)
+		}
+		return out
+	}
+	read = applicable(read)
+	write = applicable(write)
 	resolve := func(key string) (string, bool) {
 		if paths != nil {
 			if v, ok := paths[key]; ok && v != "" {
