@@ -180,6 +180,7 @@ func newRootCmd() *cobra.Command {
 		withGroup(newConfigCmd(), groupProjectOps),
 		withGroup(newSystemCmd(), groupProjectOps),
 		withGroup(newTestCmd(), groupProjectOps),
+		withGroup(newComponentCmd(), groupProjectOps),
 		withGroup(newCompileCmd(), groupProjectOps),
 		withGroup(newDoctorCmd(), groupProjectOps),
 
