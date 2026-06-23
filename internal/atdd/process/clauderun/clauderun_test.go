@@ -1652,7 +1652,12 @@ type scriptedClaude struct {
 
 type scriptedResponse struct {
 	stderr string
-	err    error
+	// resultText models the headless stream-json terminal `result` event,
+	// which runHeadless parses into RunResult.ResultText. A transient API
+	// error (e.g. "API Error: 529 Overloaded") surfaces here with EMPTY
+	// stderr — the rehearsal-#69 shape the stderr-only classifier missed.
+	resultText string
+	err        error
 }
 
 func (f *scriptedClaude) Run(_ context.Context, opts RunOpts) (RunResult, error) {
@@ -1665,7 +1670,7 @@ func (f *scriptedClaude) Run(_ context.Context, opts RunOpts) (RunResult, error)
 	if r.stderr != "" && opts.Stderr != nil {
 		opts.Stderr.Write([]byte(r.stderr))
 	}
-	return RunResult{}, r.err
+	return RunResult{ResultText: r.resultText}, r.err
 }
 
 func TestDispatch_RetriesTransientThenSucceeds(t *testing.T) {
@@ -1687,6 +1692,60 @@ func TestDispatch_RetriesTransientThenSucceeds(t *testing.T) {
 	}
 	if claudeFake.calls != 2 {
 		t.Errorf("expected 2 dispatch attempts (transient then success), got %d", claudeFake.calls)
+	}
+}
+
+func TestDispatch_RetriesTransientInResultText(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) {})()
+
+	// Regression guard for rehearsal #69: in headless stream-json mode a
+	// transient "API Error: 529 Overloaded" surfaces in the result event
+	// (RunResult.ResultText) with EMPTY stderr. The stderr-only classifier
+	// missed it and hard-failed on attempt 1; the widened haystack must now
+	// retry it.
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaa\n"), // pre-snapshot HEAD
+			[]byte("aaaa\n"), // post-snapshot HEAD (success path runs the post snapshot)
+		},
+	}
+	claudeFake := &scriptedClaude{responses: []scriptedResponse{
+		{resultText: "API Error: 529 Overloaded.", err: errors.New("exit status 1")},
+		{}, // attempt 2 succeeds
+	}}
+
+	opts := newOpts()
+	opts.Headless = true
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("expected success after retrying a result-text transient, got %v", err)
+	}
+	if claudeFake.calls != 2 {
+		t.Errorf("expected 2 attempts (result-text transient then success), got %d", claudeFake.calls)
+	}
+}
+
+func TestDispatch_HardFailInResultTextFailsFast(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) { t.Fatal("backoff sleep must not fire on a hard-fail") })()
+
+	// The two-regex precedence must hold for the widened haystack too: a
+	// rate-limit signature arriving only in the result text fast-fails without
+	// retry and keeps its specific message.
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &scriptedClaude{responses: []scriptedResponse{
+		{resultText: "Error: rate_limit_error: weekly limit reached.", err: errors.New("exit status 1")},
+	}}
+
+	opts := newOpts()
+	opts.Headless = true
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if claudeFake.calls != 1 {
+		t.Errorf("a result-text rate-limit must fast-fail without retry, got %d attempts", claudeFake.calls)
+	}
+	if !strings.Contains(err.Error(), "rate limit") {
+		t.Errorf("expected rate-limit specific message to survive, got %q", err.Error())
 	}
 }
 

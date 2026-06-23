@@ -660,10 +660,21 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	// errors match neither regex and are not retried — preserving today's
 	// behaviour for real agent failures. See
 	// plans/20260616-1948-retry-transient-claude-errors-in-agent-dispatch.md.
+	//
+	// The classification haystack spans every stream a transient error can
+	// surface on, not just stderr: in headless `claude -p --output-format
+	// stream-json` mode the API error (e.g. "API Error: 529 Overloaded")
+	// arrives on STDOUT — the terminal `result` event (parsed into
+	// runResult.ResultText) or, when the run dies before a result event, the
+	// raw captured stream runHeadless dumps to stdout — while stderr stays
+	// empty. Classifying stderr alone missed those and hard-failed a retryable
+	// blip on attempt 1 (rehearsal #69). See
+	// plans/20260623-0910-classify-headless-result-text-for-retry.md.
 	var (
-		runResult  RunResult
-		lastStderr []byte
-		startedAt  time.Time
+		runResult        RunResult
+		lastStderr       []byte
+		lastClassifyText string
+		startedAt        time.Time
 	)
 	attempt := func() (string, error) {
 		// Fresh stderr capture per attempt so the classifier sees only this
@@ -674,6 +685,19 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		stderrCapture.cap = 64 * 1024
 		runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
 
+		// Headless-only stdout capture, same bounded tee as stderr above. The
+		// stream-json error lands on stdout (see the haystack note above), so
+		// fold it into the classification text. Interactive mode is left
+		// untouched: its TUI keys interactivity off stdout being a real TTY, so
+		// wrapping runnerStdout in a MultiWriter would break rendering (the
+		// runnerStdout note above flags exactly this).
+		var stdoutCapture cappedBuffer
+		runStdout := runnerStdout
+		if opts.Headless {
+			stdoutCapture.cap = 64 * 1024
+			runStdout = io.MultiWriter(runnerStdout, &stdoutCapture)
+		}
+
 		startedAt = nowFn()
 		var runErr error
 		runResult, runErr = deps.Claude.Run(ctx, RunOpts{
@@ -683,7 +707,7 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 			Effort:            opts.Effort,
 			Dir:               opts.RepoPath,
 			Stdin:             opts.Stdin,
-			Stdout:            runnerStdout,
+			Stdout:            runStdout,
 			Stderr:            runStderr,
 			Out:               opts.Out,
 			OutputFilePath:    opts.OutputFilePath,
@@ -696,15 +720,24 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		lastStderr = stderrCapture.Bytes()
 		if runErr != nil {
 			writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
-			// Hand RetryWithPolicy the failure tail: it retries only when this
-			// matches transientStderrRegex and not hardFailStderrRegex.
-			return string(lastLines(lastStderr, 20)), runErr
+			// Hand RetryWithPolicy the combined failure tail across stderr, the
+			// parsed headless result text, and the captured stdout tail: it
+			// retries only when this matches transientStderrRegex and not
+			// hardFailStderrRegex. Same string feeds classifyRunError below so
+			// the rate-limit / auth friendly message also fires when the signal
+			// arrived on stdout rather than stderr.
+			lastClassifyText = strings.Join([]string{
+				string(lastLines(lastStderr, 20)),
+				runResult.ResultText,
+				string(lastLines(stdoutCapture.Bytes(), 20)),
+			}, "\n")
+			return lastClassifyText, runErr
 		}
 		return "", nil
 	}
 
 	if _, runErr := shell.RetryWithPolicy(transientStderrRegex, hardFailStderrRegex, "clauderun", attempt); runErr != nil {
-		if classified := classifyRunError(lastStderr); classified != nil {
+		if classified := classifyRunError([]byte(lastClassifyText)); classified != nil {
 			return runResult, fmt.Errorf("clauderun: %s: %w", opts.Agent, classified)
 		}
 		return runResult, fmt.Errorf("clauderun: %s exited non-zero: %w", opts.Agent, runErr)
