@@ -198,6 +198,39 @@ func TestPrompt_FixerPreamble(t *testing.T) {
 	}
 }
 
+func TestPrompt_SystemImplementer_ContradictoryTestsHalt(t *testing.T) {
+	// Pins the contradictory-tests halt doctrine into the
+	// system-implementer prompt (plan 20260623-1346). When an acceptance
+	// suite is internally contradictory — a pre-existing test asserts the
+	// old rule, the new test the new one — no system-code change can green
+	// both. The implementer must emit the scope-exception envelope with its
+	// diagnosis and make NO edit, rather than greening a subset (the silent
+	// revert + wandering human-gate halt this replaces, run #76). This test
+	// guards the doctrine at build time: a careless edit that drops the halt
+	// instruction, the read-time detection, or either hard prohibition fails
+	// here instead of regressing to the #76 failure mode in production.
+	body, err := DefaultAgentSet().Prompt("system-implementer")
+	if err != nil {
+		t.Fatalf("Prompt: %v", err)
+	}
+	// Load-bearing phrases — the halt itself, read-time detection, and the
+	// two prohibitions (no revert of a same-ticket commit, no guessing a
+	// side). Asserted on the inner text (no `**` markers) so a formatting
+	// tweak does not break the contract.
+	wantPhrases := []string{
+		"Contradictory tests — halt, do not pick a side",
+		"read-time detection",
+		"scope-exception envelope",
+		"Never green a subset by working against a same-ticket dispatch",
+		"Do not guess a side",
+	}
+	for _, phrase := range wantPhrases {
+		if !strings.Contains(body, phrase) {
+			t.Errorf("system-implementer prompt missing contradictory-tests doctrine phrase: %q", phrase)
+		}
+	}
+}
+
 func TestPrompt_StripsFrontmatter(t *testing.T) {
 	// The dispatched prompt must NOT contain the frontmatter — it
 	// would confuse the agent (and waste tokens). Walk every embedded

@@ -24,6 +24,8 @@ ${scope-block}
 ## Steps
 
 1. Read the failing Acceptance Test (`${at-test}`) to see the required behaviour, then trace through the DSL Port (`${dsl-port}`) and DSL Core (`${dsl-core}`) to the System Driver port/adapter pair (`${system-driver-port}`, `${system-driver-adapter}`) to see how the test reaches the production system. If the test stages stub external interactions, also read the External System Driver port/adapter pair (`${external-system-driver-port}`, `${external-system-driver-adapter}`) and the Contract Tests (`${ct-test}`) to see the stub contract the implementation must satisfy.
+
+   **Watch for contradictory tests as you read (read-time detection).** While reading the failing test and its sibling acceptance tests in the same feature/area — **including `@isolated` boundary/parameterized tests**, which your channel's parallel slice excludes via `--grep-invert '@isolated'` but which still encode the rule — check whether a pre-existing test asserts the **old** value of the rule the ticket changes, contradicting the new test. If a behaviour-change ticket moved a boundary/threshold/window but a pre-existing test still encodes the old one, the suite holds **two contradictory definitions of one rule**, and because you can edit only production code (never tests), **no single code value can green both**. Reconciling the obsolete test is the acceptance-test-writer's job, not yours. Do **not** start implementing against a contradiction you can see at read time — go straight to the contradictory-tests halt in step 4.
 2. Do the simplest implementation possible under the system surface (`${system-surface}`) that greens the `${channel}` acceptance slice. Scope the work by the `common` flag:
    - **`common: true`** (first channel of the cycle): implement the channel-agnostic **common** layer — the DTO / entity / service logic the behaviour needs, shared across every channel — **and** the `${channel}` adapter that exposes it through this channel.
    - **`common: false`** (a later channel): implement **only** the `${channel}` adapter delta that wires this channel to the already-built common layer. Do not re-touch the common layer or its migration — they landed in the first channel's dispatch and are verified by their own commit.
@@ -47,3 +49,17 @@ ${scope-block}
    - the slice has stalled: two consecutive runs produce no newly-passing scenario and no reduction in the failing set (no progress) — the same signal the orchestration's `fix-loop-progressing` guard watches for.
 
    Do not spin past these. An honest not-green exit is correct: a genuinely stuck slice is handed to the bounded outer verdict, which re-confirms independently and escalates to the human-gated fixer. The `clauderun` standard dispatch ceiling (token/time) is the hard backstop — you do not need, and must not invent, a bespoke per-run cap.
+
+   **Contradictory tests — halt, do not pick a side.** Distinct from the stop rule above (a *stuck* slice, handed to the fixer): this is a slice that **cannot be greened by any production-code change at all**, because the acceptance suite itself is internally contradictory. When you determine that no single change under the system surface (`${system-surface}`) can make all acceptance tests for the rule pass — a pre-existing test asserts the **old** rule and contradicts the new test or the ticket (the read-time signal in step 1, or one that only becomes visible once a fix greens one test and reds another) — **stop and emit the scope-exception envelope, making no edit.** The reconciling fix is an obsolete-test edit, which is outside your write scope (you write production code, never tests) — exactly what the envelope is for:
+
+   ```
+   gh optivem output write \
+     scope-exception-files=<the contradicting test file(s)> \
+     scope-exception-reason="contradictory acceptance tests for one rule: <test A> asserts <old value>, <test B / the ticket> requires <new value>; no system-code change can green both — the obsolete test needs reconciling (acceptance-test-writer), which is outside my write scope"
+   ```
+
+   Put your full diagnosis in `scope-exception-reason`: which tests disagree, the concrete values each demands, and why no system value satisfies both. This routes to a loud `STOP_SCOPE_VIOLATION` halt that surfaces your diagnosis and stops the run — instead of the silent revert + wandering human-gate halt that this replaces.
+
+   Two hard prohibitions, no exceptions:
+   - **Never green a subset by working against a same-ticket dispatch.** Do **not** revert, weaken, or work against a system change an earlier same-ticket dispatch (an earlier channel) already committed in order to make the other side pass. That change greened its own slice; reverting it to green yours just moves the contradiction to the next channel and discards a verified commit.
+   - **Do not guess a side.** Picking which test "looks right" and implementing toward it is exactly the wandering-halt failure mode. Your only move on a genuine contradiction is the halt above — mirror the `unexpected-failing-tests-fixer` doctrine: make no edits, write your diagnosis, exit.
