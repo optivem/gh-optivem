@@ -173,7 +173,7 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM__VERIFY_TESTS_PASS__FIX_LOOP_EXHAUSTED((⚡))
     end
     subgraph IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM[Commit]
-    IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked<br/>task-name = commit"]
+    IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --all --include-untracked<br/>task-name = commit"]
     IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__COMMIT_MID_END(( ))
     end
     end
@@ -416,7 +416,7 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM__VERIFY_TESTS_PASS__FIX_LOOP_EXHAUSTED((⚡))
     end
     subgraph IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM[Commit]
-    IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked<br/>task-name = commit"]
+    IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --all --include-untracked<br/>task-name = commit"]
     IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__COMMIT_MID_END(( ))
     end
     end
@@ -530,7 +530,7 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM__VERIFY_TESTS_PASS__FIX_LOOP_EXHAUSTED((⚡))
     end
     subgraph IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM[Commit]
-    IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked<br/>task-name = commit"]
+    IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --all --include-untracked<br/>task-name = commit"]
     IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__COMMIT_MID_END(( ))
     end
     end
@@ -645,7 +645,7 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM__VERIFY_TESTS_PASS__FIX_LOOP_EXHAUSTED((⚡))
     end
     subgraph IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM[Commit]
-    IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked<br/>task-name = commit"]
+    IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --all --include-untracked<br/>task-name = commit"]
     IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM__COMMIT_MID_END(( ))
     end
     end
@@ -716,7 +716,7 @@ flowchart TD
     REFACTOR_AND_VERIFY_TESTS__VERIFY_TESTS_PASS__FIX_LOOP_EXHAUSTED((⚡))
     end
     subgraph REFACTOR_AND_VERIFY_TESTS__COMMIT_TESTS[Commit]
-    REFACTOR_AND_VERIFY_TESTS__COMMIT_TESTS__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked<br/>task-name = commit"]
+    REFACTOR_AND_VERIFY_TESTS__COMMIT_TESTS__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --all --include-untracked<br/>task-name = commit"]
     REFACTOR_AND_VERIFY_TESTS__COMMIT_TESTS__COMMIT_MID_END(( ))
     end
     end

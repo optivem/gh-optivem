@@ -701,7 +701,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --include-untracked<br/>task-name = commit"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>command = gh optivem commit --yes --all --include-untracked<br/>task-name = commit"]
     COMMIT_MID_END(( ))
 
     EXECUTE_COMMAND --> COMMIT_MID_END
