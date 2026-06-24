@@ -267,6 +267,48 @@ Both files are loaded into *every* turn of *every* session. A 500-line
 **Efficient:** terse rules with a one-line "why". Move long context into
 `docs/*.md` files that get read on demand instead of loaded by default.
 
+Keep `MEMORY.md` under ~200 lines — lines beyond the cap are truncated but
+still count toward the load — and delete stale memories (completed projects,
+outdated decisions) rather than letting them ride along every turn.
+
+---
+
+The remaining tips are for the **human driver** rather than the agent — they
+shape how you steer a session, where the biggest savings actually come from.
+
+## 13. `/compact` proactively, don't wait for the limit
+
+Context accumulates with every message. `/compact` between focus shifts within
+a session (e.g. every 2–3 commits) keeps the replayed transcript small instead
+of dragging the full history into every later turn. Complements `/clear` (§9):
+`/clear` for an unrelated task, `/compact` to trim within related work.
+
+---
+
+## 14. Drive in short, direct turns
+
+Each round trip replays the whole transcript, so ambiguity is expensive:
+"maybe we could rename this?" → "yes" → "should I commit?" → "yes" is four
+turns for one change.
+
+**Expensive:** vague, one-thing-at-a-time prompts that trigger clarifying
+questions.
+
+**Efficient:** state the outcome up front and batch related work — "Rename A,
+B, C and commit" in one turn. Give known file paths, and prefer slash commands
+(`/commit`) over re-explaining intent.
+
+---
+
+## 15. Close unused IDE tabs and deselect unrelated code
+
+Open editor files and highlighted selections are sent as context on every
+turn. Ten tabs open "just in case" is ten paths (and any selections) re-sent
+each round trip.
+
+**Efficient:** keep only the files you're working on open, and clear a
+selection once it's no longer relevant to what you're asking.
+
 ---
 
 ## Quick reference
@@ -285,3 +327,6 @@ Both files are loaded into *every* turn of *every* session. A 500-line
 | 6-minute pause                       | <5 minutes (cache warm) or >20 minutes (real break)|
 | Pasting file content into chat       | Reference path, let Claude `Read` on demand        |
 | 500-line `CLAUDE.md`                 | Terse rules + on-demand `docs/*.md`                |
+| Vague, one-at-a-time prompts         | Direct, batched turns (state outcome up front)     |
+| Many IDE tabs / stray selections     | Close unused tabs, deselect unrelated code         |
+| Waiting for the context limit        | `/compact` proactively between focus shifts        |
