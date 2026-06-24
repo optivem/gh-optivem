@@ -206,6 +206,7 @@ func newRootCmd() *cobra.Command {
 		withGroup(newPrCmd(), groupOther),
 		withGroup(newHooksCmd(), groupOther),
 		withGroup(newCleanupCmd(), groupOther),
+		withGroup(newClaudeCmd(), groupOther),
 		// `output` is the machine-facing ATDD agent output channel.
 		// Called by an agent from inside its dispatched subprocess; not
 		// useful to operators outside that context. Kept in groupOther
