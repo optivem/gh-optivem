@@ -421,7 +421,7 @@ func ExpandParams(s string, params map[string]string, state map[string]any) (str
 // `[]string` joins on ',' so writer-agent outputs typed as string slices
 // (e.g. ctx.State["test-names"]) substitute as comma-separated values
 // that downstream CLI flags consuming repeatable / comma-list inputs
-// (e.g. `gh optivem test run --test=foo,bar`) accept directly. Without
+// (e.g. `gh optivem system-test run --test=foo,bar`) accept directly. Without
 // this case, fmt.Sprint on a slice renders `[foo bar]` which no flag
 // parses.
 func coerceStateValue(v any) string {
@@ -440,7 +440,7 @@ func coerceStateValue(v any) string {
 // typed as string slices (e.g. ctx.State["test-names"], a declared
 // `string-list` output that lands as `[]string`) render as comma-separated
 // values that downstream CLI flags consuming repeatable / comma-list inputs
-// (e.g. `gh optivem test run --test=foo,bar`) accept directly, and so a
+// (e.g. `gh optivem system-test run --test=foo,bar`) accept directly, and so a
 // state-read of the same key parses identically. The `[]any` arm covers an
 // undeclared JSON array (json.Unmarshal yields `[]any`) so it does not fall
 // to fmt.Sprint's `[foo bar]` rendering. Non-string `[]any` elements still

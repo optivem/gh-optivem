@@ -1,7 +1,13 @@
-// test_commands.go wires the `gh optivem test <verb>` subtree. The test
-// noun owns the test-tier lifecycle verbs: `run` against an already-running
-// system, `setup` for harness preparation, and `compile` for the test-tier
-// source build.
+// test_commands.go wires the `gh optivem system-test <verb>` subtree — the
+// system-test pyramid level. The system-test noun owns the level's lifecycle
+// verbs: `run` against an already-running system, `setup` for harness
+// preparation, and `compile` for the system-test source build. It is the flat
+// sibling of `component-test` (component_commands.go); the two parallel
+// `*-test` level nouns share the same `run | setup | compile` verb set.
+//
+// NOTE: the bare top-level `test` is no longer this tier — it is the for-all
+// aggregate verb (aggregate_commands.go) that runs every test level in pyramid
+// order. The system-test level is addressed only as `gh optivem system-test`.
 //
 // Working-dir contract: every command runs against the user's cwd and
 // reads the tests config path from gh-optivem.yaml's system-test.config:
@@ -22,12 +28,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/build/runner"
 )
 
-// newTestCmd builds the `gh optivem test` parent. The parent has no Run, so
-// invoking it without a subcommand prints help.
-func newTestCmd() *cobra.Command {
+// newSystemTestCmd builds the `gh optivem system-test` parent. The parent has
+// no Run, so invoking it without a subcommand prints help.
+func newSystemTestCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "test",
-		Short: "Operate on the test tier",
+		Use:   "system-test",
+		Short: "Operate on the system-test tier",
 	}
 	cmd.AddCommand(
 		newTestRunCmd(),
@@ -39,11 +45,11 @@ func newTestCmd() *cobra.Command {
 
 // newTestRunCmd implements:
 //
-//	gh optivem test run [--suite id] [--test name] [--sample] [--list]
+//	gh optivem system-test run [--suite id] [--test name] [--sample] [--list]
 //
 // Runs suites against an already-running system. The caller is responsible
-// for the lifecycle: `gh optivem test setup` (once) → `gh optivem system start`
-// (once) → `gh optivem test run ...` (one or more times). For operator and CI
+// for the lifecycle: `gh optivem system-test setup` (once) → `gh optivem system start`
+// (once) → `gh optivem system-test run ...` (one or more times). For operator and CI
 // callers that lifecycle is manual; under the ATDD orchestrator the `setup`
 // phase is run automatically by the `setup-tests` BPMN step at the top of
 // `implement-ticket`, before any path reaches the first `test run` (so deps
@@ -63,14 +69,14 @@ func newTestRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run suites from tests.yaml against an already-running system",
-		Example: `  gh optivem test run
-  gh optivem test run --suite smoke
-  gh optivem test run --suite acceptance-api --suite acceptance-ui
-  gh optivem test run --suite acceptance-api,acceptance-ui
-  gh optivem test run --suite acceptance --test shouldRejectOrderWithQuantityOf100
-  gh optivem test run --suite smoke --test T1 --test T2
-  gh optivem test run --suite smoke --test T1,T2
-  gh optivem test run --list`,
+		Example: `  gh optivem system-test run
+  gh optivem system-test run --suite smoke
+  gh optivem system-test run --suite acceptance-api --suite acceptance-ui
+  gh optivem system-test run --suite acceptance-api,acceptance-ui
+  gh optivem system-test run --suite acceptance --test shouldRejectOrderWithQuantityOf100
+  gh optivem system-test run --suite smoke --test T1 --test T2
+  gh optivem system-test run --suite smoke --test T1,T2
+  gh optivem system-test run --list`,
 		Run: func(cmd *cobra.Command, args []string) {
 			resolvedTests, err := resolveTestsPath()
 			exitOnError(err)
@@ -120,16 +126,16 @@ func newTestRunCmd() *cobra.Command {
 	return cmd
 }
 
-// newTestSetupCmd implements `gh optivem test setup`. Runs the setupCommands
-// block from tests.yaml — the test-harness preparation step (npm ci,
-// dependency restore, test-source compile, browser asset downloads, etc.).
-// Split out from `test run` so each lifecycle phase has its own verb; CI
+// newTestSetupCmd implements `gh optivem system-test setup`. Runs the
+// setupCommands block from tests.yaml — the test-harness preparation step (npm
+// ci, dependency restore, test-source compile, browser asset downloads, etc.).
+// Split out from `system-test run` so each lifecycle phase has its own verb; CI
 // workflows call it once per job, not per suite.
 func newTestSetupCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "setup",
 		Short:   "Run setupCommands from tests.yaml (prepare the test harness)",
-		Example: `  gh optivem test setup`,
+		Example: `  gh optivem system-test setup`,
 		Run: func(cmd *cobra.Command, args []string) {
 			resolvedTests, err := resolveTestsPath()
 			exitOnError(err)
@@ -140,14 +146,15 @@ func newTestSetupCmd() *cobra.Command {
 	}
 }
 
-// newTestCompileCmd implements `gh optivem test compile`. Compiles only the
-// test tier. Helpers (compileSystemTests, loadProjectConfigOrExit) live in
-// compile_commands.go since they are also used by the bare `compile` verb.
+// newTestCompileCmd implements `gh optivem system-test compile`. Compiles only
+// the system-test tier. Helpers (compileSystemTests, loadProjectConfigOrExit)
+// live in compile_commands.go since they are also used by the bare `compile`
+// aggregate verb.
 func newTestCompileCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "compile",
-		Short:   "Compile the test tier",
-		Example: `  gh optivem test compile`,
+		Short:   "Compile the system-test tier",
+		Example: `  gh optivem system-test compile`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			sum := newCompileSummary()

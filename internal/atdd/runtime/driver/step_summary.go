@@ -398,13 +398,13 @@ func PrintStepSummaryFile(w io.Writer, path string) error {
 
 // commandStepName resolves the display name for a command step from the live
 // call-activity params at run-command execution: the resolved command line is
-// the most descriptive (e.g. "gh optivem test compile"), falling back to the
+// the most descriptive (e.g. "gh optivem system-test compile"), falling back to the
 // MID task-name and finally a generic label.
 //
 // When a `suite` param is present and non-empty, it is appended as
 // `--suite=<suite>` — the `run-tests` MID carries the suite as a separate param
 // (process-flow.yaml), not baked into the static `command` literal, so without
-// this every `gh optivem test run` row would render identically regardless of
+// this every `gh optivem system-test run` row would render identically regardless of
 // whether it ran the acceptance, contract-real, or contract-stub suite. An
 // empty suite means "all" (the strict-mode `""` convention) and stays bare.
 // test-names is deliberately not appended — it can be a long list and the suite

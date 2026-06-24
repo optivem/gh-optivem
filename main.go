@@ -175,13 +175,16 @@ func newRootCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		// Project ops — operate on the scaffolded project (one
-		// gh-optivem.yaml, one repo or multitier-bundle).
+		// gh-optivem.yaml, one repo or multitier-bundle). Nouns first
+		// (system + the two `*-test` levels), then the bare for-all
+		// aggregate verbs (compile / test) — see plan 20260624-1221.
 		withGroup(newInitCmd(), groupProjectOps),
 		withGroup(newConfigCmd(), groupProjectOps),
 		withGroup(newSystemCmd(), groupProjectOps),
-		withGroup(newTestCmd(), groupProjectOps),
-		withGroup(newComponentCmd(), groupProjectOps),
+		withGroup(newSystemTestCmd(), groupProjectOps),
+		withGroup(newComponentTestCmd(), groupProjectOps),
 		withGroup(newCompileCmd(), groupProjectOps),
+		withGroup(newTestAggregateCmd(), groupProjectOps),
 		withGroup(newDoctorCmd(), groupProjectOps),
 
 		// Cross-repo ops — env-derived scope (workspace folders or the

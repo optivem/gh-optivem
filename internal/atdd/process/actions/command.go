@@ -53,7 +53,7 @@ func shellEscape(s string) string {
 // scope before dispatch, so by the time the action fires:
 //
 //   - ctx.Params["command"]     — the fully-resolved bash command line
-//     (e.g. "gh optivem test run")
+//     (e.g. "gh optivem system-test run")
 //   - ctx.Params["suite"]       — optional; appended as --suite=…
 //     pins the test category (acceptance,
 //     contract-real, contract-stub)
@@ -68,7 +68,7 @@ func shellEscape(s string) string {
 //     escaped via shellEscape
 //
 // Writes ctx.State["command-succeeded"] = (exit == 0). For the
-// `gh optivem test run` family it additionally stamps
+// `gh optivem system-test run` family it additionally stamps
 // ctx.State["test-outcome"] = "pass"|"fail" so the verify-tests-pass /
 // verify-tests-fail gateways downstream of run-tests route without a
 // second shell-out. On failure it also stamps a diagnostic payload —
@@ -93,9 +93,9 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	if cmd == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("run-command: command param not set — call-activity must pass `command:`")}
 	}
-	isTestRun := strings.HasPrefix(cmd, "gh optivem test run")
+	isTestRun := strings.HasPrefix(cmd, "gh optivem system-test run")
 	isCommit := strings.HasPrefix(cmd, "gh optivem commit")
-	// `suite` / `test-names` are only meaningful for `gh optivem test run`.
+	// `suite` / `test-names` are only meaningful for `gh optivem system-test run`.
 	// They MUST NOT leak into other commands: BPMN call-activities inherit
 	// the parent scope's ctx.Params (run.go:168-180), so an outer process
 	// that binds `suite:`/`test-names:` for a downstream `verify-tests-*`
@@ -119,7 +119,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	// orchestrator's own verify runs only. The gated AT methods key on
 	// GH_OPTIVEM_RUN_WIP_TESTS (see clauderun.renderGateMarkerExample);
 	// we set it to "1" here — and nowhere else — so the child
-	// `gh optivem test run`, and the `mvn` / `dotnet` / `playwright` it
+	// `gh optivem system-test run`, and the `mvn` / `dotnet` / `playwright` it
 	// shells out to, inherits it through the process environment.
 	// Operator, CI, and IDE invocations never traverse this path, so the
 	// gate keeps the WIP tests silently skipped there. Restored on return

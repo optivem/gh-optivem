@@ -90,7 +90,7 @@ func (r realShell) Run(ctx context.Context, commandLine string) (ShellResult, er
 	// long-running commands (docker compose build, gradle, etc.) show
 	// progress instead of looking hung, and capture into buffers so the
 	// returned ShellResult still carries stdout for callers that parse it
-	// (e.g. `gh optivem test run --list`) and stderr is still inlined
+	// (e.g. `gh optivem system-test run --list`) and stderr is still inlined
 	// into the error message on failure.
 	//
 	// The live sinks are Detail-level by default (the operator's terminal

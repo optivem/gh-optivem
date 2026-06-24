@@ -17,7 +17,7 @@ package testselect
 //
 // When channels is empty it falls back to the canonical {api, ui} pair. That
 // fallback exists for the one caller that cannot see the project's channel set:
-// the `gh optivem test run` CLI loads only tests.yaml, not gh-optivem.yaml, so
+// the `gh optivem system-test run` CLI loads only tests.yaml, not gh-optivem.yaml, so
 // it passes nil and relies on the project's own `suiteGroups: acceptance:` (which
 // takes precedence over this default) for a non-{api,ui} channel layout. Preflight,
 // which CAN see cfg.Channels, passes them through — so it expands `acceptance`
@@ -84,7 +84,7 @@ func defaultSuiteGroups(channels []string) map[string][]string {
 // order. Unknown names pass through so that the downstream "suite(s) not found"
 // check in the runner still catches typos.
 //
-// Used by the `gh optivem test run` CLI to let `--suite=acceptance` resolve to
+// Used by the `gh optivem system-test run` CLI to let `--suite=acceptance` resolve to
 // the acceptance suites (parallel + isolated, per channel) — and by preflight's
 // suite-existence sweep, which passes cfg.Channels so it validates exactly the
 // ids the runtime's `--suite=acceptance` emission will request.

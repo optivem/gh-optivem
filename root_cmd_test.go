@@ -130,12 +130,14 @@ func TestRootCmd_CommandGroupAssignments(t *testing.T) {
 	root := newRootCmd()
 	wantGroup := map[string]string{
 		// Project ops
-		"compile": "project",
-		"test":    "project",
-		"system":  "project",
-		"doctor":  "project",
-		"config":  "project",
-		"init":    "project",
+		"compile":        "project", // bare for-all aggregate
+		"test":           "project", // bare for-all aggregate
+		"system":         "project",
+		"system-test":    "project", // test-pyramid level noun
+		"component-test": "project", // test-pyramid level noun
+		"doctor":         "project",
+		"config":         "project",
+		"init":           "project",
 		// Cross-repo ops
 		"commit":         "cross-repo",
 		"sync":           "cross-repo",

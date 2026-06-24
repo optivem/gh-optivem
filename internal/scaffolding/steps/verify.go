@@ -364,7 +364,7 @@ func VerifyBuildSystem(cfg *config.Config) {
 }
 
 // VerifySetupTests runs the setupCommands from tests.yaml (npm ci,
-// npx playwright install chromium, ...). Mirrors `gh optivem test setup`.
+// npx playwright install chromium, ...). Mirrors `gh optivem system-test setup`.
 func VerifySetupTests(cfg *config.Config) {
 	log.Info("Setting up tests...")
 	if err := runner.RunSetup(loadTests(cfg, "tests.yaml"), systemTestDir(cfg)); err != nil {

@@ -107,14 +107,14 @@ func TestWrap_TestsInfraHaltBannerRendersDiagnosticPayload(t *testing.T) {
 	wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
 	ctx := statemachine.NewContext()
 	ctx.Set("test-infra-label", "missing executable")
-	ctx.Set("command-line", "gh optivem test run --suite=acceptance --test=foo")
+	ctx.Set("command-line", "gh optivem system-test run --suite=acceptance --test=foo")
 	ctx.Set("command-stderr-tail", "'C:\\Program' is not recognized as an internal or external command,\noperable program or batch file.")
 	wrapped(ctx)
 
 	got := buf.String()
 	wantSubs := []string{
 		"HALT TESTS_INFRA_HALT — infra failure: missing executable",
-		"command: gh optivem test run --suite=acceptance --test=foo",
+		"command: gh optivem system-test run --suite=acceptance --test=foo",
 		"stderr tail: 'C:\\Program' is not recognized as an internal or external command,",
 		"operable program or batch file.",
 	}

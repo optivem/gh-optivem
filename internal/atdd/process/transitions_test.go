@@ -1261,7 +1261,7 @@ func TestSetupTests_PrecedesImplementTicketGateway(t *testing.T) {
 		t.Errorf("SETUP_TESTS outgoing edges = %d, want 1 (unconditional)", got)
 	}
 
-	// 3. The setup-tests sub-process dispatches `gh optivem test setup`, the
+	// 3. The setup-tests sub-process dispatches `gh optivem system-test setup`, the
 	//    language-agnostic command that resolves the active tier's setupCommands.
 	st, ok := eng.Processes["setup-tests"]
 	if !ok {
@@ -1274,7 +1274,7 @@ func TestSetupTests_PrecedesImplementTicketGateway(t *testing.T) {
 	if got := cmdNode.Raw.Process; got != "execute-command" {
 		t.Errorf("setup-tests start node process = %q, want execute-command", got)
 	}
-	if got := cmdNode.Raw.Params["command"]; got != "gh optivem test setup" {
-		t.Errorf("setup-tests command = %q, want `gh optivem test setup`", got)
+	if got := cmdNode.Raw.Params["command"]; got != "gh optivem system-test setup" {
+		t.Errorf("setup-tests command = %q, want `gh optivem system-test setup`", got)
 	}
 }

@@ -1,21 +1,23 @@
-// compile_commands.go wires the bare `gh optivem compile` verb and the
-// tier-level helpers (compileSystem, compileSystemTests, monolithTier,
-// loadProjectConfigOrExit) shared with the noun-scoped forms
-// (`gh optivem system compile` in system_commands.go and `gh optivem test
-// compile` in test_commands.go).
+// compile_commands.go wires the bare `gh optivem compile` aggregate verb and
+// the tier-level helpers (compileSystem, compileComponentTests,
+// compileSystemTests, monolithTier, loadProjectConfigOrExit) shared with the
+// noun-scoped forms (`gh optivem system compile` in system_commands.go,
+// `gh optivem component-test compile` in component_commands.go, and
+// `gh optivem system-test compile` in test_commands.go).
 //
 // Naming: `compile` is source-level build (dotnet build / gradlew compileJava
 // / npx tsc). `build` is reserved for `docker compose build` (system_commands.go,
 // under the `system` noun). The two are distinct enough to coexist; they
 // must not be conflated.
 //
-// `compile` stays a bare verb (no parent noun) because it spans tiers — the
-// bare form runs `system compile` then `test compile` in sequence, halting on
-// first failure. This shortcut is the dominant use case (the structural-cycle
-// compile_all action shells out to it as a single command). Same category as
-// `gh browse` / `gh status` in gh's own surface: cross-resource, no single
-// noun to slot under. The noun-scoped forms stay available for scoped local
-// use.
+// `compile` is a bare "for-all" aggregate verb (no parent noun): it spans every
+// tier, running `system compile` → `component-test compile` → `system-test
+// compile` in sequence, halting on first failure. Bare = for-all, qualified =
+// scoped — the `make` / `make test` mental model. This shortcut is the dominant
+// use case (the structural-cycle compile_all action shells out to it as a single
+// command). Same category as `gh browse` / `gh status` in gh's own surface:
+// cross-resource, no single noun to slot under. The noun-scoped forms stay
+// available for scoped local use.
 package main
 
 import (
@@ -25,47 +27,64 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/atdd/process/configcheck"
 	"github.com/optivem/gh-optivem/internal/build/compiler"
+	"github.com/optivem/gh-optivem/internal/build/componenttest"
 	"github.com/optivem/gh-optivem/internal/config/configinit"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
-// newCompileCmd builds the bare `compile` verb. Unlike most top-level
-// commands, the bare form has a Run that walks the tiers (system then
-// system-tests, halting on first failure) so the structural cycle can shell
-// out to a single command. The noun-scoped forms — `gh optivem system
-// compile` and `gh optivem test compile` — are sibling commands registered
-// under their respective parents, not children of this verb.
+// newCompileCmd builds the bare `compile` for-all aggregate verb. Unlike most
+// top-level commands, the bare form has a Run that walks every tier (system →
+// component-test → system-test, halting on first failure) so the structural
+// cycle can shell out to a single command. The noun-scoped forms — `gh optivem
+// system compile`, `gh optivem component-test compile`, and `gh optivem
+// system-test compile` — are sibling commands registered under their respective
+// parents, not children of this verb.
 func newCompileCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "compile",
-		Short: "Compile a scaffolded project's source code (system + test tiers)",
+		Short: "Compile a scaffolded project's source code (all tiers: system + component-test + system-test)",
 		Long: `Compile the in-scope source code for a scaffolded project.
 
-Runs "system compile" then "test compile" in sequence, halting on first
-failure. Distinct from "gh optivem system build", which runs "docker compose
-build" against the system's container images.
+"compile" is the bare "for-all" aggregate: it runs "system compile" then
+"component-test compile" then "system-test compile" in sequence, halting on
+first failure. Distinct from "gh optivem system build", which runs "docker
+compose build" against the system's container images.
 
-Per-language commands are dispatched from gh-optivem.yaml:
+The system and system-test tiers dispatch per-language commands from
+gh-optivem.yaml:
   dotnet     -> dotnet build
   java       -> .\gradlew.bat compileJava compileTestJava
   typescript -> npm ci && npx tsc --noEmit
 
+The component-test tier runs each component's compileCommands from its own
+component-tests.yaml (so the component/integration test source sets compile up
+front, failing fast before the gating suites). A component with no
+compileCommands is skipped.
+
 Use the noun-scoped forms to narrow to one tier:
-  gh optivem system compile   # system tier only
-  gh optivem test compile     # test tier only`,
-		Example: `  gh optivem compile               # compile both tiers
-  gh optivem system compile        # narrow to system tier
-  gh optivem test compile          # narrow to test tier`,
+  gh optivem system compile          # system tier only
+  gh optivem component-test compile  # component-test tier only
+  gh optivem system-test compile     # system-test tier only`,
+		Example: `  gh optivem compile                 # compile every tier
+  gh optivem system compile          # narrow to system tier
+  gh optivem component-test compile  # narrow to component-test tier
+  gh optivem system-test compile     # narrow to system-test tier`,
 		Args: cobra.NoArgs,
 		Run: func(c *cobra.Command, args []string) {
 			cfg := loadProjectConfigOrExit()
 			sum := newCompileSummary()
 
-			log.PhaseHeader(1, 2, "Compile system")
+			log.PhaseHeader(1, 3, "Compile system")
 			err := compileSystem(cfg, sum)
 			if err == nil {
-				log.PhaseHeader(2, 2, "Compile system-tests")
+				log.PhaseHeader(2, 3, "Compile component-tests")
+				err = compileComponentTests(cfg, sum, nil)
+			} else {
+				sum.MarkSkipped("Compile component-tests")
+			}
+			if err == nil {
+				log.PhaseHeader(3, 3, "Compile system-tests")
 				err = compileSystemTests(cfg, sum)
 			} else {
 				sum.MarkSkipped("Compile system-tests")
@@ -75,6 +94,21 @@ Use the noun-scoped forms to narrow to one tier:
 		},
 	}
 	return cmd
+}
+
+// compileComponentTests compiles the component-test source sets by running each
+// selected component's compileCommands (from its component-tests.yaml) and
+// records one summary row per component that ran a compile. components narrows
+// to the named component(s); nil means every discovered component. A component
+// with no compileCommands (or no component-tests.yaml) is skipped silently —
+// the field is additive, so the aggregate never regresses a project that has
+// not declared a component-test compile.
+func compileComponentTests(cfg *projectconfig.Config, sum *compileSummary, components []string) error {
+	results, err := componenttest.Compile(discoverComponents(cfg), components)
+	for _, r := range results {
+		sum.Record("Compile component-tests", r.Component, r.Lang, r.Path, r.Duration, r.Err)
+	}
+	return err
 }
 
 // loadProjectConfigOrExit resolves the project config path via the

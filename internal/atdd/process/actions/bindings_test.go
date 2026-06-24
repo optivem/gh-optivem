@@ -778,7 +778,7 @@ func (s *envCapturingShell) Run(_ context.Context, _ string) (ShellResult, error
 }
 
 // TestRunCommand_TestRunLiftsWipGate pins the env-var gating mechanism:
-// a `gh optivem test run` dispatch sets GH_OPTIVEM_RUN_WIP_TESTS=1 for
+// a `gh optivem system-test run` dispatch sets GH_OPTIVEM_RUN_WIP_TESTS=1 for
 // the duration of the shell-out (so the child runner and its mvn /
 // dotnet / playwright invocation inherit it and the WIP acceptance
 // tests run), then restores the prior state so the var never leaks into
@@ -789,7 +789,7 @@ func TestRunCommand_TestRunLiftsWipGate(t *testing.T) {
 	sh := &envCapturingShell{envVar: wipTestsEnvVar, captured: &during}
 	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
-	ctx.Params["command"] = "gh optivem test run"
+	ctx.Params["command"] = "gh optivem system-test run"
 	a.runCommand(ctx)
 	if during != "1" {
 		t.Errorf("during test-run dispatch: %s = %q, want %q", wipTestsEnvVar, during, "1")
@@ -904,7 +904,7 @@ func TestRunCommand_RunTestsStampsTestOutcome(t *testing.T) {
 			var stderr bytes.Buffer
 			a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &stderr})
 			ctx := statemachine.NewContext()
-			ctx.Params["command"] = "gh optivem test run"
+			ctx.Params["command"] = "gh optivem system-test run"
 			out := a.runCommand(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected err: %v", out.Err)
@@ -974,7 +974,7 @@ func TestRunCommand_RunTestsClassifiesInfraFailure(t *testing.T) {
 			var stderr bytes.Buffer
 			a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &stderr})
 			ctx := statemachine.NewContext()
-			ctx.Params["command"] = "gh optivem test run"
+			ctx.Params["command"] = "gh optivem system-test run"
 			out := a.runCommand(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected err: %v", out.Err)
@@ -1008,7 +1008,7 @@ func TestRunCommand_RunTestsRedFailureStaysFail(t *testing.T) {
 	var stderr bytes.Buffer
 	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &stderr})
 	ctx := statemachine.NewContext()
-	ctx.Params["command"] = "gh optivem test run"
+	ctx.Params["command"] = "gh optivem system-test run"
 	out := a.runCommand(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -1063,7 +1063,7 @@ func TestRunCommand_SuiteAndTestFlagsAppendedOnlyWhenSet(t *testing.T) {
 			sh := &fakeShell{out: []byte("OK")}
 			a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
 			ctx := statemachine.NewContext()
-			ctx.Params["command"] = "gh optivem test run"
+			ctx.Params["command"] = "gh optivem system-test run"
 			if tc.suite != "" {
 				ctx.Params["suite"] = tc.suite
 			}
@@ -1094,7 +1094,7 @@ func TestRunCommand_SuiteAndTestFlagsAppendedOnlyWhenSet(t *testing.T) {
 func TestRunCommand_NoFilterFlagsForNonTestCommand(t *testing.T) {
 	// Covers two related cases:
 	//   (a) suite / test-names unset — flags must not appear (baseline).
-	//   (b) suite / test-names SET, but command is not `gh optivem test run`
+	//   (b) suite / test-names SET, but command is not `gh optivem system-test run`
 	//       — flags must STILL not appear. Caller-scope inheritance
 	//       (run.go:168-180) propagates outer `suite`/`test-names`
 	//       bindings into every nested call-activity; without this guard
@@ -1203,7 +1203,7 @@ func TestRunCommand_MessageIgnoredForNonCommitCommand(t *testing.T) {
 	sh := &fakeShell{out: []byte("OK")}
 	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
-	ctx.Params["command"] = "gh optivem test run"
+	ctx.Params["command"] = "gh optivem system-test run"
 	ctx.Params["message"] = "should not appear"
 	out := a.runCommand(ctx)
 	if out.Err != nil {
@@ -1248,7 +1248,7 @@ func TestRunCommand_TestRunFailure_StampsVerifyFailureOutput(t *testing.T) {
 	}
 	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
-	ctx.Params["command"] = "gh optivem test run"
+	ctx.Params["command"] = "gh optivem system-test run"
 	out := a.runCommand(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -1290,7 +1290,7 @@ func TestRunCommand_TestRunSuccess_DoesNotStampVerifyFailureOutput(t *testing.T)
 	sh := &fakeShell{out: []byte("PASS: 12 tests"), stderr: nil}
 	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
 	ctx := statemachine.NewContext()
-	ctx.Params["command"] = "gh optivem test run"
+	ctx.Params["command"] = "gh optivem system-test run"
 	out := a.runCommand(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)

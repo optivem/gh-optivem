@@ -40,7 +40,7 @@ const (
 // System.Config / SystemTest.Config are auto-populated to the paths that
 // copySystemTests just produced (`docker/systems.yaml`,
 // `system-test/tests.yaml`). Without this, a freshly-scaffolded repo
-// wouldn't work with `gh optivem system start` / `gh optivem test run` from repo root — the runner
+// wouldn't work with `gh optivem system start` / `gh optivem system-test run` from repo root — the runner
 // defaults are `./systems.yaml` / `./tests.yaml` in the working directory,
 // which don't resolve from the scaffolded repo root.
 func WriteOptivemYAML(cfg *config.Config) {

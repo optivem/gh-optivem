@@ -24,8 +24,8 @@ import (
 func TestRenderStepSummary_Table(t *testing.T) {
 	steps := []stepRecord{
 		{name: "write-acceptance-tests", kind: stepKindAgent, elapsed: 30 * time.Second},
-		{name: "gh optivem test compile", kind: stepKindCommand, elapsed: 5 * time.Second},
-		{name: "gh optivem test run", kind: stepKindCommand, elapsed: 12 * time.Second, err: errors.New("exit 1")},
+		{name: "gh optivem system-test compile", kind: stepKindCommand, elapsed: 5 * time.Second},
+		{name: "gh optivem system-test run", kind: stepKindCommand, elapsed: 12 * time.Second, err: errors.New("exit 1")},
 	}
 	var buf bytes.Buffer
 	renderStepSummary(&buf, steps, 90*time.Second)
@@ -36,10 +36,10 @@ func TestRenderStepSummary_Table(t *testing.T) {
 		"bpmn-step", "detail", "channel", // new column headers
 		"write-acceptance-tests",
 		"agent",
-		"gh optivem test compile", // name falls back into the bpmn-step column
+		"gh optivem system-test compile", // name falls back into the bpmn-step column
 		"command",
-		"✗ gh optivem test run", // failed row marked
-		"agents",                // per-kind breakdown
+		"✗ gh optivem system-test run", // failed row marked
+		"agents",                       // per-kind breakdown
 		"commands",
 		"totals",
 		"untracked overhead", // reconciliation: 90s − 47s = 43s
@@ -68,7 +68,7 @@ func TestRenderStepSummary_Table(t *testing.T) {
 	}
 
 	// Execution order preserved: agent step appears before the compile step.
-	if strings.Index(out, "write-acceptance-tests") > strings.Index(out, "gh optivem test compile") {
+	if strings.Index(out, "write-acceptance-tests") > strings.Index(out, "gh optivem system-test compile") {
 		t.Errorf("rows out of execution order\n---\n%s", out)
 	}
 }
@@ -83,7 +83,7 @@ func TestRenderStepSummary_KindsChannelsBreakdown(t *testing.T) {
 		{name: "parse-ticket", bpmnStep: "parse-ticket", kind: stepKindService, elapsed: 2 * time.Second},
 		{name: "implement-system", bpmnStep: "implement-system", channel: "api", kind: stepKindAgent, elapsed: 40 * time.Second},
 		{name: "implement-system", bpmnStep: "implement-system", channel: "ui", kind: stepKindAgent, elapsed: 20 * time.Second},
-		{name: "gh optivem test run", bpmnStep: "run-tests", detail: "gh optivem test run", kind: stepKindCommand, elapsed: 18 * time.Second},
+		{name: "gh optivem system-test run", bpmnStep: "run-tests", detail: "gh optivem system-test run", kind: stepKindCommand, elapsed: 18 * time.Second},
 	}
 	var buf bytes.Buffer
 	renderStepSummary(&buf, steps, 84*time.Second) // sum=80s; overhead=4s
@@ -91,9 +91,9 @@ func TestRenderStepSummary_KindsChannelsBreakdown(t *testing.T) {
 
 	for _, want := range []string{
 		"parse-ticket", "service",
-		"run-tests",           // bpmn-step column for the command
-		"gh optivem test run", // detail column for the command
-		"api", "ui",           // channel disambiguation
+		"run-tests",                  // bpmn-step column for the command
+		"gh optivem system-test run", // detail column for the command
+		"api", "ui",                  // channel disambiguation
 		"agents", "commands", "service", // all three breakdown rows
 		"untracked overhead", "4s",
 	} {
@@ -134,7 +134,7 @@ func TestStepSidecar_RoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "steps.jsonl")
 	in := []stepRecord{
 		{name: "implement-system", bpmnStep: "implement-system", channel: "api", kind: stepKindAgent, elapsed: 30 * time.Second},
-		{name: "gh optivem test run", bpmnStep: "run-tests", detail: "gh optivem test run", kind: stepKindCommand, elapsed: 12 * time.Second, err: errors.New("exit 1")},
+		{name: "gh optivem system-test run", bpmnStep: "run-tests", detail: "gh optivem system-test run", kind: stepKindCommand, elapsed: 12 * time.Second, err: errors.New("exit 1")},
 	}
 	for _, s := range in {
 		if err := appendStepLine(path, s); err != nil {
@@ -168,7 +168,7 @@ func TestStepSidecar_RoundTrip(t *testing.T) {
 func TestStepSidecar_BackCompat(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "steps.jsonl")
 	// A legacy record: only name/kind/elapsed were ever written.
-	legacy := stepRecord{name: "gh optivem test compile", kind: stepKindCommand, elapsed: 3 * time.Second}
+	legacy := stepRecord{name: "gh optivem system-test compile", kind: stepKindCommand, elapsed: 3 * time.Second}
 	if err := appendStepLine(path, legacy); err != nil {
 		t.Fatalf("appendStepLine: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestStepSidecar_BackCompat(t *testing.T) {
 	if len(got) != 1 || got[0].bpmnStep != "" || got[0].detail != "" || got[0].channel != "" {
 		t.Fatalf("legacy decode: got %+v want empty bpmnStep/detail/channel", got)
 	}
-	if stepBpmnLabel(got[0]) != "gh optivem test compile" {
+	if stepBpmnLabel(got[0]) != "gh optivem system-test compile" {
 		t.Errorf("bpmn-step fallback: got %q want the name", stepBpmnLabel(got[0]))
 	}
 }
@@ -247,13 +247,13 @@ func TestCommandStepName_Fallbacks(t *testing.T) {
 		params map[string]string
 		want   string
 	}{
-		{map[string]string{"command": "gh optivem test compile"}, "gh optivem test compile"},
+		{map[string]string{"command": "gh optivem system-test compile"}, "gh optivem system-test compile"},
 		// A non-empty suite distinguishes otherwise-identical test-run rows
 		// (acceptance / contract-real / contract-stub all share the literal
-		// "gh optivem test run").
-		{map[string]string{"command": "gh optivem test run", "suite": "contract-real"}, "gh optivem test run --suite=contract-real"},
+		// "gh optivem system-test run").
+		{map[string]string{"command": "gh optivem system-test run", "suite": "contract-real"}, "gh optivem system-test run --suite=contract-real"},
 		// Empty suite means "all" (strict-mode "" convention) — stays bare.
-		{map[string]string{"command": "gh optivem test run", "suite": ""}, "gh optivem test run"},
+		{map[string]string{"command": "gh optivem system-test run", "suite": ""}, "gh optivem system-test run"},
 		{map[string]string{"task-name": "compile-tests"}, "compile-tests"},
 		{map[string]string{}, "command"},
 	}
@@ -315,7 +315,7 @@ func TestWrapStepRecorders(t *testing.T) {
 	wrapStepRecorders(eng, rs, nil)
 
 	// Command step: command line + MID task-name both present.
-	ctx := &statemachine.Context{Params: map[string]string{"command": "gh optivem test compile", "task-name": "compile-tests"}, State: map[string]any{}}
+	ctx := &statemachine.Context{Params: map[string]string{"command": "gh optivem system-test compile", "task-name": "compile-tests"}, State: map[string]any{}}
 	out := eng.Processes["compile-tests"].Nodes["EXECUTE_COMMAND"].Fn(ctx)
 	if !errors.Is(out.Err, wantErr) {
 		t.Fatalf("wrapper dropped inner error: %v", out.Err)
@@ -332,7 +332,7 @@ func TestWrapStepRecorders(t *testing.T) {
 	if s.bpmnStep != "compile-tests" {
 		t.Errorf("step bpmn-step: got %q want compile-tests (from task-name)", s.bpmnStep)
 	}
-	if s.detail != "gh optivem test compile" {
+	if s.detail != "gh optivem system-test compile" {
 		t.Errorf("step detail: got %q want the command line", s.detail)
 	}
 	if s.elapsed != 7*time.Second {

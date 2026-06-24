@@ -390,7 +390,7 @@ func runScopeRenderChecks(cfg *projectconfig.Config, eng *statemachine.Engine) [
 }
 
 // runSuiteExistenceChecks validates that every test-suite id the ATDD
-// process flow will request via `gh optivem test run --suite=…` actually
+// process flow will request via `gh optivem system-test run --suite=…` actually
 // exists in the project's tests.yaml — surfacing a renamed or missing suite
 // at preflight time instead of deep inside the pipeline (runner.selectSuites)
 // after agents have already done work and committed.

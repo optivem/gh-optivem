@@ -30,15 +30,24 @@ const ConfigFileName = "component-tests.yaml"
 
 // Config is the parsed component-tests.yaml.
 type Config struct {
-	SetupCommands  []SetupCommand      `yaml:"setupCommands"`
-	TestFilter     string              `yaml:"testFilter"`
-	TestFilterJoin string              `yaml:"testFilterJoin,omitempty"`
-	SuiteGroups    map[string][]string `yaml:"suiteGroups,omitempty"`
-	Suites         []Suite             `yaml:"suites"`
+	SetupCommands   []SetupCommand      `yaml:"setupCommands"`
+	CompileCommands []SetupCommand      `yaml:"compileCommands,omitempty"`
+	TestFilter      string              `yaml:"testFilter"`
+	TestFilterJoin  string              `yaml:"testFilterJoin,omitempty"`
+	SuiteGroups     map[string][]string `yaml:"suiteGroups,omitempty"`
+	Suites          []Suite             `yaml:"suites"`
 }
 
-// SetupCommand is one component-side preparation step run by `setup` — npm ci,
-// gradle warm, dependency restore. Not a SUT image build.
+// SetupCommand is one named shell step run in the component directory. It backs
+// both `setupCommands` (harness preparation — npm ci, gradle warm, dependency
+// restore; not a SUT image build) and `compileCommands` (compiling the
+// component's production + test source sets up front so a compile error fails
+// fast before the gating suites — `gh optivem component-test compile`). The
+// per-language command lives here, in each component's own config, rather than
+// in the CLI: a Java component lists its `compileTestClasses
+// compileIntegrationTestClasses compileComponentTestClasses` task set, a .NET
+// one a `dotnet build`, keeping the tool language-agnostic (matching how
+// `setupCommands` and suite commands already work).
 type SetupCommand struct {
 	Name    string            `yaml:"name"`
 	Command string            `yaml:"command"`
@@ -87,6 +96,14 @@ func Load(path string) (*Config, error) {
 		}
 		if sc.Command == "" {
 			return nil, fmt.Errorf("component-tests config %s: setupCommands[%d] (%s) missing command", path, i, sc.Name)
+		}
+	}
+	for i, cc := range cfg.CompileCommands {
+		if cc.Name == "" {
+			return nil, fmt.Errorf("component-tests config %s: compileCommands[%d] missing name", path, i)
+		}
+		if cc.Command == "" {
+			return nil, fmt.Errorf("component-tests config %s: compileCommands[%d] (%s) missing command", path, i, cc.Name)
 		}
 	}
 	if len(cfg.Suites) == 0 {

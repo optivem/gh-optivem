@@ -179,7 +179,7 @@ type Options struct {
 	ParsedConcepts string
 
 	// VerifyFailureOutput is the captured stdout/stderr tail from the most
-	// recent `gh optivem test run` invocation. Stamped by runCommand on
+	// recent `gh optivem system-test run` invocation. Stamped by runCommand on
 	// the `isTestRun && !succeeded` branch (see formatVerifyFailureOutput for
 	// the stdout/stderr combination shape) and flows through
 	// `verify_failure_output` in ctx.State to the driver's

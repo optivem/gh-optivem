@@ -1,7 +1,9 @@
 package componenttest
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -148,7 +150,7 @@ func pickFilterValue(s Suite, opts Options) []string {
 }
 
 // RunSetup runs the setupCommands of every selected component (in the
-// component's own directory). Used by `gh optivem component test setup`.
+// component's own directory). Used by `gh optivem component-test setup`.
 func RunSetup(components []Component, requested []string) error {
 	selected, err := selectComponents(components, requested)
 	if err != nil {
@@ -168,6 +170,75 @@ func RunSetup(components []Component, requested []string) error {
 			if err := runner.RunShell(sc.Command, c.Path, sc.Env); err != nil {
 				return fmt.Errorf("component %s setup %q: %w", c.Name, sc.Name, err)
 			}
+		}
+	}
+	return nil
+}
+
+// CompileResult records one component's compile outcome so callers can render a
+// per-component summary row (mirroring the system/system-test compile rows).
+type CompileResult struct {
+	Component string
+	Lang      string
+	Path      string
+	Duration  time.Duration
+	Err       error
+}
+
+// Compile runs the compileCommands of every selected component (in the
+// component's own directory), halting on the first failure. It backs both
+// `gh optivem component-test compile` and the component-test leg of the bare
+// `compile` aggregate.
+//
+// Unlike RunSetup it is tolerant of a component that has nothing to compile:
+// a missing component-tests.yaml or an empty compileCommands list skips that
+// component silently (no result row). compileCommands is an optional, additive
+// field, so the bare `compile` aggregate must not start failing on a project
+// that has components but no component-test compile declared. It returns one
+// CompileResult per component that actually ran a compile (including the
+// failing one) plus the first error encountered.
+func Compile(components []Component, requested []string) ([]CompileResult, error) {
+	selected, err := selectComponents(components, requested)
+	if err != nil {
+		return nil, err
+	}
+	var results []CompileResult
+	for _, c := range selected {
+		path := filepath.Join(c.Path, ConfigFileName)
+		if _, statErr := os.Stat(path); errors.Is(statErr, fs.ErrNotExist) {
+			continue // nothing to compile for this component
+		}
+		cfg, err := Load(path)
+		if err != nil {
+			return results, err
+		}
+		if len(cfg.CompileCommands) == 0 {
+			continue
+		}
+		fmt.Fprintf(os.Stdout, "\n=== Compile: %s ===\n", c.label())
+		start := time.Now()
+		runErr := runCompileCommands(c, cfg.CompileCommands)
+		results = append(results, CompileResult{
+			Component: c.Name,
+			Lang:      c.Lang,
+			Path:      c.Path,
+			Duration:  time.Since(start),
+			Err:       runErr,
+		})
+		if runErr != nil {
+			return results, runErr
+		}
+	}
+	return results, nil
+}
+
+// runCompileCommands runs a component's compileCommands in its directory,
+// halting on the first failure.
+func runCompileCommands(c Component, cmds []SetupCommand) error {
+	for _, cc := range cmds {
+		fmt.Fprintf(os.Stdout, "\n--- Compile: %s ---\n", cc.Name)
+		if err := runner.RunShell(cc.Command, c.Path, cc.Env); err != nil {
+			return fmt.Errorf("component %s compile %q: %w", c.Name, cc.Name, err)
 		}
 	}
 	return nil

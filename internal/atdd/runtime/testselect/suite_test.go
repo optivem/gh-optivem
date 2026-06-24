@@ -6,7 +6,7 @@ import (
 )
 
 // TestExpandSuiteGroups exercises the alias-expansion contract that
-// `gh optivem test run --suite=…` relies on so the BPMN literal
+// `gh optivem system-test run --suite=…` relies on so the BPMN literal
 // `suite: acceptance` (process-flow.yaml:761,769) resolves to the
 // canonical acceptance suite ids without burning a yaml schema slot.
 //

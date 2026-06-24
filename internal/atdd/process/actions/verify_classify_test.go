@@ -178,28 +178,28 @@ func TestClassifyShellErr(t *testing.T) {
 				"/work/system-test/typescript/playwright.config.ts\n  code: 'ERR_MODULE_NOT_FOUND'",
 			err:       exitErr,
 			wantClass: classInfra,
-			wantLabel: "test harness dependencies not installed — run `gh optivem test setup`",
+			wantLabel: "test harness dependencies not installed — run `gh optivem system-test setup`",
 		},
 		{
 			name:      "node cannot find module",
 			stderr:    "Error: Cannot find module 'dotenv'\nRequire stack:\n- /work/system-test/typescript/setup.ts",
 			err:       exitErr,
 			wantClass: classInfra,
-			wantLabel: "test harness dependencies not installed — run `gh optivem test setup`",
+			wantLabel: "test harness dependencies not installed — run `gh optivem system-test setup`",
 		},
 		{
 			name:      "gradle could not resolve dependencies",
 			stderr:    "FAILURE: Could not resolve all dependencies for configuration ':testRuntimeClasspath'.",
 			err:       exitErr,
 			wantClass: classInfra,
-			wantLabel: "test harness dependencies not installed — run `gh optivem test setup`",
+			wantLabel: "test harness dependencies not installed — run `gh optivem system-test setup`",
 		},
 		{
 			name:      "nuget unable to find package (NU1101)",
 			stderr:    "error NU1101: Unable to find package Microsoft.Playwright. No packages exist with this id in source(s): nuget.org",
 			err:       exitErr,
 			wantClass: classInfra,
-			wantLabel: "test harness dependencies not installed — run `gh optivem test setup`",
+			wantLabel: "test harness dependencies not installed — run `gh optivem system-test setup`",
 		},
 		// ---- red: tests ran, at least one failed --------------------------
 		{

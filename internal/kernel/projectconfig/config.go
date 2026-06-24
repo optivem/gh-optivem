@@ -232,7 +232,7 @@ type System struct {
 	Architecture string `yaml:"architecture,omitempty"`
 
 	// Config is the repo-relative path to systems.yaml (or legacy systems.json)
-	// for `gh optivem system <verb>` and `gh optivem test run`. Optional; when empty, runner
+	// for `gh optivem system <verb>` and `gh optivem system-test run`. Optional; when empty, runner
 	// commands fall back to ./systems.yaml or the explicit --system-config flag.
 	// Free-form path (no enum/shape check) — file existence is verified at
 	// load-time, not validate-time, matching the convention for the other

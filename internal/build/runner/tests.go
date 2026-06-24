@@ -64,7 +64,7 @@ type SuiteResult struct {
 // it). systemCwd is unused today but retained in the signature so callers don't
 // need a per-call branch on whether sys is supplied.
 //
-// setupCommands are not run by this verb — invoke `gh optivem test setup` (or
+// setupCommands are not run by this verb — invoke `gh optivem system-test setup` (or
 // runner.RunSetup) explicitly before tests. This mirrors mainstream
 // service-lifecycle CLIs where each phase is a separate verb.
 //
@@ -370,7 +370,7 @@ func nameExecuted(requested string, executed map[string]bool) bool {
 }
 
 // RunSetup runs every entry in tests.SetupCommands in testsCwd. Used by the
-// `gh optivem test setup` verb. Each failure halts the run with a wrapped
+// `gh optivem system-test setup` verb. Each failure halts the run with a wrapped
 // error naming the failing command.
 func RunSetup(tests *TestsConfig, testsCwd string) error {
 	for _, sc := range tests.SetupCommands {

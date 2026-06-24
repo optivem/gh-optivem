@@ -84,7 +84,7 @@
 #   - `run-tests` exact-name verify params (`suite` + `test-names`):
 #     encoded as call-site params on the `run-tests` MID; the underlying
 #     `execute-command` reads them at dispatch time and appends them as
-#     `--suite=…` / `--test=…` flags to `gh optivem test run`. `suite`
+#     `--suite=…` / `--test=…` flags to `gh optivem system-test run`. `suite`
 #     pins the test category (acceptance / contract-real / contract-stub
 #     — a static property of the writing agent that fed the cycle).
 #     `test-names` is the comma-separated list of bare test method names
@@ -2660,7 +2660,7 @@ processes:
 
   # setup-tests guarantees the test harness's own dependencies are installed
   # before any path can reach the first `run-tests`. It wraps
-  # `gh optivem test setup`, which resolves the active language's
+  # `gh optivem system-test setup`, which resolves the active language's
   # `setupCommands` from tests.yaml (npm ci for TS, gradle clean compile for
   # Java, restore for .NET). It is idempotent — N runs leave the same state
   # as one — so it is dispatched unconditionally at the very top of
@@ -2678,7 +2678,7 @@ processes:
         process: execute-command
         name: "Dispatch the Command"
         params:
-          command: "gh optivem test setup"
+          command: "gh optivem system-test setup"
           # task-name: see compile-tests — traces the bpmn-step column to the diagram.
           task-name: setup-tests
           # command tier: cheap, no AI cost, no global state mutation.
@@ -2700,7 +2700,7 @@ processes:
         process: execute-command
         name: "Dispatch the Command"
         params:
-          command: "gh optivem test compile"
+          command: "gh optivem system-test compile"
           # task-name: the MID process node, so the step summary's bpmn-step
           # column traces this command row back to the diagram (like agents do).
           task-name: compile-tests
@@ -2852,7 +2852,7 @@ processes:
   # carries the writer-agent's emitted bare method names, joined as a
   # comma-separated string by `coerceStateValue`'s `[]string` case.
   # Both absent ⇒ run all tests. The underlying `execute-command`
-  # appends `--suite=…` / `--test=…` flags to the `gh optivem test run`
+  # appends `--suite=…` / `--test=…` flags to the `gh optivem system-test run`
   # CLI, which owns the actual filter parsing.
   #
   # Strict-mode rule: every caller MUST resolve `suite` and `test-names`
@@ -2871,7 +2871,7 @@ processes:
         process: execute-command
         name: "Dispatch the Command"
         params:
-          command: "gh optivem test run"
+          command: "gh optivem system-test run"
           # task-name: see compile-tests — traces the bpmn-step column to the diagram.
           task-name: run-tests
           suite: ${suite}

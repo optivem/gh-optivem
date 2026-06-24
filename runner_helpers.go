@@ -1,7 +1,7 @@
 // runner_helpers.go holds the cross-cutting helpers used by the runner-tier
 // commands. The command wiring itself lives in `system_commands.go` and
 // `test_commands.go` — split per the noun-first surface (`gh optivem system
-// <verb>` / `gh optivem test <verb>`). The runner package is fully
+// <verb>` / `gh optivem system-test <verb>`). The runner package is fully
 // agnostic — these helpers translate Cobra flags into runner.* calls and
 // resolve config paths against gh-optivem.yaml.
 //

@@ -17,7 +17,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// (the templated bash line, post-ExpandParams), appends --suite= and
 	// --test= flags only when ctx.Params["suite"] / ctx.Params["test-names"]
 	// are non-empty, shells out, and writes ctx.State["command-succeeded"].
-	// For the `gh optivem test run` family it also stamps
+	// For the `gh optivem system-test run` family it also stamps
 	// ctx.State["test-outcome"] (pass|fail) so the verify-tests-pass /
 	// verify-tests-fail gateways can route without a second shell-out.
 	r.Register("run-command", a.runCommand)

@@ -142,7 +142,7 @@ func newSystemCleanCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "clean",
 		Short:   "docker compose down -v --rmi local (delete volumes + locally-built images)",
-		Example: `  gh optivem system clean && gh optivem test run`,
+		Example: `  gh optivem system clean && gh optivem system-test run`,
 		Run: func(cmd *cobra.Command, args []string) {
 			resolved, err := resolveSystemPath()
 			exitOnError(err)

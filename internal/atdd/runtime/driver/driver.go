@@ -673,7 +673,7 @@ func loadDriverConfig(configPath, repoPath string) (*projectconfig.Config, error
 // (filepath.Dir of the resolved path). It mirrors the runner CLI's resolution
 // (runner_helpers.go resolveTestsPath + cwdForPath) so the reports the in-cycle
 // channel guard reads (runner.NamesInReport, via actions.Deps.TestsConfig /
-// TestsCwd) are the same files the RED `gh optivem test run` subprocess wrote.
+// TestsCwd) are the same files the RED `gh optivem system-test run` subprocess wrote.
 //
 // Returns (nil, "", nil) when no tests.yaml is wired (cfg nil or
 // system-test.config empty) — the channel actions hard-error only if a baked

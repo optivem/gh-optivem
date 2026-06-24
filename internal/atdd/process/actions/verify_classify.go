@@ -1,6 +1,6 @@
 // verify_classify.go — failure classification for `runVerifyCommand`.
 //
-// The verify action shells out to `gh optivem test ...`. Two very
+// The verify action shells out to `gh optivem system-test ...`. Two very
 // different failure modes can come back through the same `(stdout,
 // stderr, err)` channel:
 //
@@ -110,7 +110,7 @@ var infraPatterns = []infraPattern{
 		re:    regexp.MustCompile(`(?i)suite\(s\) not found:`),
 	},
 	{
-		// `gh optivem test run` itself rejected the invocation before
+		// `gh optivem system-test run` itself rejected the invocation before
 		// running anything — a bad flag or subcommand emitted by a verify
 		// call site (cobra: "unknown flag: --x", "unknown shorthand flag",
 		// "unknown command \"x\""). Like the suite case, no test ran, so
@@ -174,7 +174,7 @@ var infraPatterns = []infraPattern{
 		// row is defense-in-depth that halts loud with the true cause if setup
 		// is ever skipped or fails. Match the loader's fixed wording, not the
 		// echoed package name, per the table's guidance.
-		label: "test harness dependencies not installed — run `gh optivem test setup`",
+		label: "test harness dependencies not installed — run `gh optivem system-test setup`",
 		re:    regexp.MustCompile(`(?i)(err_module_not_found|cannot find (package|module)\b)`),
 	},
 	{
@@ -184,7 +184,7 @@ var infraPatterns = []infraPattern{
 		// artifacts)", NuGet "NU1101"/"Unable to find package"). Same root
 		// cause and same remedy as the JS row — the harness's own deps are not
 		// installed — so route it to the infra halt rather than the fix loop.
-		label: "test harness dependencies not installed — run `gh optivem test setup`",
+		label: "test harness dependencies not installed — run `gh optivem system-test setup`",
 		re:    regexp.MustCompile(`(?i)(could not resolve all (files|dependencies|artifacts)|\bnu1101\b|unable to find package\b)`),
 	},
 }

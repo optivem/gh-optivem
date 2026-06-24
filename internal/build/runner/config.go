@@ -88,7 +88,7 @@ type Component struct {
 //	                       bare values.
 //
 // SuiteGroups is an optional alias map from group name → list of suite ids.
-// `gh optivem test run --suite <name>` substitutes the alias with its
+// `gh optivem system-test run --suite <name>` substitutes the alias with its
 // constituent ids before the runner sees them. Per-project entries take
 // precedence over the Go-side default registry in
 // internal/atdd/runtime/testselect/suite.go, which acts as the fallback
