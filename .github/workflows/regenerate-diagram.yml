@@ -58,11 +58,12 @@ jobs:
       - name: Render diagram markdown
         run: |
           go run . process show > docs/process-diagram.md
+          go run . process show --expanded > docs/process-diagram-expanded.md
 
       - name: Detect markdown changes
         id: diff
         run: |
-          if git diff --quiet -- docs/process-diagram.md; then
+          if git diff --quiet -- docs/process-diagram.md docs/process-diagram-expanded.md; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -71,8 +72,8 @@ jobs:
       - name: Fail PR when diagram markdown is stale
         if: github.event_name == 'pull_request' && steps.diff.outputs.changed == 'true'
         run: |
-          echo "::error::docs/process-diagram.md is stale; run 'go run . process show > docs/process-diagram.md' and commit."
-          git diff --stat -- docs/process-diagram.md
+          echo "::error::diagram markdown is stale; run 'go run . process show > docs/process-diagram.md && go run . process show --expanded > docs/process-diagram-expanded.md' and commit."
+          git diff --stat -- docs/process-diagram.md docs/process-diagram-expanded.md
           exit 1
 
       # SVGs are regenerated only on push to main and committed alongside the
@@ -94,7 +95,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/process-diagram.md docs/images/
+          git add docs/process-diagram.md docs/process-diagram-expanded.md docs/images/
           if git diff --cached --quiet; then
             echo "No diagram changes to commit."
             exit 0

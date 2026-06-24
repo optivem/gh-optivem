@@ -34,12 +34,14 @@ var topLevelExpansionRoots = []string{
 
 // maxExpandDepth limits how many levels of call-activity nesting are expanded.
 // Depth 0 = root; depth N = Nth level of subprocesses shown as subgraphs.
-// Call-activities at depth > maxExpandDepth render as plain reference boxes.
+// Call-activities at depth >= maxExpandDepth render as plain reference boxes
+// (with the "see § id" suffix) rather than being expanded inline.
 //
-// The BPMN has 7 levels of nesting; a limit of 3 exposes TOP→CYCLE→HIGH→MID
-// structure without the LOW primitives that repeat across every MID call site
-// and would grow the diagram exponentially.
-const maxExpandDepth = 3
+// The BPMN has 7 levels of nesting. A limit of 2 exposes three tiers
+// (TOP→CYCLE→HIGH) and keeps every Mermaid block well within GitHub's
+// rendering limit (~50 k chars). Increasing this constant adds more depth but
+// grows the diagram at least quadratically — bump carefully and re-measure.
+const maxExpandDepth = 2
 
 // RenderExpanded returns a Mermaid markdown body like Render but with
 // call-activity nodes replaced by inline subgraphs showing the subprocess
