@@ -81,6 +81,38 @@ Uninstall:
 gh extension remove optivem
 ```
 
+## Claude Code setup
+
+`gh optivem` ships the Optivem Claude slash commands and global configuration rules embedded in the binary. One command installs them into your `~/.claude/` directory.
+
+### Install commands
+
+Copy the embedded slash commands to `~/.claude/commands/`:
+
+```bash
+gh optivem claude install
+```
+
+Files already up to date are skipped. Changed files are overwritten. A summary of what changed is printed.
+
+### Configure settings
+
+Merge the Optivem `settings.json` permissions and `CLAUDE.md` rules into your `~/.claude/` directory (non-destructive — never removes entries you added yourself):
+
+```bash
+gh optivem claude configure
+```
+
+### Setup (install + configure)
+
+Run both in one step:
+
+```bash
+gh optivem claude setup
+```
+
+Re-run any time after upgrading the extension to pick up new or updated commands and configuration rules.
+
 ## Environment Variables
 
 Provide these credentials one of two ways:
