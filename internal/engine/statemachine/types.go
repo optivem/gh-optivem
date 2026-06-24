@@ -79,6 +79,7 @@ type Process struct {
 	ID                    string
 	Name                  string
 	Start                 string
+	PresetState           map[string]any    // state values written at process entry before the first node runs (preset-state:)
 	Outputs               []OutputSpec // structured output contract for writing-agent MIDs (key, type, optional)
 	DiagramSectionOrder   int          // 0 = not a section; positive = top-level section at this position
 	DiagramNoInlineExpand bool         // never expand inline as a subgraph in the expanded diagram

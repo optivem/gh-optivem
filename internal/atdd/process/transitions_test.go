@@ -41,10 +41,9 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"refactor-system-structure",
 		"refactor-test-structure",
 		// HIGH
-		"write-and-verify-acceptance-tests-fail",
-		"write-and-verify-acceptance-tests-pass",
-		"write-and-verify-acceptance-tests",
-		"shared-contract",
+		"implement-external-drivers-if-needed",
+		"write-acceptance-tests-and-system-adapters",
+		"write-acceptance-tests-and-dsl",
 		"write-and-verify-acceptance-test-code",
 		"implement-and-verify-dsl",
 		"implement-and-verify-system-driver-adapters",
@@ -532,10 +531,11 @@ func TestVerifyLoops_RejectedFixDispatchNotCounted(t *testing.T) {
 	}
 }
 
-// Q31.a (CT nested under AT, plan 20260527-1147): shared-contract's
-// external-driver gate true-branch now enters the contract-test-first CT-HIGH
-// (a superset that writes+verifies the contract test, real then stub, AND
-// implements the external adapter) instead of the retired thin AT-only step.
+// Q31.a (CT nested under AT, plan 20260527-1147): implement-external-drivers-if-needed
+// is guarded by GATE_TICKET_HAS_ESCC (ESCC is the sole signal — the broken
+// GATE_EXTERNAL_DRIVER_PORTS_CHANGED fallback is removed). The true-branch enters
+// the contract-test-first CT-HIGH (a superset that writes+verifies the contract
+// test, real then stub, AND implements the external adapter).
 // This is a pure structural assertion over the static graph — no execution
 // walk, so no statemachine loop hazard.
 func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) {
@@ -546,26 +546,26 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 		t.Errorf("thin AT-only HIGH implement-and-verify-external-system-driver-adapters should be retired, still present")
 	}
 
-	// 2. shared-contract's external-driver gate true-branch reaches the
-	//    external-driver adapter node; that node now dispatches the CT-HIGH.
-	sc, ok := eng.Processes["shared-contract"]
+	// 2. implement-external-drivers-if-needed's ESCC gate true-branch reaches
+	//    the external-driver adapter node; that node dispatches the CT-HIGH.
+	ied, ok := eng.Processes["implement-external-drivers-if-needed"]
 	if !ok {
-		t.Fatalf("process shared-contract missing")
+		t.Fatalf("process implement-external-drivers-if-needed missing")
 	}
-	// The true-branch now routes through the upfront registration check, then
-	// into the external-driver adapter anchor (plan 20260615-0755). On the
-	// snapshot graph the anchor is still the single template node (the unroll is
-	// an in-memory load-time rewrite the driver applies, not baked into the YAML).
-	wantEdge(t, sc, "GATE_EXTERNAL_DRIVER_PORTS_CHANGED", "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED", "at-external-driver-port-changed == true")
-	wantEdge(t, sc, "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED", "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "")
-	if vnode, ok := sc.Nodes["VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"]; !ok {
-		t.Errorf("shared-contract: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED node missing")
+	// The true-branch routes through the upfront registration check, then into
+	// the external-driver adapter anchor (plan 20260615-0755). On the snapshot
+	// graph the anchor is still the single template node (the unroll is an
+	// in-memory load-time rewrite the driver applies, not baked into the YAML).
+	wantEdge(t, ied, "GATE_TICKET_HAS_ESCC", "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED", "ticket-has-escc == true")
+	wantEdge(t, ied, "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED", "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "")
+	if vnode, ok := ied.Nodes["VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"]; !ok {
+		t.Errorf("implement-external-drivers-if-needed: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED node missing")
 	} else if got := vnode.Raw.Action; got != "validate-external-systems-registered" {
 		t.Errorf("VALIDATE action = %q, want validate-external-systems-registered", got)
 	}
-	node, ok := sc.Nodes["IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"]
+	node, ok := ied.Nodes["IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"]
 	if !ok {
-		t.Fatalf("shared-contract: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS node missing")
+		t.Fatalf("implement-external-drivers-if-needed: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS node missing")
 	}
 	if got := node.Raw.Process; got != "implement-and-verify-external-system-driver-adapters-contract-tests" {
 		t.Errorf("external-driver node process = %q, want the CT-HIGH", got)
@@ -573,8 +573,7 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	// The CT-HIGH is self-contained except for the cascade tag (plan
 	// 20260606-1525): it binds `test-category: contract` so its inner writers
 	// namespace their port-changed verdicts under `ct-*` and can't clobber
-	// the parent AT cascade's `at-*` verdicts. It still forwards none of the
-	// other caller params the retired thin step used to.
+	// the parent AT cascade's `at-*` verdicts.
 	if got := node.Raw.Params["test-category"]; got != "contract" {
 		t.Errorf("external-driver node should bind test-category: contract (cascade tag), got %q", got)
 	}
@@ -974,9 +973,9 @@ func TestRedesignExternalSystemStructure_Wiring(t *testing.T) {
 // (plan 20260619-1139): both per-channel cycles start with a resolve-channel
 // service-task followed by a GATE_CHANNEL_TOUCHED gateway that routes a touched
 // channel into the cycle and an untouched one to a CHANNEL_SKIPPED end-event,
-// and shared-contract runs validate-channels-registered once after the RED
-// acceptance verify. This is the static template the channel unrolls clone, so
-// the guard rides into every per-channel clone.
+// and write-acceptance-tests-and-dsl runs validate-channels-registered once
+// after the RED acceptance verify. This is the static template the channel
+// unrolls clone, so the guard rides into every per-channel clone.
 func TestChannelTouchedGuard_Wiring(t *testing.T) {
 	eng, err := process.Load()
 	if err != nil {
@@ -1019,18 +1018,18 @@ func TestChannelTouchedGuard_Wiring(t *testing.T) {
 	wantEdge(t, adapt, "GATE_CHANNEL_TOUCHED", "IMPLEMENT_TEST_LAYER", "channel-touched == true")
 	wantEdge(t, adapt, "GATE_CHANNEL_TOUCHED", "CHANNEL_SKIPPED", "channel-touched == false")
 
-	// Upfront no-silent-skip guard runs once in shared-contract, between the RED
-	// acceptance verify and the DSL gate (so the report exists and no clone has
-	// run yet).
-	sc, ok := eng.Processes["shared-contract"]
+	// Upfront no-silent-skip guard runs once in write-acceptance-tests-and-dsl,
+	// between the RED acceptance verify and the DSL gate (so the report exists
+	// and no clone has run yet).
+	watd, ok := eng.Processes["write-acceptance-tests-and-dsl"]
 	if !ok {
-		t.Fatalf("process shared-contract missing")
+		t.Fatalf("process write-acceptance-tests-and-dsl missing")
 	}
-	if got := sc.Nodes["VALIDATE_CHANNELS_REGISTERED"].Raw.Action; got != "validate-channels-registered" {
+	if got := watd.Nodes["VALIDATE_CHANNELS_REGISTERED"].Raw.Action; got != "validate-channels-registered" {
 		t.Errorf("VALIDATE_CHANNELS_REGISTERED action = %q, want validate-channels-registered", got)
 	}
-	wantEdge(t, sc, "WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE", "VALIDATE_CHANNELS_REGISTERED", "")
-	wantEdge(t, sc, "VALIDATE_CHANNELS_REGISTERED", "GATE_DSL_PORT_CHANGED", "")
+	wantEdge(t, watd, "WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE", "VALIDATE_CHANNELS_REGISTERED", "")
+	wantEdge(t, watd, "VALIDATE_CHANNELS_REGISTERED", "GATE_DSL_PORT_CHANGED", "")
 }
 
 func wantEdge(t *testing.T, proc *statemachine.Process, from, to, predicate string) {
@@ -1053,12 +1052,12 @@ func notEdge(t *testing.T, proc *statemachine.Process, from, to string) {
 }
 
 // TestCoverPath_GreenWhenComplete_Wiring asserts the plan 20260606-1518 wiring:
-// the cover wrapper pins verify-mode, each AT layer pins its plumbing scope, the
-// CT-HIGH overrides back to red so green mode can't leak in, the two verify
-// gates route on the mode-aware at-verify-expectation binding, and external
-// driver adapters are built before acceptance tests (no terminal AT-green tail).
-// The change wrapper must NOT pin verify-mode so the gate defaults to red and
-// the change path is unchanged.
+// cover-system-behavior pins verify-mode on its WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS
+// call-activity, each AT layer pins its plumbing scope, the CT-HIGH overrides
+// back to red so green mode can't leak in, the two verify gates route on the
+// mode-aware at-verify-expectation binding, and external driver adapters are
+// lifted to cycle level (precede acceptance tests; no terminal AT-green tail).
+// change-system-behavior must NOT pin verify-mode so the gate defaults to red.
 func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
 	eng := loadSnapshot(t)
 	proc := func(id string) *statemachine.Process {
@@ -1069,28 +1068,32 @@ func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
 		return p
 	}
 
-	// 1. Cover wrapper pins green-when-complete; change wrapper leaves it unset.
-	if got := proc("write-and-verify-acceptance-tests-pass").Nodes["WRITE_AND_VERIFY_ACCEPTANCE_TESTS"].Raw.Params["verify-mode"]; got != "green-when-complete" {
-		t.Errorf("cover wrapper verify-mode = %q, want green-when-complete", got)
+	// 1. Cover path pins green-when-complete on the WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS
+	//    call-activity inside cover-system-behavior; change path leaves it unset.
+	coverCsb := proc("cover-system-behavior")
+	changeCsb := proc("change-system-behavior")
+	if got := coverCsb.Nodes["WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS"].Raw.Params["verify-mode"]; got != "green-when-complete" {
+		t.Errorf("cover-system-behavior WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS verify-mode = %q, want green-when-complete", got)
 	}
-	if got, set := proc("write-and-verify-acceptance-tests-fail").Nodes["WRITE_AND_VERIFY_ACCEPTANCE_TESTS"].Raw.Params["verify-mode"]; set {
-		t.Errorf("change wrapper must NOT pin verify-mode (defaults red), got %q", got)
+	if got, set := changeCsb.Nodes["WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS"].Raw.Params["verify-mode"]; set {
+		t.Errorf("change-system-behavior must NOT pin verify-mode (defaults red), got %q", got)
 	}
 
 	// 2. Each AT layer pins its plumbing scope (inherits down to its verify gate).
-	sc := proc("shared-contract")
-	if got := sc.Nodes["WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE"].Raw.Params["verify-pending-on"]; got != "dsl" {
+	watd := proc("write-acceptance-tests-and-dsl")
+	if got := watd.Nodes["WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE"].Raw.Params["verify-pending-on"]; got != "dsl" {
 		t.Errorf("test-code layer verify-pending-on = %q, want dsl", got)
 	}
-	if got := sc.Nodes["IMPLEMENT_AND_VERIFY_DSL"].Raw.Params["verify-pending-on"]; got != "system-drivers" {
+	if got := watd.Nodes["IMPLEMENT_AND_VERIFY_DSL"].Raw.Params["verify-pending-on"]; got != "system-drivers" {
 		t.Errorf("DSL layer verify-pending-on = %q, want system-drivers", got)
 	}
-	if got := proc("write-and-verify-acceptance-tests").Nodes["IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS"].Raw.Params["verify-pending-on"]; got != "none" {
+	if got := proc("write-acceptance-tests-and-system-adapters").Nodes["IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS"].Raw.Params["verify-pending-on"]; got != "none" {
 		t.Errorf("adapter layer verify-pending-on = %q, want none", got)
 	}
 
 	// 3. The CT-HIGH excursion overrides back to red so green mode can't leak in.
-	if got := sc.Nodes["IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"].Raw.Params["verify-mode"]; got != "red" {
+	ied := proc("implement-external-drivers-if-needed")
+	if got := ied.Nodes["IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"].Raw.Params["verify-mode"]; got != "red" {
 		t.Errorf("CT-HIGH verify-mode = %q, want red", got)
 	}
 
@@ -1104,9 +1107,11 @@ func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
 		}
 	}
 
-	// 5. External driver adapters connect directly to acceptance tests (no terminal tail).
-	wantEdge(t, sc, "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE", "")
-	if _, ok := sc.Nodes["GATE_AT_TERMINAL_GREEN"]; ok {
+	// 5. External drivers are lifted to cycle level: implement-external-drivers-if-needed
+	//    precedes write-acceptance-tests-and-system-adapters in both cycle entry processes.
+	wantEdge(t, changeCsb, "IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED", "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "")
+	wantEdge(t, coverCsb, "IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED", "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "")
+	if _, ok := watd.Nodes["GATE_AT_TERMINAL_GREEN"]; ok {
 		t.Errorf("GATE_AT_TERMINAL_GREEN should be gone — adapters now precede acceptance tests")
 	}
 }

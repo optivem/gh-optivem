@@ -114,13 +114,14 @@ type rawEdge struct {
 // (execute-command, execute-agent) and for processes that already appear as
 // standalone sections and would otherwise balloon their parent's subgraph.
 type rawProcess struct {
-	Name                  string       `yaml:"name"`
-	Start                 string       `yaml:"start"`
-	Outputs               []OutputSpec `yaml:"outputs,omitempty"`
-	DiagramSectionOrder   int          `yaml:"diagram-section-order,omitempty"`
-	DiagramNoInlineExpand bool         `yaml:"diagram-no-inline-expand,omitempty"`
-	Nodes                 []RawNode    `yaml:"nodes"`
-	SequenceFlows         []rawEdge    `yaml:"sequence-flows"`
+	Name                  string         `yaml:"name"`
+	Start                 string         `yaml:"start"`
+	PresetState           map[string]any `yaml:"preset-state,omitempty"`
+	Outputs               []OutputSpec   `yaml:"outputs,omitempty"`
+	DiagramSectionOrder   int            `yaml:"diagram-section-order,omitempty"`
+	DiagramNoInlineExpand bool           `yaml:"diagram-no-inline-expand,omitempty"`
+	Nodes                 []RawNode      `yaml:"nodes"`
+	SequenceFlows         []rawEdge      `yaml:"sequence-flows"`
 }
 
 // rawSpec is the top-level YAML document.
@@ -185,6 +186,7 @@ func buildProcess(id string, rp rawProcess) (*Process, error) {
 		ID:                    id,
 		Name:                  rp.Name,
 		Start:                 rp.Start,
+		PresetState:           rp.PresetState,
 		Outputs:               append([]OutputSpec(nil), rp.Outputs...),
 		DiagramSectionOrder:   rp.DiagramSectionOrder,
 		DiagramNoInlineExpand: rp.DiagramNoInlineExpand,

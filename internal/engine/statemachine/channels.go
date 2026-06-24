@@ -18,35 +18,37 @@ const (
 	implementAndVerifySystemAnchor  = "IMPLEMENT_AND_VERIFY_SYSTEM"
 	implementAndVerifySystemProcess = "implement-and-verify-system"
 
-	// System Driver Adapter step — write-and-verify-acceptance-tests'
+	// System Driver Adapter step — write-acceptance-tests-and-system-adapters'
 	// IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS (plan 20260530-1725 Item 0).
 	// Unlike the system anchor, this one sits on the TRUE branch of the
 	// GATE_SYSTEM_DRIVER_PORTS_CHANGED gateway, so its incoming edge carries a
 	// `when:` predicate the unroll must preserve (see unrollAnchor).
-	writeAndVerifyAcceptanceTestsProcess          = "write-and-verify-acceptance-tests"
+	writeAcceptanceTestsAndSystemAdaptersProcess  = "write-acceptance-tests-and-system-adapters"
 	implementSystemDriverAdaptersAnchor           = "IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS"
 	implementAndVerifySystemDriverAdaptersProcess = "implement-and-verify-system-driver-adapters"
 
-	// External System driver-adapter contract cycle — shared-contract's
+	// External System driver-adapter contract cycle —
+	// implement-external-drivers-if-needed's
 	// IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS anchor (plan 20260615-0755).
 	// External systems are project-declared (config `external-systems:`), so —
 	// like channels — the anchor unrolls into one cloned call-activity per
-	// registered external system at load time. The anchor sits on the TRUE
-	// branch of GATE_EXTERNAL_DRIVER_PORTS_CHANGED (via the upfront
-	// VALIDATE_EXTERNAL_SYSTEMS_REGISTERED node), so the unroll preserves the
-	// seam predicate just like the System Driver adapter anchor.
-	sharedContractProcess                         = "shared-contract"
-	implementExternalDriverAdaptersAnchor         = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"
-	implementAndVerifyExternalDriverAdaptersProc  = "implement-and-verify-external-system-driver-adapters-contract-tests"
+	// registered external system at load time. Both seam edges
+	// (VALIDATE_EXTERNAL_SYSTEMS_REGISTERED → anchor, anchor →
+	// IMPLEMENT_EXTERNAL_DRIVERS_END) are unconditional, so predicate
+	// preservation is a no-op here.
+	implementExternalDriversIfNeededProcess      = "implement-external-drivers-if-needed"
+	implementExternalDriverAdaptersAnchor        = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS"
+	implementAndVerifyExternalDriverAdaptersProc = "implement-and-verify-external-system-driver-adapters-contract-tests"
 
 	// Redesign-external per-system cycle — redesign-external-system-structure's
 	// REDESIGN_EXTERNAL_SYSTEM anchor (plan 20260622-1739 Step 4b). The SECOND
 	// external-system anchor UnrollExternalSystems rewrites: the redesign cycle
 	// reshapes an external response contract per registered system, so — exactly
-	// like the shared-contract CT anchor — its single per-system call-activity is
-	// replaced at load time by one cloned, guarded call-activity per registered
-	// external system, baking the same external-system-name + real-kind. Both seam
-	// edges (VALIDATE_EXTERNAL_SYSTEMS_REGISTERED → anchor, anchor →
+	// like the implement-external-drivers-if-needed CT anchor — its single
+	// per-system call-activity is replaced at load time by one cloned, guarded
+	// call-activity per registered external system, baking the same
+	// external-system-name + real-kind. Both seam edges
+	// (VALIDATE_EXTERNAL_SYSTEMS_REGISTERED → anchor, anchor →
 	// IMPLEMENT_AND_VERIFY_SYSTEM) are unconditional, so predicate preservation is
 	// a no-op here.
 	redesignExternalSystemStructureProcess = "redesign-external-system-structure"
@@ -117,9 +119,9 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 }
 
 // UnrollSystemDriverAdapterChannels statically unrolls the System Driver
-// adapter step in the RED write-and-verify-acceptance-tests cascade into one
-// dispatch per channel (plan 20260530-1725 Item 0, D-adapter-ownership option
-// A). The test-side driver adapter is inherently channel-specific (each
+// adapter step in the write-acceptance-tests-and-system-adapters cascade into
+// one dispatch per channel (plan 20260530-1725 Item 0, D-adapter-ownership
+// option A). The test-side driver adapter is inherently channel-specific (each
 // channel owns its own adapter folder under system-driver-adapter, configured
 // per channel via system-test.system-driver-adapter-channels.<ch>), so
 // like the system step (1702) it must become one node per channel for the
@@ -147,8 +149,8 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 // the cycle (plan 20260619-1139): implement-and-verify-system-driver-adapters
 // starts with resolve-channel + GATE_CHANNEL_TOUCHED, so an untouched channel's
 // adapter step skips to a CHANNEL_SKIPPED end-event. The RED acceptance report
-// it reads already exists at this point — shared-contract's RED acceptance
-// verify wrote it before this driver-adapter tail runs.
+// it reads already exists at this point — write-acceptance-tests-and-dsl's RED
+// acceptance verify wrote it before this driver-adapter tail runs.
 //
 // The anchor sits on the TRUE branch of GATE_SYSTEM_DRIVER_PORTS_CHANGED, so
 // the rewrite preserves that `when:` predicate on the edge into the first
@@ -158,7 +160,7 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 // WAV_AT_END), no loopback.
 func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 	return e.unrollAnchor(
-		writeAndVerifyAcceptanceTestsProcess,
+		writeAcceptanceTestsAndSystemAdaptersProcess,
 		implementSystemDriverAdaptersAnchor,
 		implementAndVerifySystemDriverAdaptersProcess,
 		channels,
@@ -182,9 +184,10 @@ func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 // UnrollExternalSystems statically unrolls the external-system driver-adapter
 // contract cycle (plan 20260615-0755). External systems are project-declared
 // (config `external-systems:`), so — exactly like channels — the single
-// IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS anchor in shared-contract is
-// replaced at load time by one cloned call-activity per registered external
-// system, each invoking the unchanged contract cycle with caller-bound params:
+// IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS anchor in
+// implement-external-drivers-if-needed is replaced at load time by one cloned
+// call-activity per registered external system, each invoking the unchanged
+// contract cycle with caller-bound params:
 //
 //   - external-system-name: the registry key (erp / clock) — threads through
 //     the call-activity param push (run.go) into the cycle, where the
@@ -212,7 +215,7 @@ func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
 // is never reached here.
 //
 // TWO anchors are unrolled with the identical per-clone baking (plan 20260622-1739
-// Step 4b): the shared-contract CT cycle anchor, and the
+// Step 4b): the implement-external-drivers-if-needed CT cycle anchor, and the
 // redesign-external-system-structure REDESIGN_EXTERNAL_SYSTEM anchor. Both bake
 // external-system-name + real-kind per registered system, so both reach the same
 // resolve-external-system self-guard and the same real-kind-driven reconcile leg.
@@ -228,7 +231,7 @@ func (e *Engine) UnrollExternalSystems(names []string, realKind map[string]strin
 		return params
 	}
 	if err := e.unrollAnchor(
-		sharedContractProcess,
+		implementExternalDriversIfNeededProcess,
 		implementExternalDriverAdaptersAnchor,
 		implementAndVerifyExternalDriverAdaptersProc,
 		names,

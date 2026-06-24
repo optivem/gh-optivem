@@ -76,11 +76,11 @@ type sliceSpec struct {
 
 // targetSlices is the Target → slice mapping. TargetUnset is intentionally
 // absent (the no-arg full run is not a slice). `test` → the channel-agnostic
-// shared-contract slice extracted in Item 2a; the two channel-split targets
-// reuse the existing per-channel-unrolled sub-processes (system driver adapter
-// and system).
+// write-acceptance-tests-and-dsl slice extracted in Item 2a; the two
+// channel-split targets reuse the existing per-channel-unrolled sub-processes
+// (system driver adapter and system).
 var targetSlices = map[Target]sliceSpec{
-	TargetTest:          {process: "shared-contract", requiresChannel: false, expectedTestResult: "failure"},
+	TargetTest:          {process: "write-acceptance-tests-and-dsl", requiresChannel: false, expectedTestResult: "failure"},
 	TargetDriverAdapter: {process: "implement-and-verify-system-driver-adapters", requiresChannel: true, expectedTestResult: "failure"},
 	TargetSystem:        {process: "implement-and-verify-system", requiresChannel: true, expectedTestResult: "success"},
 }
