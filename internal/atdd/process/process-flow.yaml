@@ -2817,9 +2817,11 @@ processes:
   #
   # `--yes` is required because the orchestrator drives commit non-
   # interactively (the BPMN approval gate lives upstream of this dispatch,
-  # not inside `gh optivem commit` itself); `--include-untracked` is
-  # required because writer agents create new files that `--yes`
-  # alone would refuse to stage.
+  # not inside `gh optivem commit` itself). It is a deliberate whole-tree
+  # commit of the writer agent's working-tree delta, so it opts in on both
+  # foot-gun axes: `--all` to stage all tracked changes (a bare `--yes`
+  # without `--paths`/`--all` is refused), and `--include-untracked`
+  # because writer agents create new files.
   commit:
     name: "Commit"
     start: EXECUTE_COMMAND
@@ -2829,7 +2831,7 @@ processes:
         process: execute-command
         name: "Dispatch the Command"
         params:
-          command: "gh optivem commit --yes --include-untracked"
+          command: "gh optivem commit --yes --all --include-untracked"
           # task-name: see compile-tests — traces the bpmn-step column to the diagram.
           task-name: commit
           message: "#${ticket-id} ${issue-title} - ${layer}"

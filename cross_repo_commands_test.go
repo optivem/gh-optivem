@@ -56,7 +56,7 @@ func TestCommitOneRepo_DirtyWithYes_LandsCommitAndCoAuthorTrailer(t *testing.T) 
 		t.Fatalf("write seed: %v", err)
 	}
 
-	committed, err := commitOneRepo(repo, "test commit message", commitOptions{Yes: true})
+	committed, err := commitOneRepo(repo, "test commit message", commitOptions{Yes: true, All: true})
 	if err != nil {
 		t.Fatalf("commitOneRepo: %v", err)
 	}
@@ -101,7 +101,9 @@ func TestCommitOneRepo_YesUntrackedWithoutOptIn_Refuses(t *testing.T) {
 		t.Fatalf("write stray: %v", err)
 	}
 
-	committed, err := commitOneRepo(repo, "ignored", commitOptions{Yes: true})
+	// All: true isolates the untracked gate — without it the --all gate
+	// (asserted separately) would fire first.
+	committed, err := commitOneRepo(repo, "ignored", commitOptions{Yes: true, All: true})
 	if err == nil {
 		t.Fatalf("expected error refusing untracked stage; got committed=%v", committed)
 	}
@@ -117,7 +119,7 @@ func TestCommitOneRepo_YesUntrackedWithOptIn_Commits(t *testing.T) {
 		t.Fatalf("write stray: %v", err)
 	}
 
-	committed, err := commitOneRepo(repo, "stage stray", commitOptions{Yes: true, IncludeUntracked: true})
+	committed, err := commitOneRepo(repo, "stage stray", commitOptions{Yes: true, All: true, IncludeUntracked: true})
 	if err != nil {
 		t.Fatalf("commitOneRepo: %v", err)
 	}
@@ -143,6 +145,49 @@ func TestCommitOneRepo_DirtyWithoutMessage_Errors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "commit message is required") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// TestCommitOneRepo_YesDirtyWithoutAll_Refuses pins the core foot-gun guard:
+// a --yes caller with tracked modifications and no --paths is refused unless
+// it opts into the blanket sweep with --all. This is what stops unrelated
+// parallel-agent WIP from being swept into a scripted commit.
+func TestCommitOneRepo_YesDirtyWithoutAll_Refuses(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "no-all")
+	initTestRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+	before := strings.TrimSpace(captureGitOut(t, repo, "rev-parse", "HEAD"))
+
+	committed, err := commitOneRepo(repo, "should-not-land", commitOptions{Yes: true})
+	if err == nil {
+		t.Fatalf("expected error refusing blanket stage without --all; got committed=%v", committed)
+	}
+	if !strings.Contains(err.Error(), "--all") || !strings.Contains(err.Error(), "--paths") {
+		t.Errorf("error should name both escapes (--all and --paths): %v", err)
+	}
+	if after := strings.TrimSpace(captureGitOut(t, repo, "rev-parse", "HEAD")); before != after {
+		t.Errorf("HEAD moved despite refusal: %s → %s", before, after)
+	}
+}
+
+// TestCommitOneRepo_YesWithPathsBypassesAllGate confirms the surgical form
+// never trips the --all gate: --paths scopes the stage explicitly, so it
+// commits without --all even under --yes.
+func TestCommitOneRepo_YesWithPathsBypassesAllGate(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "paths-no-all")
+	initTestRepo(t, repo)
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("write seed: %v", err)
+	}
+
+	committed, err := commitOneRepo(repo, "surgical commit", commitOptions{Yes: true, Paths: "seed.txt"})
+	if err != nil {
+		t.Fatalf("commitOneRepo with --paths should not require --all: %v", err)
+	}
+	if !committed {
+		t.Fatalf("expected committed=true with --paths")
 	}
 }
 

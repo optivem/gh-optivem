@@ -1354,7 +1354,7 @@ type repoState struct {
 	// --porcelain` (untracked, modified, deleted, staged, …). The
 	// post-pre delta is "what the agent touched that wasn't already
 	// dirty," used by the downstream COMMIT_* node (which runs
-	// `gh optivem commit --yes --include-untracked`) to stage and
+	// `gh optivem commit --yes --all --include-untracked`) to stage and
 	// commit the working-tree delta.
 	dirty map[string]bool
 }

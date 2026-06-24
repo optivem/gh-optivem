@@ -83,6 +83,7 @@ type commitOptions struct {
 	Repo             string
 	Paths            string
 	Yes              bool
+	All              bool
 	IncludeUntracked bool
 	Approval         approval.Resolved
 }
@@ -90,7 +91,7 @@ type commitOptions struct {
 func newCommitCmd() *cobra.Command {
 	opts := commitOptions{}
 	cmd := &cobra.Command{
-		Use:   `commit [--repo <name>] [--paths "<paths>"] [--yes] [--include-untracked] ["<message>"]`,
+		Use:   `commit [--repo <name>] [--paths "<paths>"] [--yes] [--all] [--include-untracked] ["<message>"]`,
 		Short: "Commit, pull, and push every dirty repo in scope",
 		Long: `Iterate every repo in scope (workspace folders, or the cwd repo when no
 *.code-workspace is reachable — see "Mode: …" banner). For each dirty repo,
@@ -104,12 +105,17 @@ counted as idle since neither commit nor sync can occur.
 A commit message is required when any iterated repo has dirty changes.
 
 ` + "`--yes`" + ` skips the per-repo confirmation; required when stdin is not a TTY.
-` + "`--yes`" + ` also refuses to stage untracked files unless ` + "`--include-untracked`" + `
-is passed — the stray-file foot-gun is opt-in for scripted callers.`,
+
+Under ` + "`--yes`" + ` the stray-file foot-gun is opt-in on two orthogonal axes,
+so nothing is ever staged silently under automation:
+  • a blanket ` + "`git add -A`" + ` requires ` + "`--all`" + ` — otherwise pass ` + "`--paths`" + ` to
+    stage only the files you touched (the surgical, drift-proof form);
+  • staging untracked files additionally requires ` + "`--include-untracked`" + `.
+Interactively neither flag is needed: you confirm against the printed file list.`,
 		Example: `  gh optivem commit "Update settings"
   gh optivem commit --repo myrepo "Fix bug"
   gh optivem commit --repo myrepo --paths "system/monolith/java" "fix(monolith-java)"
-  gh optivem commit --yes "Sync .claude settings"`,
+  gh optivem commit --yes --all "Sync .claude settings"`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			msg := ""
@@ -126,6 +132,8 @@ is passed — the stray-file foot-gun is opt-in for scripted callers.`,
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Only operate on the named repo")
 	cmd.Flags().StringVar(&opts.Paths, "paths", "", `Stage only these space-separated paths (requires --repo)`)
 	cmd.Flags().BoolVar(&opts.Yes, "yes", false, "Skip per-repo confirmation (required without a TTY). Per-command primitive — kept separate from the global --auto policy so scripts using `commit --yes \"msg\"` keep skipping the prompt even when --auto is set with the default --confirm=commit,fix exclusion.")
+	cmd.Flags().BoolVar(&opts.All, "all", false,
+		"With --yes, stage all tracked changes (git add -A scope). Required when --paths is not given — a blanket stage is opt-in for scripted callers, the same foot-gun guard as --include-untracked. No effect interactively or with --paths.")
 	cmd.Flags().BoolVar(&opts.IncludeUntracked, "include-untracked", false,
 		"With --yes, also stage untracked (??) files. No effect interactively.")
 	return cmd
@@ -323,6 +331,15 @@ func commitOneRepo(repo, msg string, opts commitOptions) (bool, error) {
 	if !strings.HasSuffix(status, "\n") {
 		fmt.Println()
 	}
+	// A blanket `git add -A` under --yes is the stray-file foot-gun: with
+	// parallel agents writing the tree, it sweeps unrelated WIP into the
+	// commit. Require an explicit --all opt-in, symmetric to the
+	// --include-untracked guard below. Surgical callers use --paths (handled
+	// in the branch above, which never reaches here). Interactive callers
+	// confirm against the printed status list, so the prompt is the gate.
+	if opts.Yes && !opts.All {
+		return false, errSweepNeedsAll()
+	}
 	if opts.Yes && !opts.IncludeUntracked {
 		untracked := untrackedLines(status)
 		if len(untracked) > 0 {
@@ -379,6 +396,14 @@ func confirmCommit(repo string, opts commitOptions) (bool, error) {
 
 func errMissingMsg() error {
 	return errors.New("commit message is required (no default).\n       Pass it as the last positional argument, e.g.:\n         gh optivem commit \"<message>\"\n         gh optivem commit --repo myrepo \"<message>\"")
+}
+
+// errSweepNeedsAll is returned when a --yes caller would otherwise trigger a
+// blanket `git add -A`. It refuses, naming both escapes: surgical (--paths)
+// and deliberate sweep (--all). This mirrors the --include-untracked guard so
+// no tracked or untracked change is ever staged silently under automation.
+func errSweepNeedsAll() error {
+	return errors.New("--yes refuses a blanket stage without --all.\n       Stage only the files you touched (surgical, no foot-gun):\n         gh optivem commit --repo myrepo --paths \"<space-separated paths>\" \"<message>\"\n       or deliberately stage every tracked change in scope:\n         gh optivem commit --yes --all \"<message>\"")
 }
 
 func runGitCommit(repo, msg string) error {

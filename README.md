@@ -349,8 +349,9 @@ Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The run
 ```bash
 gh optivem commit "Update settings"                                     # stage, commit, pull, push every dirty repo in scope
 gh optivem commit --repo myrepo "Fix bug"                               # only operate on the named repo (workspace mode)
-gh optivem commit --repo myrepo --paths "system/monolith/java" "fix"    # stage only the listed space-separated paths (requires --repo)
-gh optivem commit --yes "Sync .claude"                                  # skip the y/N confirmation (required without a TTY)
+gh optivem commit --repo myrepo --paths "system/monolith/java" "fix"    # stage only the listed space-separated paths (requires --repo) — surgical, no sweep
+gh optivem commit --yes --all "Sync .claude"                            # skip the y/N confirmation; --all opts in to the blanket git add -A sweep
+gh optivem commit --yes "Sync .claude"                                  # ERROR: --yes refuses a blanket stage without --all (use --paths or --all)
 gh optivem sync                                                         # pull + push every repo in scope (no commit)
 gh optivem actions status                                               # latest run of every workflow in every repo in scope
 gh optivem rate-limit                                                   # current GitHub API rate limits and reset times
@@ -393,7 +394,7 @@ Flag overrides env; both override default. A one-line banner is emitted to stder
 Auto: true (auto-source: flag, confirm-source: default → commit,fix)
 ```
 
-The per-command `--yes` flag on `commit` is unchanged — `gh optivem commit --yes "msg"` still skips the per-repo confirmation directly, independent of `--auto`. The two compose: `gh optivem --auto commit "msg"` also commits without prompting unless `commit` is in the confirm set (it is, by default).
+The per-command `--yes` flag on `commit` skips the per-repo confirmation directly, independent of `--auto`. The two compose: `gh optivem --auto commit "msg"` also commits without prompting unless `commit` is in the confirm set (it is, by default). Because `--yes` removes the human review of the staged file list, it refuses a blanket `git add -A` unless you opt in with `--all` (or scope the stage with `--paths`) — and refuses untracked files unless you add `--include-untracked`. This keeps unrelated working-tree changes (e.g. parallel-agent WIP) from being swept into a scripted commit.
 
 ## Cleanup
 
