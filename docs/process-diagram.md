@@ -286,34 +286,27 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
-    VALIDATE_CHANNELS_REGISTERED[[Validate Touched Channels Are Configured]]
-    GATE_DSL_PORT_CHANGED{DSL Port Changed?}
-    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = drivers"]
-    SHARED_CONTRACT_END(( ))
     GATE_TICKET_HAS_ESCC{Ticket Declares External System Contract Criteria?}
     VALIDATE_EXTERNAL_SYSTEMS_REGISTERED[[Validate Touched External Systems Are Registered]]
     GATE_EXTERNAL_DRIVER_PORTS_CHANGED{External Driver Ports Changed?}
     IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS["Implement and Verify External System Driver Adapters Contract Tests<br/>test-category = contract<br/>verify-mode = red"]
-    GATE_AT_TERMINAL_GREEN{Cover Run Needs Terminal AT-Green?}
-    START_SYSTEM_AT_TERMINAL[Start System]
-    VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL["Verify Acceptance Tests Pass — see § verify-tests-pass<br/>suite = acceptance"]
+    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
+    VALIDATE_CHANNELS_REGISTERED[[Validate Touched Channels Are Configured]]
+    GATE_DSL_PORT_CHANGED{DSL Port Changed?}
+    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = system-drivers"]
+    SHARED_CONTRACT_END(( ))
 
+    GATE_TICKET_HAS_ESCC -- Yes --> VALIDATE_EXTERNAL_SYSTEMS_REGISTERED
+    GATE_TICKET_HAS_ESCC -- No --> GATE_EXTERNAL_DRIVER_PORTS_CHANGED
+    GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- Yes --> VALIDATE_EXTERNAL_SYSTEMS_REGISTERED
+    GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- No --> WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
+    VALIDATE_EXTERNAL_SYSTEMS_REGISTERED --> IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
+    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS --> WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE --> VALIDATE_CHANNELS_REGISTERED
     VALIDATE_CHANNELS_REGISTERED --> GATE_DSL_PORT_CHANGED
     GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
     GATE_DSL_PORT_CHANGED -- No --> SHARED_CONTRACT_END
-    IMPLEMENT_AND_VERIFY_DSL --> GATE_TICKET_HAS_ESCC
-    GATE_TICKET_HAS_ESCC -- Yes --> VALIDATE_EXTERNAL_SYSTEMS_REGISTERED
-    GATE_TICKET_HAS_ESCC -- No --> GATE_EXTERNAL_DRIVER_PORTS_CHANGED
-    GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- Yes --> VALIDATE_EXTERNAL_SYSTEMS_REGISTERED
-    GATE_EXTERNAL_DRIVER_PORTS_CHANGED -- No --> SHARED_CONTRACT_END
-    VALIDATE_EXTERNAL_SYSTEMS_REGISTERED --> IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
-    IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS --> GATE_AT_TERMINAL_GREEN
-    GATE_AT_TERMINAL_GREEN -- Yes --> START_SYSTEM_AT_TERMINAL
-    GATE_AT_TERMINAL_GREEN -- No --> SHARED_CONTRACT_END
-    START_SYSTEM_AT_TERMINAL --> VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL
-    VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL --> SHARED_CONTRACT_END
+    IMPLEMENT_AND_VERIFY_DSL --> SHARED_CONTRACT_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class VALIDATE_CHANNELS_REGISTERED,VALIDATE_EXTERNAL_SYSTEMS_REGISTERED serviceNode
