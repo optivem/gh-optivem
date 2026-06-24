@@ -671,7 +671,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test compile<br/>task-name = compile-tests"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system-test compile<br/>task-name = compile-tests"]
     COMPILE_TESTS_END(( ))
 
     EXECUTE_COMMAND --> COMPILE_TESTS_END
@@ -711,7 +711,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test run<br/>fix-on-failure = false<br/>task-name = run-tests"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system-test run<br/>fix-on-failure = false<br/>task-name = run-tests"]
     RUN_TESTS_END(( ))
 
     EXECUTE_COMMAND --> RUN_TESTS_END
@@ -972,7 +972,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test setup<br/>task-name = setup-tests"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system-test setup<br/>task-name = setup-tests"]
     SETUP_TESTS_END(( ))
 
     EXECUTE_COMMAND --> SETUP_TESTS_END

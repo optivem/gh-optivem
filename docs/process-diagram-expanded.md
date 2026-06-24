@@ -96,7 +96,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test setup<br/>task-name = setup-tests"]
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system-test setup<br/>task-name = setup-tests"]
     SETUP_TESTS_END(( ))
 
     EXECUTE_COMMAND --> SETUP_TESTS_END
@@ -694,7 +694,7 @@ flowchart TD
     REFACTOR_AND_VERIFY_TESTS__REFACTOR_TESTS__REFACTOR_TESTS_END(( ))
     end
     subgraph REFACTOR_AND_VERIFY_TESTS__COMPILE_TESTS[Compile Tests]
-    REFACTOR_AND_VERIFY_TESTS__COMPILE_TESTS__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem test compile<br/>task-name = compile-tests"]
+    REFACTOR_AND_VERIFY_TESTS__COMPILE_TESTS__EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system-test compile<br/>task-name = compile-tests"]
     REFACTOR_AND_VERIFY_TESTS__COMPILE_TESTS__COMPILE_TESTS_END(( ))
     end
     subgraph REFACTOR_AND_VERIFY_TESTS__START_SYSTEM[Start System]
