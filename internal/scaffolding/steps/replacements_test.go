@@ -3,10 +3,12 @@ package steps
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/config"
+	"github.com/optivem/gh-optivem/internal/scaffolding/files"
 	"github.com/optivem/gh-optivem/internal/scaffolding/templates"
 )
 
@@ -739,6 +741,144 @@ func TestMultitierPrefixDropAndContentReplacementsOrderingFixesPartialMatch(t *t
 			}
 		})
 	}
+}
+
+// TestOptivemConfigRewritesFlattensCommitStageConfig asserts that the commit-
+// stage GH_OPTIVEM_CONFIG name — which shop keys by the backend/system language,
+// not testLang — is flattened to the canonical gh-optivem.yaml for polyglot
+// scaffolds (lang/backendLang != testLang). Regression guard for the reported
+// incidents: multitier run 28102942986 (gh-optivem-multitier-java.yaml left in
+// backend + frontend commit-stage) and the monolith second-hop run 28113696564
+// (gh-optivem-monolith-java.yaml). Before the all-langs rewrite, the testLang-
+// keyed rule missed these and the scaffolded commit stage failed at runtime with
+// "no gh-optivem.yaml at <per-flavor-name>".
+func TestOptivemConfigRewritesFlattensCommitStageConfig(t *testing.T) {
+	cases := []struct {
+		name     string
+		in       string
+		pairs    [][2]string
+		expected string
+	}{
+		{
+			// backend=java, tests=typescript. The backend commit-stage names the
+			// config gh-optivem-multitier-java.yaml; the frontend commit-stage
+			// hardcodes the same java name. Both must flatten.
+			name:     "multitier polyglot java/typescript commit-stage config",
+			in:       "  GH_OPTIVEM_CONFIG: gh-optivem-multitier-java.yaml\n",
+			pairs:    multitierContentReplacements("java", "react", "typescript"),
+			expected: "  GH_OPTIVEM_CONFIG: gh-optivem.yaml\n",
+		},
+		{
+			name:     "monolith polyglot java/typescript commit-stage config (CI incident)",
+			in:       "  GH_OPTIVEM_CONFIG: gh-optivem-monolith-java.yaml\n",
+			pairs:    monolithContentReplacements("java", "typescript"),
+			expected: "  GH_OPTIVEM_CONFIG: gh-optivem.yaml\n",
+		},
+		{
+			// The single legacy file is testLang-keyed; the legacy rule stays
+			// testLang-keyed and must still map to the legacy canonical name.
+			name:     "monolith legacy config still maps to legacy canonical",
+			in:       "  GH_OPTIVEM_CONFIG: gh-optivem-monolith-typescript-legacy.yaml\n",
+			pairs:    monolithContentReplacements("java", "typescript"),
+			expected: "  GH_OPTIVEM_CONFIG: gh-optivem.legacy.yaml\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.in
+			for _, p := range tc.pairs {
+				got = strings.ReplaceAll(got, p[0], p[1])
+			}
+			if got != tc.expected {
+				t.Errorf("got  %q\nwant %q", got, tc.expected)
+			}
+		})
+	}
+}
+
+// TestMonolithFullApplyFlattensConfigNoSystemResidual exercises the real two-pass
+// ordering used by the monolith apply paths (content pass, then the Sonar-key
+// pass) against an on-disk commit-stage workflow carrying shop's
+// gh-optivem-monolith-java.yaml. It asserts the config is flattened to
+// gh-optivem.yaml and — crucially — that the post-Sonar-mangle residual
+// gh-optivem-system.yaml never appears (the Sonar pass rewrites "-monolith-java"
+// -> "-system", so a name surviving the content pass would mangle into it).
+func TestMonolithFullApplyFlattensConfigNoSystemResidual(t *testing.T) {
+	repoDir := t.TempDir()
+	writeRepoFile(t, repoDir, ".github/workflows/commit-stage.yml",
+		"  GH_OPTIVEM_CONFIG: gh-optivem-monolith-java.yaml\n")
+
+	// Mirror applyMonolith*'s pass ordering.
+	templates.FixupWorkflowContent(repoDir, monolithContentReplacements("java", "typescript"))
+	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements("java"))
+
+	assertNoLiteralSurvives(t, repoDir, []string{
+		"gh-optivem-monolith-java.yaml",
+		"gh-optivem-system.yaml",
+	})
+	assertLiteralPresent(t, repoDir, ".github/workflows/commit-stage.yml", "gh-optivem.yaml")
+}
+
+// TestMultitierForbiddenRefsCatchesResidualConfig asserts that the broadened
+// guardrail flags a per-flavor multitier config name that escaped the content
+// pass — turning this class of bug into a scaffold-time hard failure rather than
+// a CI-time surprise. Simulates the regression by writing the un-rewritten name
+// directly, then scanning with the real forbidden-refs list.
+func TestMultitierForbiddenRefsCatchesResidualConfig(t *testing.T) {
+	repoDir := t.TempDir()
+	writeRepoFile(t, repoDir, ".github/workflows/backend-commit-stage.yml",
+		"  GH_OPTIVEM_CONFIG: gh-optivem-multitier-java.yaml\n")
+
+	hits := scanForbiddenRefs(repoDir, multitierForbiddenRefs("java", "react", "typescript"))
+	if !slices.Contains(hits, "gh-optivem-multitier-java") {
+		t.Errorf("expected forbidden-ref scan to catch residual gh-optivem-multitier-java; hits=%v", hits)
+	}
+}
+
+// TestMonolithForbiddenRefsCatchesPostMangleResidual asserts the monolith
+// guardrail catches the *post-Sonar-mangle* residual. checkNoTemplateRefs runs
+// after the Sonar-key pass, so a monolith-java config name surviving the content
+// pass reaches the guardrail already rewritten to gh-optivem-system.yaml — which
+// the per-lang gh-optivem-monolith-<lang> needles do not match. Only the explicit
+// gh-optivem-system.yaml needle catches it. Regression guard for run 28113696564.
+func TestMonolithForbiddenRefsCatchesPostMangleResidual(t *testing.T) {
+	repoDir := t.TempDir()
+	writeRepoFile(t, repoDir, ".github/workflows/commit-stage.yml",
+		"  GH_OPTIVEM_CONFIG: gh-optivem-monolith-java.yaml\n")
+	// Simulate a content-pass regression: only the Sonar-key pass runs, mangling
+	// "-monolith-java" -> "-system".
+	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements("java"))
+	assertLiteralPresent(t, repoDir, ".github/workflows/commit-stage.yml", "gh-optivem-system.yaml")
+
+	hits := scanForbiddenRefs(repoDir, monolithForbiddenRefs("java", "typescript"))
+	if !slices.Contains(hits, "gh-optivem-system.yaml") {
+		t.Errorf("expected monolithForbiddenRefs to catch post-mangle gh-optivem-system.yaml; hits=%v", hits)
+	}
+}
+
+// writeRepoFile writes content to repoDir/rel, creating parent dirs.
+func writeRepoFile(t *testing.T, repoDir, rel, content string) {
+	t.Helper()
+	p := filepath.Join(repoDir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
+		t.Fatalf("mkdir %s: %v", filepath.Dir(p), err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0644); err != nil {
+		t.Fatalf("write %s: %v", rel, err)
+	}
+}
+
+// scanForbiddenRefs mirrors checkNoTemplateRefs' detection without its Fatalf:
+// it returns the subset of needles that have at least one hit under repoDir.
+func scanForbiddenRefs(repoDir string, refs []string) []string {
+	var hits []string
+	for _, needle := range refs {
+		if len(files.FindInTree(repoDir, needle)) > 0 {
+			hits = append(hits, needle)
+		}
+	}
+	return hits
 }
 
 // TestMonolithDockerComposeReplacementsIncludesFlywayPath asserts that the

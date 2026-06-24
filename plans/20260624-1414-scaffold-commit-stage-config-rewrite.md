@@ -19,52 +19,11 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-Step 1: In `internal/scaffolding/steps/apply_template.go`, add a package-local `scaffoldLangs = []string{"dotnet", "java", "typescript"}` and a helper `optivemConfigRewrites(arch, testLang string) [][2]string` (see **End logic** below). Use it to replace the two testLang-keyed rewrite lines in `multitierContentReplacements` (~820-821) and `monolithContentReplacements` (~675-676) — splice in `optivemConfigRewrites("multitier", testLang)...` / `optivemConfigRewrites("monolith", testLang)...`. Then run `go test ./internal/scaffolding/...` to confirm nothing regresses before adding the new tests in Step 4.
-
-## End logic (resolved design)
-
-One shared helper drives all four apply paths:
-
-```go
-var scaffoldLangs = []string{"dotnet", "java", "typescript"}
-
-// optivemConfigRewrites flattens every per-flavor GH_OPTIVEM_CONFIG name to the
-// canonical scaffolded pair. Legacy (testLang-keyed) first, then every per-language
-// latest name -> gh-optivem.yaml. Commit-stage workflows name the config by
-// backend/system language; pipeline stages name it by testLang — covering all
-// languages catches both. arch is "monolith" or "multitier".
-func optivemConfigRewrites(arch, testLang string) [][2]string {
-	r := [][2]string{
-		{"gh-optivem-" + arch + "-" + testLang + "-legacy.yaml", "gh-optivem.legacy.yaml"},
-	}
-	for _, lang := range scaffoldLangs {
-		r = append(r, [2]string{"gh-optivem-" + arch + "-" + lang + ".yaml", "gh-optivem.yaml"})
-	}
-	return r
-}
-```
-
-The all-langs latest rules subsume the old testLang `.yaml` rule; only one legacy file exists (testLang), so one legacy rule kept first preserves the existing anti-partial-match ordering. A symmetric helper (or inline loop over `scaffoldLangs`) replaces the single testLang entry in the forbidden-refs.
-
-**Confirmed breakage matrix** (all four paths need the rewrite):
-
-| Apply path | Current commit-stage config rewrite | Broken when |
-|---|---|---|
-| multitier monorepo (`applyMultitierMonorepo`) | testLang-keyed only (820-821) | polyglot, or testLang≠java (frontend hardcoded-java) |
-| multitier multirepo (`applyMultitierMultirepo`) | **none** (565-572, 602-609) | **always** (every combo) |
-| monolith monorepo (`applyMonolithMonorepo`) | testLang-keyed only (675-676) | lang≠testLang |
-| monolith multirepo (`applyMonolithMultirepo`) | **none** (sysContentReplacements 359-367) | **always** (every combo) |
-
-`WriteOptivemYAML` (`optivem_yaml.go:62-70`) writes canonical `gh-optivem.yaml`/`gh-optivem.legacy.yaml` into every split repo, so the multirepo paths genuinely need the rewrite — they are not coincidentally correct.
+All agent work is done (Steps 1–5 shipped: `scaffoldLangs` + `optivemConfigRewrites` helper wired into all four apply paths, broadened forbidden-refs guardrail incl. the post-Sonar-mangle `gh-optivem-system.yaml`, and regression tests — `go test ./internal/scaffolding/...` green). Only the **user-run E2E** below remains; no further edits. This is a verification step, not an `/execute-plan` resume point.
 
 ## Steps
 
-- [ ] Step 1: **Add `scaffoldLangs` + `optivemConfigRewrites` helper and wire monorepo paths.** In `apply_template.go`, splice `optivemConfigRewrites("multitier", testLang)...` into `multitierContentReplacements` (replacing ~820-821) and `optivemConfigRewrites("monolith", testLang)...` into `monolithContentReplacements` (replacing ~675-676).
-- [ ] Step 2: **Wire the multirepo split paths.** Append `optivemConfigRewrites("multitier", testLang)...` to `backendReplacements` (~565-572) and `frontendReplacements` (~602-609) in `applyMultitierMultirepo`, and `optivemConfigRewrites("monolith", testLang)...` to `sysContentReplacements` (~359-367) in `applyMonolithMultirepo`. (Confirmed broken in all combos — these had no config rewrite at all.)
-- [ ] Step 3: **Close the guardrail gap.** In `multitierForbiddenRefs` (~1007-1024) and `monolithForbiddenRefs` (~987-1005), replace the single testLang config entry (~1020 / ~999) with a loop forbidding `"gh-optivem-"+arch+"-"+lang` for every `scaffoldLangs`, so any residual per-flavor name fails the scaffold loudly. **Also forbid the post-Sonar-mangle residual** `"gh-optivem-system.yaml"` in `monolithForbiddenRefs` — because `checkNoTemplateRefs` runs *after* the Sonar-key pass, a future regression that lets `gh-optivem-monolith-<lang>.yaml` survive the content pass would reach the guardrail already rewritten to `gh-optivem-system.yaml`, which the per-lang `gh-optivem-monolith-<lang>` needles do not match. (Monolith only; multitier has no analogous mangle.)
-- [ ] Step 4: **Regression tests.** In `internal/scaffolding/steps/replacements_test.go`: (a) assert that for backendLang=java / testLang=typescript multitier, the commit-stage `GH_OPTIVEM_CONFIG` rewrites `gh-optivem-multitier-java.yaml` → `gh-optivem.yaml` (covers both the backendLang backend ref and the hardcoded-java frontend ref); (b) the monolith `lang=java` / `testLang=typescript` case (the CI incident) asserting the commit-stage config rewrites `gh-optivem-monolith-java.yaml` → `gh-optivem.yaml` **and** that no `gh-optivem-system.yaml` survives the full apply (content + Sonar passes); (c) forbidden-ref cases asserting the residual `gh-optivem-multitier-java.yaml` (multitier) and the post-mangle `gh-optivem-system.yaml` (monolith) are now caught — run the forbidden-ref scan against a repo that has been through the Sonar pass, so the monolith assertion exercises the real post-mangle residual rather than the pre-mangle `gh-optivem-monolith-java.yaml`.
-- [ ] Step 5: **Run unit tests.** `go test ./internal/scaffolding/...` in `C:/GitHub/optivem/academy/gh-optivem`; all green.
-- [ ] Step 6: **E2E confirmation (heavy, user-run).** Re-run a polyglot scaffold (backend=java, test=typescript) and confirm `backend-commit-stage.yml` and `frontend-commit-stage.yml` both reference `gh-optivem.yaml`, and the commit stage passes. (User initiates — do not self-run.)
+- [ ] Step 6 (⏳ Deferred — user-run E2E, do not self-run): Re-run a polyglot scaffold (backend=java, test=typescript) and confirm `backend-commit-stage.yml` and `frontend-commit-stage.yml` both reference `gh-optivem.yaml`, and the commit stage passes. While doing so, validate the two open questions below.
 
 ## Notes / constraints
 

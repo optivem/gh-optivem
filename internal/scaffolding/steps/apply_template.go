@@ -365,6 +365,11 @@ func applyMonolithMultirepo(cfg *config.Config) {
 		{Expand(Names.ShopSystemMonolithDir, vars), Names.TargetSystemDir},
 		{Expand(Names.MonolithImageRef, vars), Names.TargetSystemDir},
 	}
+	// Flatten the commit-stage GH_OPTIVEM_CONFIG name (system-language-keyed) to
+	// the canonical gh-optivem.yaml; WriteOptivemYAML writes that pair into the
+	// split system repo. Without this the system repo's commit-stage references a
+	// per-flavor config name that does not exist there.
+	sysContentReplacements = append(sysContentReplacements, optivemConfigRewrites("monolith", testLang)...)
 	templates.FixupWorkflowContent(sysDir, sysContentReplacements)
 	templates.FixupAllTextFiles(sysDir, monolithSonarKeyReplacements(lang))
 	templates.FixupAllTextFiles(sysDir, systemTestSonarKeyReplacements())
@@ -569,6 +574,9 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		[2]string{Expand(Names.MultitierBackendRef, vars), Names.TargetBackendDir},
 		[2]string{"backend-bump-patch-version", "bump-patch-version"},
 	)
+	// Flatten the backend commit-stage GH_OPTIVEM_CONFIG name (backendLang-keyed)
+	// to the canonical gh-optivem.yaml written into the split backend repo.
+	backendReplacements = append(backendReplacements, optivemConfigRewrites("multitier", testLang)...)
 	templates.FixupWorkflowContent(bDir, backendReplacements)
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(bDir, systemTestSonarKeyReplacements())
@@ -606,6 +614,10 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		[2]string{Expand(Names.MultitierFrontendRef, vars), Names.TargetFrontendDir},
 		[2]string{"frontend-bump-patch-version", "bump-patch-version"},
 	)
+	// Flatten the frontend commit-stage GH_OPTIVEM_CONFIG name (shop hardcodes the
+	// multitier-java config here) to the canonical gh-optivem.yaml written into the
+	// split frontend repo.
+	frontendReplacements = append(frontendReplacements, optivemConfigRewrites("multitier", testLang)...)
 	templates.FixupWorkflowContent(fDir, frontendReplacements)
 	templates.FixupAllTextFiles(fDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(fDir, systemTestSonarKeyReplacements())
@@ -616,6 +628,28 @@ func applyMultitierMultirepo(cfg *config.Config) {
 // ── Content replacement helpers ────────────────────────────────────────────
 
 // monolithContentReplacements returns workflow content replacements for monolith.
+// scaffoldLangs is the set of backend/system languages shop ships per-flavor
+// GH_OPTIVEM_CONFIG names for. Commit-stage workflows name the config by the
+// backend/system language; pipeline stages name it by testLang — so flattening
+// every per-language name covers both.
+var scaffoldLangs = []string{"dotnet", "java", "typescript"}
+
+// optivemConfigRewrites flattens every per-flavor GH_OPTIVEM_CONFIG name to the
+// canonical scaffolded pair. The legacy (testLang-keyed) rule comes first so the
+// "-<testLang>-legacy.yaml" name doesn't partially match the bare
+// "-<testLang>.yaml" rule; then every per-language latest name maps to
+// gh-optivem.yaml. Only one legacy file exists (testLang), so one legacy rule
+// suffices. arch is "monolith" or "multitier".
+func optivemConfigRewrites(arch, testLang string) [][2]string {
+	r := [][2]string{
+		{"gh-optivem-" + arch + "-" + testLang + "-legacy.yaml", "gh-optivem.legacy.yaml"},
+	}
+	for _, lang := range scaffoldLangs {
+		r = append(r, [2]string{"gh-optivem-" + arch + "-" + lang + ".yaml", "gh-optivem.yaml"})
+	}
+	return r
+}
+
 func monolithContentReplacements(lang, testLang string) [][2]string {
 	mono := prefixMonolith
 	monoTest := mono + testLang
@@ -665,16 +699,13 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{dirDocker + "/" + testLang + "/monolith/", dirDocker + "/"},
 		// Docker image names
 		{prefixMonolithSystem + lang, "system"},
-		// GH_OPTIVEM_CONFIG: shop's acceptance-stage workflows reference the
-		// shop's own per-flavor config file name. Scaffolded repos have a pair
-		// of canonical files — gh-optivem.yaml (latest, points at tests.yaml)
-		// and gh-optivem.legacy.yaml (points at tests.legacy.yaml). Rewrite the
-		// shop filenames to those.
-		// Legacy variant first so "monolith-<testLang>-legacy.yaml" doesn't
-		// partially match the bare "monolith-<testLang>.yaml" rule below.
-		{"gh-optivem-" + monoTest + "-legacy.yaml", "gh-optivem.legacy.yaml"},
-		{"gh-optivem-" + monoTest + ".yaml", "gh-optivem.yaml"},
 	}
+	// GH_OPTIVEM_CONFIG: shop's workflows reference shop's own per-flavor config
+	// file name. Scaffolded repos have a canonical pair — gh-optivem.yaml (latest)
+	// and gh-optivem.legacy.yaml. The commit-stage workflow names the config by
+	// the system language (not testLang), so flatten every per-language name, not
+	// just testLang's.
+	r = append(r, optivemConfigRewrites("monolith", testLang)...)
 	if lang != testLang {
 		r = append(r,
 			[2]string{prefixMonolithSystem + testLang, "system"},
@@ -810,16 +841,12 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// Docker image names (also transforms remaining workflow name references)
 		{prefixMultitierBackend + backendLang, "backend"},
 		{prefixMultitierFrontend + frontendLang, "frontend"},
-		// GH_OPTIVEM_CONFIG: shop's acceptance-stage workflows reference the
-		// shop's own per-flavor config file name. Scaffolded repos have a pair
-		// of canonical files — gh-optivem.yaml (latest, points at tests.yaml)
-		// and gh-optivem.legacy.yaml (points at tests.legacy.yaml). Rewrite the
-		// shop filenames to those.
-		// Legacy variant first so "multitier-<testLang>-legacy.yaml" doesn't
-		// partially match the bare "multitier-<testLang>.yaml" rule below.
-		{"gh-optivem-" + multiTest + "-legacy.yaml", "gh-optivem.legacy.yaml"},
-		{"gh-optivem-" + multiTest + ".yaml", "gh-optivem.yaml"},
 	}
+	// GH_OPTIVEM_CONFIG: shop's workflows reference shop's own per-flavor config
+	// file name. Scaffolded repos have a canonical pair — gh-optivem.yaml (latest)
+	// and gh-optivem.legacy.yaml. The backend commit-stage workflow names the
+	// config by backendLang (not testLang), so flatten every per-language name.
+	r = append(r, optivemConfigRewrites("multitier", testLang)...)
 	// Pipeline-stage workflows (cloned from multitier-<testLang>-*-stage.yml) reference
 	// backend-<testLang> in image URLs and VERSION paths — shop authors them assuming
 	// backendLang == testLang. When the scaffold runs with a different backendLang, we
@@ -996,8 +1023,18 @@ func monolithForbiddenRefs(lang, testLang string) []string {
 		"-tests-java",                                   // system-test sonar key suffix
 		"-tests-dotnet",
 		"-tests-typescript",
-		"gh-optivem-" + prefixMonolith + testLang,       // un-rewritten GH_OPTIVEM_CONFIG filename
 	}
+	// Un-rewritten GH_OPTIVEM_CONFIG filenames — any per-language flavor, not just
+	// testLang (commit-stage names the config by system language).
+	for _, l := range scaffoldLangs {
+		refs = append(refs, "gh-optivem-"+prefixMonolith+l)
+	}
+	// Post-Sonar-mangle residual: monolithSonarKeyReplacements rewrites
+	// "-monolith-<lang>" -> "-system" across all text files, and checkNoTemplateRefs
+	// runs after that pass. So a config name that survives the content pass reaches
+	// this guardrail already mangled to "gh-optivem-system.yaml" — which the per-lang
+	// "gh-optivem-monolith-<lang>" needles above never match. Forbid it explicitly.
+	refs = append(refs, "gh-optivem-system.yaml")
 	if lang != testLang {
 		refs = append(refs, prefixMonolithSystem+testLang)
 	}
@@ -1017,7 +1054,14 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 		"-tests-java",                                   // system-test sonar key suffix
 		"-tests-dotnet",
 		"-tests-typescript",
-		"gh-optivem-" + prefixMultitier + testLang,      // un-rewritten GH_OPTIVEM_CONFIG filename
+	}
+	// Un-rewritten GH_OPTIVEM_CONFIG filenames — any per-language flavor, not just
+	// testLang (the backend commit-stage names the config by backendLang, the
+	// frontend by hardcoded java). Multitier has no Sonar-mangle analogue: the
+	// suffix "-multitier-backend-<lang>" is not a substring of
+	// "gh-optivem-multitier-<lang>.yaml", so no "-system" residual arises.
+	for _, l := range scaffoldLangs {
+		refs = append(refs, "gh-optivem-"+prefixMultitier+l)
 	}
 	if backendLang != testLang {
 		refs = append(refs, prefixMultitierBackend+testLang)
