@@ -32,6 +32,13 @@ var topLevelExpansionRoots = []string{
 	"refactor",
 }
 
+// neverExpand lists subprocess IDs that are always rendered as plain reference
+// boxes, regardless of depth or visit state.
+var neverExpand = map[string]bool{
+	"execute-command": true,
+	"execute-agent":   true,
+}
+
 // maxExpandDepth limits how many levels of call-activity nesting are expanded.
 // Depth 0 = root; depth N = Nth level of subprocesses shown as subgraphs.
 // Call-activities at depth >= maxExpandDepth render as plain reference boxes
@@ -162,10 +169,10 @@ func expandProcess(acc *expandAcc, eng *statemachine.Engine, proc *statemachine.
 
 		targetID := n.Raw.Process
 		targetProc, ok := eng.Processes[targetID]
-		if !ok || visited[targetID] || depth >= maxExpandDepth {
-			// Unknown process (e.g. templated "${action}"), cycle detected, or
-			// depth limit reached: fall back to a plain call-activity node so
-			// the diagram stays connected.
+		if !ok || visited[targetID] || depth >= maxExpandDepth || neverExpand[targetID] {
+			// Unknown process (e.g. templated "${action}"), cycle detected,
+			// depth limit reached, or explicitly excluded: fall back to a plain
+			// call-activity node so the diagram stays connected.
 			tree.nodeLines = append(tree.nodeLines, expandNodeDecl(scopedID, n))
 			expandAccStyle(acc, scopedID, n)
 			expansions[id] = entryExit{entry: scopedID, exits: []string{scopedID}}
