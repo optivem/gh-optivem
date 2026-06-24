@@ -447,12 +447,20 @@ processes:
   change-system-behavior:
     name: "Change System Behavior"
     diagram-section-order: 4
-    start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
+    start: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED
     nodes:
-      - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
+      - id: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED
         type: call-activity
-        process: write-and-verify-acceptance-tests-fail
+        process: implement-external-drivers-if-needed
+        name: "Implement External Drivers If Needed"
+        tdd-stage: red
+
+      - id: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS
+        type: call-activity
+        process: write-acceptance-tests-and-system-adapters
         name: "Write Failing Acceptance Tests"
+        params:
+          expected-test-result: failure
         tdd-stage: red
 
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
@@ -489,9 +497,10 @@ processes:
         name: "System Behavior Changed"
 
     sequence-flows:
-      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL, to: IMPLEMENT_AND_VERIFY_SYSTEM}
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,            to: REFACTOR_OPPORTUNISTICALLY}
-      - {from: REFACTOR_OPPORTUNISTICALLY,             to: CHANGE_SYSTEM_BEHAVIOR_END}
+      - {from: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,        to: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS}
+      - {from: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS,  to: IMPLEMENT_AND_VERIFY_SYSTEM}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,                 to: REFACTOR_OPPORTUNISTICALLY}
+      - {from: REFACTOR_OPPORTUNISTICALLY,                  to: CHANGE_SYSTEM_BEHAVIOR_END}
 
   # Legacy-coverage cycle. Operator specifies acceptance criteria only;
   # CT is a nested sub-process when the AT layer needs a stub/driver to
@@ -503,12 +512,26 @@ processes:
   cover-system-behavior:
     name: "Cover System Behavior"
     diagram-section-order: 5
-    start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS
+    start: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED
     nodes:
-      - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS
+      - id: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED
         type: call-activity
-        process: write-and-verify-acceptance-tests-pass
+        process: implement-external-drivers-if-needed
+        name: "Implement External Drivers If Needed"
+        tdd-stage: green
+
+      - id: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS
+        type: call-activity
+        process: write-acceptance-tests-and-system-adapters
         name: "Write Passing Acceptance Tests"
+        params:
+          expected-test-result: success
+          # Cover-path verify mode (plan 20260606-1518). The system already
+          # has the behaviour, so each AT layer expects PASS only when no
+          # further plumbing change is pending (else FAIL). Inherits down
+          # the whole cover cascade via the wrapCallActivity param-merge;
+          # each layer pins its own verify-pending-on below.
+          verify-mode: green-when-complete
         tdd-stage: green
 
       - id: COVER_END
@@ -516,7 +539,8 @@ processes:
         name: "System Behavior Covered"
 
     sequence-flows:
-      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS, to: COVER_END}
+      - {from: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,       to: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS}
+      - {from: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS, to: COVER_END}
 
   # System-side structure redesign. Step 1 calls MID
   # `update-system-driver-adapters` (reshape adapter layer to absorb the
@@ -763,168 +787,92 @@ processes:
     sequence-flows:
       - {from: REFACTOR_AND_VERIFY_TESTS,      to: REFACTOR_TEST_STRUCTURE_END}
 
-  # Cycle-facing thin wrapper that pins `expected-test-result: failure`
-  # before calling the parameterised middle. Called by
-  # `change-system-behavior` step 1.
-  write-and-verify-acceptance-tests-fail:
-    name: "Write and Verify Acceptance Tests Fail"
-    start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS
-    nodes:
-      - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS
-        type: call-activity
-        process: write-and-verify-acceptance-tests
-        name: "Write and Verify Acceptance Tests"
-        params:
-          expected-test-result: failure
-
-      - id: WAV_AT_FAIL_END
-        type: end-event
-        name: "Failing Acceptance Tests Verified"
-
-    sequence-flows:
-      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS, to: WAV_AT_FAIL_END}
-
-  # Cycle-facing thin wrapper that pins `expected-test-result: success`
-  # before calling the parameterised middle. Called by
-  # `cover-system-behavior` step 1.
-  write-and-verify-acceptance-tests-pass:
-    name: "Write and Verify Acceptance Tests Pass"
-    start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS
-    nodes:
-      - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS
-        type: call-activity
-        process: write-and-verify-acceptance-tests
-        name: "Write and Verify Acceptance Tests"
-        params:
-          expected-test-result: success
-          # Cover-path verify mode (plan 20260606-1518). The system already
-          # has the behaviour, so each AT layer expects PASS only when no
-          # further plumbing change is pending (else FAIL) — unlike the change
-          # path (-fail wrapper), which leaves verify-mode unset so the gate
-          # defaults to `red` and routes on the pinned expected-test-result.
-          # Inherits down the whole cover cascade via the wrapCallActivity
-          # param-merge; each layer pins its own verify-pending-on below.
-          verify-mode: green-when-complete
-
-      - id: WAV_AT_PASS_END
-        type: end-event
-        name: "Passing Acceptance Tests Verified"
-
-    sequence-flows:
-      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TESTS, to: WAV_AT_PASS_END}
-
-  # The shared, channel-AGNOSTIC contract slice (plan 20260530-1725 Item 2a).
-  # This is the cascade up to — but NOT including — the per-channel System
-  # Driver adapter gate: write the test code (inner primitive), then cascade
-  # into DSL whenever the DSL port changed, and — when the external-system
-  # driver port changed — into the contract-test-first CT-HIGH
-  # (`…-contract-tests`, Q31.a Option A nested), which writes+verifies the
-  # contract test (real, then stub) and implements the external adapter.
-  # Reads `at-dsl-port-changed` from the inner call, then
-  # `at-external-driver-port-changed` from the DSL impl (Q6 port-change wiring
-  # table); both are the acceptance-cascade-namespaced verdicts (plan
-  # 20260606-1525). The GATE bindings are bound to Go gate functions that
-  # promote the relevant ctx.State value into ctx.State for the predicate
-  # evaluator.
+  # Implements external system driver adapters (CT-HIGH) when the ticket
+  # declares External System Contract Criteria. ESCC is the sole and
+  # authoritative signal — no port-changed fallback. The false branch
+  # (no ESCC) is a benign skip. Called by `change-system-behavior` and
+  # `cover-system-behavior` before the acceptance test writing step so
+  # stubs are in place before acceptance tests run.
   #
-  # Why this is its own named sub-process: it is the `--target test` slice the
-  # whole team mobs (tests + DSL core + driver port + external) — the contract
-  # every channel team builds on. It ends RED-by-design (no system, no
-  # per-channel adapter yet). The `--target` selector enters it by name via
-  # RunProcess; `write-and-verify-acceptance-tests` (below) composes it and
-  # then runs the per-channel adapter tail it deliberately excludes
-  # (D-external keeps the external adapter HERE, but the System Driver adapter
-  # is channel-shaped and owned by each channel team — D-adapter-ownership
-  # option A).
-  shared-contract:
-    name: "Write and Verify Channel-Shared Acceptance Tests"
+  # UNROLL ANCHOR (plan 20260615-0755): at load time UnrollExternalSystems
+  # replaces IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS with one cloned
+  # call-activity per registered external system. Both seam edges
+  # (VALIDATE_EXTERNAL_SYSTEMS_REGISTERED → anchor, anchor →
+  # IMPLEMENT_EXTERNAL_DRIVERS_END) are unconditional, so predicate
+  # preservation is a no-op here.
+  implement-external-drivers-if-needed:
+    name: "Implement External Drivers If Needed"
     start: GATE_TICKET_HAS_ESCC
     nodes:
-      # ESCC-first contract-room entry (plan 20260620-1850): external driver
-      # adapters are implemented FIRST — before acceptance tests run — so the
-      # system starts with proper stubs in place. The room opens when EITHER
-      # the ticket declares External System Contract Criteria (the explicit,
-      # reviewable signal — parse-ticket stamps `ticket-has-escc`) OR the
-      # file-change proxy `at-external-driver-port-changed` fired (the legacy
-      # 90% path, now demoted to a FALLBACK). ESCC is checked FIRST so a
-      # list-shaped externally-backed story (the #65 class) that changes no
-      # external-driver PORT file still enters the room and gets its list stub +
-      # contract test built before acceptance tests run. Both true-branches land
-      # on VALIDATE_EXTERNAL_SYSTEMS_REGISTERED; validate-external-systems-
-      # registered / resolve-external-system then derive the touched-system set
-      # by PRECEDENCE (escc-systems when declared, else the port-change paths —
-      # see external.go), so the explicit declaration is authoritative when
-      # present.
       - id: GATE_TICKET_HAS_ESCC
         type: gateway
         binding: ticket-has-escc
         name: "Ticket Declares External System Contract Criteria?"
 
-      - id: GATE_EXTERNAL_DRIVER_PORTS_CHANGED
-        type: gateway
-        binding: at-external-driver-port-changed
-        name: "External Driver Ports Changed?"
-
-      # Upfront no-silent-skip guard (plan 20260615-0755 Item 3). Runs ONCE,
-      # before the per-external-system clones below, and hard-errors if the
-      # external-driver-port change touches any external system absent from the
-      # external-systems: registry — such a system would have no unrolled clone
-      # and be silently skipped (the #65-class bug plan 20260613-1835 closed,
-      # now seeing the whole changed-set against the whole registry). Reached via
-      # either entry gate (ESCC-declared or port-changed); the touched-system set
-      # it validates is derived by precedence (escc-systems when ticket-has-escc,
-      # else the port-change paths — external.go). On the port-changed branch a
-      # non-empty change is guaranteed; on the ESCC branch the declared systems
-      # are the source.
       - id: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED
         type: service-task
         action: validate-external-systems-registered
         name: "Validate Touched External Systems Are Registered"
 
-      # Q31.a (resolved Option A, nested): the external-driver-port-changed
-      # true-branch enters the contract-test-first CT-HIGH, not a thin AT-only
-      # adapter step. The CT-HIGH is a superset — it writes+verifies the
-      # contract test (real, then stub) AND implements the external adapter.
-      # It is self-contained: it pins its own expected results internally
-      # (write-contract-tests → success; contract-real/stub are outcome-probed
-      # post-adapters, plan 20260606-1943 — no pinned polarity) and sources
-      # `${ct-test-names}` from write-contract-tests'
-      # output. The one caller param it needs is the cascade tag (plan
-      # 20260606-1525): `test-category: contract` makes the whole excursion
-      # namespace its port-changed verdicts AND test-name list under `ct-*`, so
-      # its inner test-code writer (write-contract-tests) and DSL impl cannot
-      # clobber the parent AT cascade's `at-*` keys. The inner
-      # IMPLEMENT_AND_VERIFY_DSL re-pins `test-category: contract` locally
-      # (harmless — same value).
+      # Q31.a (resolved Option A, nested): enters the contract-test-first
+      # CT-HIGH, which writes+verifies the contract test (real, then stub)
+      # AND implements the external adapter. Self-contained except for the
+      # cascade tag (plan 20260606-1525): `test-category: contract` makes
+      # the excursion namespace its port-changed verdicts and test-name
+      # list under `ct-*`, so it cannot clobber the parent AT cascade's
+      # `at-*` keys. verify-mode: red prevents green-when-complete cover
+      # mode from leaking into the contract excursion.
       #
-      # UNROLL ANCHOR (plan 20260615-0755): at load time UnrollExternalSystems
-      # replaces this single template node with one cloned call-activity per
-      # registered external system, baking external-system-name + real-kind into
-      # each clone's params: and stitching them linearly (VALIDATE → clone0 →
-      # … → cloneN-1 → WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE). Each clone
-      # self-guards inside the cycle (resolve-external-system +
-      # GATE_EXTERNAL_SYSTEM_TOUCHED), so a ticket runs only the cycles for the
-      # external systems it touched. On a project with no external systems the
-      # node stays single+static and is never reached (its entry gates are
-      # ESCC- and port-keyed, and a project with no external systems declares
-      # neither).
+      # UNROLL ANCHOR (plan 20260615-0755): replaced at load time by one
+      # cloned call-activity per registered external system, baking
+      # external-system-name + real-kind into each clone's params and
+      # stitching them linearly (VALIDATE → clone0 → … → cloneN-1 →
+      # IMPLEMENT_EXTERNAL_DRIVERS_END). Each clone self-guards inside the
+      # cycle (resolve-external-system + GATE_EXTERNAL_SYSTEM_TOUCHED).
       - id: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS
         type: call-activity
         process: implement-and-verify-external-system-driver-adapters-contract-tests
         name: "Implement and Verify External System Driver Adapters Contract Tests"
         params:
           test-category: contract
-          # Default the CT-HIGH inner verify gates away from the enclosing
-          # cover run: pin `red` here so the green-when-complete cover mode
-          # cannot inherit into the contract excursion's
-          # IMPLEMENT_AND_VERIFY_DSL → implement-test-layer gate (plan
-          # 20260606-1518). That inner DSL step now overrides this to
-          # `verify-mode: none` (compile-only; contract-real red/green is
-          # deferred to PROBE_CONTRACT_REAL, plan 20260606-2330) — the `red`
-          # default remains as the barrier for any other inner
-          # implement-test-layer consumer.
           verify-mode: red
 
+      - id: IMPLEMENT_EXTERNAL_DRIVERS_END
+        type: end-event
+        name: "External Drivers Implemented"
+
+    sequence-flows:
+      - {from: GATE_TICKET_HAS_ESCC, to: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED, when: "ticket-has-escc == true"}
+      - {from: GATE_TICKET_HAS_ESCC, to: IMPLEMENT_EXTERNAL_DRIVERS_END,        when: "ticket-has-escc == false"}
+      - {from: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS}
+      - {from: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, to: IMPLEMENT_EXTERNAL_DRIVERS_END}
+
+  # The shared, channel-AGNOSTIC DSL slice (plan 20260530-1725 Item 2a).
+  # This is the cascade up to — but NOT including — the per-channel System
+  # Driver adapter gate: write the test code (inner primitive), then cascade
+  # into DSL whenever the DSL port changed. Reads `at-dsl-port-changed` from
+  # the inner call; the acceptance-cascade-namespaced verdict (plan 20260606-1525).
+  # External driver work now lives upstream in `implement-external-drivers-if-needed`,
+  # which `change-system-behavior` and `cover-system-behavior` call BEFORE this
+  # process, so stubs are in place when acceptance tests run here.
+  #
+  # Post-DSL integrity gate: if the DSL implementer touched external driver port
+  # files (`at-external-driver-port-changed == true`), the ticket needs an
+  # ## External System Contract Criteria section so the external driver work
+  # happens in `implement-external-drivers-if-needed` on a re-run from the
+  # start. Any external driver port change at this stage is always an error.
+  #
+  # Why this is its own named sub-process: it is the `--target test` slice the
+  # whole team mobs (tests + DSL core + driver port) — the contract every channel
+  # team builds on. It ends RED-by-design (no system, no per-channel adapter yet).
+  # The `--target` selector enters it by name via RunProcess;
+  # `write-acceptance-tests-and-system-adapters` (below) composes it and then
+  # runs the per-channel adapter tail it deliberately excludes
+  # (System Driver adapter is channel-shaped — D-adapter-ownership option A).
+  write-acceptance-tests-and-dsl:
+    name: "Write and Verify Channel-Shared Acceptance Tests"
+    start: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
+    nodes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
         type: call-activity
         process: write-and-verify-acceptance-test-code
@@ -952,17 +900,10 @@ processes:
           verify-pending-on: dsl
 
       # Upfront no-silent-skip guard for the channel unroll (plan 20260619-1139
-      # Step 5), the channel analog of VALIDATE_EXTERNAL_SYSTEMS_REGISTERED. Runs
-      # ONCE here — after WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE's RED acceptance
-      # verify wrote one report per configured acceptance-<ch> partition, and
-      # before any per-channel clone (the system-driver-adapter unroll downstream
-      # in write-and-verify-acceptance-tests, and the system unroll later in
-      # change-system-behavior). It hard-errors if a ticket acceptance test ran in
-      # NONE of the configured channels — such a test registers for a channel
-      # absent from gh-optivem.yaml channels: (or does not exist) and would be
-      # silently skipped by every per-channel GATE_CHANNEL_TOUCHED, leaving the
-      # criterion unverified. This is the dangerous direction the per-channel gate
-      # cannot catch (it only skips a configured channel with no matching test).
+      # Step 5). Runs ONCE here — after WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE's
+      # RED acceptance verify wrote one report per configured acceptance-<ch>
+      # partition, and before any per-channel clone. It hard-errors if a ticket
+      # acceptance test ran in NONE of the configured channels.
       - id: VALIDATE_CHANNELS_REGISTERED
         type: service-task
         action: validate-channels-registered
@@ -998,65 +939,60 @@ processes:
           # " (external: ...)" suffix that disambiguates the two.
           layer-suffix: ""
 
-      - id: SHARED_CONTRACT_END
+      # Post-DSL integrity gate: if the DSL implementer touched an external
+      # driver port file, this ticket needs an ## External System Contract
+      # Criteria section. External driver work belongs in
+      # `implement-external-drivers-if-needed`, upstream of this process —
+      # any external driver port change at this stage is always an error.
+      - id: GATE_EXTERNAL_DRIVER_PORT_CHANGED
+        type: gateway
+        binding: at-external-driver-port-changed
+        name: "DSL Touched External Driver Port Files?"
+
+      - id: EXTERNAL_DRIVER_PORT_CHANGED_HALT
+        type: error-end-event
+        name: "DSL touched external driver port files — this ticket needs an ## External System Contract Criteria section; add it and re-run from the start"
+
+      - id: WRITE_ACCEPTANCE_TESTS_AND_DSL_END
         type: end-event
         name: "Channel-Shared Acceptance Tests Verified"
 
     sequence-flows:
-      - {from: GATE_TICKET_HAS_ESCC, to: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED,  when: "ticket-has-escc == true"}
-      - {from: GATE_TICKET_HAS_ESCC, to: GATE_EXTERNAL_DRIVER_PORTS_CHANGED,    when: "ticket-has-escc == false"}
-      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED,  when: "at-external-driver-port-changed == true"}
-      - {from: GATE_EXTERNAL_DRIVER_PORTS_CHANGED, to: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, when: "at-external-driver-port-changed == false"}
-      - {from: VALIDATE_EXTERNAL_SYSTEMS_REGISTERED, to: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS}
-      - {from: IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS, to: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE}
       - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: VALIDATE_CHANNELS_REGISTERED}
       - {from: VALIDATE_CHANNELS_REGISTERED, to: GATE_DSL_PORT_CHANGED}
-      - {from: GATE_DSL_PORT_CHANGED, to: IMPLEMENT_AND_VERIFY_DSL, when: "at-dsl-port-changed == true"}
-      - {from: GATE_DSL_PORT_CHANGED, to: SHARED_CONTRACT_END,      when: "at-dsl-port-changed == false"}
-      - {from: IMPLEMENT_AND_VERIFY_DSL, to: SHARED_CONTRACT_END}
+      - {from: GATE_DSL_PORT_CHANGED, to: IMPLEMENT_AND_VERIFY_DSL,            when: "at-dsl-port-changed == true"}
+      - {from: GATE_DSL_PORT_CHANGED, to: WRITE_ACCEPTANCE_TESTS_AND_DSL_END,  when: "at-dsl-port-changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_DSL, to: GATE_EXTERNAL_DRIVER_PORT_CHANGED}
+      - {from: GATE_EXTERNAL_DRIVER_PORT_CHANGED, to: EXTERNAL_DRIVER_PORT_CHANGED_HALT,      when: "at-external-driver-port-changed == true"}
+      - {from: GATE_EXTERNAL_DRIVER_PORT_CHANGED, to: WRITE_ACCEPTANCE_TESTS_AND_DSL_END,     when: "at-external-driver-port-changed == false"}
 
-  # The full RED acceptance cascade = shared contract + the per-channel System
-  # Driver adapter tail. Composes `shared-contract` (above) and then, IFF the
-  # acceptance tests touched a system driver port, runs the (channel-unrolled)
-  # adapter step. Two callers — write-and-verify-acceptance-tests-fail /
-  # -pass — forward `expected-test-result`; the no-arg full run walks this
-  # process exactly as it did before the Item 2a seam-extraction.
+  # The full acceptance cascade = the channel-AGNOSTIC DSL slice + the
+  # per-channel System Driver adapter tail. Composes
+  # `write-acceptance-tests-and-dsl` (above) and then, IFF the acceptance
+  # tests touched a system driver port, runs the (channel-unrolled) adapter
+  # step. `expected-test-result` is forwarded from the caller
+  # (change-system-behavior: failure; cover-system-behavior: success).
   #
-  # Behaviour-preservation note (the re-gate): the System Driver adapter gate
-  # is STRICT — `system-driver-port-changed` is only written to State by the
-  # DSL implementer, so it is unset whenever the DSL impl was skipped. The
-  # shared-contract slice already short-circuits to its end when
-  # `at-dsl-port-changed == false`; this parent therefore RE-READS
-  # `at-dsl-port-changed` (a shared-State flag, idempotent pure read) before the
-  # adapter gate. dsl == false → straight to WAV_AT_END (the adapter gate is
-  # never reached on an unset key, matching pre-seam behaviour); dsl == true →
-  # the DSL impl ran, so `at-system-driver-port-changed` IS set and the adapter
-  # gate routes normally. The `at-` namespacing (plan 20260606-1525) is what
-  # makes this re-read correct: the nested contract excursion writes only
-  # `ct-*`, so the AT verdicts the test-code writer / AT DSL impl set survive
-  # the excursion untouched and the parent reads the AT-side truth here. The adapter anchor + its gate are kept verbatim so
-  # the UnrollSystemDriverAdapterChannels rewrite (channels.go) still finds
-  # them (gate → anchor TRUE-branch, gate → WAV_AT_END skip-branch, anchor →
-  # WAV_AT_END).
-  write-and-verify-acceptance-tests:
+  # `at-system-driver-port-changed` is preset to `false` at process entry so
+  # GATE_SYSTEM_DRIVER_PORTS_CHANGED is always safe to read without a prior
+  # outer DSL-port guard. When `write-acceptance-tests-and-dsl` runs its DSL
+  # impl, the dsl-implementer overwrites it to true or false; if DSL was
+  # skipped, the preset false prevails. The adapter anchor + its gate are kept
+  # verbatim so the UnrollSystemDriverAdapterChannels rewrite (channels.go)
+  # still finds them (gate → anchor TRUE-branch, gate → WAV_AT_END skip-branch,
+  # anchor → WAV_AT_END).
+  write-acceptance-tests-and-system-adapters:
     name: "Write and Verify Acceptance Tests"
-    start: SHARED_CONTRACT
+    preset-state:
+      at-system-driver-port-changed: false
+    start: WRITE_ACCEPTANCE_TESTS_AND_DSL
     nodes:
-      - id: SHARED_CONTRACT
+      - id: WRITE_ACCEPTANCE_TESTS_AND_DSL
         type: call-activity
-        process: shared-contract
+        process: write-acceptance-tests-and-dsl
         name: "Write and Verify Channel-Shared Acceptance Tests"
         params:
           expected-test-result: ${expected-test-result}
-
-      # Re-gate on the flag shared-contract's inner test-code writer set in
-      # State: skip the adapter tail entirely when no DSL port changed (the
-      # strict adapter gate below would otherwise read an unset key). See the
-      # behaviour-preservation note above.
-      - id: GATE_DSL_PORT_CHANGED
-        type: gateway
-        binding: at-dsl-port-changed
-        name: "DSL Port Changed?"
 
       - id: GATE_SYSTEM_DRIVER_PORTS_CHANGED
         type: gateway
@@ -1095,9 +1031,7 @@ processes:
         name: "Acceptance Tests Verified"
 
     sequence-flows:
-      - {from: SHARED_CONTRACT, to: GATE_DSL_PORT_CHANGED}
-      - {from: GATE_DSL_PORT_CHANGED, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED, when: "at-dsl-port-changed == true"}
-      - {from: GATE_DSL_PORT_CHANGED, to: WAV_AT_END,                       when: "at-dsl-port-changed == false"}
+      - {from: WRITE_ACCEPTANCE_TESTS_AND_DSL, to: GATE_SYSTEM_DRIVER_PORTS_CHANGED}
       - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, when: "at-system-driver-port-changed == true"}
       - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED, to: WAV_AT_END,                                  when: "at-system-driver-port-changed == false"}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, to: WAV_AT_END}

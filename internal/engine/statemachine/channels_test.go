@@ -59,8 +59,8 @@ func TestUnrollSystemChannels_TwoChannels(t *testing.T) {
 		checkParam(t, n, "test-names", "${at-test-names}")
 	}
 
-	// Linear chain: WRITE → API → UI → REFACTOR, no loopback.
-	assertSingleEdge(t, proc, "WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
+	// Linear chain: WRITE_ACCEPTANCE_TESTS → API → UI → REFACTOR, no loopback.
+	assertSingleEdge(t, proc, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
 	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "IMPLEMENT_AND_VERIFY_SYSTEM_UI")
 	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_UI", "REFACTOR_OPPORTUNISTICALLY")
 }
@@ -79,7 +79,7 @@ func TestUnrollSystemChannels_SingleChannel(t *testing.T) {
 	checkParam(t, api, "suite", "acceptance-api")
 
 	// The sole channel stitches straight from predecessor to successor.
-	assertSingleEdge(t, proc, "WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
+	assertSingleEdge(t, proc, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
 	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "REFACTOR_OPPORTUNISTICALLY")
 }
 
@@ -120,11 +120,12 @@ func TestUnrollSystemChannels_BindsEndToEnd(t *testing.T) {
 // --- System Driver adapter unroll (plan 20260530-1725 Item 0) ----------------
 //
 // Same transform as the system unroll, but on the RED
-// write-and-verify-acceptance-tests cascade's adapter step, whose predecessor
-// is the GATE_SYSTEM_DRIVER_PORTS_CHANGED gateway. These assert the per-channel
-// shape, the channel-only param override (no common / suite), and — the new
-// wrinkle — that the gateway's TRUE-branch `when:` predicate is preserved on the
-// edge into the first channel so the per-channel block stays gated.
+// write-acceptance-tests-and-system-adapters cascade's adapter step, whose
+// predecessor is the GATE_SYSTEM_DRIVER_PORTS_CHANGED gateway. These assert
+// the per-channel shape, the channel-only param override (no common / suite),
+// and — the new wrinkle — that the gateway's TRUE-branch `when:` predicate is
+// preserved on the edge into the first channel so the per-channel block stays
+// gated.
 
 const (
 	sysDriverAdapterAnchorAPI = "IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS_API"
@@ -137,9 +138,9 @@ func TestUnrollSystemDriverAdapterChannels_TwoChannels(t *testing.T) {
 	if err := eng.UnrollSystemDriverAdapterChannels([]string{"api", "ui"}); err != nil {
 		t.Fatalf("UnrollSystemDriverAdapterChannels: %v", err)
 	}
-	proc := eng.Processes[writeAndVerifyAcceptanceTestsProcess]
+	proc := eng.Processes[writeAcceptanceTestsAndSystemAdaptersProcess]
 	if proc == nil {
-		t.Fatalf("process %q missing", writeAndVerifyAcceptanceTestsProcess)
+		t.Fatalf("process %q missing", writeAcceptanceTestsAndSystemAdaptersProcess)
 	}
 	if _, ok := proc.Nodes[implementSystemDriverAdaptersAnchor]; ok {
 		t.Errorf("template anchor %q should be gone after unroll", implementSystemDriverAdaptersAnchor)
@@ -211,7 +212,7 @@ func TestUnrollSystemDriverAdapterChannels_SingleChannel(t *testing.T) {
 	if err := eng.UnrollSystemDriverAdapterChannels([]string{"api"}); err != nil {
 		t.Fatalf("UnrollSystemDriverAdapterChannels: %v", err)
 	}
-	proc := eng.Processes[writeAndVerifyAcceptanceTestsProcess]
+	proc := eng.Processes[writeAcceptanceTestsAndSystemAdaptersProcess]
 	if _, ok := proc.Nodes[sysDriverAdapterAnchorUI]; ok {
 		t.Error("no UI node expected for a single-channel [api] project")
 	}
@@ -266,19 +267,20 @@ func TestUnrollBothChannels_BindsEndToEnd(t *testing.T) {
 
 // --- External-system unroll (plan 20260615-0755) -----------------------------
 //
-// Same transform as the channel unrolls, on the shared-contract external
-// driver-adapter contract anchor. Its predecessor is the upfront
+// Same transform as the channel unrolls, on the implement-external-drivers-if-needed
+// external driver-adapter contract anchor. Its predecessor is the upfront
 // VALIDATE_EXTERNAL_SYSTEMS_REGISTERED node (unconditional edge — the
-// GATE_EXTERNAL_DRIVER_PORTS_CHANGED true-branch predicate sits on GATE →
-// VALIDATE), so the seam into the first clone is unconditional. Each clone bakes
-// its own external-system-name + real-kind; the per-clone touched-guard lives
+// GATE_TICKET_HAS_ESCC true-branch predicate sits on GATE → VALIDATE), so
+// the seam into the first clone is unconditional. Each clone bakes its own
+// external-system-name + real-kind; the per-clone touched-guard lives
 // INSIDE the cycle, not here.
 
 const (
-	extAdapterAnchorERP   = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_ERP"
-	extAdapterAnchorCLOCK = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_CLOCK"
-	extValidateNode       = "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"
-	extAdapterSuccessor   = "WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE"
+	extAdapterAnchorERP             = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_ERP"
+	extAdapterAnchorCLOCK           = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_CLOCK"
+	extValidateNode                 = "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"
+	extAdapterSuccessor             = "IMPLEMENT_EXTERNAL_DRIVERS_END"
+	writeAcceptanceTestsAndDslProc  = "write-acceptance-tests-and-dsl"
 )
 
 func TestUnrollExternalSystems_TwoSystems(t *testing.T) {
@@ -287,9 +289,9 @@ func TestUnrollExternalSystems_TwoSystems(t *testing.T) {
 	if err := eng.UnrollExternalSystems([]string{"erp", "clock"}, realKind); err != nil {
 		t.Fatalf("UnrollExternalSystems: %v", err)
 	}
-	proc := eng.Processes[sharedContractProcess]
+	proc := eng.Processes[implementExternalDriversIfNeededProcess]
 	if proc == nil {
-		t.Fatalf("process %q missing", sharedContractProcess)
+		t.Fatalf("process %q missing", implementExternalDriversIfNeededProcess)
 	}
 	if _, ok := proc.Nodes[implementExternalDriverAdaptersAnchor]; ok {
 		t.Errorf("template anchor %q should be gone after unroll", implementExternalDriverAdaptersAnchor)
@@ -337,7 +339,7 @@ func TestUnrollExternalSystems_SingleSystem(t *testing.T) {
 	if err := eng.UnrollExternalSystems([]string{"erp"}, map[string]string{"erp": "simulator"}); err != nil {
 		t.Fatalf("UnrollExternalSystems: %v", err)
 	}
-	proc := eng.Processes[sharedContractProcess]
+	proc := eng.Processes[implementExternalDriversIfNeededProcess]
 	if _, ok := proc.Nodes[extAdapterAnchorCLOCK]; ok {
 		t.Error("no CLOCK node expected for a single-system [erp] project")
 	}
@@ -373,7 +375,7 @@ func TestUnrollExternalSystems_Guards(t *testing.T) {
 // anchor — redesign-external-system-structure's REDESIGN_EXTERNAL_SYSTEM (plan
 // 20260622-1739 Step 4b) — is unrolled by the same UnrollExternalSystems call,
 // with the same per-clone external-system-name + real-kind baking and the same
-// linear, loopback-free stitching as the shared-contract CT anchor. Both seam
+// linear, loopback-free stitching as the implement-external-drivers-if-needed CT anchor. Both seam
 // edges are unconditional (the guards live inside the per-system sub-process and
 // the upfront validate nodes), so predicate preservation is a no-op here.
 func TestUnrollExternalSystems_RedesignAnchor(t *testing.T) {
@@ -459,8 +461,8 @@ func TestLayerSuffix_StaticBareDefaults(t *testing.T) {
 	// Static callers default the discriminator to "" (no unroll has run).
 	for _, c := range []struct{ proc, node string }{
 		{changeSystemBehaviorProcess, implementAndVerifySystemAnchor},
-		{writeAndVerifyAcceptanceTestsProcess, implementSystemDriverAdaptersAnchor},
-		{sharedContractProcess, "IMPLEMENT_AND_VERIFY_DSL"},
+		{writeAcceptanceTestsAndSystemAdaptersProcess, implementSystemDriverAdaptersAnchor},
+		{writeAcceptanceTestsAndDslProc, "IMPLEMENT_AND_VERIFY_DSL"},
 	} {
 		proc := eng.Processes[c.proc]
 		if proc == nil {

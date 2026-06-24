@@ -143,8 +143,8 @@ func TestResolveScopedEntry_Test_NoUpstream_SeedsFailure(t *testing.T) {
 		if err != nil {
 			t.Fatalf("resolveScopedEntry(test): %v", err)
 		}
-		if proc != "shared-contract" {
-			t.Errorf("process = %q, want shared-contract", proc)
+		if proc != "write-acceptance-tests-and-dsl" {
+			t.Errorf("process = %q, want write-acceptance-tests-and-dsl", proc)
 		}
 		if got := sCtx.Params["expected-test-result"]; got != "failure" {
 			t.Errorf("expected-test-result = %q, want failure", got)

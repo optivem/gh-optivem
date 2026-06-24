@@ -2,6 +2,7 @@ package statemachine
 
 import (
 	"fmt"
+	"maps"
 	"strings"
 )
 
@@ -227,6 +228,7 @@ func (e *Engine) RunProcess(name string, ctx *Context) error {
 }
 
 func (e *Engine) runProcess(process *Process, ctx *Context) error {
+	maps.Copy(ctx.State, process.PresetState)
 	cur := process.Start
 	dispatches := 0
 	visits := map[string]int{}

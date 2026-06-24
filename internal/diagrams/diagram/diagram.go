@@ -50,7 +50,7 @@ var groupAlias = map[string]string{
 // fixes a reader-facing top-down walk: runtime bootstrap → TOP entry
 // points → per-ticket CYCLEs → composite HIGH orchestrations → atomic
 // MID tasks → LOW primitives. Within a level, related processes cluster
-// (e.g. the three `write-and-verify-acceptance-tests*` siblings).
+// (e.g. the acceptance-tests siblings).
 var processOrder = []string{
 	// runtime bootstrap
 	"main",
@@ -66,10 +66,9 @@ var processOrder = []string{
 	"refactor-system-structure",
 	"refactor-test-structure",
 	// HIGH
-	"write-and-verify-acceptance-tests-fail",
-	"write-and-verify-acceptance-tests-pass",
-	"write-and-verify-acceptance-tests",
-	"shared-contract",
+	"implement-external-drivers-if-needed",
+	"write-acceptance-tests-and-system-adapters",
+	"write-acceptance-tests-and-dsl",
 	"write-and-verify-acceptance-test-code",
 	"implement-and-verify-dsl",
 	"implement-and-verify-system-driver-adapters",
@@ -500,8 +499,8 @@ func writeNode(b *strings.Builder, eng *statemachine.Engine, n statemachine.Node
 // are shown: `${…}` values are caller-forwarded variables (noise on the
 // diagram and identical across call sites), so they're skipped. This is
 // what makes otherwise-identical thin wrappers legible — e.g. the
-// write-and-verify-acceptance-tests-{fail,pass} wrappers differ only by a
-// pinned `expected-test-result`, and surfacing it stops the two diagrams
+// change/cover callers of write-acceptance-tests-and-system-adapters differ
+// only by a pinned `expected-test-result`, and surfacing it stops the two diagrams
 // from looking like the same picture. Keys are sorted for deterministic
 // output (Params is a map). Non-call-activity nodes carry no params, so
 // callers gate on node kind.

@@ -65,7 +65,7 @@ func TestTarget_SliceProcess(t *testing.T) {
 		wantReqChannel bool
 		wantOK         bool
 	}{
-		{TargetTest, "shared-contract", false, true},
+		{TargetTest, "write-acceptance-tests-and-dsl", false, true},
 		{TargetDriverAdapter, "implement-and-verify-system-driver-adapters", true, true},
 		{TargetSystem, "implement-and-verify-system", true, true},
 		{TargetUnset, "", false, false},

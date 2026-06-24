@@ -175,10 +175,10 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("at-external-driver-port-changed", b.atExternalDriverPortChanged)
 	r.Register("ct-dsl-port-changed", b.ctDslPortChanged)
 	// ESCC-first contract-room entry (plan 20260620-1850). GATE_TICKET_HAS_ESCC
-	// in shared-contract opens the external contract/stub room when the ticket
-	// declares External System Contract Criteria, regardless of the file-change
-	// proxy at-external-driver-port-changed (now the fallback). parse-ticket
-	// stamps the bool into State; this gate is a pure state-reader.
+	// in implement-external-drivers-if-needed opens the external contract/stub
+	// room when the ticket declares External System Contract Criteria. ESCC is
+	// the sole entry signal; the broken port-changed fallback is removed.
+	// parse-ticket stamps the bool into State; this gate is a pure state-reader.
 	r.Register("ticket-has-escc", b.ticketHasESCC)
 	// Cover-path mode-aware acceptance-test verify gate + its case-D
 	// terminal-verify gate (plan 20260606-1518). The shared verify gate
