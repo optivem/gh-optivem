@@ -102,12 +102,25 @@ type rawEdge struct {
 // must (or may) emit via `gh optivem output write`. The legacy string-CSV
 // form ("key1,key2") is rejected at unmarshal time so no silent
 // backward-compat path exists.
+//
+// DiagramSectionOrder, when positive, causes the expanded diagram renderer to
+// emit this process as a top-level section. Sections are ordered by this
+// value, ascending. Zero (the default) means the process is not rendered as a
+// standalone section.
+//
+// DiagramNoInlineExpand suppresses inline subgraph expansion of this process
+// when it is referenced as a call-activity: it renders as a plain reference
+// box ("see § id") regardless of depth. Useful for low-level primitives
+// (execute-command, execute-agent) and for processes that already appear as
+// standalone sections and would otherwise balloon their parent's subgraph.
 type rawProcess struct {
-	Name          string       `yaml:"name"`
-	Start         string       `yaml:"start"`
-	Outputs       []OutputSpec `yaml:"outputs,omitempty"`
-	Nodes         []RawNode    `yaml:"nodes"`
-	SequenceFlows []rawEdge    `yaml:"sequence-flows"`
+	Name                  string       `yaml:"name"`
+	Start                 string       `yaml:"start"`
+	Outputs               []OutputSpec `yaml:"outputs,omitempty"`
+	DiagramSectionOrder   int          `yaml:"diagram-section-order,omitempty"`
+	DiagramNoInlineExpand bool         `yaml:"diagram-no-inline-expand,omitempty"`
+	Nodes                 []RawNode    `yaml:"nodes"`
+	SequenceFlows         []rawEdge    `yaml:"sequence-flows"`
 }
 
 // rawSpec is the top-level YAML document.
@@ -169,13 +182,15 @@ func buildProcess(id string, rp rawProcess) (*Process, error) {
 		return nil, err
 	}
 	process := &Process{
-		ID:             id,
-		Name:           rp.Name,
-		Start:          rp.Start,
-		Outputs:        append([]OutputSpec(nil), rp.Outputs...),
-		Nodes:          make(map[string]Node, len(rp.Nodes)),
-		Edges:          make([]Edge, 0, len(rp.SequenceFlows)),
-		OutgoingByNode: make(map[string][]Edge),
+		ID:                    id,
+		Name:                  rp.Name,
+		Start:                 rp.Start,
+		Outputs:               append([]OutputSpec(nil), rp.Outputs...),
+		DiagramSectionOrder:   rp.DiagramSectionOrder,
+		DiagramNoInlineExpand: rp.DiagramNoInlineExpand,
+		Nodes:                 make(map[string]Node, len(rp.Nodes)),
+		Edges:                 make([]Edge, 0, len(rp.SequenceFlows)),
+		OutgoingByNode:        make(map[string][]Edge),
 	}
 	for _, rn := range rp.Nodes {
 		if rn.ID == "" {

@@ -23,22 +23,6 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
-// topLevelExpansionRoots are the process IDs used as section roots in the
-// expanded diagram. Their call-activities are expanded recursively.
-var topLevelExpansionRoots = []string{
-	"main",
-	"refine-ticket",
-	"implement-ticket",
-	"refactor",
-}
-
-// neverExpand lists subprocess IDs that are always rendered as plain reference
-// boxes, regardless of depth or visit state.
-var neverExpand = map[string]bool{
-	"execute-command": true,
-	"execute-agent":   true,
-}
-
 // maxExpandDepth limits how many levels of call-activity nesting are expanded.
 // Depth 0 = root; depth N = Nth level of subprocesses shown as subgraphs.
 // Call-activities at depth >= maxExpandDepth render as plain reference boxes
@@ -52,7 +36,9 @@ const maxExpandDepth = 2
 
 // RenderExpanded returns a Mermaid markdown body like Render but with
 // call-activity nodes replaced by inline subgraphs showing the subprocess
-// steps. Only the top-level entry processes are rendered as sections.
+// steps. Which processes appear as top-level sections is controlled by the
+// `diagram-section-order:` field in process-flow.yaml — processes with a
+// positive value are rendered in ascending order of that value.
 // The output is suitable for docs/process-diagram-expanded.md.
 func RenderExpanded(eng *statemachine.Engine) string {
 	var b strings.Builder
@@ -60,14 +46,28 @@ func RenderExpanded(eng *statemachine.Engine) string {
 	b.WriteString("> Generated from `internal/atdd/process/process-flow.yaml` by `internal/atdd/runtime/diagram`. Do not edit by hand — edit the YAML and regenerate via `gh optivem process show --expanded > docs/process-diagram-expanded.md`.\n\n")
 	b.WriteString("Each section shows a top-level process with all call-activity nodes expanded inline as subgraphs. See [process-diagram.md](process-diagram.md) for the one-process-per-section reference view.\n\n")
 	writeLegend(&b)
-	for _, id := range topLevelExpansionRoots {
-		proc, ok := eng.Processes[id]
-		if !ok {
-			continue
-		}
+	for _, proc := range sectionRoots(eng) {
 		writeExpandedSection(&b, eng, proc)
 	}
 	return b.String()
+}
+
+// sectionRoots returns the processes marked with diagram-section-order > 0,
+// sorted ascending by that order value.
+func sectionRoots(eng *statemachine.Engine) []*statemachine.Process {
+	var roots []*statemachine.Process
+	for _, proc := range eng.Processes {
+		if proc.DiagramSectionOrder > 0 {
+			roots = append(roots, proc)
+		}
+	}
+	sort.Slice(roots, func(i, j int) bool {
+		if roots[i].DiagramSectionOrder != roots[j].DiagramSectionOrder {
+			return roots[i].DiagramSectionOrder < roots[j].DiagramSectionOrder
+		}
+		return roots[i].ID < roots[j].ID
+	})
+	return roots
 }
 
 // expandAcc collects all edge and styling declarations across the whole
@@ -169,10 +169,10 @@ func expandProcess(acc *expandAcc, eng *statemachine.Engine, proc *statemachine.
 
 		targetID := n.Raw.Process
 		targetProc, ok := eng.Processes[targetID]
-		if !ok || visited[targetID] || depth >= maxExpandDepth || neverExpand[targetID] {
+		if !ok || visited[targetID] || depth >= maxExpandDepth || targetProc.DiagramNoInlineExpand {
 			// Unknown process (e.g. templated "${action}"), cycle detected,
-			// depth limit reached, or explicitly excluded: fall back to a plain
-			// call-activity node so the diagram stays connected.
+			// depth limit reached, or marked diagram-no-inline-expand: fall back
+			// to a plain call-activity node so the diagram stays connected.
 			tree.nodeLines = append(tree.nodeLines, expandNodeDecl(scopedID, n))
 			expandAccStyle(acc, scopedID, n)
 			expansions[id] = entryExit{entry: scopedID, exits: []string{scopedID}}

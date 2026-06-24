@@ -156,6 +156,7 @@ processes:
   # structure.
   main:
     name: "Main"
+    diagram-section-order: 1
     start: START
     nodes:
       - id: START
@@ -181,6 +182,7 @@ processes:
   # precondition for `implement-ticket`.
   refine-ticket:
     name: "Refine Ticket"
+    diagram-section-order: 2
     start: MARK_IN_REFINEMENT
     nodes:
       - id: MARK_IN_REFINEMENT
@@ -256,6 +258,7 @@ processes:
   # message (see statemachine/run.go).
   implement-ticket:
     name: "Implement Ticket"
+    diagram-no-inline-expand: true
     start: SETUP_TESTS
     nodes:
       # SETUP_TESTS is the first activity, before MARK_IN_PROGRESS /
@@ -369,6 +372,7 @@ processes:
   # this TOP; (3) ad-hoc operator entry directly into this TOP.
   refactor:
     name: "Refactor"
+    diagram-section-order: 10
     start: GATE_REFACTOR_TYPE_CHOICE
     nodes:
       # No unknown catch-all edge by design (unlike the parse-derived
@@ -442,6 +446,7 @@ processes:
   # `refactor-*-structure` CYCLEs through one shared menu.
   change-system-behavior:
     name: "Change System Behavior"
+    diagram-section-order: 4
     start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
     nodes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_FAIL
@@ -497,6 +502,7 @@ processes:
   # making AT pass).
   cover-system-behavior:
     name: "Cover System Behavior"
+    diagram-section-order: 5
     start: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS
     nodes:
       - id: WRITE_AND_VERIFY_ACCEPTANCE_TESTS_PASS
@@ -527,6 +533,7 @@ processes:
   # single-caller prompt with one algorithm and no Checklist branching.
   redesign-system-structure:
     name: "Redesign System Structure"
+    diagram-section-order: 6
     start: UPDATE_SYSTEM_DRIVER_ADAPTERS
     nodes:
       - id: UPDATE_SYSTEM_DRIVER_ADAPTERS
@@ -593,6 +600,7 @@ processes:
   # dispatch `update-*` variants (Checklist-driven reshape).
   redesign-external-system-structure:
     name: "Redesign External System Structure"
+    diagram-section-order: 7
     start: VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC
     nodes:
       - id: VALIDATE_REDESIGN_EXTERNAL_REQUIRES_ESCC
@@ -710,6 +718,7 @@ processes:
   # this plan; preserved unchanged.
   refactor-system-structure:
     name: "Refactor System Structure"
+    diagram-section-order: 8
     start: IMPLEMENT_AND_VERIFY_SYSTEM
     nodes:
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
@@ -736,6 +745,7 @@ processes:
 
   refactor-test-structure:
     name: "Refactor Test Structure"
+    diagram-section-order: 9
     start: REFACTOR_AND_VERIFY_TESTS
     nodes:
       - id: REFACTOR_AND_VERIFY_TESTS
@@ -2726,6 +2736,7 @@ processes:
   # test-authoring paths. See plan 20260617-1456.
   setup-tests:
     name: "Setup Tests"
+    diagram-section-order: 3
     start: EXECUTE_COMMAND
     nodes:
       - id: EXECUTE_COMMAND
@@ -3034,6 +3045,7 @@ processes:
   # the fix agent gets its own snapshot step automatically.
   execute-agent:
     name: "Execute Agent"
+    diagram-no-inline-expand: true
     start: APPROVE_PRE
     nodes:
       - id: APPROVE_PRE
@@ -3231,6 +3243,7 @@ processes:
   # failure mis-routed to FIX instead of VERIFY_FAIL_END).
   execute-command:
     name: "Execute Command"
+    diagram-no-inline-expand: true
     start: APPROVE_PRE
     nodes:
       - id: APPROVE_PRE

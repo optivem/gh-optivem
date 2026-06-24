@@ -68,14 +68,23 @@ type Edge struct {
 // human-readable display label from the YAML `name:` field, used as the
 // diagram section heading. Authors set both explicitly; there is no
 // auto-Title-Case fallback (per plan 20260526-1730 Item 4).
+//
+// DiagramSectionOrder, when positive, causes the expanded diagram renderer to
+// emit this process as a top-level section at that position (ascending order).
+//
+// DiagramNoInlineExpand prevents the expanded diagram renderer from expanding
+// this process as an inline subgraph inside a parent section — it renders as a
+// plain "see § id" reference box instead.
 type Process struct {
-	ID             string
-	Name           string
-	Start          string
-	Outputs        []OutputSpec // structured output contract for writing-agent MIDs (key, type, optional)
-	Nodes          map[string]Node
-	Edges          []Edge
-	OutgoingByNode map[string][]Edge // index for nextEdge lookup
+	ID                    string
+	Name                  string
+	Start                 string
+	Outputs               []OutputSpec // structured output contract for writing-agent MIDs (key, type, optional)
+	DiagramSectionOrder   int          // 0 = not a section; positive = top-level section at this position
+	DiagramNoInlineExpand bool         // never expand inline as a subgraph in the expanded diagram
+	Nodes                 map[string]Node
+	Edges                 []Edge
+	OutgoingByNode        map[string][]Edge // index for nextEdge lookup
 }
 
 // OutputSpec is one entry in a writing-agent MID's `outputs:` contract —

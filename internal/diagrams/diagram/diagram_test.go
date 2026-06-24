@@ -186,15 +186,11 @@ func TestRenderExpanded_TopLevelSectionsPresent(t *testing.T) {
 	}
 	got := RenderExpanded(eng)
 
-	// Each top-level root must appear as a ## heading.
-	for _, id := range topLevelExpansionRoots {
-		proc, ok := eng.Processes[id]
-		if !ok {
-			continue
-		}
+	// Every process marked diagram-section-order > 0 must appear as a ## heading.
+	for _, proc := range sectionRoots(eng) {
 		want := "## " + proc.Name + "\n"
 		if !strings.Contains(got, want) {
-			t.Errorf("missing heading for root process %q: want %q in output", id, want)
+			t.Errorf("missing heading for section process %q: want %q in output", proc.ID, want)
 		}
 	}
 }
@@ -212,12 +208,13 @@ func TestRenderExpanded_OutputIsDeterministic(t *testing.T) {
 }
 
 func TestRenderExpanded_SubgraphAppearsForCallActivity(t *testing.T) {
-	// Use process ID "main" — one of the topLevelExpansionRoots — so
-	// RenderExpanded renders it as a section.
+	// Use process ID "main" with diagram-section-order: 1 so RenderExpanded
+	// renders it as a section.
 	yaml := []byte(`
 processes:
   main:
     name: "Main"
+    diagram-section-order: 1
     start: START
     nodes:
       - id: START
