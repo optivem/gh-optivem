@@ -186,7 +186,6 @@ func RegisterAll(r *Registry, deps Deps) {
 	// only when the plumbing it needs is complete; the change path (red /
 	// unset verify-mode) is unchanged.
 	r.Register("at-verify-expectation", b.atVerifyExpectation)
-	r.Register("at-external-terminal-verify-needed", b.atExternalTerminalVerifyNeeded)
 	// CT-HIGH real-side fork (plan 20260606-1356). Routes contract-real on
 	// the active clone's real-kind. The value is copied into state by the
 	// upstream resolve-external-system ACTION from the clone's baked real-kind
@@ -532,6 +531,8 @@ func plumbingPending(ctx *statemachine.Context) (bool, error) {
 	switch on := strings.TrimSpace(ctx.Params["verify-pending-on"]); on {
 	case "dsl":
 		return boolState(ctx, "at-dsl-port-changed")
+	case "system-drivers":
+		return boolState(ctx, "at-system-driver-port-changed")
 	case "drivers":
 		sys, err := boolState(ctx, "at-system-driver-port-changed")
 		if err != nil {
@@ -545,29 +546,10 @@ func plumbingPending(ctx *statemachine.Context) (bool, error) {
 	case "none":
 		return false, nil
 	case "":
-		return false, fmt.Errorf("at-verify-expectation: verify-pending-on not set on the green-when-complete path — the caller must pin dsl|drivers|none")
+		return false, fmt.Errorf("at-verify-expectation: verify-pending-on not set on the green-when-complete path — the caller must pin dsl|system-drivers|drivers|none")
 	default:
-		return false, fmt.Errorf("at-verify-expectation: unknown verify-pending-on %q (expected dsl|drivers|none)", on)
+		return false, fmt.Errorf("at-verify-expectation: unknown verify-pending-on %q (expected dsl|system-drivers|drivers|none)", on)
 	}
-}
-
-// atExternalTerminalVerifyNeeded gates the cover path's terminal AT-green
-// assertion on the external-driver-only branch (plan 20260606-1518, case D).
-// The external CT-HIGH verifies the contract tests (real/stub), not the AT, so
-// on the cover path the AT would otherwise end last-verified as FAILING at the
-// DSL layer. This gate fires a trailing AT-pass verify exactly when the run is
-// green-when-complete AND no system-driver adapter step follows (that step,
-// when present, owns the terminal PASS instead). Reached only from the
-// external-driver-port-changed == true branch, so at-external is implied true.
-func (b bindings) atExternalTerminalVerifyNeeded(ctx *statemachine.Context) statemachine.Outcome {
-	if strings.TrimSpace(ctx.Params["verify-mode"]) != "green-when-complete" {
-		return statemachine.Outcome{Bool: false}
-	}
-	sys, err := boolState(ctx, "at-system-driver-port-changed")
-	if err != nil {
-		return statemachine.Outcome{Err: err}
-	}
-	return statemachine.Outcome{Bool: !sys}
 }
 
 // boolState reads a strict boolean ctx.State flag for the plumbing-pending

@@ -1055,9 +1055,10 @@ func notEdge(t *testing.T, proc *statemachine.Process, from, to string) {
 // TestCoverPath_GreenWhenComplete_Wiring asserts the plan 20260606-1518 wiring:
 // the cover wrapper pins verify-mode, each AT layer pins its plumbing scope, the
 // CT-HIGH overrides back to red so green mode can't leak in, the two verify
-// gates route on the mode-aware at-verify-expectation binding, and the case-D
-// terminal AT-green tail exists. The change wrapper must NOT pin verify-mode so
-// the gate defaults to red and the change path is unchanged.
+// gates route on the mode-aware at-verify-expectation binding, and external
+// driver adapters are built before acceptance tests (no terminal AT-green tail).
+// The change wrapper must NOT pin verify-mode so the gate defaults to red and
+// the change path is unchanged.
 func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
 	eng := loadSnapshot(t)
 	proc := func(id string) *statemachine.Process {
@@ -1081,8 +1082,8 @@ func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
 	if got := sc.Nodes["WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE"].Raw.Params["verify-pending-on"]; got != "dsl" {
 		t.Errorf("test-code layer verify-pending-on = %q, want dsl", got)
 	}
-	if got := sc.Nodes["IMPLEMENT_AND_VERIFY_DSL"].Raw.Params["verify-pending-on"]; got != "drivers" {
-		t.Errorf("DSL layer verify-pending-on = %q, want drivers", got)
+	if got := sc.Nodes["IMPLEMENT_AND_VERIFY_DSL"].Raw.Params["verify-pending-on"]; got != "system-drivers" {
+		t.Errorf("DSL layer verify-pending-on = %q, want system-drivers", got)
 	}
 	if got := proc("write-and-verify-acceptance-tests").Nodes["IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS"].Raw.Params["verify-pending-on"]; got != "none" {
 		t.Errorf("adapter layer verify-pending-on = %q, want none", got)
@@ -1103,21 +1104,10 @@ func TestCoverPath_GreenWhenComplete_Wiring(t *testing.T) {
 		}
 	}
 
-	// 5. Case-D terminal AT-green tail in shared-contract.
-	wantEdge(t, sc, "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "GATE_AT_TERMINAL_GREEN", "")
-	wantEdge(t, sc, "GATE_AT_TERMINAL_GREEN", "START_SYSTEM_AT_TERMINAL", "at-external-terminal-verify-needed == true")
-	wantEdge(t, sc, "GATE_AT_TERMINAL_GREEN", "SHARED_CONTRACT_END", "at-external-terminal-verify-needed == false")
-	wantEdge(t, sc, "START_SYSTEM_AT_TERMINAL", "VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL", "")
-	wantEdge(t, sc, "VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL", "SHARED_CONTRACT_END", "")
-	if got := sc.Nodes["GATE_AT_TERMINAL_GREEN"].Raw.Binding; got != "at-external-terminal-verify-needed" {
-		t.Errorf("GATE_AT_TERMINAL_GREEN binding = %q, want at-external-terminal-verify-needed", got)
-	}
-	term := sc.Nodes["VERIFY_TESTS_PASS_ACCEPTANCE_TERMINAL"]
-	if got := term.Raw.Process; got != "verify-tests-pass" {
-		t.Errorf("terminal verify process = %q, want verify-tests-pass", got)
-	}
-	if got := term.Raw.Params["suite"]; got != "acceptance" {
-		t.Errorf("terminal verify suite = %q, want acceptance", got)
+	// 5. External driver adapters connect directly to acceptance tests (no terminal tail).
+	wantEdge(t, sc, "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS", "WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE", "")
+	if _, ok := sc.Nodes["GATE_AT_TERMINAL_GREEN"]; ok {
+		t.Errorf("GATE_AT_TERMINAL_GREEN should be gone — adapters now precede acceptance tests")
 	}
 }
 

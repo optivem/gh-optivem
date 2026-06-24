@@ -179,6 +179,96 @@ processes:
 	}
 }
 
+func TestRenderExpanded_TopLevelSectionsPresent(t *testing.T) {
+	eng, err := process.Load()
+	if err != nil {
+		t.Fatalf("load default YAML: %v", err)
+	}
+	got := RenderExpanded(eng)
+
+	// Each top-level root must appear as a ## heading.
+	for _, id := range topLevelExpansionRoots {
+		proc, ok := eng.Processes[id]
+		if !ok {
+			continue
+		}
+		want := "## " + proc.Name + "\n"
+		if !strings.Contains(got, want) {
+			t.Errorf("missing heading for root process %q: want %q in output", id, want)
+		}
+	}
+}
+
+func TestRenderExpanded_OutputIsDeterministic(t *testing.T) {
+	eng, err := process.Load()
+	if err != nil {
+		t.Fatalf("load default YAML: %v", err)
+	}
+	a := RenderExpanded(eng)
+	b := RenderExpanded(eng)
+	if a != b {
+		t.Errorf("RenderExpanded output not deterministic across two calls")
+	}
+}
+
+func TestRenderExpanded_SubgraphAppearsForCallActivity(t *testing.T) {
+	// Use process ID "main" — one of the topLevelExpansionRoots — so
+	// RenderExpanded renders it as a section.
+	yaml := []byte(`
+processes:
+  main:
+    name: "Main"
+    start: START
+    nodes:
+      - id: START
+        type: start-event
+        name: "Start"
+      - id: CALL_SUB
+        type: call-activity
+        name: "Run Sub"
+        process: sub
+      - id: END
+        type: end-event
+        name: "End"
+    sequence-flows:
+      - {from: START, to: CALL_SUB}
+      - {from: CALL_SUB, to: END}
+  sub:
+    name: "Sub Process"
+    start: SUB_START
+    nodes:
+      - id: SUB_START
+        type: start-event
+        name: "Sub Start"
+      - id: SUB_WORK
+        type: service-task
+        action: do_work
+        name: "Do Work"
+      - id: SUB_END
+        type: end-event
+        name: "Sub End"
+    sequence-flows:
+      - {from: SUB_START, to: SUB_WORK}
+      - {from: SUB_WORK, to: SUB_END}
+`)
+	eng, err := statemachine.LoadBytes(yaml)
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	got := RenderExpanded(eng)
+
+	for _, want := range []string{
+		"subgraph CALL_SUB[Sub Process]",
+		"CALL_SUB__SUB_WORK[[Do Work]]",
+		"START --> CALL_SUB__SUB_START",
+		"CALL_SUB__SUB_END --> END",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in expanded output:\n%s", want, got)
+		}
+	}
+}
+
 func TestMermaidLabel_QuotesReservedChars(t *testing.T) {
 	cases := []struct {
 		in, want string

@@ -45,21 +45,30 @@ func newProcessCmd() *cobra.Command {
 
 // newProcessShowCmd renders the canonical process-flow Mermaid markdown to
 // stdout. CI's regenerate-diagram workflow pipes this output to
-// docs/process-diagram.md and commits any diff. Today the diagram is the
-// only thing `show` emits; if a second artifact is ever needed, it goes
-// behind a flag or a noun argument rather than a fourth command level.
+// docs/process-diagram.md and commits any diff. The --expanded flag renders
+// a second variant where call-activity nodes are replaced by inline subgraph
+// blocks showing the subprocess steps.
 func newProcessShowCmd() *cobra.Command {
-	return &cobra.Command{
+	var expanded bool
+	cmd := &cobra.Command{
 		Use:   "show",
 		Short: "Render the process-flow Mermaid diagram to stdout",
 		Example: `  gh optivem process show
-  gh optivem process show > docs/process-diagram.md`,
+  gh optivem process show > docs/process-diagram.md
+  gh optivem process show --expanded
+  gh optivem process show --expanded > docs/process-diagram-expanded.md`,
 		Run: func(cmd *cobra.Command, args []string) {
 			eng, err := process.Load()
 			exitOnError(err)
-			fmt.Print(diagram.Render(eng))
+			if expanded {
+				fmt.Print(diagram.RenderExpanded(eng))
+			} else {
+				fmt.Print(diagram.Render(eng))
+			}
 		},
 	}
+	cmd.Flags().BoolVar(&expanded, "expanded", false, "expand call-activities into inline subgraphs")
+	return cmd
 }
 
 // newProcessScopeCmd prints per-phase allowed-paths from process-flow.yaml's

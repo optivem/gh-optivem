@@ -278,7 +278,7 @@ const (
 	extAdapterAnchorERP   = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_ERP"
 	extAdapterAnchorCLOCK = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_CLOCK"
 	extValidateNode       = "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"
-	extTerminalGate       = "GATE_AT_TERMINAL_GREEN"
+	extAdapterSuccessor   = "WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE"
 )
 
 func TestUnrollExternalSystems_TwoSystems(t *testing.T) {
@@ -323,13 +323,13 @@ func TestUnrollExternalSystems_TwoSystems(t *testing.T) {
 	if entry.Predicate != "" {
 		t.Errorf("validate → first-clone edge should be unconditional, got predicate %q", entry.Predicate)
 	}
-	// Linear chain erp → clock → terminal gate, no loopback.
+	// Linear chain erp → clock → acceptance tests, no loopback.
 	chain := findEdge(t, proc, extAdapterAnchorERP, extAdapterAnchorCLOCK)
 	if chain.Predicate != "" {
 		t.Errorf("intermediate erp→clock edge should be unconditional, got predicate %q", chain.Predicate)
 	}
 	assertSingleEdge(t, proc, extAdapterAnchorERP, extAdapterAnchorCLOCK)
-	assertSingleEdge(t, proc, extAdapterAnchorCLOCK, extTerminalGate)
+	assertSingleEdge(t, proc, extAdapterAnchorCLOCK, extAdapterSuccessor)
 }
 
 func TestUnrollExternalSystems_SingleSystem(t *testing.T) {
@@ -344,9 +344,9 @@ func TestUnrollExternalSystems_SingleSystem(t *testing.T) {
 	erp := requireNode(t, proc, extAdapterAnchorERP)
 	checkParam(t, erp, "external-system-name", "erp")
 	checkParam(t, erp, "real-kind", "simulator")
-	// Sole system stitches validate → clone → terminal gate.
+	// Sole system stitches validate → clone → acceptance tests.
 	assertSingleEdge(t, proc, extValidateNode, extAdapterAnchorERP)
-	assertSingleEdge(t, proc, extAdapterAnchorERP, extTerminalGate)
+	assertSingleEdge(t, proc, extAdapterAnchorERP, extAdapterSuccessor)
 }
 
 func TestUnrollExternalSystems_Guards(t *testing.T) {

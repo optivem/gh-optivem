@@ -763,9 +763,15 @@ func TestAtVerifyExpectation(t *testing.T) {
 		// case C — DSL layer, system-driver port changed: still red (adapters pending).
 		{name: "green/drivers/system-pending", mode: "green-when-complete", pendingOn: "drivers",
 			state: map[string]any{"at-system-driver-port-changed": true, "at-external-driver-port-changed": false}, wantValue: "failure"},
-		// case D — DSL layer, external-driver port changed only: still red (external CT-HIGH pending).
+		// case D — DSL layer, external-driver port changed only (drivers enum: both flags checked).
 		{name: "green/drivers/external-pending", mode: "green-when-complete", pendingOn: "drivers",
 			state: map[string]any{"at-system-driver-port-changed": false, "at-external-driver-port-changed": true}, wantValue: "failure"},
+		// system-drivers enum: only at-system-driver-port-changed checked; external flag ignored.
+		{name: "green/system-drivers/pending", mode: "green-when-complete", pendingOn: "system-drivers",
+			state: map[string]any{"at-system-driver-port-changed": true}, wantValue: "failure"},
+		{name: "green/system-drivers/not-pending", mode: "green-when-complete", pendingOn: "system-drivers",
+			state: map[string]any{"at-system-driver-port-changed": false}, wantValue: "success"},
+		{name: "green/system-drivers/flag-unset_halts", mode: "green-when-complete", pendingOn: "system-drivers", wantErr: true},
 		// case C terminal — system-driver adapter layer: always greens (nothing after).
 		{name: "green/none/terminal", mode: "green-when-complete", pendingOn: "none", wantValue: "success"},
 		// strictness: unset/unknown scope and unset flags halt rather than mis-route.
@@ -802,52 +808,6 @@ func TestAtVerifyExpectation(t *testing.T) {
 			}
 			if out.Value != tc.wantValue {
 				t.Fatalf("Value = %q, want %q", out.Value, tc.wantValue)
-			}
-		})
-	}
-}
-
-// TestAtExternalTerminalVerifyNeeded covers the case-D terminal-verify gate: it
-// fires only on the cover path and only when no system-driver adapter step
-// follows (else that step owns the terminal PASS).
-func TestAtExternalTerminalVerifyNeeded(t *testing.T) {
-	cases := []struct {
-		name     string
-		mode     string
-		state    map[string]any
-		wantBool bool
-		wantErr  bool
-	}{
-		{name: "red_never", mode: "red", wantBool: false},
-		{name: "unset_never", wantBool: false},
-		{name: "green/no-system-driver/needs-terminal", mode: "green-when-complete",
-			state: map[string]any{"at-system-driver-port-changed": false}, wantBool: true},
-		{name: "green/system-driver-follows/no-terminal", mode: "green-when-complete",
-			state: map[string]any{"at-system-driver-port-changed": true}, wantBool: false},
-		{name: "green/system-flag-unset_halts", mode: "green-when-complete", wantErr: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			b := newBindings(t, Deps{Prompter: &fakePrompter{}})
-			ctx := statemachine.NewContext()
-			if tc.mode != "" {
-				ctx.Params["verify-mode"] = tc.mode
-			}
-			for k, v := range tc.state {
-				ctx.Set(k, v)
-			}
-			out := b.atExternalTerminalVerifyNeeded(ctx)
-			if tc.wantErr {
-				if out.Err == nil {
-					t.Fatalf("want err, got Bool=%v", out.Bool)
-				}
-				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
-			}
-			if out.Bool != tc.wantBool {
-				t.Fatalf("Bool = %v, want %v", out.Bool, tc.wantBool)
 			}
 		})
 	}
