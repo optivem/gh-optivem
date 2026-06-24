@@ -1,5 +1,7 @@
 # 2026-06-24 09:25:00 UTC — Lift External Driver Setup to Cycle Level
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-06-24T10:09:39Z`
+
 ## TL;DR
 
 **Why:** The ordering invariant "external system drivers and contract tests run before acceptance test writing" is invisible at the cycle level — buried 4 call-activity levels deep. Worse, the fallback gate `GATE_EXTERNAL_DRIVER_PORTS_CHANGED` in `shared-contract` reads `at-external-driver-port-changed`, which is only stamped by the DSL writing agent (after AT writing) — so on a fresh first run with no ESCC declared, the gate always evaluates false and external drivers are silently skipped. The flag is only non-false on re-runs where State persists from a prior DSL phase.
