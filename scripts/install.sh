@@ -55,3 +55,11 @@ gh extension install --force .
 
 log "verifying"
 gh optivem --version
+
+# Push the embedded Claude assets to ~/.claude/ using the binary we just built,
+# so the freshly-installed slash commands (execute-plan, create-plan, …) and
+# config (settings.json, CLAUDE.md) match this working copy. setup = install
+# (commands → ~/.claude/commands/) then configure (non-destructive merge of
+# settings + CLAUDE.md). Both steps are idempotent.
+log "gh optivem claude setup (install commands + merge config)"
+gh optivem claude setup
