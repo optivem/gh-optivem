@@ -13,6 +13,14 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
+// State keys check-outputs-and-scopes stamps; read by the
+// outputs-and-scopes-valid gate and the STOP_* user-task payloads.
+const (
+	CtxKeyOutputsAndScopesValid = "outputs-and-scopes-valid"
+	CtxKeyFailureKind           = "failure-kind"
+	CtxKeyFailingTaskName       = "failing-task-name"
+)
+
 // validateOutputsAndScopes is the LOW `execute-agent` primitive's
 // post-RUN_AGENT validation step (BPMN Phase D Item 7, Q-D6).
 //
@@ -162,9 +170,9 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		}
 	}
 	if len(missing) > 0 {
-		ctx.Set("outputs-and-scopes-valid", false)
-		ctx.Set("failure-kind", "missing-output")
-		ctx.Set("failing-task-name", taskName)
+		ctx.Set(CtxKeyOutputsAndScopesValid, false)
+		ctx.Set(CtxKeyFailureKind, "missing-output")
+		ctx.Set(CtxKeyFailingTaskName, taskName)
 		ctx.Set("missing-outputs", strings.Join(missing, ","))
 		fmt.Fprintf(a.deps.Stderr,
 			"validate-outputs-and-scopes: agent did not emit expected outputs: %s\n",
@@ -178,7 +186,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// so Engine.Scope returns ok=false and the scope check is skipped).
 	_, write, ok := a.deps.Engine.Scope(taskName)
 	if !ok {
-		ctx.Set("outputs-and-scopes-valid", true)
+		ctx.Set(CtxKeyOutputsAndScopesValid, true)
 		return statemachine.Outcome{}
 	}
 
@@ -251,9 +259,9 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		}
 	}
 	if len(violating) > 0 {
-		ctx.Set("outputs-and-scopes-valid", false)
-		ctx.Set("failure-kind", "scope-diff")
-		ctx.Set("failing-task-name", taskName)
+		ctx.Set(CtxKeyOutputsAndScopesValid, false)
+		ctx.Set(CtxKeyFailureKind, "scope-diff")
+		ctx.Set(CtxKeyFailingTaskName, taskName)
 		ctx.Set("scope-violating-paths", strings.Join(violating, ","))
 		fmt.Fprintf(a.deps.Stderr,
 			"validate-outputs-and-scopes: %d path(s) outside scope %v:\n",
@@ -269,11 +277,11 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// trace or into a downstream fix-* prompt via ExpandParams's
 	// state-fallback. phase-changed-files is stamped unconditionally above
 	// and is NOT a diagnostic key — left alone.
-	ctx.Unset("failure-kind")
-	ctx.Unset("failing-task-name")
+	ctx.Unset(CtxKeyFailureKind)
+	ctx.Unset(CtxKeyFailingTaskName)
 	ctx.Unset("missing-outputs")
 	ctx.Unset("scope-violating-paths")
-	ctx.Set("outputs-and-scopes-valid", true)
+	ctx.Set(CtxKeyOutputsAndScopesValid, true)
 	return statemachine.Outcome{}
 }
 

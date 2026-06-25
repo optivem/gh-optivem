@@ -61,6 +61,17 @@ import (
 // DefaultProcessName is the entry process loaded by every public CLI command.
 const DefaultProcessName = "main"
 
+// Reused string literals across the driver.
+const (
+	gitRevParse       = "rev-parse"
+	githubHTTPSPrefix = "https://github.com/"
+	ghOptivemDir      = ".gh-optivem"
+	ctxKeyIssueNum    = "issue-num"
+	ctxKeyIssueTitle  = "issue-title"
+	approvePrompt     = "  Approve?"
+	ctxKeyOutputFile  = "output-file-path"
+)
+
 // ErrPendingHuman is the sentinel a dispatcher returns when it reaches a
 // `category: human` node in an unattended run (no operator TTY). Rather than
 // blocking the interactive `claude` TUI on stdin nobody will answer (run #69:
@@ -426,7 +437,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// writer — the trace is informational, never load-bearing (Item 4),
 	// matching the openEventsLog / PID-marker policy.
 	flowStart := nowFn()
-	runDir := filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp)
+	runDir := filepath.Join(repoPath, ghOptivemDir, "runs", runState.runTimestamp)
 	var flowTree *trace.TreeWriter
 	if f, err := openFlowFile(runDir); err != nil {
 		fmt.Fprintf(opts.Stderr, "driver: warning: open flow.txt: %v\n", err)
@@ -490,7 +501,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		fmt.Fprintf(opts.Stderr, "driver: warning: ensure .gitignore for .gh-optivem/: %v\n", err)
 	}
 	if opts.KeepRuns > 0 {
-		if err := pruneOldRuns(filepath.Join(repoPath, ".gh-optivem", "runs"), opts.KeepRuns); err != nil {
+		if err := pruneOldRuns(filepath.Join(repoPath, ghOptivemDir, "runs"), opts.KeepRuns); err != nil {
 			fmt.Fprintf(opts.Stderr, "driver: warning: prune old runs: %v\n", err)
 		}
 	}
@@ -528,7 +539,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// Per-run artifact directory — used by service tasks that materialize
 	// inter-phase artifacts (e.g. materialize_parsed_concepts writing
 	// <run_dir>/parsed-concepts.md for refine-acceptance-criteria).
-	sCtx.Set("run_dir", filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp))
+	sCtx.Set("run_dir", filepath.Join(repoPath, ghOptivemDir, "runs", runState.runTimestamp))
 
 	// Run-end tail: stamp the overall verdict into runState, then write the
 	// human digest (summary.md) beside the machine sidecar and echo its
@@ -544,8 +555,8 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		digestPath := runState.summaryMarkdownPath()
 		commits := commitsSince(repoPath, runState.baseSHA)
 		if err := writeRunDigest(digestPath, runDigest{
-			issueNum:           sCtx.GetString("issue-num"),
-			title:              sCtx.GetString("issue-title"),
+			issueNum:           sCtx.GetString(ctxKeyIssueNum),
+			title:              sCtx.GetString(ctxKeyIssueTitle),
 			url:                sCtx.GetString("issue-url"),
 			description:        sCtx.GetString("description"),
 			acceptanceCriteria: sCtx.GetString("acceptance-criteria"),
@@ -631,11 +642,16 @@ func resolveRepoPath(explicit string) (string, error) {
 // pick a level via opts.Out instead of writing through opts.Stdout.
 func installLogFileMirror(opts *Options) (func(), error) {
 	sinks := []outlog.Sink{{W: opts.Stdout, MaxLevel: opts.TerminalLevel}}
-	close := func() {}
+	close := func() {
+		// no-op: default close when no log file is opened; replaced below
+		// with the file-closing closure when opts.LogFile is set.
+	}
 	if opts.LogFile != "" {
 		f, err := os.OpenFile(opts.LogFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 		if err != nil {
-			return func() {}, fmt.Errorf("open log file %s: %w", opts.LogFile, err)
+			return func() {
+				// no-op: nothing to close — the log file failed to open.
+			}, fmt.Errorf("open log file %s: %w", opts.LogFile, err)
 		}
 		sinks = append(sinks, outlog.Sink{W: f, MaxLevel: opts.LogFileLevel})
 		opts.Stderr = io.MultiWriter(opts.Stderr, f)
@@ -955,9 +971,9 @@ func preResolveIssue(ctx context.Context, opts Options, sCtx *statemachine.Conte
 // ticket-id carry the same value today; the alias exists so prompt
 // vocabulary stays neutral.
 func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
-	sCtx.Set("issue-num", issue.ID)
+	sCtx.Set(ctxKeyIssueNum, issue.ID)
 	sCtx.Set("issue-url", issue.URL)
-	sCtx.Set("issue-title", issue.Title)
+	sCtx.Set(ctxKeyIssueTitle, issue.Title)
 	sCtx.Set("issue-handle", issue.Handle)
 	sCtx.Set("ticket-id", issue.ID)
 }
@@ -1095,7 +1111,7 @@ func newHumanStopDispatcher(opts Options, raw statemachine.RawNode, nodeID strin
 		if out, pend := pendIfUnattendedHuman(approval.CategoryHuman.String(), nodeID, opts.Stderr); pend {
 			return out
 		}
-		ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Out.Phase, "  Approve?")
+		ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Out.Phase, approvePrompt)
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read STOP confirmation at %s: %w", nodeID, err)}
 		}
@@ -1155,7 +1171,7 @@ func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string)
 		if out, pend := pendIfUnattendedHuman(cat.String(), nodeID, opts.Stderr); pend {
 			return out
 		}
-		ok, err := approval.Confirm(opts.Approval, cat, opts.Stdin, opts.Out.Phase, "  Approve?")
+		ok, err := approval.Confirm(opts.Approval, cat, opts.Stdin, opts.Out.Phase, approvePrompt)
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read approve confirmation at %s: %w", nodeID, err)}
 		}
@@ -1202,7 +1218,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		extraText := ctx.GetString(override.KeyExtra)
 		replaceText := ctx.GetString(override.KeyReplace)
 
-		issueNum, _ := strconv.Atoi(ctx.GetString("issue-num"))
+		issueNum, _ := strconv.Atoi(ctx.GetString(ctxKeyIssueNum))
 
 		agentName, err := statemachine.ExpandParams(raw.Agent, ctx.Params, ctx.State)
 		if err != nil {
@@ -1403,7 +1419,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			expectedOutputs []statemachine.OutputSpec
 		)
 		if eng == nil {
-			ctx.Set("output-file-path", "")
+			ctx.Set(ctxKeyOutputFile, "")
 			outputFilePath = ""
 		} else {
 			outs, _ := eng.Outputs(scopeKey)
@@ -1415,7 +1431,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 				// that already list them don't double-list and the scoped
 				// agents that declare no flag outputs still get them.
 				outputKeysSpec = encodeOutputKeysSpec(withEnvelopeSpecs(outs))
-				ctx.Set("output-file-path", outputFilePath)
+				ctx.Set(ctxKeyOutputFile, outputFilePath)
 			default:
 				// scope: none (refine-acceptance-criteria) or a no-MID
 				// dispatch (test fixtures whose scopeKey falls back to the
@@ -1430,7 +1446,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 				// with this MID's empty declared list, fall through
 				// coerceJSONOutputValue's default branch, and clobber
 				// already-typed state keys ([]string → []any).
-				ctx.Set("output-file-path", "")
+				ctx.Set(ctxKeyOutputFile, "")
 				outputFilePath = ""
 			}
 		}
@@ -1452,7 +1468,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			AgentSet:            opts.AgentSet,
 			NodeDescription:     nodeDescription,
 			IssueNum:            issueNum,
-			IssueTitle:          ctx.GetString("issue-title"),
+			IssueTitle:          ctx.GetString(ctxKeyIssueTitle),
 			TicketID:            ctx.GetString("ticket-id"),
 			Architecture:        ctx.GetString("architecture"),
 			Subtype:             ctx.GetString("subtype"),
@@ -1749,7 +1765,7 @@ func promptForAgent(opts Options, raw statemachine.RawNode, params map[string]st
 	// Manual-agent dispatch is the v1 fallback for any user-task — the
 	// operator is launching the agent by hand, which is inherently a
 	// human-tier interaction. No prefix sniff needed.
-	ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Out.Phase, "  Approve?")
+	ok, err := approval.Confirm(opts.Approval, approval.CategoryHuman, opts.Stdin, opts.Out.Phase, approvePrompt)
 	if err != nil {
 		return fmt.Errorf("read agent-dispatch confirmation: %w", err)
 	}
@@ -2053,7 +2069,7 @@ func (rs *runState) dispatchPaths(agentName string) (promptLog, outputFile, even
 		return "", "", "", "", ""
 	}
 	seq := rs.seq.Add(1)
-	dir := filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp)
+	dir := filepath.Join(rs.repoPath, ghOptivemDir, "runs", rs.runTimestamp)
 	promptLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.prompt.md", seq, agentName))
 	outputFile = filepath.Join(dir, fmt.Sprintf("%03d-%s.outputs.jsonl", seq, agentName))
 	eventsLog = filepath.Join(dir, fmt.Sprintf("%03d-%s.events.jsonl", seq, agentName))
@@ -2299,7 +2315,7 @@ func openFlowFile(runDir string) (*os.File, error) {
 // than warned — unlike the file-open path, there is nothing the operator
 // can act on.
 func headCommitSHA(repoPath string) string {
-	cmd := exec.Command("git", "rev-parse", "--short", "HEAD")
+	cmd := exec.Command("git", gitRevParse, "--short", "HEAD")
 	if repoPath != "" {
 		cmd.Dir = repoPath
 	}
@@ -2316,7 +2332,7 @@ func headCommitSHA(repoPath string) string {
 // abbreviated so the `base..HEAD` range and the compare URL are
 // unambiguous.
 func fullHeadSHA(repoPath string) string {
-	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd := exec.Command("git", gitRevParse, "HEAD")
 	if repoPath != "" {
 		cmd.Dir = repoPath
 	}
@@ -2397,7 +2413,7 @@ func compareURL(repoPath, baseSHA string, commitCount int) string {
 // currentBranch returns the checked-out branch name, "HEAD" in detached-
 // HEAD state, or "" on error.
 func currentBranch(repoPath string) string {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd := exec.Command("git", gitRevParse, "--abbrev-ref", "HEAD")
 	if repoPath != "" {
 		cmd.Dir = repoPath
 	}
@@ -2428,10 +2444,10 @@ func remoteWebURL(repoPath string) string {
 	raw = strings.TrimSuffix(raw, ".git")
 	switch {
 	case strings.HasPrefix(raw, "git@github.com:"):
-		return "https://github.com/" + strings.TrimPrefix(raw, "git@github.com:")
+		return githubHTTPSPrefix + strings.TrimPrefix(raw, "git@github.com:")
 	case strings.HasPrefix(raw, "ssh://git@github.com/"):
-		return "https://github.com/" + strings.TrimPrefix(raw, "ssh://git@github.com/")
-	case strings.HasPrefix(raw, "https://github.com/"):
+		return githubHTTPSPrefix + strings.TrimPrefix(raw, "ssh://git@github.com/")
+	case strings.HasPrefix(raw, githubHTTPSPrefix):
 		return raw
 	default:
 		return ""

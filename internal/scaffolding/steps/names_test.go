@@ -58,7 +58,7 @@ func TestNamesExpandFully(t *testing.T) {
 // runtime even when called with a template built outside Names.
 func TestExpandPanicsOnUnknownPlaceholder(t *testing.T) {
 	defer func() {
-		if r := recover(); r == nil {
+		if recover() == nil {
 			t.Fatal("Expand did not panic on unknown placeholder")
 		}
 	}()

@@ -16,6 +16,11 @@ const (
 	CallActivity  // embedded sub-process; runs to completion, returns to caller
 )
 
+// executeAgentProcess is the process name of the canonical agent-dispatch
+// call activity whose Read/Write scope every EXECUTE_AGENT-bearing process
+// is keyed on.
+const executeAgentProcess = "execute-agent"
+
 // Outcome is what every NodeFn returns. The fields are union-style and only
 // the relevant one is populated:
 //
@@ -40,10 +45,10 @@ type NodeFn func(*Context) Outcome
 // Node is a parsed YAML node bound to its NodeFn. Bindings are resolved at
 // load time via the registries (gates, actions, agents).
 type Node struct {
-	ID    string
-	Kind  NodeKind
-	Fn    NodeFn
-	Raw   RawNode // the original YAML record, retained for diagnostics
+	ID   string
+	Kind NodeKind
+	Fn   NodeFn
+	Raw  RawNode // the original YAML record, retained for diagnostics
 }
 
 // Edge is a directed sequence flow between two nodes, optionally guarded by a
@@ -79,10 +84,10 @@ type Process struct {
 	ID                    string
 	Name                  string
 	Start                 string
-	PresetState           map[string]any    // state values written at process entry before the first node runs (preset-state:)
-	Outputs               []OutputSpec // structured output contract for writing-agent MIDs (key, type, optional)
-	DiagramSectionOrder   int          // 0 = not a section; positive = top-level section at this position
-	DiagramNoInlineExpand bool         // never expand inline as a subgraph in the expanded diagram
+	PresetState           map[string]any // state values written at process entry before the first node runs (preset-state:)
+	Outputs               []OutputSpec   // structured output contract for writing-agent MIDs (key, type, optional)
+	DiagramSectionOrder   int            // 0 = not a section; positive = top-level section at this position
+	DiagramNoInlineExpand bool           // never expand inline as a subgraph in the expanded diagram
 	Nodes                 map[string]Node
 	Edges                 []Edge
 	OutgoingByNode        map[string][]Edge // index for nextEdge lookup
@@ -190,7 +195,7 @@ func (e *Engine) Scope(processName string) (read, write []string, ok bool) {
 		return nil, nil, false
 	}
 	for _, node := range proc.Nodes {
-		if node.Kind != CallActivity || node.Raw.Process != "execute-agent" {
+		if node.Kind != CallActivity || node.Raw.Process != executeAgentProcess {
 			continue
 		}
 		if len(node.Raw.Read) == 0 && len(node.Raw.Write) == 0 {
@@ -217,7 +222,7 @@ func (e *Engine) ScopeRationale(processName string) (string, bool) {
 		return "", false
 	}
 	for _, node := range proc.Nodes {
-		if node.Kind != CallActivity || node.Raw.Process != "execute-agent" {
+		if node.Kind != CallActivity || node.Raw.Process != executeAgentProcess {
 			continue
 		}
 		if node.Raw.ScopeRationale == "" {
@@ -241,7 +246,7 @@ func (e *Engine) IsScopeNone(processName string) bool {
 		return false
 	}
 	for _, node := range proc.Nodes {
-		if node.Kind != CallActivity || node.Raw.Process != "execute-agent" {
+		if node.Kind != CallActivity || node.Raw.Process != executeAgentProcess {
 			continue
 		}
 		return node.Raw.Scope == "none"

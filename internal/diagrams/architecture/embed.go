@@ -4,6 +4,9 @@
 // and tests load via LoadDefault.
 package architecture
 
+// Blank import: registers the //go:embed directive support so the
+// directive below can bind architecture.yaml into DefaultYAML at compile
+// time. The package exposes no identifiers we call directly.
 import _ "embed"
 
 //go:embed architecture.yaml

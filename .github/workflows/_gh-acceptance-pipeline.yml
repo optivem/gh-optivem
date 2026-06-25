@@ -65,8 +65,7 @@ on:
         default: false
 
 permissions:
-  contents: write
-  statuses: write
+  contents: read
 
 jobs:
   preflight:
@@ -207,6 +206,12 @@ jobs:
           SHOP_TAG: ${{ inputs.shop-tag }}
           SKIP_PRE: ${{ inputs.skip-prerelease }}
           SKIP_TESTS: ${{ inputs.debug-skip-tests }}
+          SMOKE_MODE: ${{ inputs.smoke-mode }}
+          ACCEPTANCE_MODE: ${{ inputs.acceptance-mode }}
+          RETAIN_REPOS: ${{ inputs.retain-repos }}
+          NO_LOCAL_TESTS: ${{ inputs.no-local-tests }}
+          NO_LOCAL_SONAR: ${{ inputs.no-local-sonar }}
+          NO_LEGACY: ${{ inputs.no-legacy }}
         run: |
           set -euo pipefail
 
@@ -243,16 +248,16 @@ jobs:
             echo "| Input | Value |"
             echo "|-------|-------|"
             echo "| verify-level | $LEVEL |"
-            echo "| smoke-mode | ${{ inputs.smoke-mode }} |"
-            echo "| acceptance-mode | ${{ inputs.acceptance-mode }} |"
+            echo "| smoke-mode | $SMOKE_MODE |"
+            echo "| acceptance-mode | $ACCEPTANCE_MODE |"
             echo "| shop-tag | $SHOP_TAG |"
             echo "| debug-shop-head | $SHOP_HEAD |"
-            echo "| retain-repos | ${{ inputs.retain-repos }} |"
+            echo "| retain-repos | $RETAIN_REPOS |"
             echo "| skip-prerelease | $SKIP_PRE |"
             echo "| debug-skip-tests | $SKIP_TESTS |"
-            echo "| no-local-tests | ${{ inputs.no-local-tests }} |"
-            echo "| no-local-sonar | ${{ inputs.no-local-sonar }} |"
-            echo "| no-legacy | ${{ inputs.no-legacy }} |"
+            echo "| no-local-tests | $NO_LOCAL_TESTS |"
+            echo "| no-local-sonar | $NO_LOCAL_SONAR |"
+            echo "| no-legacy | $NO_LEGACY |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Checkout
@@ -566,6 +571,9 @@ jobs:
       needs.check.outputs.release-mode == 'true' &&
       needs.check.outputs.already-released != 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      statuses: write
     outputs:
       version: ${{ steps.gen.outputs.version }}
     steps:

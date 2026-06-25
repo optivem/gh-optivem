@@ -8,6 +8,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
+// CtxKeyTicketHasESCC is the bool parse-ticket stamps when the ticket declares
+// External System Contract Criteria; the external contract/stub room keys on it.
+const CtxKeyTicketHasESCC = "ticket-has-escc"
+
 // externalSystemNamesFromChangedPaths derives the set of external-system names
 // the external-driver-PORT change touched, SOLELY from the preserved port
 // changed-paths (interface methods AND DTOs) — never from the driver-adapter
@@ -57,7 +61,7 @@ func externalSystemNamesFromChangedPaths(changedPaths, root string) map[string]s
 // externalSystemNamesFromChangedPaths returns. Both sources therefore yield the
 // same lowercase registry-key space.
 func touchedExternalSystemNames(ctx *statemachine.Context, root string) map[string]struct{} {
-	if hasESCC, _ := ctx.State["ticket-has-escc"].(bool); hasESCC {
+	if hasESCC, _ := ctx.State[CtxKeyTicketHasESCC].(bool); hasESCC {
 		names := map[string]struct{}{}
 		systems, _ := ctx.State["escc-systems"].([]string)
 		for _, s := range systems {
@@ -93,7 +97,7 @@ func (a actions) validateExternalSystemsRegistered(ctx *statemachine.Context) st
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-external-systems-registered: %w", err)}
 	}
-	hasESCC, _ := ctx.State["ticket-has-escc"].(bool)
+	hasESCC, _ := ctx.State[CtxKeyTicketHasESCC].(bool)
 	names := touchedExternalSystemNames(ctx, roots[0])
 
 	unregistered := map[string]struct{}{}
@@ -129,7 +133,7 @@ func (a actions) validateExternalSystemsRegistered(ctx *statemachine.Context) st
 // validate-external-systems-registered (which runs immediately after and checks
 // the ESCC-named systems against the registry).
 func (a actions) validateRedesignExternalRequiresESCC(ctx *statemachine.Context) statemachine.Outcome {
-	if hasESCC, _ := ctx.State["ticket-has-escc"].(bool); !hasESCC {
+	if hasESCC, _ := ctx.State[CtxKeyTicketHasESCC].(bool); !hasESCC {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-redesign-external-requires-escc: a redesign-external-system ticket must declare an `## External System Contract Criteria` section naming the external system(s) whose response contract is being reshaped — without it the redesign has no target system and would silently no-op; add the section (with `External System: <name>`) and re-run")}
 	}
 	return statemachine.Outcome{}

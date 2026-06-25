@@ -151,7 +151,7 @@ func TestRunWatchWorkflow_AppearPollRetries504OnFirstAttempt(t *testing.T) {
 
 	var captureCalls int32
 	orig := runCaptureFn
-	runCaptureFn = func(_ string, _ string) (string, error) {
+	runCaptureFn = func(_, _ string) (string, error) {
 		n := atomic.AddInt32(&captureCalls, 1)
 		if n == 1 {
 			return "", errors.New("HTTP 504: Gateway Timeout")
@@ -181,7 +181,7 @@ func TestRunWatchPushWorkflow_FailsLoudWhenNoStartupFailure(t *testing.T) {
 
 	// Every `gh run list` is empty: no run appears, no startup_failure exists.
 	orig := runCaptureFn
-	runCaptureFn = func(_ string, _ string) (string, error) { return "", nil }
+	runCaptureFn = func(_, _ string) (string, error) { return "", nil }
 	t.Cleanup(func() { runCaptureFn = orig })
 
 	// runFn backs WorkflowRun (the dispatch). It must never be called here.
@@ -212,7 +212,7 @@ func TestRunWatchPushWorkflow_ReDispatchesOnStartupFailure(t *testing.T) {
 	// The expected run never appears; the startup_failure query always finds
 	// the phantom run, so the gate stays open across attempts.
 	orig := runCaptureFn
-	runCaptureFn = func(cmd string, _ string) (string, error) {
+	runCaptureFn = func(cmd, _ string) (string, error) {
 		if strings.Contains(cmd, "startup_failure") {
 			return "999", nil
 		}
@@ -286,4 +286,3 @@ func TestWaitForRepoVisible_RetriesTransient(t *testing.T) {
 	// Avoid unused-var warning for strings — kept for future test extension.
 	_ = strings.TrimSpace
 }
-

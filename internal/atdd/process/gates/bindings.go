@@ -32,11 +32,18 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
-	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
 	trackergithub "github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/github"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/kernel/promptio"
+)
+
+// Gate binding keys reused across registration and state-reader lookups.
+const (
+	keyDSLPortChanged            = "dsl-port-changed"
+	keySystemDriverPortChanged   = "system-driver-port-changed"
+	keyExternalDriverPortChanged = "external-driver-port-changed"
 )
 
 // Deps bundles the side-effecting collaborators every binding may need.
@@ -165,9 +172,9 @@ func RegisterAll(r *Registry, deps Deps) {
 	// per-test-layer fanout in implement-and-verify-dsl and the parent re-gates.
 	// Both AT and CT cascades run sequentially, so each cascade reads the shared
 	// bare key — no namespacing needed.
-	r.Register("dsl-port-changed", b.dslPortChanged)
-	r.Register("system-driver-port-changed", b.systemDriverPortChanged)
-	r.Register("external-driver-port-changed", b.externalDriverPortChanged)
+	r.Register(keyDSLPortChanged, b.dslPortChanged)
+	r.Register(keySystemDriverPortChanged, b.systemDriverPortChanged)
+	r.Register(keyExternalDriverPortChanged, b.externalDriverPortChanged)
 	// ESCC-first contract-room entry (plan 20260620-1850). GATE_TICKET_HAS_ESCC
 	// in implement-external-drivers-if-needed opens the external contract/stub
 	// room when the ticket declares External System Contract Criteria. ESCC is
@@ -439,15 +446,15 @@ func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Ou
 // gate). AT and CT cascades run sequentially so both read the same bare key
 // without collision.
 func (b bindings) dslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "dsl-port-changed")
+	return boolStateGate(ctx, keyDSLPortChanged)
 }
 
 func (b bindings) systemDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "system-driver-port-changed")
+	return boolStateGate(ctx, keySystemDriverPortChanged)
 }
 
 func (b bindings) externalDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "external-driver-port-changed")
+	return boolStateGate(ctx, keyExternalDriverPortChanged)
 }
 
 // ticketHasESCC is GATE_TICKET_HAS_ESCC, the ESCC-first entry to the external
@@ -516,15 +523,15 @@ func (b bindings) atVerifyExpectation(ctx *statemachine.Context) statemachine.Ou
 func plumbingPending(ctx *statemachine.Context) (bool, error) {
 	switch on := strings.TrimSpace(ctx.Params["verify-pending-on"]); on {
 	case "dsl":
-		return boolState(ctx, "dsl-port-changed")
+		return boolState(ctx, keyDSLPortChanged)
 	case "system-drivers":
-		return boolState(ctx, "system-driver-port-changed")
+		return boolState(ctx, keySystemDriverPortChanged)
 	case "drivers":
-		sys, err := boolState(ctx, "system-driver-port-changed")
+		sys, err := boolState(ctx, keySystemDriverPortChanged)
 		if err != nil {
 			return false, err
 		}
-		ext, err := boolState(ctx, "external-driver-port-changed")
+		ext, err := boolState(ctx, keyExternalDriverPortChanged)
 		if err != nil {
 			return false, err
 		}

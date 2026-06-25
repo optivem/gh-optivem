@@ -133,27 +133,37 @@ runs:
     - name: Compute test name
       id: test
       shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+        REPO_STRATEGY: ${{ inputs.repo-strategy }}
+        LANG_INPUT: ${{ inputs.lang }}
+        TEST_LANG: ${{ inputs.test-lang }}
       run: |
-        LANG="${{ inputs.lang }}"
+        LANG="$LANG_INPUT"
         if [ "$LANG" = "typescript" ]; then LANG="ts"; fi
 
-        if [ "${{ inputs.arch }}" = "monolith" ]; then
-          NAME="TestValidMonolithConfigurations/${{ inputs.arch }}_${{ inputs.repo-strategy }}_${LANG}_${{ inputs.test-lang }}"
+        if [ "$ARCH" = "monolith" ]; then
+          NAME="TestValidMonolithConfigurations/${ARCH}_${REPO_STRATEGY}_${LANG}_${TEST_LANG}"
         else
           # Multitier subtests are named <arch>_<repo-strategy>_<backendLang>_ts_<testLang>
           # (the frontend lang is always "typescript" in the test matrix, normalized to "ts")
           # — see TestValidMultitierConfigurations in internal/config/config_system_test.go.
-          NAME="TestValidMultitierConfigurations/${{ inputs.arch }}_${{ inputs.repo-strategy }}_${LANG}_ts_${{ inputs.test-lang }}"
+          NAME="TestValidMultitierConfigurations/${ARCH}_${REPO_STRATEGY}_${LANG}_ts_${TEST_LANG}"
         fi
         echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
     - name: Print configuration
       shell: bash
+      env:
+        VERIFY_LEVEL: ${{ inputs.verify-level }}
+        NO_LEGACY: ${{ inputs.no-legacy }}
+        SHOP_TAG: ${{ inputs.shop-tag }}
+        RETAIN_REPOS: ${{ inputs.retain-repos }}
       run: |
-        echo "Verify level: ${{ inputs.verify-level }}"
-        echo "No legacy: ${{ inputs.no-legacy }}"
-        echo "Shop tag: ${{ inputs.shop-tag }}"
-        echo "Retain repos: ${{ inputs.retain-repos }}"
+        echo "Verify level: $VERIFY_LEVEL"
+        echo "No legacy: $NO_LEGACY"
+        echo "Shop tag: $SHOP_TAG"
+        echo "Retain repos: $RETAIN_REPOS"
 
     - name: System test
       id: test-run

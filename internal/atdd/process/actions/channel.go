@@ -11,6 +11,11 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
+// CtxKeyChannelTouched is the bool resolveChannel stamps recording whether any
+// of the ticket's acceptance tests are registered for this channel; the
+// GATE_CHANNEL_TOUCHED gate routes on it.
+const CtxKeyChannelTouched = "channel-touched"
+
 // resolveChannel runs at the START of each unrolled per-channel clone (plan
 // 20260619-1139 Steps 3 + 4) — the channel analog of resolveExternalSystem. The
 // channel unrolls (UnrollSystemChannels / UnrollSystemDriverAdapterChannels)
@@ -49,7 +54,7 @@ func (a actions) resolveChannel(ctx *statemachine.Context) statemachine.Outcome 
 		// Not a per-channel clone (structural cycle, or a project with no
 		// channels: configured that kept the single static node) — the guard
 		// is inert: run the cycle as before.
-		ctx.Set("channel-touched", true)
+		ctx.Set(CtxKeyChannelTouched, true)
 		return statemachine.Outcome{}
 	}
 	ticketTests := splitTestNames(ctx.Params["test-names"])
@@ -59,7 +64,7 @@ func (a actions) resolveChannel(ctx *statemachine.Context) statemachine.Outcome 
 		// channel) rather than silently skip — the dangerous direction (a test
 		// for an unconfigured channel vanishing) is owned by the Step-5
 		// validate-channels-registered guard, which runs before any clone.
-		ctx.Set("channel-touched", true)
+		ctx.Set(CtxKeyChannelTouched, true)
 		return statemachine.Outcome{}
 	}
 	if a.deps.TestsConfig == nil {
@@ -77,7 +82,7 @@ func (a actions) resolveChannel(ctx *statemachine.Context) statemachine.Outcome 
 			break
 		}
 	}
-	ctx.Set("channel-touched", touched)
+	ctx.Set(CtxKeyChannelTouched, touched)
 	return statemachine.Outcome{}
 }
 

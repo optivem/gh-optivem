@@ -4,6 +4,8 @@
 package process
 
 import (
+	// Blank import registers the //go:embed directive support used to embed
+	// process-flow.yaml into DefaultYAML below.
 	_ "embed"
 
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"

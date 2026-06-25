@@ -71,7 +71,7 @@ func LoadEnvFile(path string) (loaded int, err error) {
 		}
 		v = trimQuotes(strings.TrimSpace(v))
 		if os.Getenv(k) == "" {
-			if setErr := os.Setenv(k, v); setErr == nil {
+			if os.Setenv(k, v) == nil {
 				loaded++
 			}
 		}

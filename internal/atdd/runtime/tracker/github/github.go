@@ -36,6 +36,13 @@ import (
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/internal/parse"
 )
 
+// `gh api graphql` -f/-F variable prefixes reused across the GraphQL calls.
+const (
+	ghVarNumber = "number="
+	ghVarQuery  = "query="
+	ghVarLogin  = "login="
+)
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -186,6 +193,22 @@ func (t *Tracker) Verify(ctx context.Context) error {
 // Tracker interface — inspection / mutation
 // ---------------------------------------------------------------------------
 
+// issueTypeResponse mirrors the `gh api graphql` repository.issue.issueType
+// payload Classify reads.
+type issueTypeResponse struct {
+	Data struct {
+		Repository struct {
+			Issue struct {
+				IssueType *issueTypeNode `json:"issueType"`
+			} `json:"issue"`
+		} `json:"repository"`
+	} `json:"data"`
+}
+
+type issueTypeNode struct {
+	Name string `json:"name"`
+}
+
 // Classify resolves the issue's native GitHub issue type
 // (repository.issue.issueType.name) and returns the lowercased value.
 // confident is true when the native type is set; false when the issue
@@ -205,23 +228,13 @@ func (t *Tracker) Classify(ctx context.Context, i tracker.Issue) (string, bool, 
 	out, err := t.gh.Run(ctx, "api", "graphql",
 		"-f", "owner="+owner,
 		"-f", "name="+repo,
-		"-F", "number="+strconv.Itoa(num),
-		"-f", "query="+issueTypeQuery,
+		"-F", ghVarNumber+strconv.Itoa(num),
+		"-f", ghVarQuery+issueTypeQuery,
 	)
 	if err != nil {
 		return "", false, fmt.Errorf("github: gh api graphql issueType: %w", err)
 	}
-	var resp struct {
-		Data struct {
-			Repository struct {
-				Issue struct {
-					IssueType *struct {
-						Name string `json:"name"`
-					} `json:"issueType"`
-				} `json:"issue"`
-			} `json:"repository"`
-		} `json:"data"`
-	}
+	var resp issueTypeResponse
 	if err := json.Unmarshal(out, &resp); err != nil {
 		return "", false, fmt.Errorf("github: parse issueType response: %w", err)
 	}
@@ -473,6 +486,75 @@ type projectItemContent struct {
 	Repository string // owner/name — empty for DraftIssue
 }
 
+// projectItemsResponse mirrors the paginated projectItemsQuery payload
+// fetchProjectItems decodes. The map[string] at the data level absorbs the
+// "organization" vs "user" owner-kind alternation in a single shape.
+type projectItemsResponse struct {
+	Data map[string]struct {
+		ProjectV2 *struct {
+			Items struct {
+				PageInfo struct {
+					HasNextPage bool   `json:"hasNextPage"`
+					EndCursor   string `json:"endCursor"`
+				} `json:"pageInfo"`
+				Nodes []projectItemNode `json:"nodes"`
+			} `json:"items"`
+		} `json:"projectV2"`
+	} `json:"data"`
+}
+
+type projectItemNode struct {
+	ID          string `json:"id"`
+	FieldValues struct {
+		Nodes []projectItemFieldValueNode `json:"nodes"`
+	} `json:"fieldValues"`
+	Content projectItemNodeContent `json:"content"`
+}
+
+type projectItemFieldValueNode struct {
+	Typename string                   `json:"__typename"`
+	Name     string                   `json:"name"`
+	Field    projectItemFieldValueRef `json:"field"`
+}
+
+type projectItemFieldValueRef struct {
+	Name string `json:"name"`
+}
+
+type projectItemNodeContent struct {
+	Typename   string `json:"__typename"`
+	Number     int    `json:"number"`
+	URL        string `json:"url"`
+	Title      string `json:"title"`
+	Repository struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"repository"`
+}
+
+// projectFieldsResponse mirrors the projectFieldsQuery payload
+// lookupStatusOption decodes when resolving the Status field + option IDs.
+type projectFieldsResponse struct {
+	Data map[string]struct {
+		ProjectV2 *struct {
+			Fields struct {
+				Nodes []projectField `json:"nodes"`
+			} `json:"fields"`
+		} `json:"projectV2"`
+	} `json:"data"`
+}
+
+type projectField struct {
+	Typename string               `json:"__typename"`
+	ID       string               `json:"id"`
+	Name     string               `json:"name"`
+	Options  []projectFieldOption `json:"options"`
+}
+
+type projectFieldOption struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // projectMetaQuery is a minimal GraphQL query that fetches the two
 // scalars callers actually need. The `%s` placeholder is filled with
 // "organization" or "user" based on parseProjectURL's ownerKind.
@@ -522,9 +604,9 @@ const projectItemsPageSize = 100
 func (t *Tracker) fetchProjectMetadata(ctx context.Context) (projectMeta, error) {
 	query := fmt.Sprintf(projectMetaQuery, t.ownerKind)
 	out, err := t.gh.Run(ctx, "api", "graphql",
-		"-F", "login="+t.owner,
-		"-F", "number="+strconv.Itoa(t.number),
-		"-f", "query="+query)
+		"-F", ghVarLogin+t.owner,
+		"-F", ghVarNumber+strconv.Itoa(t.number),
+		"-f", ghVarQuery+query)
 	if err != nil {
 		return projectMeta{}, err
 	}
@@ -557,10 +639,10 @@ func (t *Tracker) fetchProjectItems(ctx context.Context, limit int) ([]projectIt
 		}
 		args := []string{
 			"api", "graphql",
-			"-F", "login=" + t.owner,
-			"-F", "number=" + strconv.Itoa(t.number),
+			"-F", ghVarLogin + t.owner,
+			"-F", ghVarNumber + strconv.Itoa(t.number),
 			"-F", "first=" + strconv.Itoa(first),
-			"-f", "query=" + query,
+			"-f", ghVarQuery + query,
 		}
 		if after != "" {
 			args = append(args, "-F", "after="+after)
@@ -571,39 +653,7 @@ func (t *Tracker) fetchProjectItems(ctx context.Context, limit int) ([]projectIt
 		}
 		// Decode page. Use map[string]... at the data level so the same
 		// shape decodes whether ownerKind is "organization" or "user".
-		var resp struct {
-			Data map[string]struct {
-				ProjectV2 *struct {
-					Items struct {
-						PageInfo struct {
-							HasNextPage bool   `json:"hasNextPage"`
-							EndCursor   string `json:"endCursor"`
-						} `json:"pageInfo"`
-						Nodes []struct {
-							ID          string `json:"id"`
-							FieldValues struct {
-								Nodes []struct {
-									Typename string `json:"__typename"`
-									Name     string `json:"name"`
-									Field    struct {
-										Name string `json:"name"`
-									} `json:"field"`
-								} `json:"nodes"`
-							} `json:"fieldValues"`
-							Content struct {
-								Typename   string `json:"__typename"`
-								Number     int    `json:"number"`
-								URL        string `json:"url"`
-								Title      string `json:"title"`
-								Repository struct {
-									NameWithOwner string `json:"nameWithOwner"`
-								} `json:"repository"`
-							} `json:"content"`
-						} `json:"nodes"`
-					} `json:"items"`
-				} `json:"projectV2"`
-			} `json:"data"`
-		}
+		var resp projectItemsResponse
 		if err := json.Unmarshal(out, &resp); err != nil {
 			return nil, fmt.Errorf("github: parse projectV2 items: %w", err)
 		}
@@ -639,13 +689,7 @@ func (t *Tracker) fetchProjectItems(ctx context.Context, limit int) ([]projectIt
 // the option name for the Status single-select field, or "" when the
 // item has no Status value set. Field-name comparison ignores case to
 // tolerate projects that spell it "status".
-func extractStatusFieldValue(nodes []struct {
-	Typename string `json:"__typename"`
-	Name     string `json:"name"`
-	Field    struct {
-		Name string `json:"name"`
-	} `json:"field"`
-}) string {
+func extractStatusFieldValue(nodes []projectItemFieldValueNode) string {
 	for _, v := range nodes {
 		if v.Typename != "ProjectV2ItemFieldSingleSelectValue" {
 			continue
@@ -664,31 +708,13 @@ func extractStatusFieldValue(nodes []struct {
 func (t *Tracker) lookupStatusOption(ctx context.Context, optionName string) (fieldID, optionID string, err error) {
 	query := fmt.Sprintf(projectFieldsQuery, t.ownerKind)
 	out, err := t.gh.Run(ctx, "api", "graphql",
-		"-F", "login="+t.owner,
-		"-F", "number="+strconv.Itoa(t.number),
-		"-f", "query="+query)
+		"-F", ghVarLogin+t.owner,
+		"-F", ghVarNumber+strconv.Itoa(t.number),
+		"-f", ghVarQuery+query)
 	if err != nil {
 		return "", "", fmt.Errorf("github: project field-list: %w", err)
 	}
-	type fieldOption struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
-	}
-	type field struct {
-		Typename string        `json:"__typename"`
-		ID       string        `json:"id"`
-		Name     string        `json:"name"`
-		Options  []fieldOption `json:"options"`
-	}
-	var resp struct {
-		Data map[string]struct {
-			ProjectV2 *struct {
-				Fields struct {
-					Nodes []field `json:"nodes"`
-				} `json:"fields"`
-			} `json:"projectV2"`
-		} `json:"data"`
-	}
+	var resp projectFieldsResponse
 	if err := json.Unmarshal(out, &resp); err != nil {
 		return "", "", fmt.Errorf("github: parse project fields: %w", err)
 	}

@@ -1006,7 +1006,12 @@ func TestValidate_RejectsEmptyCanonicalValue(t *testing.T) {
 	}
 }
 
-func TestValidate_AcceptsAbsentPathsWhenArchitectureUnset(t *testing.T) {
+// assertPartialConfigValidates builds a config with only a project block (no
+// architecture, no paths) and asserts Validate accepts it — the shared body
+// for the architecture-gated "absent X is fine when architecture is unset"
+// rules.
+func assertPartialConfigValidates(t *testing.T) {
+	t.Helper()
 	t.Parallel()
 	cfg := &Config{
 		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
@@ -1015,6 +1020,10 @@ func TestValidate_AcceptsAbsentPathsWhenArchitectureUnset(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("partial config without architecture should validate, got: %v", err)
 	}
+}
+
+func TestValidate_AcceptsAbsentPathsWhenArchitectureUnset(t *testing.T) {
+	assertPartialConfigValidates(t)
 }
 
 // Rule 22b: system.db-migration-path is required once architecture is
@@ -1042,14 +1051,9 @@ func TestValidate_RejectsMissingDbMigrationPathWhenArchitectureSet(t *testing.T)
 }
 
 func TestValidate_AcceptsAbsentDbMigrationPathWhenArchitectureUnset(t *testing.T) {
-	t.Parallel()
-	cfg := &Config{
-		Project: Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/optivem/projects/20"},
-		// No architecture, no db-migration-path — Rule 22b gates on architecture.
-	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("partial config without architecture should validate, got: %v", err)
-	}
+	// Rule 22b gates db-migration-path on architecture: absent it validates
+	// when no architecture is set. Same shape as the general absent-paths case.
+	assertPartialConfigValidates(t)
 }
 
 func TestValidate_RejectsAbsoluteDbMigrationPath(t *testing.T) {

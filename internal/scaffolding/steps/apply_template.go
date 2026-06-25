@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/scaffolding/files"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
+	"github.com/optivem/gh-optivem/internal/scaffolding/files"
 	"github.com/optivem/gh-optivem/internal/scaffolding/templates"
 )
 
@@ -18,27 +18,44 @@ const (
 	// Substring fragments still consumed by the content-replacement helpers
 	// (monolithContentReplacements, multitierContentReplacements, etc.).
 	// Filename and folder-path templates live in Names; see names.go.
-	suffixAcceptanceStage   = "-acceptance-stage"
-	suffixQAStage           = "-qa-stage"
-	suffixQASignoff         = "-qa-signoff"
-	suffixProdStage         = "-prod-stage"
-	suffixCommitStage       = "-commit-stage"
-	prefixMonolith          = "monolith-"
-	prefixMultitier         = "multitier-"
-	prefixMultitierBackend  = "multitier-backend-"
-	prefixMultitierFrontend = "multitier-frontend-"
-	prefixMonolithSystem    = "monolith-system-"
-	envPrefixYAML           = "environment: "
-	wdPrefixYAML            = "working-directory: "
-	dirSystemTest           = "system-test"
-	dirDocker               = "docker"
-	dirSimulators              = "simulators"
-	dirStubs                   = "stubs"
-	shopSystemPrefix           = "../../../system/"
-	shopExternalSystemsPrefix  = "../../../external-systems/"
-	systemMonolithDir       = "system/monolith/"
-	systemMultitierDir      = "system/multitier/"
-	systemMultitierBackend  = systemMultitierDir + "backend-"
+	suffixAcceptanceStage     = "-acceptance-stage"
+	suffixQAStage             = "-qa-stage"
+	suffixQASignoff           = "-qa-signoff"
+	suffixProdStage           = "-prod-stage"
+	suffixCommitStage         = "-commit-stage"
+	prefixMonolith            = "monolith-"
+	prefixMultitier           = "multitier-"
+	prefixMultitierBackend    = "multitier-backend-"
+	prefixMultitierFrontend   = "multitier-frontend-"
+	prefixMonolithSystem      = "monolith-system-"
+	envPrefixYAML             = "environment: "
+	wdPrefixYAML              = "working-directory: "
+	dirSystemTest             = "system-test"
+	dirDocker                 = "docker"
+	dirSimulators             = "simulators"
+	dirStubs                  = "stubs"
+	shopSystemPrefix          = "../../../system/"
+	shopExternalSystemsPrefix = "../../../external-systems/"
+	systemMonolithDir         = "system/monolith/"
+	systemMultitierDir        = "system/multitier/"
+	systemMultitierBackend    = systemMultitierDir + "backend-"
+
+	// Config-filename prefix and per-language sonar-key suffixes.
+	prefixGhOptivem       = "gh-optivem-"
+	suffixTestsJava       = "-tests-java"
+	suffixTestsDotnet     = "-tests-dotnet"
+	suffixTestsTypeScript = "-tests-typescript"
+	suffixSystemTest      = "-system-test"
+
+	// Flattened workflow/stage names (templates rename "<prefix>-name" → "name").
+	stageAcceptance = "acceptance-stage"
+	stageQA         = "qa-stage"
+	stageProd       = "prod-stage"
+	stageQASignoff  = "qa-signoff"
+
+	wfBumpPatchVersion     = "bump-patch-version"
+	suffixBumpPatchVersion = "-bump-patch-version"
+	suffixVersionFile      = "/VERSION"
 
 	infoCopyingExternals    = "Copying external simulators..."
 	infoCopyingDbMigrations = "Copying Flyway db migrations..."
@@ -148,11 +165,11 @@ func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string)
 // does not, since it does not vary by deploy target).
 func pipelineWorkflows(srcTmpl string, baseVars map[string]string) map[string]string {
 	out := map[string]string{}
-	for _, stage := range []string{"acceptance-stage", "qa-stage", "prod-stage"} {
+	for _, stage := range []string{stageAcceptance, stageQA, stageProd} {
 		v := MergeVars(baseVars, map[string]string{"stage": stage})
 		out[Expand(srcTmpl, v)] = Expand(Names.DestPipelineStageWf, v)
 	}
-	v := MergeVars(baseVars, map[string]string{"stage": "qa-signoff", "stageSuffix": ""})
+	v := MergeVars(baseVars, map[string]string{"stage": stageQASignoff, "stageSuffix": ""})
 	out[Expand(srcTmpl, v)] = Expand(Names.DestPipelineStageWf, v)
 	return out
 }
@@ -354,14 +371,14 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	systemWfMap := map[string]string{
 		Expand(Names.MonolithCommitStageWf, vars):      Names.DestCommitStageWf,
 		Expand(Names.MonolithBumpPatchVersionWf, vars): Names.DestBumpPatchVersionWf,
-		Names.CleanupWf:                                Names.CleanupWf,
+		Names.CleanupWf: Names.CleanupWf,
 	}
 	templates.CopyWorkflows(systemWfMap, shop, sysDir)
 
 	log.Info("Fixing up system repo workflow content and SonarCloud keys...")
 	sysContentReplacements := [][2]string{
 		{ExpandRef(Names.MonolithCommitStageWf, vars), "commit-stage"},
-		{ExpandRef(Names.MonolithBumpPatchVersionWf, vars), "bump-patch-version"},
+		{ExpandRef(Names.MonolithBumpPatchVersionWf, vars), wfBumpPatchVersion},
 		// Same precedence rule as monolithContentReplacements: VERSION-specific
 		// rule before the broader system/monolith/<lang> -> system rule.
 		{Expand(Names.ShopVersionFile, vars), "VERSION"},
@@ -569,7 +586,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	backendWfMap := map[string]string{
 		Expand(Names.MultitierBackendCommitStageWf, vars): Names.DestBackendCommitStageWf,
 		Expand(Names.MultitierBackendBumpPatchWf, vars):   Names.DestBumpPatchVersionWf,
-		Names.CleanupWf:                                   Names.CleanupWf,
+		Names.CleanupWf: Names.CleanupWf,
 	}
 	templates.CopyWorkflows(backendWfMap, shop, bDir)
 
@@ -582,7 +599,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		[2]string{ExpandRef(Names.MultitierBackendCommitStageWf, vars), "backend-commit-stage"},
 		[2]string{Expand(Names.ShopSystemMultitierBackend, vars), Names.TargetBackendDir},
 		[2]string{Expand(Names.MultitierBackendRef, vars), Names.TargetBackendDir},
-		[2]string{"backend-bump-patch-version", "bump-patch-version"},
+		[2]string{"backend-bump-patch-version", wfBumpPatchVersion},
 	)
 	// Flatten the backend commit-stage GH_OPTIVEM_CONFIG name (backendLang-keyed)
 	// to the canonical gh-optivem.yaml written into the split backend repo.
@@ -613,7 +630,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	frontendWfMap := map[string]string{
 		Expand(Names.MultitierFrontendCommitStageWf, vars): Names.DestFrontendCommitStageWf,
 		Expand(Names.MultitierFrontendBumpPatchWf, vars):   Names.DestBumpPatchVersionWf,
-		Names.CleanupWf:                                    Names.CleanupWf,
+		Names.CleanupWf: Names.CleanupWf,
 	}
 	templates.CopyWorkflows(frontendWfMap, shop, fDir)
 
@@ -626,7 +643,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		[2]string{ExpandRef(Names.MultitierFrontendCommitStageWf, vars), "frontend-commit-stage"},
 		[2]string{Expand(Names.ShopSystemMultitierFrontend, vars), Names.TargetFrontendDir},
 		[2]string{Expand(Names.MultitierFrontendRef, vars), Names.TargetFrontendDir},
-		[2]string{"frontend-bump-patch-version", "bump-patch-version"},
+		[2]string{"frontend-bump-patch-version", wfBumpPatchVersion},
 	)
 	// Flatten the frontend commit-stage GH_OPTIVEM_CONFIG name (shop hardcodes the
 	// multitier-java config here) to the canonical gh-optivem.yaml written into the
@@ -656,10 +673,10 @@ var scaffoldLangs = []string{"dotnet", "java", "typescript"}
 // suffices. arch is "monolith" or "multitier".
 func optivemConfigRewrites(arch, testLang string) [][2]string {
 	r := [][2]string{
-		{"gh-optivem-" + arch + "-" + testLang + "-legacy.yaml", "gh-optivem.legacy.yaml"},
+		{prefixGhOptivem + arch + "-" + testLang + "-legacy.yaml", "gh-optivem.legacy.yaml"},
 	}
 	for _, lang := range scaffoldLangs {
-		r = append(r, [2]string{"gh-optivem-" + arch + "-" + lang + ".yaml", "gh-optivem.yaml"})
+		r = append(r, [2]string{prefixGhOptivem + arch + "-" + lang + ".yaml", "gh-optivem.yaml"})
 	}
 	return r
 }
@@ -678,7 +695,7 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{envPrefixYAML + envPrefix + "production", envPrefixYAML + "production"},
 		// Workflow names (longer patterns first to avoid partial matches)
 		{mono + lang + suffixCommitStage, "commit-stage"},
-		{mono + lang + "-bump-patch-version", "bump-patch-version"},
+		{mono + lang + suffixBumpPatchVersion, wfBumpPatchVersion},
 		// Filename form used in `uses: ./.github/workflows/<flavor>-bump-patch-version.yml`
 		// references inside prod-stage. Same shape as the rule above but keyed by
 		// testLang because the prod-stage source is `monolith-<testLang>-prod-stage.yml`
@@ -686,17 +703,17 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		// `monolith-<testLang>-bump-patch-version.yml`. Without this, polyglot scaffolds
 		// (lang != testLang) leave the shop filename in place and actionlint fails with
 		// "could not read reusable workflow file".
-		{mono + testLang + "-bump-patch-version", "bump-patch-version"},
-		{monoTest + suffixAcceptanceStage, "acceptance-stage"},
-		{monoTest + suffixQAStage, "qa-stage"},
-		{monoTest + suffixQASignoff, "qa-signoff"},
-		{monoTest + suffixProdStage, "prod-stage"},
+		{mono + testLang + suffixBumpPatchVersion, wfBumpPatchVersion},
+		{monoTest + suffixAcceptanceStage, stageAcceptance},
+		{monoTest + suffixQAStage, stageQA},
+		{monoTest + suffixQASignoff, stageQASignoff},
+		{monoTest + suffixProdStage, stageProd},
 		{monoTest + "-verify", "verify"},
 		// VERSION file: shop holds per-flavor system/monolith/<lang>/VERSION,
 		// scaffolded student repos hold one root VERSION. Must precede the
 		// broader system/monolith/<lang> -> system rule below; otherwise the
 		// path collapses to "system/VERSION" instead of "VERSION".
-		{systemMonolithDir + lang + "/VERSION", "VERSION"},
+		{systemMonolithDir + lang + suffixVersionFile, "VERSION"},
 		// Working directory
 		{systemMonolithDir + lang, "system"},
 		// System-test path
@@ -728,7 +745,7 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 			// system/monolith/<testLang>/VERSION. Scaffolded repos hold one root
 			// VERSION (CopyVersion → VERSION; system/monolith/<testLang>/ does not
 			// exist in the scaffold), so collapse this path to root VERSION too.
-			[2]string{systemMonolithDir + testLang + "/VERSION", "VERSION"},
+			[2]string{systemMonolithDir + testLang + suffixVersionFile, "VERSION"},
 		)
 	}
 	return r
@@ -737,7 +754,7 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 // systemPrefixDropReplacements strips system tag prefixes from workflow
 // content. Each input is a tag prefix (the part before "-v") whose
 // "<prefix>-v" form should collapse to "v" and whose "prefix: <prefix>"
-// form should collapse to "prefix: ''".
+// form should collapse to "prefix: ”".
 //
 // Callers pass:
 //   - 2-segment prefixes (e.g. "monolith-typescript", "multitier-java") —
@@ -813,16 +830,16 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{envPrefixYAML + envPrefix + "qa", envPrefixYAML + "qa"},
 		{envPrefixYAML + envPrefix + "production", envPrefixYAML + "production"},
 		// Workflow names for pipeline stages (longer patterns first)
-		{multiTest + suffixAcceptanceStage, "acceptance-stage"},
-		{multiTest + suffixQAStage, "qa-stage"},
-		{multiTest + suffixQASignoff, "qa-signoff"},
-		{multiTest + suffixProdStage, "prod-stage"},
+		{multiTest + suffixAcceptanceStage, stageAcceptance},
+		{multiTest + suffixQAStage, stageQA},
+		{multiTest + suffixQASignoff, stageQASignoff},
+		{multiTest + suffixProdStage, stageProd},
 		{multiTest + "-verify", "verify"},
 		// bump-patch-version variant is keyed by backendLang (frontend is always react),
 		// distinct from the pipeline-stage rewrites above which use testLang. This rule
 		// catches the `name:` / `concurrency.group:` form inside the bump-patch-version
 		// source itself (`multitier-<backendLang>-bump-patch-version.yml`).
-		{prefixMultitier + backendLang + "-bump-patch-version", "bump-patch-version"},
+		{prefixMultitier + backendLang + suffixBumpPatchVersion, wfBumpPatchVersion},
 		// Filename form used in `uses: ./.github/workflows/<flavor>-bump-patch-version.yml`
 		// references inside prod-stage. Same shape as the rule above but keyed by
 		// testLang because the prod-stage source is `multitier-<testLang>-prod-stage.yml`
@@ -830,7 +847,7 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// `multitier-<testLang>-bump-patch-version.yml`. Without this, polyglot scaffolds
 		// (backendLang != testLang) leave the shop filename in place and actionlint fails
 		// with "could not read reusable workflow file".
-		{prefixMultitier + testLang + "-bump-patch-version", "bump-patch-version"},
+		{prefixMultitier + testLang + suffixBumpPatchVersion, wfBumpPatchVersion},
 		// Docker working-directory: shop keeps per-lang/arch subdirs under
 		// docker/, but the scaffolder copies only the selected lang/arch up
 		// into docker/, so "working-directory: docker/<testLang>/<arch>" must
@@ -844,7 +861,7 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		// (the system bundle), scaffolded multitier monorepo student repos hold
 		// one root VERSION. Must precede the broader system/multitier/<lang>
 		// rules below.
-		{systemMultitierDir + backendLang + "/VERSION", "VERSION"},
+		{systemMultitierDir + backendLang + suffixVersionFile, "VERSION"},
 		// Working directories (these also transform commit stage workflow names:
 		// backend-{lang}-commit-stage -> backend-commit-stage, etc.)
 		{systemMultitierBackend + backendLang, "backend"},
@@ -875,7 +892,7 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 			// system/multitier/<testLang>/VERSION. Scaffolded repos hold one root
 			// VERSION (CopyVersion → VERSION; system/multitier/<testLang>/ does not
 			// exist in the scaffold), so collapse this path to root VERSION too.
-			[2]string{systemMultitierDir + testLang + "/VERSION", "VERSION"},
+			[2]string{systemMultitierDir + testLang + suffixVersionFile, "VERSION"},
 		)
 	}
 	return r
@@ -999,9 +1016,9 @@ func multitierSonarKeyReplacements(backendLang, frontendLang string) [][2]string
 // matching the existing -system / -backend / -frontend pattern.
 func systemTestSonarKeyReplacements() [][2]string {
 	return [][2]string{
-		{"-tests-java", "-system-test"},
-		{"-tests-dotnet", "-system-test"},
-		{"-tests-typescript", "-system-test"},
+		{suffixTestsJava, suffixSystemTest},
+		{suffixTestsDotnet, suffixSystemTest},
+		{suffixTestsTypeScript, suffixSystemTest},
 	}
 }
 
@@ -1069,21 +1086,21 @@ func forbiddenTemplateRefs(cfg *config.Config) []string {
 
 func monolithForbiddenRefs(lang, testLang string) []string {
 	refs := []string{
-		prefixMonolith + lang + "-",                     // commit-stage workflow refs
-		prefixMonolith + testLang + "-",                 // pipeline-stage refs + sweep residue
-		prefixMonolithSystem + lang,                     // docker image name
-		systemMonolithDir,                               // template source path
-		"-" + prefixMonolith + lang,                     // sonar key suffix
-		dirSystemTest + "/" + testLang + "/",            // un-flattened system-test path
-		dirDocker + "/" + testLang + "/",                // un-flattened docker path
-		"-tests-java",                                   // system-test sonar key suffix
-		"-tests-dotnet",
-		"-tests-typescript",
+		prefixMonolith + lang + "-",          // commit-stage workflow refs
+		prefixMonolith + testLang + "-",      // pipeline-stage refs + sweep residue
+		prefixMonolithSystem + lang,          // docker image name
+		systemMonolithDir,                    // template source path
+		"-" + prefixMonolith + lang,          // sonar key suffix
+		dirSystemTest + "/" + testLang + "/", // un-flattened system-test path
+		dirDocker + "/" + testLang + "/",     // un-flattened docker path
+		suffixTestsJava,                      // system-test sonar key suffix
+		suffixTestsDotnet,
+		suffixTestsTypeScript,
 	}
 	// Un-rewritten GH_OPTIVEM_CONFIG filenames — any per-language flavor, not just
 	// testLang (commit-stage names the config by system language).
 	for _, l := range scaffoldLangs {
-		refs = append(refs, "gh-optivem-"+prefixMonolith+l)
+		refs = append(refs, prefixGhOptivem+prefixMonolith+l)
 	}
 	// Post-Sonar-mangle residual: monolithSonarKeyReplacements rewrites
 	// "-monolith-<lang>" -> "-system" across all text files, and checkNoTemplateRefs
@@ -1103,13 +1120,13 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 		prefixMultitierFrontend + frontendLang + "-",
 		prefixMultitier + testLang + "-",
 		systemMultitierDir,
-		"-" + prefixMultitierBackend + backendLang,    // sonar key suffix
-		"-" + prefixMultitierFrontend + frontendLang,  // sonar key suffix
+		"-" + prefixMultitierBackend + backendLang,   // sonar key suffix
+		"-" + prefixMultitierFrontend + frontendLang, // sonar key suffix
 		dirSystemTest + "/" + testLang + "/",
-		dirDocker + "/" + testLang + "/",                // un-flattened docker path
-		"-tests-java",                                   // system-test sonar key suffix
-		"-tests-dotnet",
-		"-tests-typescript",
+		dirDocker + "/" + testLang + "/", // un-flattened docker path
+		suffixTestsJava,                  // system-test sonar key suffix
+		suffixTestsDotnet,
+		suffixTestsTypeScript,
 	}
 	// Un-rewritten GH_OPTIVEM_CONFIG filenames — any per-language flavor, not just
 	// testLang (the backend commit-stage names the config by backendLang, the
@@ -1117,7 +1134,7 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 	// suffix "-multitier-backend-<lang>" is not a substring of
 	// "gh-optivem-multitier-<lang>.yaml", so no "-system" residual arises.
 	for _, l := range scaffoldLangs {
-		refs = append(refs, "gh-optivem-"+prefixMultitier+l)
+		refs = append(refs, prefixGhOptivem+prefixMultitier+l)
 	}
 	if backendLang != testLang {
 		refs = append(refs, prefixMultitierBackend+testLang)

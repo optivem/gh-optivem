@@ -52,6 +52,7 @@ has_p=0
 for a in "${filtered[@]}"; do
     case "$a" in
         -p|-p=*) has_p=1 ;;
+        *) ;;  # other args don't affect -p detection
     esac
 done
 

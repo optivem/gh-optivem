@@ -18,6 +18,10 @@ import (
 	"runtime"
 )
 
+// stateDirName is the gh-optivem-owned leaf directory appended to the
+// platform's machine-local state base (LOCALAPPDATA / XDG_STATE_HOME / home).
+const stateDirName = "gh-optivem"
+
 // PidMarker is the JSON shape persisted at <Dir()>/runs/<ts>-<parent-pid>/<seq>-<agent>.pid
 // while a dispatch is running. Read by doctor --orphans to distinguish a
 // force-cancelled dispatch (parent dead → orphan) from a live rehearsal
@@ -25,10 +29,10 @@ import (
 //
 //   - ChildPid:  spawned claude PID — kill/probe target.
 //   - ParentPid: gh-optivem PID that spawned the child — alive means "still
-//                a live dispatch, leave it alone."
+//     a live dispatch, leave it alone."
 //   - Cwd:       dispatch working directory at write time — human context
-//                in the doctor listing, since the file path itself
-//                (user-level state dir) is project-agnostic.
+//     in the doctor listing, since the file path itself
+//     (user-level state dir) is project-agnostic.
 type PidMarker struct {
 	ChildPid  int    `json:"child_pid"`
 	ParentPid int    `json:"parent_pid"`
@@ -58,20 +62,20 @@ type PidMarker struct {
 func Dir() (string, error) {
 	if runtime.GOOS == "windows" {
 		if base := os.Getenv("LOCALAPPDATA"); base != "" {
-			return filepath.Join(base, "gh-optivem"), nil
+			return filepath.Join(base, stateDirName), nil
 		}
 		home, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("locate user home dir: %w", err)
 		}
-		return filepath.Join(home, "AppData", "Local", "gh-optivem"), nil
+		return filepath.Join(home, "AppData", "Local", stateDirName), nil
 	}
 	if base := os.Getenv("XDG_STATE_HOME"); base != "" {
-		return filepath.Join(base, "gh-optivem"), nil
+		return filepath.Join(base, stateDirName), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("locate user home dir: %w", err)
 	}
-	return filepath.Join(home, ".local", "state", "gh-optivem"), nil
+	return filepath.Join(home, ".local", "state", stateDirName), nil
 }

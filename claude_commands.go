@@ -22,6 +22,9 @@ import (
 	claudeassets "github.com/optivem/gh-optivem/internal/claude/assets"
 )
 
+// claudeDirName is the global Claude Code config directory under the user's home.
+const claudeDirName = ".claude"
+
 func newClaudeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "claude",
@@ -109,7 +112,7 @@ func runClaudeInstall() error {
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
-	destDir := filepath.Join(home, ".claude", "commands")
+	destDir := filepath.Join(home, claudeDirName, "commands")
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("create %s: %w", destDir, err)
 	}
@@ -156,7 +159,7 @@ func runClaudeConfigure() error {
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
-	claudeDir := filepath.Join(home, ".claude")
+	claudeDir := filepath.Join(home, claudeDirName)
 	if err := os.MkdirAll(claudeDir, 0755); err != nil {
 		return fmt.Errorf("create %s: %w", claudeDir, err)
 	}
@@ -171,7 +174,7 @@ func runClaudeCheck() error {
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
-	claudeDir := filepath.Join(home, ".claude")
+	claudeDir := filepath.Join(home, claudeDirName)
 	drift := false
 
 	// Commands

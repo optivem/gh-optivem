@@ -38,6 +38,13 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
+// State keys the no-progress guard reads/writes: the prior failing-run
+// signature it compares against, and the bool GATE_FIX_PROGRESSING routes on.
+const (
+	CtxKeyFixPrevFailureSignature = "fix-prev-failure-signature"
+	CtxKeyFixLoopProgressing      = "fix-loop-progressing"
+)
+
 // checkFixProgress is the verify-tests-pass no-progress guard
 // (CHECK_FIX_PROGRESS service task). See the file header for the loop it
 // guards and the routing contract. Never surfaces Outcome.Err: a missing
@@ -46,7 +53,7 @@ import (
 // on uncertainty.
 func (a actions) checkFixProgress(ctx *statemachine.Context) statemachine.Outcome {
 	cur := fixFailureSignature(ctx.GetString("verify_failure_output"))
-	prev := ctx.GetString("fix-prev-failure-signature")
+	prev := ctx.GetString(CtxKeyFixPrevFailureSignature)
 
 	// Indeterminate (the failing run produced no capturable output) or the
 	// first fail of this loop (no prior signature to compare against):
@@ -54,9 +61,9 @@ func (a actions) checkFixProgress(ctx *statemachine.Context) statemachine.Outcom
 	// never halts — we defer to the existing count cap rather than guess.
 	if cur == "" || prev == "" {
 		if cur != "" {
-			ctx.Set("fix-prev-failure-signature", cur)
+			ctx.Set(CtxKeyFixPrevFailureSignature, cur)
 		}
-		ctx.Set("fix-loop-progressing", true)
+		ctx.Set(CtxKeyFixLoopProgressing, true)
 		return statemachine.Outcome{}
 	}
 
@@ -64,14 +71,14 @@ func (a actions) checkFixProgress(ctx *statemachine.Context) statemachine.Outcom
 		// Two consecutive failing runs with an identical signature: the last
 		// fixer pass did not change the failure at all. Halt for a human
 		// rather than spend another opus·high pass on a spinning loop.
-		ctx.Set("fix-loop-progressing", false)
+		ctx.Set(CtxKeyFixLoopProgressing, false)
 		return statemachine.Outcome{}
 	}
 
 	// The failure changed — the fixer moved the needle. Advance the
 	// baseline and let the loop continue.
-	ctx.Set("fix-prev-failure-signature", cur)
-	ctx.Set("fix-loop-progressing", true)
+	ctx.Set(CtxKeyFixPrevFailureSignature, cur)
+	ctx.Set(CtxKeyFixLoopProgressing, true)
 	return statemachine.Outcome{}
 }
 

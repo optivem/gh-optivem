@@ -24,6 +24,13 @@ import (
 
 const cleanupSeparator = "============================================"
 
+// cleanupRule is the per-repo banner rule (41 chars), distinct from the wider
+// cleanupSeparator. Kept verbatim to preserve existing output width.
+const cleanupRule = "========================================="
+
+// dryRunModeLine is the banner line shown when a cleanup runs in dry-run mode.
+const dryRunModeLine = "  Mode: DRY RUN (no changes will be made)"
+
 // newCleanupCmd builds the `gh optivem cleanup` parent. The parent has no
 // Run, so invoking it without a subcommand prints help.
 func newCleanupCmd() *cobra.Command {
@@ -114,9 +121,9 @@ func runCleanupReleases(slugs []slug, opt ghbulk.Options) error {
 	printHeader("GitHub Release Cleanup", slugs, opt)
 	for i, s := range slugs {
 		fmt.Println()
-		fmt.Println("=========================================")
+		fmt.Println(cleanupRule)
 		fmt.Printf("  Processing: %s/%s\n", s.Owner, s.Repo)
-		fmt.Println("=========================================")
+		fmt.Println(cleanupRule)
 
 		deleted := 0
 		err := ghbulk.ForEachRelease(s.Owner, s.Repo, opt, func(rel ghbulk.Release) error {
@@ -178,9 +185,9 @@ func runCleanupPackages(slugs []slug, opt ghbulk.Options) error {
 	printHeader("GitHub Package Cleanup", slugs, opt)
 	for i, s := range slugs {
 		fmt.Println()
-		fmt.Println("=========================================")
+		fmt.Println(cleanupRule)
 		fmt.Printf("  Processing: %s/%s\n", s.Owner, s.Repo)
-		fmt.Println("=========================================")
+		fmt.Println(cleanupRule)
 
 		ownerType, err := ghbulk.OwnerType(s.Owner)
 		if err != nil {
@@ -268,7 +275,7 @@ func runCleanupRepos(owner, prefix string, explicit []string, opt ghbulk.Options
 		fmt.Printf("  Repos:  %s\n", strings.Join(explicit, " "))
 	}
 	if opt.DryRun {
-		fmt.Println("  Mode: DRY RUN (no changes will be made)")
+		fmt.Println(dryRunModeLine)
 	}
 	fmt.Println(cleanupSeparator)
 
@@ -364,7 +371,7 @@ func runCleanupSonarProjects(client *sonar.Client, organization, prefix string, 
 		fmt.Printf("  Projects:     %s\n", strings.Join(explicit, " "))
 	}
 	if opt.DryRun {
-		fmt.Println("  Mode: DRY RUN (no changes will be made)")
+		fmt.Println(dryRunModeLine)
 	}
 	fmt.Println(cleanupSeparator)
 
@@ -462,7 +469,7 @@ func printHeader(title string, slugs []slug, opt ghbulk.Options) {
 		fmt.Printf("  Filter: items created before %s (exclusive)\n", opt.BeforeDate.Format("2006-01-02"))
 	}
 	if opt.DryRun {
-		fmt.Println("  Mode: DRY RUN (no changes will be made)")
+		fmt.Println(dryRunModeLine)
 	}
 	fmt.Println(cleanupSeparator)
 }

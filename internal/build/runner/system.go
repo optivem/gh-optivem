@@ -233,6 +233,7 @@ func upComposeArgs(s SystemEntry, cwd string, opts SystemOptions) ([]string, err
 // incremental / cold-start / degenerate decisions are unit-testable without
 // docker. Service order from `services` is preserved.
 func buildUpArgs(composeFile string, services []string, running map[string]bool) []string {
+	const buildFlag = "--build"
 	base := []string{"-f", composeFile, "up", "-d"}
 	var recreate, persistentInStack []string
 	for _, svc := range services {
@@ -245,14 +246,14 @@ func buildUpArgs(composeFile string, services []string, running map[string]bool)
 	// No persistent service to protect, or nothing else to recreate → just bring
 	// the whole stack up with a fresh build.
 	if len(persistentInStack) == 0 || len(recreate) == 0 {
-		return append(base, "--build")
+		return append(base, buildFlag)
 	}
 	// Cold start: a persistent service isn't running yet, so bring the whole
 	// stack up so postgres + its dependents start in dependency order. The next
 	// --restart then takes the incremental path below.
 	for _, p := range persistentInStack {
 		if !running[p] {
-			return append(base, "--build")
+			return append(base, buildFlag)
 		}
 	}
 	// Incremental: rebuild and force-recreate only the non-persistent services.
@@ -260,7 +261,7 @@ func buildUpArgs(composeFile string, services []string, running map[string]bool)
 	// healthcheck is not re-waited and its data volume is preserved. --build
 	// picks up new app/simulator code; --force-recreate re-runs Flyway (new
 	// migrations) and reloads WireMock's mounted mappings (changed stubs).
-	args := append(base, "--build", "--force-recreate", "--no-deps")
+	args := append(base, buildFlag, "--force-recreate", "--no-deps")
 	return append(args, recreate...)
 }
 

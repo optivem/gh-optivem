@@ -133,7 +133,7 @@ func (rs *runState) summaryPath() string {
 	if rs == nil {
 		return ""
 	}
-	return filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp, "summary.jsonl")
+	return filepath.Join(rs.repoPath, ghOptivemDir, "runs", rs.runTimestamp, "summary.jsonl")
 }
 
 // appendSummaryLine writes one JSON record to the run's summary sidecar.
@@ -238,7 +238,7 @@ func LatestRunWithSummary(repoPath string) (string, error) {
 // newest-first by mtime. Errors when the runs/ root is missing or
 // contains no subdirectories.
 func runDirsByMtime(repoPath string) ([]string, error) {
-	root := filepath.Join(repoPath, ".gh-optivem", "runs")
+	root := filepath.Join(repoPath, ghOptivemDir, "runs")
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil, fmt.Errorf("read runs dir %s: %w", root, err)
@@ -339,7 +339,7 @@ func (rs *runState) summaryMarkdownPath() string {
 	if rs == nil {
 		return ""
 	}
-	return filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp, "summary.md")
+	return filepath.Join(rs.repoPath, ghOptivemDir, "runs", rs.runTimestamp, "summary.md")
 }
 
 // renderRunDigest writes a short, GitHub-renderable run digest to w:

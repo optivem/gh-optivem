@@ -29,12 +29,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
-// Shell abstracts subprocess execution so tests can capture invocations
+// Runner abstracts subprocess execution so tests can capture invocations
 // without spawning real processes. The real implementation streams the
 // child's stdout/stderr through to the user's terminal, matching today's
 // `compile-all.sh` verbosity (so warnings — Sonar, nullability, etc. —
 // stay visible and failure output stays informative).
-type Shell interface {
+type Runner interface {
 	Run(commandLine, cwd string) error
 }
 
@@ -103,13 +103,13 @@ func CompileIn(lang, cwd string) error {
 }
 
 // CompileWith is the testable variant of Compile. Production callers use
-// Compile, which injects the passthrough Shell. Tests inject a fake Shell
+// Compile, which injects the passthrough Runner. Tests inject a fake Runner
 // to assert the dispatched command sequence.
-func CompileWith(tier projectconfig.TierSpec, repoRoot string, sh Shell) error {
+func CompileWith(tier projectconfig.TierSpec, repoRoot string, sh Runner) error {
 	return runCommands(tier.Lang, filepath.Join(repoRoot, tier.Path), sh)
 }
 
-func runCommands(lang, cwd string, sh Shell) error {
+func runCommands(lang, cwd string, sh Runner) error {
 	cmds, err := commandsFor(lang)
 	if err != nil {
 		return err

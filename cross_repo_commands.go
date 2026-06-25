@@ -28,9 +28,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/optivem/gh-optivem/internal/devworkflow/workspace"
 	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/kernel/cmdctx"
-	"github.com/optivem/gh-optivem/internal/devworkflow/workspace"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
@@ -43,6 +43,14 @@ var workspaceFlagValue string
 // verbatim from commit.sh for parity; flagged for review in a follow-up
 // because gh-optivem itself is not a Claude session.
 const commitCoAuthor = "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+
+// Shared git argument tokens, deduplicated across the cross-repo verbs.
+const (
+	gitFlagRebase    = "--rebase"
+	gitFlagQuiet     = "--quiet"
+	gitFlagAbbrevRef = "--abbrev-ref"
+	gitSubRevParse   = "rev-parse"
+)
 
 const workspaceSeparator = "============================================"
 
@@ -208,7 +216,7 @@ func runCommit(msg string, opts commitOptions) error {
 		// pull/push side-effect.
 		didPush := false
 		if hasUp && (didCommit || workingClean) {
-			if err := runGit(repo, "pull", "--rebase"); err != nil {
+			if err := runGit(repo, "pull", gitFlagRebase); err != nil {
 				return fmt.Errorf("git pull --rebase in %s: %w", repo, err)
 			}
 			if err := pushWithRebaseRetry(repo); err != nil {
@@ -305,7 +313,7 @@ func commitOneRepo(repo, msg string, opts commitOptions) (bool, error) {
 			return false, err
 		}
 		if !ok {
-			resetArgs := append([]string{"reset", "--quiet", "--"}, pathArgs...)
+			resetArgs := append([]string{"reset", gitFlagQuiet, "--"}, pathArgs...)
 			_ = runGit(repo, resetArgs...)
 			fmt.Println("  ✗ Skipped (unstaged)")
 			return false, nil
@@ -445,7 +453,7 @@ func runSync() error {
 		fmt.Println()
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
 		fmt.Printf("  %s\n", tbdModeBanner(repo))
-		if err := runGit(repo, "pull", "--rebase"); err != nil {
+		if err := runGit(repo, "pull", gitFlagRebase); err != nil {
 			return fmt.Errorf("git pull --rebase in %s: %w", repo, err)
 		}
 		if err := pushWithRebaseRetry(repo); err != nil {
@@ -795,10 +803,10 @@ func lintHistoryOneRepo(repo, ref string, limit int) ([]string, error) {
 // remote-tracking ref is preferred so lint-history reports against the
 // authoritative trunk, not a stale local branch.
 func mainLintRef(repo string) string {
-	if exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "origin/main").Run() == nil {
+	if exec.Command("git", "-C", repo, gitSubRevParse, "--verify", gitFlagQuiet, "origin/main").Run() == nil {
 		return "origin/main"
 	}
-	if exec.Command("git", "-C", repo, "rev-parse", "--verify", "--quiet", "main").Run() == nil {
+	if exec.Command("git", "-C", repo, gitSubRevParse, "--verify", gitFlagQuiet, "main").Run() == nil {
 		return "main"
 	}
 	return ""
@@ -997,7 +1005,7 @@ func pushWithRebaseRetry(repo string) error {
 		// Tree is clean at this point — we only enter the push retry
 		// loop after a successful commit (or on a cleanSynced repo),
 		// so plain `git pull --rebase` works without any stash detour.
-		if err := runGit(repo, "pull", "--rebase"); err != nil {
+		if err := runGit(repo, "pull", gitFlagRebase); err != nil {
 			return fmt.Errorf("git pull --rebase in %s during push retry: %w", repo, err)
 		}
 	}
@@ -1007,7 +1015,7 @@ func pushWithRebaseRetry(repo string) error {
 // currentBranch returns the short ref name of HEAD in repo (e.g. "main" or
 // "feature/x"). Empty on detached HEAD or error.
 func currentBranch(repo string) string {
-	out, err := captureGit(repo, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err := captureGit(repo, gitSubRevParse, gitFlagAbbrevRef, "HEAD")
 	if err != nil {
 		return ""
 	}
@@ -1018,7 +1026,7 @@ func currentBranch(repo string) string {
 // (e.g. "origin/main"). Empty when the branch has no upstream — cross-repo
 // loops already skip such repos via hasUpstream.
 func upstreamRef(repo string) string {
-	out, err := captureGit(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	out, err := captureGit(repo, gitSubRevParse, gitFlagAbbrevRef, "--symbolic-full-name", "@{u}")
 	if err != nil {
 		return ""
 	}
@@ -1096,7 +1104,7 @@ func captureGit(repo string, args ...string) (string, error) {
 // gitCachedClean returns true when `git diff --cached --quiet` exits zero —
 // i.e. nothing is staged. Mirrors commit.sh:201.
 func gitCachedClean(repo string) (bool, error) {
-	full := []string{"-C", repo, "diff", "--cached", "--quiet"}
+	full := []string{"-C", repo, "diff", "--cached", gitFlagQuiet}
 	cmd := exec.Command("git", full...)
 	err := cmd.Run()
 	if err == nil {
@@ -1112,7 +1120,7 @@ func gitCachedClean(repo string) (bool, error) {
 // hasUpstream reports whether the repo's current branch has a remote tracking
 // branch. Repos without one are skipped — mirrors commit.sh:188 and sync.sh:30.
 func hasUpstream(repo string) bool {
-	cmd := exec.Command("git", "-C", repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	cmd := exec.Command("git", "-C", repo, gitSubRevParse, gitFlagAbbrevRef, "--symbolic-full-name", "@{u}")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	return cmd.Run() == nil

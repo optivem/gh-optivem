@@ -728,7 +728,7 @@ func resolveLangs(f *RawFlags) langChoice {
 			log.FatalExit("--test-lang is required (the system-test tier's language is not derived from the backend services)")
 		}
 		if !validLangs[f.TestLang] {
-			log.FatalExit("--test-lang must be java, dotnet, or typescript")
+			log.FatalExit(errTestLangInvalid)
 		}
 		c.testLang = f.TestLang
 		return c
@@ -745,7 +745,7 @@ func resolveLangs(f *RawFlags) langChoice {
 			log.FatalExit("--test-lang is required (the system-test tier's language is not derived from --monolith-lang)")
 		}
 		if !validLangs[f.TestLang] {
-			log.FatalExit("--test-lang must be java, dotnet, or typescript")
+			log.FatalExit(errTestLangInvalid)
 		}
 		c.testLang = f.TestLang
 		return c
@@ -768,7 +768,7 @@ func resolveLangs(f *RawFlags) langChoice {
 		log.FatalExit("--test-lang is required (the system-test tier's language is not derived from --backend-lang)")
 	}
 	if !validLangs[f.TestLang] {
-		log.FatalExit("--test-lang must be java, dotnet, or typescript")
+		log.FatalExit(errTestLangInvalid)
 	}
 	c.testLang = f.TestLang
 	return c
@@ -784,6 +784,11 @@ const (
 	DefaultBackendPath    = "backend"
 	DefaultFrontendPath   = "frontend"
 )
+
+// errTestLangInvalid is the shared message for an out-of-range --test-lang
+// value, surfaced both via log.FatalExit (flag/interactive paths) and
+// fmt.Errorf (the parse path).
+const errTestLangInvalid = "--test-lang must be java, dotnet, or typescript"
 
 type envTokens struct {
 	dockerHubUsername, dockerHubToken, sonarToken, ghcrToken, workflowToken, repoToken string
@@ -1547,7 +1552,7 @@ func resolveLangsForYAML(f *RawFlags) (langChoice, error) {
 			return c, fmt.Errorf("--test-lang is required (the system-test tier's language is not derived from --monolith-lang)")
 		}
 		if !validLangs[f.TestLang] {
-			return c, fmt.Errorf("--test-lang must be java, dotnet, or typescript")
+			return c, fmt.Errorf(errTestLangInvalid)
 		}
 		c.testLang = f.TestLang
 		return c, nil
@@ -1570,7 +1575,7 @@ func resolveLangsForYAML(f *RawFlags) (langChoice, error) {
 		return c, fmt.Errorf("--test-lang is required (the system-test tier's language is not derived from --backend-lang)")
 	}
 	if !validLangs[f.TestLang] {
-		return c, fmt.Errorf("--test-lang must be java, dotnet, or typescript")
+		return c, fmt.Errorf(errTestLangInvalid)
 	}
 	c.testLang = f.TestLang
 	return c, nil

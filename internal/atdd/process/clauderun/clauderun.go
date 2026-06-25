@@ -47,6 +47,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/userstate"
 )
 
+// Reused display literals.
+const (
+	resultDivider    = "─── result ───\n"
+	emptyPlaceholder = "(empty)"
+)
+
 // Options bundles every input Dispatch needs to construct a prompt and run
 // the subprocess. Zero values yield a usable configuration where it makes
 // sense (Stdout/Stderr/Stdin default to the OS streams). Required fields
@@ -1596,7 +1602,7 @@ func writePreparedPromptBanner(opts Options, prompt string) {
 	}
 	fmt.Fprintln(w, cyan.Sprintf("[agent]  prep   %s", opts.Agent))
 	fmt.Fprintln(w, cyan.Sprintf("         size:                %s", formatPromptSize(len(prompt))))
-	fmt.Fprintln(w, cyan.Sprintf("         architecture:        %s", orPlaceholderClauderun(opts.Architecture, "(empty)")))
+	fmt.Fprintln(w, cyan.Sprintf("         architecture:        %s", orPlaceholderClauderun(opts.Architecture, emptyPlaceholder)))
 	fmt.Fprintln(w, cyan.Sprintf("         scope:               %s", summarizeScope(opts.ScopeRead, opts.ScopeWrite)))
 	fmt.Fprintln(w, cyan.Sprintf("         acceptance criteria: %s", summarizeAcceptanceCriteria(opts.AcceptanceCriteria)))
 	writeIndentedBlock(w, cyan, opts.AcceptanceCriteria)
@@ -1639,7 +1645,7 @@ func formatPromptSize(n int) string {
 // (which is the load-bearing path — see ScopeRead/ScopeWrite doc).
 func summarizeScope(read, write []string) string {
 	if len(read) == 0 && len(write) == 0 {
-		return "(empty)"
+		return emptyPlaceholder
 	}
 	return fmt.Sprintf("%d read / %d write", len(read), len(write))
 }
@@ -1650,7 +1656,7 @@ func summarizeScope(read, write []string) string {
 // dispatch-time misses).
 func summarizeAcceptanceCriteria(s string) string {
 	if s == "" {
-		return "(empty)"
+		return emptyPlaceholder
 	}
 	lines := 0
 	for line := range strings.SplitSeq(s, "\n") {
@@ -1659,7 +1665,7 @@ func summarizeAcceptanceCriteria(s string) string {
 		}
 	}
 	if lines == 0 {
-		return "(empty)"
+		return emptyPlaceholder
 	}
 	return fmt.Sprintf("%d line(s)", lines)
 }
@@ -1669,7 +1675,7 @@ func summarizeAcceptanceCriteria(s string) string {
 // markdown task rows are ignored. Empty input → "(empty)".
 func summarizeChecklist(s string) string {
 	if s == "" {
-		return "(empty)"
+		return emptyPlaceholder
 	}
 	total, checked := 0, 0
 	for line := range strings.SplitSeq(s, "\n") {
@@ -1683,7 +1689,7 @@ func summarizeChecklist(s string) string {
 		}
 	}
 	if total == 0 {
-		return "(empty)"
+		return emptyPlaceholder
 	}
 	return fmt.Sprintf("%d item(s) (%d already [x])", total, checked)
 }
@@ -1854,28 +1860,32 @@ const promptArgvLimit = 8000
 // was created. The dispatcher fires it via `defer`, so the agent does not
 // need to know the tempfile exists past its first Read.
 func materializePrompt(dir, prompt string) (string, func(), error) {
+	noopCleanup := func() {
+		// no-op: nothing to clean up on the argv path or the error paths —
+		// no tempfile was created.
+	}
 	if len(prompt) <= promptArgvLimit && !strings.ContainsRune(prompt, '\n') {
-		return prompt, func() {}, nil
+		return prompt, noopCleanup, nil
 	}
 	if dir == "" {
 		var err error
 		dir, err = os.Getwd()
 		if err != nil {
-			return "", func() {}, fmt.Errorf("materializePrompt: getwd: %w", err)
+			return "", noopCleanup, fmt.Errorf("materializePrompt: getwd: %w", err)
 		}
 	}
 	f, err := os.CreateTemp(dir, ".atdd-prompt-*.tmp.md")
 	if err != nil {
-		return "", func() {}, fmt.Errorf("materializePrompt: create tempfile: %w", err)
+		return "", noopCleanup, fmt.Errorf("materializePrompt: create tempfile: %w", err)
 	}
 	if _, err := f.WriteString(prompt); err != nil {
 		f.Close()
 		os.Remove(f.Name())
-		return "", func() {}, fmt.Errorf("materializePrompt: write tempfile: %w", err)
+		return "", noopCleanup, fmt.Errorf("materializePrompt: write tempfile: %w", err)
 	}
 	if err := f.Close(); err != nil {
 		os.Remove(f.Name())
-		return "", func() {}, fmt.Errorf("materializePrompt: close tempfile: %w", err)
+		return "", noopCleanup, fmt.Errorf("materializePrompt: close tempfile: %w", err)
 	}
 	base := filepath.Base(f.Name())
 	bootstrap := fmt.Sprintf("Read `%s` and follow its instructions.", base)
@@ -2136,17 +2146,20 @@ func removePidFile(path string, stderr io.Writer) {
 // Extracted from runHeadless so tests can exercise the path-handling and
 // error-recovery branches directly without spinning up a real subprocess.
 func openEventsLog(path string, stderr io.Writer) (io.Writer, func()) {
+	noopCleanup := func() {
+		// no-op: io.Discard sink has nothing to close.
+	}
 	if path == "" {
-		return io.Discard, func() {}
+		return io.Discard, noopCleanup
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		fmt.Fprintf(stderr, "clauderun: warning: failed to create events log dir %s: %v\n", filepath.Dir(path), err)
-		return io.Discard, func() {}
+		return io.Discard, noopCleanup
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		fmt.Fprintf(stderr, "clauderun: warning: failed to open events log %s: %v\n", path, err)
-		return io.Discard, func() {}
+		return io.Discard, noopCleanup
 	}
 	return f, func() { _ = f.Close() }
 }
@@ -2157,17 +2170,20 @@ func openEventsLog(path string, stderr io.Writer) (io.Writer, func()) {
 // rather than raw NDJSON. The returned cleanup flushes any partial
 // line still buffered before closing the file.
 func openEventsTextLog(path string, stderr io.Writer) (io.Writer, func()) {
+	noopCleanup := func() {
+		// no-op: io.Discard sink has nothing to flush or close.
+	}
 	if path == "" {
-		return io.Discard, func() {}
+		return io.Discard, noopCleanup
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		fmt.Fprintf(stderr, "clauderun: warning: failed to create events text log dir %s: %v\n", filepath.Dir(path), err)
-		return io.Discard, func() {}
+		return io.Discard, noopCleanup
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		fmt.Fprintf(stderr, "clauderun: warning: failed to open events text log %s: %v\n", path, err)
-		return io.Discard, func() {}
+		return io.Discard, noopCleanup
 	}
 	tw := &streamTextWriter{w: f}
 	return tw, func() {

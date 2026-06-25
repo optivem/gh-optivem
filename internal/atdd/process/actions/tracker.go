@@ -9,6 +9,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
+// CtxKeyIssueHandle is the state key carrying the picked issue's tracker handle,
+// read by every MARK_* state-transition action.
+const CtxKeyIssueHandle = "issue-handle"
+
 // ---------------------------------------------------------------------------
 // State-transition actions (MARK_* service tasks)
 // ---------------------------------------------------------------------------
@@ -17,7 +21,7 @@ import (
 // via Tracker.SetStatus. Wired to the MARK_IN_REFINEMENT node at the
 // start of refine-ticket.
 func (a actions) moveToInRefinement(ctx *statemachine.Context) statemachine.Outcome {
-	handle := ctx.GetString("issue-handle")
+	handle := ctx.GetString(CtxKeyIssueHandle)
 	if handle == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-refinement: issue-handle not in Context")}
 	}
@@ -32,7 +36,7 @@ func (a actions) moveToInRefinement(ctx *statemachine.Context) statemachine.Outc
 // Tracker.SetStatus. Wired to the MARK_READY node at the end of
 // refine-ticket.
 func (a actions) moveToReady(ctx *statemachine.Context) statemachine.Outcome {
-	handle := ctx.GetString("issue-handle")
+	handle := ctx.GetString(CtxKeyIssueHandle)
 	if handle == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-ready: issue-handle not in Context")}
 	}
@@ -47,7 +51,7 @@ func (a actions) moveToReady(ctx *statemachine.Context) statemachine.Outcome {
 // Tracker.SetStatus. Reads issue-handle from Context — populated by the
 // driver's issue-lookup path (preResolveIssue).
 func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcome {
-	handle := ctx.GetString("issue-handle")
+	handle := ctx.GetString(CtxKeyIssueHandle)
 	if handle == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-progress: issue-handle not in Context (requires explicit pre-resolution)")}
 	}
@@ -63,7 +67,7 @@ func (a actions) moveToInProgress(ctx *statemachine.Context) statemachine.Outcom
 // option or a permission failure on edit is a misconfiguration the
 // operator must fix before re-running.
 func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outcome {
-	handle := ctx.GetString("issue-handle")
+	handle := ctx.GetString(CtxKeyIssueHandle)
 	if handle == "" {
 		return statemachine.Outcome{Err: fmt.Errorf("move-to-in-acceptance: issue-handle not in Context")}
 	}
@@ -135,6 +139,6 @@ func issueFromContext(ctx *statemachine.Context) (tracker.Issue, error) {
 		ID:     ctx.GetString("issue-num"),
 		Title:  ctx.GetString("issue-title"),
 		URL:    url,
-		Handle: ctx.GetString("issue-handle"),
+		Handle: ctx.GetString(CtxKeyIssueHandle),
 	}, nil
 }

@@ -15,8 +15,8 @@ import (
 //
 //   - .trx          dotnet's <ResultSummary><Counters executed="N"/></>
 //   - .xml / dir    JUnit XML — sum <testsuite tests=.. skipped=..>, where
-//                   executed = tests - skipped. Gradle drops one file per test
-//                   class into a directory, so a directory is globbed for *.xml.
+//     executed = tests - skipped. Gradle drops one file per test
+//     class into a directory, so a directory is globbed for *.xml.
 //   - .json         Playwright JSON report (stats.expected+unexpected+flaky).
 //
 // A report file that does not exist counts as 0 executed, not an error: a
@@ -58,12 +58,16 @@ func countExecutedTests(path string) (int, error) {
 // own tally of tests that ran (passed+failed+…, excluding not-executed), which
 // is exactly the number this guard cares about.
 type trxReport struct {
-	XMLName       xml.Name `xml:"TestRun"`
-	ResultSummary struct {
-		Counters struct {
-			Executed int `xml:"executed,attr"`
-		} `xml:"Counters"`
-	} `xml:"ResultSummary"`
+	XMLName       xml.Name         `xml:"TestRun"`
+	ResultSummary trxResultSummary `xml:"ResultSummary"`
+}
+
+type trxResultSummary struct {
+	Counters trxCounters `xml:"Counters"`
+}
+
+type trxCounters struct {
+	Executed int `xml:"executed,attr"`
 }
 
 func countTRX(path string) (int, error) {

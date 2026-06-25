@@ -14,6 +14,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/pathx"
 )
 
+// testNamePlaceholder is the token in a suite's TestFilter that
+// applyTestFilter substitutes with the concrete test name(s).
+const testNamePlaceholder = "<test>"
+
 // TestOptions narrows or modifies a tests run.
 type TestOptions struct {
 	// Suite, when non-empty, limits the run to the suites with these ids.
@@ -514,7 +518,7 @@ func applyTestFilter(command, testFilter, join string, names []string) string {
 	}
 	if join == "repeat" {
 		for _, name := range names {
-			expr := strings.ReplaceAll(testFilter, "<test>", name)
+			expr := strings.ReplaceAll(testFilter, testNamePlaceholder, name)
 			command = appendTestFilter(command, expr)
 		}
 		return command
@@ -527,12 +531,12 @@ func applyTestFilter(command, testFilter, join string, names []string) string {
 		body := strings.TrimPrefix(testFilter, "&")
 		fragments := make([]string, len(names))
 		for i, name := range names {
-			fragments[i] = strings.ReplaceAll(body, "<test>", name)
+			fragments[i] = strings.ReplaceAll(body, testNamePlaceholder, name)
 		}
 		expr := "&(" + strings.Join(fragments, "|") + ")"
 		return appendTestFilter(command, expr)
 	}
-	expr := strings.ReplaceAll(testFilter, "<test>", strings.Join(names, "|"))
+	expr := strings.ReplaceAll(testFilter, testNamePlaceholder, strings.Join(names, "|"))
 	return appendTestFilter(command, expr)
 }
 

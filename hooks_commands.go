@@ -108,12 +108,12 @@ func runHooksInstall() error {
 		return fmt.Errorf("read %s: %w", target, err)
 	}
 
-	if err := os.WriteFile(target, []byte(prePushHook), 0o755); err != nil {
+	if err := os.WriteFile(target, []byte(prePushHook), 0o700); err != nil {
 		return fmt.Errorf("write %s: %w", target, err)
 	}
 	// Belt for non-Windows platforms where WriteFile's perm bits may be masked.
 	if runtime.GOOS != "windows" {
-		if err := os.Chmod(target, 0o755); err != nil {
+		if err := os.Chmod(target, 0o700); err != nil {
 			return fmt.Errorf("chmod %s: %w", target, err)
 		}
 	}

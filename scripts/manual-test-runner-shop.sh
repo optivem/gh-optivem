@@ -41,7 +41,7 @@ echo "=== Step 1/5: Build gh-optivem ==="
 }
 
 for cfg in "$CFG_LATEST" "$CFG_LEGACY"; do
-  if [ ! -f "$SHOP_DIR/$cfg" ]; then
+  if [[ ! -f "$SHOP_DIR/$cfg" ]]; then
     echo "FAILED: shop variant config not found at $SHOP_DIR/$cfg" >&2
     echo "  Create the two TypeScript / monolith variant yamls in shop with system_config: docker/typescript/monolith/systems.json and test_config: pointing at tests-latest.json / tests-legacy.json respectively." >&2
     exit 1
@@ -68,10 +68,10 @@ echo "=== Step 5/5: system stop (cleanup) ==="
 
 echo
 echo "=== Summary ==="
-printf "%-10s %s\n" "Latest:" "$([ $LATEST_RC -eq 0 ] && echo PASSED || echo "FAILED (rc=$LATEST_RC)")"
-printf "%-10s %s\n" "Legacy:" "$([ $LEGACY_RC -eq 0 ] && echo PASSED || echo "FAILED (rc=$LEGACY_RC)")"
+printf "%-10s %s\n" "Latest:" "$([[ $LATEST_RC -eq 0 ]] && echo PASSED || echo "FAILED (rc=$LATEST_RC)")"
+printf "%-10s %s\n" "Legacy:" "$([[ $LEGACY_RC -eq 0 ]] && echo PASSED || echo "FAILED (rc=$LEGACY_RC)")"
 
-if [ $LATEST_RC -eq 0 ] && [ $LEGACY_RC -eq 0 ]; then
+if [[ $LATEST_RC -eq 0 ]] && [[ $LEGACY_RC -eq 0 ]]; then
   exit 0
 fi
 exit 1

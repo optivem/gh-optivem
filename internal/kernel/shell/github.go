@@ -189,7 +189,7 @@ func splitCommand(s string) ([]string, error) {
 
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if consumed := tryEscape(s, i, inQuote, quoteChar, &current); consumed {
+		if tryEscape(s, i, inQuote, quoteChar, &current) {
 			i++
 			continue
 		}

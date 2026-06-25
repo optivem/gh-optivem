@@ -210,8 +210,9 @@ fi
 
 # ahead_count <branch> — commits on <branch> not on MAIN_BASE (0 if no base).
 ahead_count() {
+  local branch="$1"
   if [[ -n "$MAIN_BASE" ]]; then
-    git -C "$CONSUMER_ROOT" rev-list --count "$MAIN_BASE..$1" 2>/dev/null || echo 0
+    git -C "$CONSUMER_ROOT" rev-list --count "$MAIN_BASE..$branch" 2>/dev/null || echo 0
   else
     echo 0
   fi

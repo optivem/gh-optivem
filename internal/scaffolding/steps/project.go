@@ -8,37 +8,46 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/config"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
+// Canonical ATDD Status column names referenced across the board helpers.
+const (
+	statusInProgress   = "In Progress"
+	statusInAcceptance = "In Acceptance"
+)
+
+// projectBoardErrFmt is the wrapping format for fatal project-board failures.
+const projectBoardErrFmt = "project board: %v"
+
 // canonicalStatusOptions is the full ATDD-ready Status set written into
 // auto-created project boards (Path A). Replaces GitHub's default
 // Todo / In Progress / Done.
 var canonicalStatusOptions = []string{
-	"Backlog", "Ready", "In Progress", "In Acceptance", "In QA", "Done",
+	"Backlog", "Ready", statusInProgress, statusInAcceptance, "In QA", "Done",
 }
 
 // atddRequiredStatusOptions is the minimum set the ATDD pipeline reads/writes.
 // Enforced on operator-supplied boards (Path B) without touching unrelated
 // columns the operator may have added (Blocked, On hold, etc.).
 var atddRequiredStatusOptions = []string{
-	"Ready", "In Progress", "In Acceptance", "In QA",
+	"Ready", statusInProgress, statusInAcceptance, "In QA",
 }
 
 // statusOptionColors picks a sensible ProjectV2 color per canonical option.
 // GitHub's GraphQL API requires a color when (re)creating SingleSelect options.
 // Unknown names fall back to GRAY.
 var statusOptionColors = map[string]string{
-	"Backlog":       "GRAY",
-	"Ready":         "BLUE",
-	"In Progress":   "YELLOW",
-	"In Acceptance": "ORANGE",
-	"In QA":         "PURPLE",
-	"Done":          "GREEN",
+	"Backlog":          "GRAY",
+	"Ready":            "BLUE",
+	statusInProgress:   "YELLOW",
+	statusInAcceptance: "ORANGE",
+	"In QA":            "PURPLE",
+	"Done":             "GREEN",
 }
 
 // Test seams — production wires these to real shell helpers. Tests replace
@@ -136,7 +145,7 @@ func ensureProjectBoardAutoCreate(cfg *config.Config) {
 
 	pr, created, err := findOrCreateProject(cfg.Owner, cfg.SystemName)
 	if err != nil {
-		log.Fatalf("project board: %v", err)
+		log.Fatalf(projectBoardErrFmt, err)
 	}
 	if created {
 		log.Successf("Created project board: %s", pr.URL)
@@ -146,7 +155,7 @@ func ensureProjectBoardAutoCreate(cfg *config.Config) {
 
 	statusField, err := loadStatusField(pr)
 	if err != nil {
-		log.Fatalf("project board: %v", err)
+		log.Fatalf(projectBoardErrFmt, err)
 	}
 	added, err := setStatusOptions(statusField.ID, canonicalStatusOptions)
 	if err != nil {
@@ -214,7 +223,7 @@ func ensureProjectBoardSupplied(cfg *config.Config) {
 	pr := &ghProject{Owner: owner, Number: number, URL: cfg.ProjectURL}
 	statusField, err := loadStatusField(pr)
 	if err != nil {
-		log.Fatalf("project board: %v", err)
+		log.Fatalf(projectBoardErrFmt, err)
 	}
 
 	currentNames := make([]string, 0, len(statusField.Options))

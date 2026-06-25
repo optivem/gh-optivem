@@ -9,6 +9,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
+// CtxKeyTestOutcome is the state key run-tests stamps with "pass"|"fail"|"infra"
+// so the verify-tests-pass gate can route on the test result.
+const CtxKeyTestOutcome = "test-outcome"
+
 // ---------------------------------------------------------------------------
 // Shell dispatch
 // ---------------------------------------------------------------------------
@@ -138,9 +142,9 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	ctx.Set("command-succeeded", succeeded)
 	if isTestRun {
 		if succeeded {
-			ctx.Set("test-outcome", "pass")
+			ctx.Set(CtxKeyTestOutcome, "pass")
 		} else {
-			ctx.Set("test-outcome", "fail")
+			ctx.Set(CtxKeyTestOutcome, "fail")
 		}
 	}
 	if err != nil {
@@ -177,7 +181,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		// rows there, not as branches here.
 		isContractSuite := strings.HasPrefix(strings.TrimSpace(ctx.Params["suite"]), "contract")
 		if class, label := classifyShellErr(string(result.Stderr), err, isContractSuite); class == classInfra {
-			ctx.Set("test-outcome", "infra")
+			ctx.Set(CtxKeyTestOutcome, "infra")
 			ctx.Set("test-infra-label", label)
 		}
 		ctx.Set("verify_failure_output", formatVerifyFailureOutput(result.Stdout, result.Stderr))

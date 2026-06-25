@@ -33,6 +33,13 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
+// Phase/summary labels for the compile tiers, shared across the for-all walk and
+// the per-tier recorders.
+const (
+	labelCompileComponentTests = "Compile component-tests"
+	labelCompileSystemTests    = "Compile system-tests"
+)
+
 // newCompileCmd builds the bare `compile` for-all aggregate verb. Unlike most
 // top-level commands, the bare form has a Run that walks every tier (system →
 // component-test → system-test, halting on first failure) so the structural
@@ -78,16 +85,16 @@ Use the noun-scoped forms to narrow to one tier:
 			log.PhaseHeader(1, 3, "Compile system")
 			err := compileSystem(cfg, sum)
 			if err == nil {
-				log.PhaseHeader(2, 3, "Compile component-tests")
+				log.PhaseHeader(2, 3, labelCompileComponentTests)
 				err = compileComponentTests(cfg, sum, nil)
 			} else {
-				sum.MarkSkipped("Compile component-tests")
+				sum.MarkSkipped(labelCompileComponentTests)
 			}
 			if err == nil {
-				log.PhaseHeader(3, 3, "Compile system-tests")
+				log.PhaseHeader(3, 3, labelCompileSystemTests)
 				err = compileSystemTests(cfg, sum)
 			} else {
-				sum.MarkSkipped("Compile system-tests")
+				sum.MarkSkipped(labelCompileSystemTests)
 			}
 			sum.Print()
 			exitOnError(err)
@@ -106,7 +113,7 @@ Use the noun-scoped forms to narrow to one tier:
 func compileComponentTests(cfg *projectconfig.Config, sum *compileSummary, components []string) error {
 	results, err := componenttest.Compile(discoverComponents(cfg), components)
 	for _, r := range results {
-		sum.Record("Compile component-tests", r.Component, r.Lang, r.Path, r.Duration, r.Err)
+		sum.Record(labelCompileComponentTests, r.Component, r.Lang, r.Path, r.Duration, r.Err)
 	}
 	return err
 }
@@ -172,7 +179,7 @@ func compileSystemTests(cfg *projectconfig.Config, sum *compileSummary) error {
 		return fmt.Errorf("compile system-tests: %s has no system-test set", projectconfig.Path)
 	}
 	log.Infof("Compiling system-tests (%s) in %s", cfg.SystemTest.Lang, cfg.SystemTest.Path)
-	return recordCompile(sum, "Compile system-tests", "system-tests", cfg.SystemTest, func() error {
+	return recordCompile(sum, labelCompileSystemTests, "system-tests", cfg.SystemTest, func() error {
 		return compiler.Compile(cfg.SystemTest, ".")
 	})
 }

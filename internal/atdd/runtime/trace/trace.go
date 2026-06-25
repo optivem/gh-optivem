@@ -42,6 +42,12 @@ import (
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
+// Trace placeholder labels for missing/empty fields.
+const (
+	noResultLabel = "(no result)"
+	unsetLabel    = "(unset)"
+)
+
 // GitRunner is the seam for `git show --name-only` lookups. Tests inject a
 // fake; production falls back to execGit.
 type GitRunner interface {
@@ -447,19 +453,19 @@ func outcomeDetail(ev *Event) (label string, attr color.Attribute, detail, delta
 	label, attr = outcomeStatusLabel(ev.Outcome)
 	detail = formatOutcome(ev.Outcome)
 	delta = stateDelta(ev.PreState, ev.PostState)
-	hoisted = detail == "(no result)" && delta != ""
+	hoisted = detail == noResultLabel && delta != ""
 	if hoisted {
 		detail = delta
 	}
-	if !hoisted && detail == "(no result)" && node.Kind == statemachine.Gateway {
+	if !hoisted && detail == noResultLabel && node.Kind == statemachine.Gateway {
 		detail = "bool=false"
 	}
-	if detail == "(no result)" && (node.Kind == statemachine.EndEvent || node.Kind == statemachine.ErrorEndEvent) && node.Raw.Name != "" {
+	if detail == noResultLabel && (node.Kind == statemachine.EndEvent || node.Kind == statemachine.ErrorEndEvent) && node.Raw.Name != "" {
 		detail = fmt.Sprintf("%q", node.Raw.Name)
 	}
 	if node.Kind == statemachine.CallActivity {
 		if v := callActivityVerdict(ev.PostState); v != "" {
-			if detail == "(no result)" {
+			if detail == noResultLabel {
 				detail = "verdict=" + v
 			} else {
 				detail = "verdict=" + v + ", " + detail
@@ -491,15 +497,15 @@ func writeInfraHaltBanner(deps Deps, node statemachine.Node, post map[string]str
 	w := deps.Out
 	label := post["test-infra-label"]
 	if label == "" {
-		label = "(unset)"
+		label = unsetLabel
 	}
 	cmd := post["command-line"]
 	if cmd == "" {
-		cmd = "(unset)"
+		cmd = unsetLabel
 	}
 	tail := post["command-stderr-tail"]
 	if tail == "" {
-		tail = "(unset)"
+		tail = unsetLabel
 	}
 	fmt.Fprintf(w, "%s %s %s — infra failure: %s  (%s)\n",
 		deps.tracePrefix(),
@@ -622,7 +628,7 @@ func formatOutcome(out statemachine.Outcome) string {
 		// guarantees gateways return a meaningful bool. For other node kinds,
 		// "(no result)" is the honest label — they may legitimately return
 		// Outcome{} (and any state they wrote will be hoisted by writeExit).
-		return "(no result)"
+		return noResultLabel
 	}
 }
 

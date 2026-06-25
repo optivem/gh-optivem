@@ -10,7 +10,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
@@ -132,6 +132,8 @@ jobs:
     needs: check
     if: needs.check.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout RC commit
         uses: actions/checkout@v6

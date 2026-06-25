@@ -6,17 +6,24 @@ import (
 	"strings"
 )
 
+// Context-state keys carrying a loop node's visit accounting down to the
+// dispatch inside it (read by prompt rendering to label retry attempts).
+const (
+	visitCountKey = "visit-count"
+	visitMaxKey   = "visit-max"
+)
+
 // Bind wires NodeFn values into every Node by consulting the engine's
 // registries:
 //
 //   - service-task → ActionFn(action)
 //   - user-task    → AgentFn(agent)
 //   - gateway      → GateFn(binding); the bound function must Set(binding, …)
-//                    on the Context so downstream `when:` predicates can read
-//                    the result.
+//     on the Context so downstream `when:` predicates can read
+//     the result.
 //   - call-activity → built-in dispatch into the named sub-process
 //   - start-event / end-event → built-in no-ops; routing is decided entirely
-//                    by `when:` predicates against the initial Context state.
+//     by `when:` predicates against the initial Context state.
 //
 // Bind must run after every registry has been populated; calling Run before
 // Bind will dereference nil functions and panic.
@@ -275,10 +282,10 @@ func (e *Engine) runProcess(process *Process, ctx *Context) error {
 			restoreVisitOnReturn bool
 		)
 		if node.Raw.MaxVisits > 0 {
-			prevCount, hadCount = ctx.State["visit-count"]
-			prevMax, hadMax = ctx.State["visit-max"]
-			ctx.Set("visit-count", visits[cur])
-			ctx.Set("visit-max", node.Raw.MaxVisits)
+			prevCount, hadCount = ctx.State[visitCountKey]
+			prevMax, hadMax = ctx.State[visitMaxKey]
+			ctx.Set(visitCountKey, visits[cur])
+			ctx.Set(visitMaxKey, node.Raw.MaxVisits)
 			restoreVisitOnReturn = true
 		}
 		if node.Fn == nil {
@@ -294,14 +301,14 @@ func (e *Engine) runProcess(process *Process, ctx *Context) error {
 		// but keeping ctx clean costs nothing.
 		if restoreVisitOnReturn {
 			if hadCount {
-				ctx.Set("visit-count", prevCount)
+				ctx.Set(visitCountKey, prevCount)
 			} else {
-				ctx.Unset("visit-count")
+				ctx.Unset(visitCountKey)
 			}
 			if hadMax {
-				ctx.Set("visit-max", prevMax)
+				ctx.Set(visitMaxKey, prevMax)
 			} else {
-				ctx.Unset("visit-max")
+				ctx.Unset(visitMaxKey)
 			}
 		}
 		if out.Err != nil {

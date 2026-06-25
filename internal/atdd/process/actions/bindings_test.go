@@ -987,7 +987,7 @@ func TestRunCommand_RunTestsClassifiesInfraFailure(t *testing.T) {
 			}
 			// verify_failure_output still gets stamped so the halt banner /
 			// trace can quote the runner output.
-			if got := ctx.GetString("verify_failure_output"); got == "" {
+			if ctx.GetString("verify_failure_output") == "" {
 				t.Fatalf("verify_failure_output should still be stamped on infra failure")
 			}
 		})
@@ -2000,7 +2000,7 @@ func TestValidateOutputsAndScopes_JSONL_FlattenedIntoState(t *testing.T) {
 		// reader passes []any through. That's acceptable for this
 		// fixture; a declared key gets the typed shape, which the next
 		// test covers.
-		if v := ctx.Get("test-names"); v == nil {
+		if ctx.Get("test-names") == nil {
 			t.Errorf("test-names: not set")
 		}
 		return
