@@ -50,20 +50,22 @@ State, concisely:
 - **Proposed fix** — the concrete change(s), each with the file it lives in. If the cause spans languages, list the change per language. If there's more than one reasonable approach, lead with a **recommended** one and say why in a sentence (per the recommend-and-proceed convention); don't bury the user in an options matrix.
 - **Scope** — every file/language the fix touches, and any verification the plan should end with (e.g. `compile-all.sh` + `--sample` tests).
 
-## Phase 3 — Confirm, then hand off to /create-plan
+## Phase 3 — Draft and commit the plan, then hand back the execute command
 
-Show the user the root cause and proposed fix, and confirm before drafting:
+Once Phase 2 has shown the user the root cause and proposed fix, **do not pause for confirmation** — go straight to drafting and committing the plan. (The user has opted out of the confirm gate for this command specifically; this overrides the general "ask before committing" default, and *only* for the plan file produced here.)
 
-> Root cause: `<cause @ file:line>`. Proposed fix: `<summary>`. Draft a plan for this? (yes / adjust)
+1. Invoke the **`create-plan`** skill (via the Skill tool) with a synthesized idea string built from the diagnosis. Give it enough grounding that its draft is concrete and needs no re-derivation:
+   - the failure (the run/test/command that failed, and the error),
+   - the root cause pinned to `file:line`,
+   - the proposed change(s), with the file(s) and language(s) each touches,
+   - the verification the plan should end with.
+2. Commit the plan **without asking** — skip `/create-plan`'s confirm-before-commit gate and finalize the plan file directly.
+3. Report back the plan path and the exact command to execute it:
 
-- **adjust** → incorporate the feedback and re-present.
-- **yes** → invoke the **`create-plan`** skill (via the Skill tool) with a synthesized idea string built from the diagnosis. Give it enough grounding that its draft is concrete and needs no re-derivation:
-  - the failure (the run/test/command that failed, and the error),
-  - the root cause pinned to `file:line`,
-  - the proposed change(s), with the file(s) and language(s) each touches,
-  - the verification the plan should end with.
+   > Plan committed: `plans/YYYYMMDD-HHMM-<slug>.md`. Run it with:
+   > `/execute-plan plans/YYYYMMDD-HHMM-<slug>.md`
 
-`/create-plan` owns the plan file (it writes `plans/YYYYMMDD-HHMM-<slug>.md` in the current repo) and its own confirm-before-commit gate. `/fix-bug` stops once the plan is drafted — report the plan path and let the user refine/execute via the plan commands.
+`/create-plan` owns the plan file (it writes `plans/YYYYMMDD-HHMM-<slug>.md` in the current repo). `/fix-bug` stops once the plan is committed — report the plan path and let the user execute via the printed command.
 
 ## Rules
 
