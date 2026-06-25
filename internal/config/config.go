@@ -132,7 +132,7 @@ type Config struct {
 	SonarToken        string
 	GHCRToken         string
 	WorkflowToken     string
-	RepoToken         string // Classic PAT with `repo` scope for cross-repo Contents:read in multirepo prod-stage
+	RepoToken         string // Classic PAT with `repo` scope for cross-repo Contents:read+write; also used for consumer-CI-push in multirepo multitier
 
 	// Derived naming
 	OwnerPascal   string

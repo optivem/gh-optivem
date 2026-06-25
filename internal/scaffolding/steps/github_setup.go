@@ -105,6 +105,9 @@ func SetupVariablesAndSecrets(cfg *config.Config, gh *shell.GitHub) {
 			setSecret(ghComp, "SONAR_TOKEN", cfg.SonarToken)
 			setSecret(ghComp, "GHCR_TOKEN", cfg.GHCRToken)
 		}
+		if cfg.Arch == "multitier" {
+			setSecret(gh.ForRepo(cfg.FrontendFullRepo), "REPO_TOKEN", cfg.RepoToken)
+		}
 		log.Success("Set variables and secrets on component repositories")
 	}
 
