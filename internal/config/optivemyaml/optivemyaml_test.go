@@ -46,11 +46,10 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	if got.System.Architecture != "monolith" {
 		t.Errorf("System.Architecture: got %q", got.System.Architecture)
 	}
-	// SSoT (plan 20260518-1530 item 3): System.Path is fully resolved
-	// at scaffold time — `cfg.SystemPath` joined with the derived
-	// sutNamespace (last segment of `cfg.FullRepo` = "x/shop" → "shop").
-	if got.System.Path != "system/shop" {
-		t.Errorf("System.Path: got %q, want system/shop (SSoT)", got.System.Path)
+	// System.Path is cfg.SystemPath verbatim — the system code root, no
+	// sut-namespace segment baked in (matches the flat scaffold layout).
+	if got.System.Path != "system" {
+		t.Errorf("System.Path: got %q, want system (verbatim code root)", got.System.Path)
 	}
 	if got.System.Repo != "x/shop" {
 		t.Errorf("System.Repo: got %q", got.System.Repo)
@@ -178,11 +177,10 @@ func TestBuildOptivemYAML_MonolithMultirepo(t *testing.T) {
 		SystemTestPath: sysTest,
 	}
 	got := BuildOptivemYAML(cfg)
-	// SSoT (plan 20260518-1530 item 3): System.Path baked with
-	// sutNamespace derived from cfg.SystemFullRepo's last segment
-	// (multirepo monolith uses SystemFullRepo, not FullRepo).
-	if got.System.Path != "system/shop-system" {
-		t.Errorf("System.Path: got %q, want system/shop-system (SSoT)", got.System.Path)
+	// System.Path is cfg.SystemPath verbatim — no sut-namespace segment
+	// baked in, regardless of repo strategy.
+	if got.System.Path != "system" {
+		t.Errorf("System.Path: got %q, want system (verbatim code root)", got.System.Path)
 	}
 	if got.System.Repo != "acme/shop-system" {
 		t.Errorf("System.Repo: got %q", got.System.Repo)
@@ -208,11 +206,11 @@ func TestBuildOptivemYAML_NonScaffoldPaths(t *testing.T) {
 		SystemTestPath: "system-test/java",
 	}
 	got := BuildOptivemYAML(cfg)
-	// SSoT: even non-scaffold (shop-worktree-style) callers get
-	// sutNamespace baked into System.Path. FullRepo=optivem/shop →
-	// sutNamespace=shop → cfg.SystemPath joined to it.
-	if got.System.Path != "system/monolith/java/shop" {
-		t.Errorf("System.Path: got %q, want shop-style path with sut-namespace", got.System.Path)
+	// Even non-scaffold (shop-worktree-style) callers get System.Path
+	// verbatim from cfg.SystemPath — the explicit "system/monolith/java"
+	// input comes back unchanged, with no sut-namespace segment appended.
+	if got.System.Path != "system/monolith/java" {
+		t.Errorf("System.Path: got %q, want shop-style path verbatim", got.System.Path)
 	}
 	if got.SystemTest.Path != "system-test/java" {
 		t.Errorf("SystemTest.Path: got %q, want shop-style path", got.SystemTest.Path)

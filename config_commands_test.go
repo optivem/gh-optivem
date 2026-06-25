@@ -92,12 +92,11 @@ func TestRunConfigInit_MonolithRoundTrip(t *testing.T) {
 	if cfg.SystemTest.Lang != "java" {
 		t.Errorf("system-test.lang: got %q, want java", cfg.SystemTest.Lang)
 	}
-	// SSoT (plan 20260518-1530 item 3): `--system-path` is no longer
-	// round-tripped verbatim — sutNamespace (derived from the system
-	// repo slug's last segment) is baked in at scaffold time. The flag
-	// value is the *base* path; the persisted value is fully resolved.
-	if cfg.System.Path != "system/monolith/java/page-turner" {
-		t.Errorf("system.path: got %q, want SSoT-resolved path", cfg.System.Path)
+	// `--system-path` round-trips verbatim — the persisted system.path is
+	// the system code root exactly as supplied, with no sut-namespace
+	// segment baked in.
+	if cfg.System.Path != "system/monolith/java" {
+		t.Errorf("system.path: got %q, want verbatim --system-path", cfg.System.Path)
 	}
 	if cfg.System.Repo != "acme/page-turner" {
 		t.Errorf("system.repo: got %q, want acme/page-turner", cfg.System.Repo)
@@ -127,9 +126,9 @@ func TestRunConfigInit_DefaultsFlatLayoutPaths(t *testing.T) {
 				TestLang:   "java",
 				ProjectURL: "https://github.com/orgs/acme/projects/1",
 			},
-			// SSoT: DefaultSystemPath + "/<sutNamespace>" (here:
-			// repo "page-turner" → "system/page-turner").
-			wantSystemPath: config.DefaultSystemPath + "/page-turner",
+			// system.path is the flat default verbatim ("system"), no
+			// sut-namespace segment baked in.
+			wantSystemPath: config.DefaultSystemPath,
 			wantSystemTest: config.DefaultSystemTestPath,
 		},
 		{
@@ -453,11 +452,9 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		t.Fatalf("seed .git: %v", err)
 	}
 	for _, p := range []string{
-		// SSoT (plan 20260518-1530 item 3): system.path is fully
-		// resolved (cfg.SystemPath + "/<sutNamespace>"); preflight
-		// checks the resolved value, so the seeded layout must
-		// include the sut-namespace segment ("page-turner").
-		"system/monolith/java/page-turner",
+		// system.path is the verbatim --system-path ("system/monolith/java",
+		// no sut-namespace segment); preflight stats exactly that dir.
+		"system/monolith/java",
 		"system-test/java",
 		"external-systems/stubs",
 		"external-systems/simulators",
@@ -523,8 +520,8 @@ func TestRunConfigPreflight_MissingTierPath(t *testing.T) {
 		t.Fatalf("seed .git: %v", err)
 	}
 	for _, p := range []string{
-		// SSoT-resolved system path (includes sutNamespace segment).
-		"system/monolith/java/page-turner",
+		// Verbatim system path (no sut-namespace segment).
+		"system/monolith/java",
 		"system-test/java",
 		"external-systems/stubs",
 		// external-systems/simulators intentionally absent.

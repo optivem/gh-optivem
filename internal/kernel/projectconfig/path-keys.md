@@ -31,7 +31,7 @@ fixed; the value is the corresponding config field.
 |---|---|
 | `language` | `system.lang` (or `system-test.lang` when `system.lang` is empty — multitier) |
 | `architecture` | `system.architecture` |
-| `system-path` | `system.path` (fully resolved, sut-namespace baked in per SSoT) |
+| `system-path` | `system.path` (the verbatim system code root; no sut-namespace segment baked in) |
 | `system-db-migration-path` | `system.db-migration-path` (default `system/db/migrations`; shared across every SUT) |
 | `system-test-path` | `system-test.path` |
 
@@ -296,10 +296,12 @@ sut-namespace key) that the sync-time tool resolved against a
 `PlaceholderMap`. That mechanism is
 retired (per plan 20260518-1530's locked decision δ). Phase docs now
 reference layer **names** only — no `${...}` syntax — and `paths:`
-values are fully resolved at scaffold time. Pre-SSoT projects migrate
-via `gh optivem config migrate`, which joins `sut-namespace` into each
-`paths:` value, joins it into `system.path`, and deletes
-`system.sut-namespace` from the file in one deterministic pass.
+values are fully resolved at scaffold time. `system.path`, however, is
+the verbatim system code root: no sut-namespace segment is baked into
+it. `gh optivem config migrate` does **not** reintroduce one — it only
+back-fills `system.db-migration-path` when absent (see
+`config_commands.go`); it never joins `sut-namespace` into `system.path`
+or any `paths:` value.
 
 ## Historical note: top-level `paths:` block
 

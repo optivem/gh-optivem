@@ -68,13 +68,6 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	}
 	derived := projectconfig.DeriveSonarProjects(cfg.Owner, cfg.Repo, cfg.Arch, cfg.RepoStrategy)
 	pc.Sonar = projectconfig.Sonar{Organization: strings.ToLower(cfg.Owner)}
-	// SSoT (plan 20260518-1530 item 3): sutNamespace is a scaffold-time
-	// input — derived from the system repo slug's last segment, mirroring
-	// the pre-SSoT runtime rule in `projectconfig.Config.SutNamespace`.
-	// Baked into `System.Path` (monolith) and the `paths:` testkit-key
-	// values so the resulting gh-optivem.yaml carries fully-resolved
-	// paths and the `system.sut-namespace` field is no longer persisted.
-	sutNamespace := lastSlashSegment(systemRepoSlug(cfg))
 	// javaPackage is the resolved `com/<org>/<sut>` source package the Java
 	// testkit/test trees live under. Derived from the SAME owner + system-name
 	// the ReplaceNamespaces / ReplaceSystemName passes use (the `mycompany`→owner,
@@ -86,7 +79,7 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	javaPackage := path.Join("com",
 		config.OwnerCasings(cfg.Owner).Lower,
 		config.SystemCasings(cfg.SystemName).Lower)
-	pc.System = buildSystem(cfg, derived, sutNamespace)
+	pc.System = buildSystem(cfg, derived)
 	pc.SystemTest = buildSystemTest(cfg, derived)
 	// external-systems is intentionally NOT scaffolded (plan 20260606-1356,
 	// option 1B): it is a per-system map keyed by external-system name, and
@@ -120,17 +113,6 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	return pc
 }
 
-// lastSlashSegment returns the substring after the final "/" in s, or s
-// itself if there is no "/". Used to derive sutNamespace from
-// systemRepoSlug(cfg) at scaffold time (e.g. "x/shop" → "shop").
-// Mirrors projectconfig.Config.SutNamespace's repo-derivation rule.
-func lastSlashSegment(s string) string {
-	if i := strings.LastIndex(s, "/"); i >= 0 && i < len(s)-1 {
-		return s[i+1:]
-	}
-	return s
-}
-
 // mapRepoStrategy converts the init flag's spelling to the projectconfig
 // schema's spelling. Empty input → empty output (the schema accepts absent).
 func mapRepoStrategy(s string) string {
@@ -153,13 +135,14 @@ func mapRepoStrategy(s string) string {
 // default per-tier keys here; downstream consumers read them straight
 // from the emitted YAML.
 //
-// SSoT (plan 20260518-1530 item 3): the monolith `s.Path` is fully
-// resolved at scaffold time by joining `cfg.SystemPath` with
-// `sutNamespace` (when non-empty). An empty `sutNamespace` reproduces
-// the pre-SSoT shape (just `cfg.SystemPath`) — used for partial configs
-// and for multirepo-multitier (where systemRepoSlug returns "").
-// Multitier's nested Backend/Frontend Paths are not resolved here:
-// multitier scope is deferred per plan item 11's allowlist.
+// The monolith `s.Path` is `cfg.SystemPath` verbatim — the system code
+// root, with no sut-namespace segment baked in. This matches the flat
+// scaffold layout (`system/`), the shop reference worktree
+// (`system/monolith/java`), and multitier's un-baked Backend/Frontend
+// paths. Resolution lives upstream in config.resolvePathFlagsForYAML;
+// BuildOptivemYAML does no path derivation. The first consumer of
+// `<system.path>/component-tests.yaml` (the component-test runner)
+// depends on this verbatim value resolving to the real on-disk dir.
 //
 // `s.DbMigrationPath` is set unconditionally to the doctrinal default
 // `system/db/migrations` whenever architecture is set — the migration
@@ -167,14 +150,11 @@ func mapRepoStrategy(s string) string {
 // consumed by every SUT (3 langs × 2 archs) via a Flyway sidecar.
 // Validate Rule 22b requires this field once architecture is set; the
 // scaffolder owns the initial value, then the operator owns it.
-func buildSystem(cfg *config.Config, derived projectconfig.DerivedSonar, sutNamespace string) projectconfig.System {
+func buildSystem(cfg *config.Config, derived projectconfig.DerivedSonar) projectconfig.System {
 	s := projectconfig.System{Architecture: cfg.Arch}
 	switch cfg.Arch {
 	case "monolith":
 		s.Path = cfg.SystemPath
-		if sutNamespace != "" {
-			s.Path = path.Join(cfg.SystemPath, sutNamespace)
-		}
 		s.Repo = systemRepoSlug(cfg)
 		s.Lang = cfg.Lang
 		s.SonarProject = derived.System
