@@ -1,5 +1,7 @@
 # 2026-06-25 07:29:39 UTC — Rewrite the TypeScript migrations-path on scaffold flatten (fix ENOENT db/migrations)
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-06-25T07:33:23Z`
+
 ## TL;DR
 
 **Why:** Scaffolded TypeScript backends fail `npm run test:integration` with `ENOENT … scandir '<repo>/db/migrations'`. The integration spec's `MIGRATIONS_DIR` is a hardcoded relative path tuned to shop's deep tree; the scaffolder flattens the layout and copies migrations to the repo root, but only rewrites the **Java** Flyway path on flatten — the TS path is left untouched (`apply_template.go:262-263` says "No-op on .NET / TS") and overshoots past the repo root.
@@ -17,17 +19,7 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-Edit `internal/scaffolding/steps/apply_template.go`: add a `tsMigrationsPathReplacements(arch string)` helper (or two arch-specific helpers) next to `flywayPathReplacements()` (~line 904) that returns the per-arch source replacement — multitier: `'../../../../../db/migrations'` → `'../../../../db/migrations'`; monolith: `'../../../../db/migrations'` → `'../../../db/migrations'`. Then call `templates.FixupSourceFiles(<dir>, tsMigrationsPathReplacements(...))` in the 4 apply paths next to the existing `flywayPathReplacements()` calls: `applyMonolithMonorepo` (~264, repoDir), `applyMonolithMultirepo` (~376, sysDir — the system-repo copy), `applyMultitierMonorepo` (~448, repoDir), `applyMultitierMultirepo` (~583, bDir). Use `FixupSourceFiles` (not `FixupAllTextFiles`) — it covers `.ts` (`templates.go:243-244`). Per-arch scoping is collision-free because monolith/multitier are separate apply paths each touching only their own spec file (4-up is a suffix substring of 5-up, so a global replace would corrupt multitier). Then add the regression test (Step 2) and verify (Step 3).
-
-## Steps
-
-- [ ] **Step 1 — Add the rewrite to the scaffolder (`internal/scaffolding/steps/apply_template.go`).** Add `tsMigrationsPathReplacements` helper(s) near `flywayPathReplacements` (~904) with comments matching the Flyway-rewrite style (explain: migrations copied to repo root by `copyDbMigrations`; shop deep tree → flat scaffold reduces `../` depth). Apply via `templates.FixupSourceFiles` in all 4 apply paths, adjacent to each existing `flywayPathReplacements()` call:
-  - `applyMonolithMonorepo` → `repoDir` (4→3 up)
-  - `applyMonolithMultirepo` → `sysDir` (the system-repo code copy that carries the spec; 4→3 up)
-  - `applyMultitierMonorepo` → `repoDir` (5→4 up)
-  - `applyMultitierMultirepo` → `bDir` (the backend-repo copy; 5→4 up)
-- [ ] **Step 2 — Regression test (`internal/scaffolding/steps/replacements_test.go`).** Mirror the existing Flyway-rewrite test (~920-926): assert the multitier rewrite (`'../../../../../db/migrations'` → `'../../../../db/migrations'`) and the monolith rewrite (`'../../../../db/migrations'` → `'../../../db/migrations'`), and assert the monolith pattern does **not** corrupt the multitier 5-up string when each is applied in its own arch path (guards the substring-collision reasoning).
-- [ ] **Step 3 — Verify.** `go test -p 2 ./internal/scaffolding/...` green. (Never run unbounded `go test ./...` on Windows; use `-p 2`.)
+All code steps are done (helper + 4 call sites + regression test, `go test -p 2 ./internal/scaffolding/...` green). The only remaining work is operator verification (see `## Verification`): re-run the **multitier-monorepo-typescript** Smoke (the original failing matrix cell) and ideally the **monolith-typescript** Smoke, confirming the ENOENT at `order.repository.integration.spec.ts:33` / `db.integration.spec.ts:27` is gone end-to-end.
 
 ## Verification
 

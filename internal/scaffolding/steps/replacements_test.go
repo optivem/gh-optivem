@@ -998,3 +998,61 @@ func TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue(t *testing.T
 		})
 	}
 }
+
+// applyPairs applies every replacement pair to s, left to right.
+func applyPairs(s string, pairs [][2]string) string {
+	for _, p := range pairs {
+		s = strings.ReplaceAll(s, p[0], p[1])
+	}
+	return s
+}
+
+// TestTsMigrationsPathReplacementsRewritePerArch asserts that the TypeScript
+// integration spec's MIGRATIONS_DIR is shortened by exactly one ../ level per
+// architecture (multitier 5→4, monolith 4→3) so it resolves to the scaffold's
+// repo-root db/migrations, that each rewrite is idempotent, and that applying
+// one arch's helper to the other arch's string is a no-op — so the arch paths
+// can never corrupt each other's spec even though one path is a near-substring
+// of the other.
+func TestTsMigrationsPathReplacementsRewritePerArch(t *testing.T) {
+	const (
+		multitierIn  = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../../db/migrations');\n"
+		multitierOut = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../db/migrations');\n"
+		monolithIn   = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../db/migrations');\n"
+		monolithOut  = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations');\n"
+	)
+
+	mt := tsMigrationsPathReplacements("multitier")
+	mn := tsMigrationsPathReplacements("monolith")
+
+	// Multitier: 5→4 up, and a second pass is a no-op.
+	if got := applyPairs(multitierIn, mt); got != multitierOut {
+		t.Errorf("multitier rewrite got  %q\nwant %q", got, multitierOut)
+	}
+	if got := applyPairs(multitierOut, mt); got != multitierOut {
+		t.Errorf("multitier rewrite not idempotent: %q", got)
+	}
+
+	// Monolith: 4→3 up, and a second pass is a no-op.
+	if got := applyPairs(monolithIn, mn); got != monolithOut {
+		t.Errorf("monolith rewrite got  %q\nwant %q", got, monolithOut)
+	}
+	if got := applyPairs(monolithOut, mn); got != monolithOut {
+		t.Errorf("monolith rewrite not idempotent: %q", got)
+	}
+
+	// Cross-arch no-op: the monolith helper must not touch the multitier 5-up
+	// string (and vice versa). The quote-anchored patterns don't collide, so an
+	// arch path running only its own helper can never double-shorten the other.
+	if got := applyPairs(multitierIn, mn); got != multitierIn {
+		t.Errorf("monolith helper corrupted multitier string: %q", got)
+	}
+	if got := applyPairs(monolithIn, mt); got != monolithIn {
+		t.Errorf("multitier helper corrupted monolith string: %q", got)
+	}
+
+	// Unknown arch yields no replacements.
+	if got := tsMigrationsPathReplacements("nope"); got != nil {
+		t.Errorf("unknown arch returned %v, want nil", got)
+	}
+}
