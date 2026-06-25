@@ -459,6 +459,8 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	// Targets source files (.java/.tsx) — the path lives in @PactFolder and the
 	// consumer's PactV3 dir, neither of which FixupAllTextFiles covers.
 	templates.FixupSourceFiles(repoDir, contractsPathReplacements())
+	// .NET backend provider verification: deeper path, .cs-scoped (7→5 `../`).
+	templates.FixupDotnetSourceFiles(repoDir, dotnetContractsPathReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -590,6 +592,8 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(bDir, systemTestSonarKeyReplacements())
 	templates.FixupAllTextFiles(bDir, flywayPathReplacements())
 	templates.FixupSourceFiles(bDir, contractsPathReplacements())
+	// .NET backend provider verification: deeper path, .cs-scoped (7→5 `../`).
+	templates.FixupDotnetSourceFiles(bDir, dotnetContractsPathReplacements())
 	// TS: rewrite the backend integration spec's MIGRATIONS_DIR (multitier 5→4 up).
 	templates.FixupSourceFiles(bDir, tsMigrationsPathReplacements("multitier"))
 	log.Success("Applied backend repo template")
@@ -948,10 +952,27 @@ func tsMigrationsPathReplacements(arch string) [][2]string {
 // up 1 → repo root → contracts). Applied via FixupSourceFiles so the rewrite
 // reaches the Java provider's @PactFolder and the React consumer's PactV3 dir,
 // both of which live in source files outside FixupAllTextFiles' allowlist.
-// No-op on monolith / .NET, which carry no Pact contract test today.
+// No-op on monolith. The .NET provider verification uses a deeper relative path
+// and is handled separately by dotnetContractsPathReplacements.
 func contractsPathReplacements() [][2]string {
 	return [][2]string{
 		{"../../../contracts", "../contracts"},
+	}
+}
+
+// dotnetContractsPathReplacements rewrites the .NET provider-verification pact
+// path from the shop layout to the scaffold layout. BackendPactVerificationTest.cs
+// resolves the pact relative to the test assembly's BaseDirectory
+// (backend-dotnet/Tests/bin/Debug/net8.0): seven `../` reach the shop root's
+// contracts/. The flatten swaps system/multitier/backend-dotnet (3 levels) for
+// backend (1 level) — two fewer — so the flattened path needs five `../`. Applied
+// via FixupDotnetSourceFiles because the literal lives only in .cs, outside both
+// the FixupAllTextFiles allowlist and the .java/.ts/.tsx source-file set; kept
+// distinct from contractsPathReplacements so the Java 3-`../` rule never
+// partial-matches (and mangles) this deeper path.
+func dotnetContractsPathReplacements() [][2]string {
+	return [][2]string{
+		{"../../../../../../../contracts", "../../../../../contracts"},
 	}
 }
 

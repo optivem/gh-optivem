@@ -246,3 +246,15 @@ func FixupSourceFiles(repoDir string, replacements [][2]string) {
 		files.ReplaceInTree(repoDir, r[0], r[1], srcExts)
 	}
 }
+
+// FixupDotnetSourceFiles applies replacements across .NET source (.cs) files,
+// which FixupSourceFiles deliberately omits. The .NET Pact provider-verification
+// path uses a deeper relative prefix than the Java/React literal, so feeding it
+// the Java rule would mangle it (the Java pattern is a suffix of the .NET path).
+// Kept separate so each language's contracts-path rule stays unambiguous.
+func FixupDotnetSourceFiles(repoDir string, replacements [][2]string) {
+	srcExts := []string{".cs"}
+	for _, r := range replacements {
+		files.ReplaceInTree(repoDir, r[0], r[1], srcExts)
+	}
+}

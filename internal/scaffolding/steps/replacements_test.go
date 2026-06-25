@@ -1056,3 +1056,58 @@ func TestTsMigrationsPathReplacementsRewritePerArch(t *testing.T) {
 		t.Errorf("unknown arch returned %v, want nil", got)
 	}
 }
+
+// TestDotnetContractsPathRewriteOnFlatten asserts that the .NET provider-
+// verification pact path in BackendPactVerificationTest.cs is shortened from the
+// shop's seven `../` (backend-dotnet/Tests/bin/Debug/net8.0 → shop root contracts/)
+// to the scaffold's five `../` (backend/Tests/... → flattened repo root contracts/),
+// that the rewrite is idempotent, and that it is wired through a .cs-scoped fixup —
+// FixupSourceFiles (.java/.ts/.tsx only) must leave .cs untouched. A regression on
+// any of these reproduces the runtime failure
+//   Failed to load pact '/home/runner/work/contracts/frontend-backend.json'
+// (seven `../` from the flattened repo overshoots two levels above the repo root).
+func TestDotnetContractsPathRewriteOnFlatten(t *testing.T) {
+	const (
+		shopLine = `            "../../../../../../../contracts/frontend-backend.json"));` + "\n"
+		// Two levels shallower after the flatten swaps backend-dotnet/ for backend/.
+		scaffoldLine = `            "../../../../../contracts/frontend-backend.json"));` + "\n"
+	)
+
+	// 1. Unit: the helper shortens 7→5 and is idempotent.
+	dn := dotnetContractsPathReplacements()
+	if got := applyPairs(shopLine, dn); got != scaffoldLine {
+		t.Errorf("dotnet rewrite got %q\nwant %q", got, scaffoldLine)
+	}
+	if got := applyPairs(scaffoldLine, dn); got != scaffoldLine {
+		t.Errorf("dotnet rewrite not idempotent: %q", got)
+	}
+
+	// 2. Why a dedicated rule (not just adding .cs to FixupSourceFiles): the
+	//    Java/React rule ../../../contracts→../contracts is a suffix of the deeper
+	//    .NET path, so it is NOT idempotent on it — one pass coincidentally yields
+	//    the correct 5×, but a second over-shortens to a broken 3×. The dedicated
+	//    7→5 rule has no such overlap and stays stable on re-application.
+	jOnce := applyPairs(shopLine, contractsPathReplacements())
+	jTwice := applyPairs(jOnce, contractsPathReplacements())
+	if jTwice == scaffoldLine {
+		t.Fatalf("expected the Java rule to be non-idempotent on the .NET path, but it stayed stable")
+	}
+
+	// 3. End-to-end on a temp tree: a .cs file is rewritten by FixupDotnetSourceFiles
+	//    but left untouched by FixupSourceFiles (which covers only .java/.ts/.tsx).
+	dir := t.TempDir()
+	csPath := filepath.Join(dir, "BackendPactVerificationTest.cs")
+	if err := os.WriteFile(csPath, []byte(shopLine), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	templates.FixupSourceFiles(dir, contractsPathReplacements())
+	if got, _ := os.ReadFile(csPath); string(got) != shopLine {
+		t.Errorf("FixupSourceFiles must not touch .cs, but file changed to:\n%q", got)
+	}
+
+	templates.FixupDotnetSourceFiles(dir, dotnetContractsPathReplacements())
+	if got, _ := os.ReadFile(csPath); string(got) != scaffoldLine {
+		t.Errorf("FixupDotnetSourceFiles got %q\nwant %q", got, scaffoldLine)
+	}
+}
