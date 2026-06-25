@@ -4,6 +4,7 @@
 // install   — writes embedded command files to ~/.claude/commands/
 // configure — merges embedded settings.json and CLAUDE.md into ~/.claude/ non-destructively
 // setup     — runs install then configure
+// check     — reports drift between embedded assets and ~/.claude/ (read-only)
 package main
 
 import (
@@ -30,6 +31,7 @@ func newClaudeCmd() *cobra.Command {
 		newClaudeInstallCmd(),
 		newClaudeConfigureCmd(),
 		newClaudeSetupCmd(),
+		newClaudeCheckCmd(),
 	)
 	return cmd
 }
@@ -77,6 +79,27 @@ func newClaudeSetupCmd() *cobra.Command {
 				return err
 			}
 			return runClaudeConfigure()
+		},
+	}
+}
+
+func newClaudeCheckCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "check",
+		Short: "Report drift between embedded Optivem commands/config and ~/.claude/ (read-only)",
+		Long: `Compare the embedded Optivem assets against your global ~/.claude/ and
+report differences without writing anything.
+
+For each embedded slash command, reports whether it is missing from
+~/.claude/commands/, differs in content, or is in sync. Then reports whether
+settings.json is missing any Optivem permissions/hooks and whether CLAUDE.md
+is missing any Optivem rule sections.
+
+Exits non-zero when any drift is found, so it can gate CI. Run
+'gh optivem claude setup' to bring ~/.claude/ back in sync.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runClaudeCheck()
 		},
 	}
 }
@@ -141,6 +164,138 @@ func runClaudeConfigure() error {
 		return err
 	}
 	return mergeClaudeMD(claudeDir)
+}
+
+func runClaudeCheck() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
+	claudeDir := filepath.Join(home, ".claude")
+	drift := false
+
+	// Commands
+	commandsDir := filepath.Join(claudeDir, "commands")
+	entries, err := fs.ReadDir(claudeassets.FS, "commands")
+	if err != nil {
+		return fmt.Errorf("read embedded commands: %w", err)
+	}
+	missing, differs, inSync := 0, 0, 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		content, err := fs.ReadFile(claudeassets.FS, "commands/"+entry.Name())
+		if err != nil {
+			return fmt.Errorf("read embedded command %s: %w", entry.Name(), err)
+		}
+		dest := filepath.Join(commandsDir, entry.Name())
+		existing, readErr := os.ReadFile(dest)
+		switch {
+		case errors.Is(readErr, os.ErrNotExist):
+			fmt.Printf("  missing: %s\n", entry.Name())
+			missing++
+			drift = true
+		case readErr != nil:
+			return fmt.Errorf("read %s: %w", dest, readErr)
+		case !bytes.Equal(existing, content):
+			fmt.Printf("  differs: %s\n", entry.Name())
+			differs++
+			drift = true
+		default:
+			inSync++
+		}
+	}
+	fmt.Printf("Commands: %d missing, %d differ, %d in sync\n", missing, differs, inSync)
+
+	// settings.json
+	settingsDrift, err := claudeSettingsDrift(claudeDir)
+	if err != nil {
+		return err
+	}
+	if settingsDrift {
+		fmt.Println("settings.json: drift (missing Optivem permissions and/or hooks)")
+		drift = true
+	} else {
+		fmt.Println("settings.json: in sync")
+	}
+
+	// CLAUDE.md
+	mdMissing, err := claudeMDMissingHeaders(claudeDir)
+	if err != nil {
+		return err
+	}
+	if len(mdMissing) > 0 {
+		fmt.Printf("CLAUDE.md: missing %d section(s)\n", len(mdMissing))
+		for _, h := range mdMissing {
+			fmt.Printf("  %s\n", h)
+		}
+		drift = true
+	} else {
+		fmt.Println("CLAUDE.md: in sync")
+	}
+
+	if drift {
+		fmt.Println("\nDrift detected. Run `gh optivem claude setup` to sync ~/.claude/.")
+		return errors.New("global ~/.claude differs from embedded Optivem assets")
+	}
+	fmt.Println("\n~/.claude is in sync with embedded Optivem assets.")
+	return nil
+}
+
+// claudeSettingsDrift reports whether merging the embedded settings.json into
+// the user's ~/.claude/settings.json would change anything (read-only: the
+// merge runs on a freshly parsed copy that is never written back). A missing
+// user file counts as drift.
+func claudeSettingsDrift(claudeDir string) (bool, error) {
+	embeddedData, err := fs.ReadFile(claudeassets.FS, "config/settings.json")
+	if err != nil {
+		return false, fmt.Errorf("read embedded settings.json: %w", err)
+	}
+	var embedded map[string]interface{}
+	if err := json.Unmarshal(embeddedData, &embedded); err != nil {
+		return false, fmt.Errorf("parse embedded settings.json: %w", err)
+	}
+
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+	existingData, readErr := os.ReadFile(settingsPath)
+	if errors.Is(readErr, os.ErrNotExist) {
+		return true, nil
+	}
+	if readErr != nil {
+		return false, fmt.Errorf("read %s: %w", settingsPath, readErr)
+	}
+
+	var user map[string]interface{}
+	if err := json.Unmarshal(existingData, &user); err != nil {
+		return false, fmt.Errorf("parse %s: %w", settingsPath, err)
+	}
+	return claudeSettingsMerge(user, embedded), nil
+}
+
+// claudeMDMissingHeaders returns the ## header lines from the embedded
+// CLAUDE.md that are absent from the user's ~/.claude/CLAUDE.md.
+func claudeMDMissingHeaders(claudeDir string) ([]string, error) {
+	embeddedData, err := fs.ReadFile(claudeassets.FS, "config/CLAUDE.md")
+	if err != nil {
+		return nil, fmt.Errorf("read embedded CLAUDE.md: %w", err)
+	}
+	mdPath := filepath.Join(claudeDir, "CLAUDE.md")
+	existingData, readErr := os.ReadFile(mdPath)
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("read %s: %w", mdPath, readErr)
+	}
+
+	headers := make([]string, 0)
+	for _, section := range claudeMDMissingSections(string(existingData), string(embeddedData)) {
+		for _, line := range strings.Split(section, "\n") {
+			if strings.HasPrefix(line, "## ") {
+				headers = append(headers, strings.TrimSpace(line))
+				break
+			}
+		}
+	}
+	return headers, nil
 }
 
 func mergeClaudeSettings(claudeDir string) error {
