@@ -570,12 +570,11 @@ func TestSharedContract_ExternalDriverGate_EntersContractTestHIGH(t *testing.T) 
 	if got := node.Raw.Process; got != "implement-and-verify-external-system-driver-adapters-contract-tests" {
 		t.Errorf("external-driver node process = %q, want the CT-HIGH", got)
 	}
-	// The CT-HIGH is self-contained except for the cascade tag (plan
-	// 20260606-1525): it binds `test-category: contract` so its inner writers
-	// namespace their port-changed verdicts under `ct-*` and can't clobber
-	// the parent AT cascade's `at-*` verdicts.
+	// The CT-HIGH binds `test-category: contract` so the CT-path fence in
+	// validate-outputs-and-scopes recognises the contract path and rejects
+	// any spurious system-driver-port changes.
 	if got := node.Raw.Params["test-category"]; got != "contract" {
-		t.Errorf("external-driver node should bind test-category: contract (cascade tag), got %q", got)
+		t.Errorf("external-driver node should bind test-category: contract, got %q", got)
 	}
 	for _, p := range []string{"expected-test-result", "task-name"} {
 		if v, set := node.Raw.Params[p]; set {
@@ -799,9 +798,9 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 
 	// 4c. The stub-only fidelity leg (plan 20260620-2348): a presence gate skips
 	//     the whole leg when no `Stub only:` register was authored (empty
-	//     ct-isolated-test-names), otherwise an outcome-driven probe → implement
+	//     isolated-test-names), otherwise an outcome-driven probe → implement
 	//     stubs → rebuild/restart → verify, all selecting the isolated register
-	//     (test-names: ${ct-isolated-test-names}) against suite contract-stub.
+	//     (test-names: ${isolated-test-names}) against suite contract-stub.
 	presGate, ok := recon.Nodes["GATE_STUB_FIDELITY_PRESENT"]
 	if !ok {
 		t.Fatalf("CT-HIGH: GATE_STUB_FIDELITY_PRESENT node missing")
@@ -830,8 +829,8 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	wantEdge(t, recon, "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "START_SYSTEM_AFTER_STUBS_ISOLATED", "")
 	wantEdge(t, recon, "START_SYSTEM_AFTER_STUBS_ISOLATED", "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "")
 	wantEdge(t, recon, "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "RECONCILE_PRODUCER_END", "")
-	if n := recon.Nodes["VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED"]; n.Raw.Params["test-names"] != "${ct-isolated-test-names}" {
-		t.Errorf("isolated verify test-names = %q, want ${ct-isolated-test-names}", n.Raw.Params["test-names"])
+	if n := recon.Nodes["VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED"]; n.Raw.Params["test-names"] != "${isolated-test-names}" {
+		t.Errorf("isolated verify test-names = %q, want ${isolated-test-names}", n.Raw.Params["test-names"])
 	}
 
 	// 5. The simulator MID dispatches the mirror agent and WRITES the
@@ -889,7 +888,7 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 // registered-systems guard, the anchor is a call-activity into the per-system
 // body, and the body runs the same resolve+touched self-guard as the CT clone,
 // then reshapes the consumer adapter and calls reconcile-external-contract-producer
-// with ct-test-names pinned empty (whole-suite probe; no contract tests are
+// with test-names pinned empty (whole-suite probe; no contract tests are
 // authored on the redesign path). The final full regression runs after the
 // unrolled clones. Loaded from the static (un-unrolled) snapshot, so the anchor is
 // still the single template node here.
@@ -932,7 +931,7 @@ func TestRedesignExternalSystemStructure_Wiring(t *testing.T) {
 	}
 
 	// 3. The per-system body: resolve + touched self-guard (the CT clone's), then
-	//    reshape consumer adapter → reconcile producer with ct-test-names pinned
+	//    reshape consumer adapter → reconcile producer with test-names pinned
 	//    empty; an untouched clone skips.
 	body, ok := eng.Processes["redesign-external-system-per-system"]
 	if !ok {
@@ -961,10 +960,10 @@ func TestRedesignExternalSystemStructure_Wiring(t *testing.T) {
 	if reconCall.Raw.Process != "reconcile-external-contract-producer" {
 		t.Errorf("reconcile call process = %q, want reconcile-external-contract-producer", reconCall.Raw.Process)
 	}
-	// ct-test-names pinned empty so the reused leg's strict ${ct-test-names}
+	// test-names pinned empty so the reused leg's strict ${test-names}
 	// expansions resolve and the probes run the whole suite (no new tests written).
-	if got, ok := reconCall.Raw.Params["ct-test-names"]; !ok || got != "" {
-		t.Errorf("reconcile call ct-test-names param = %q (present=%v), want \"\" (present)", got, ok)
+	if got, ok := reconCall.Raw.Params["test-names"]; !ok || got != "" {
+		t.Errorf("reconcile call test-names param = %q (present=%v), want \"\" (present)", got, ok)
 	}
 	wantEdge(t, body, "RECONCILE_EXTERNAL_CONTRACT_PRODUCER", "REDESIGN_EXTERNAL_PER_SYSTEM_END", "")
 }

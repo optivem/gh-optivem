@@ -129,9 +129,9 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 72 --config gh-optivem-monolith-jav
 ```
 
 > **#72 is the full-BPMN rehearsal story.** It is the only story in this corpus that trips all three change-detection gates on the `change-system-behavior` path TRUE, so it walks the entire flow end-to-end:
-> - `at-dsl-port-changed` — new `weighing …` / `shipping fee …` DSL steps + the `hasWeight` contract accessor.
-> - `at-external-driver-port-changed` — ERP `GetProductResponse` gains `weight` (only `sku`+`price` today), driving the contract-test cascade (external driver port + adapters, real-sim, stub).
-> - `at-system-driver-port-changed` — `ViewOrderResponse` has no `shippingFee` field, so asserting "shipping fee is 0.60" forces a new system driver-port field, driving the per-channel system driver adapter tail.
+> - `dsl-port-changed` — new `weighing …` / `shipping fee …` DSL steps + the `hasWeight` contract accessor.
+> - `external-driver-port-changed` — ERP `GetProductResponse` gains `weight` (only `sku`+`price` today), driving the contract-test cascade (external driver port + adapters, real-sim, stub).
+> - `system-driver-port-changed` — `ViewOrderResponse` has no `shippingFee` field, so asserting "shipping fee is 0.60" forces a new system driver-port field, driving the per-channel system driver adapter tail.
 >
 > Because `erp` is `real-kind: simulator` in every shop config, it also takes the longest external branch (verify-fail real → author real simulator → verify-pass real → stub red→green). By contrast #65/#69/#70/#71 have no external system, and #68's discount fields already exist on `ViewOrderResponse`.
 >

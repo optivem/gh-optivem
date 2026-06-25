@@ -97,7 +97,7 @@ func (a actions) resolveChannel(ctx *statemachine.Context) statemachine.Outcome 
 // per-channel and this asks across the whole configured set. Deterministic — no
 // agent.
 func (a actions) validateChannelsRegistered(ctx *statemachine.Context) statemachine.Outcome {
-	ticketTests := splitTestNames(ctx.GetString("at-test-names"))
+	ticketTests := splitTestNames(ctx.GetString("test-names"))
 	if len(ticketTests) == 0 {
 		// Nothing to validate (no acceptance tests emitted — e.g. a cascade that
 		// did not write any). The membership question is moot.

@@ -79,10 +79,10 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"fix-loop-progressing",
 		"expected-test-result",
 		"fix-on-failure-enabled",
-		"at-dsl-port-changed",
-		"at-system-driver-port-changed",
-		"at-external-driver-port-changed",
-		"ct-dsl-port-changed",
+		"dsl-port-changed",
+		"system-driver-port-changed",
+		"external-driver-port-changed",
+		"dsl-port-changed",
 		"ticket-has-escc",
 		"real-kind",
 		"external-system-touched",
@@ -248,7 +248,7 @@ func TestStubFidelityTestsPresent_NonEmptyTrue(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := statemachine.NewContext()
-			ctx.Set("ct-isolated-test-names", tc.val)
+			ctx.Set("isolated-test-names", tc.val)
 			out := b.stubFidelityTestsPresent(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected error: %v", out.Err)
@@ -262,7 +262,7 @@ func TestStubFidelityTestsPresent_NonEmptyTrue(t *testing.T) {
 
 // Absent / nil / empty all mean "no Stub only register authored" → false, with
 // no error (presence-style, unlike the strict driver-port-changed gates). The
-// false routing is what keeps an unset ${ct-isolated-test-names} away from the
+// false routing is what keeps an unset ${isolated-test-names} away from the
 // stub-only probe's strict ExpandParams.
 func TestStubFidelityTestsPresent_AbsentOrEmptyFalse(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
@@ -279,7 +279,7 @@ func TestStubFidelityTestsPresent_AbsentOrEmptyFalse(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx := statemachine.NewContext()
 			if tc.val != nil {
-				ctx.Set("ct-isolated-test-names", tc.val)
+				ctx.Set("isolated-test-names", tc.val)
 			}
 			out := b.stubFidelityTestsPresent(ctx)
 			if out.Err != nil {
@@ -655,7 +655,7 @@ func TestFixOnFailureEnabled(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// at-/ct- cascade-namespaced port-changed verdicts (plan 20260606-1525)
+// port-changed verdict gates
 // ---------------------------------------------------------------------------
 
 func TestDriverPortChangedGates(t *testing.T) {
@@ -664,10 +664,9 @@ func TestDriverPortChangedGates(t *testing.T) {
 		invoke func(b bindings, ctx *statemachine.Context) statemachine.Outcome
 	}
 	gates := []gateCase{
-		{key: "at-dsl-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.atDslPortChanged(ctx) }},
-		{key: "at-system-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.atSystemDriverPortChanged(ctx) }},
-		{key: "at-external-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.atExternalDriverPortChanged(ctx) }},
-		{key: "ct-dsl-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.ctDslPortChanged(ctx) }},
+		{key: "dsl-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.dslPortChanged(ctx) }},
+		{key: "system-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.systemDriverPortChanged(ctx) }},
+		{key: "external-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.externalDriverPortChanged(ctx) }},
 	}
 	for _, g := range gates {
 		t.Run(g.key+"/true", func(t *testing.T) {
@@ -753,24 +752,24 @@ func TestAtVerifyExpectation(t *testing.T) {
 		{name: "none/ignores-pending-scope", mode: "none", pendingOn: "drivers", wantValue: "none"},
 		// case A — test-code layer, no DSL change: greens at the code layer.
 		{name: "green/dsl/not-pending", mode: "green-when-complete", pendingOn: "dsl",
-			state: map[string]any{"at-dsl-port-changed": false}, wantValue: "success"},
+			state: map[string]any{"dsl-port-changed": false}, wantValue: "success"},
 		// cases B/C/D at the code layer — DSL changed, still red here.
 		{name: "green/dsl/pending", mode: "green-when-complete", pendingOn: "dsl",
-			state: map[string]any{"at-dsl-port-changed": true}, wantValue: "failure"},
+			state: map[string]any{"dsl-port-changed": true}, wantValue: "failure"},
 		// case B — DSL layer, no driver ports change: greens at the DSL layer.
 		{name: "green/drivers/none-pending", mode: "green-when-complete", pendingOn: "drivers",
-			state: map[string]any{"at-system-driver-port-changed": false, "at-external-driver-port-changed": false}, wantValue: "success"},
+			state: map[string]any{"system-driver-port-changed": false, "external-driver-port-changed": false}, wantValue: "success"},
 		// case C — DSL layer, system-driver port changed: still red (adapters pending).
 		{name: "green/drivers/system-pending", mode: "green-when-complete", pendingOn: "drivers",
-			state: map[string]any{"at-system-driver-port-changed": true, "at-external-driver-port-changed": false}, wantValue: "failure"},
+			state: map[string]any{"system-driver-port-changed": true, "external-driver-port-changed": false}, wantValue: "failure"},
 		// case D — DSL layer, external-driver port changed only (drivers enum: both flags checked).
 		{name: "green/drivers/external-pending", mode: "green-when-complete", pendingOn: "drivers",
-			state: map[string]any{"at-system-driver-port-changed": false, "at-external-driver-port-changed": true}, wantValue: "failure"},
-		// system-drivers enum: only at-system-driver-port-changed checked; external flag ignored.
+			state: map[string]any{"system-driver-port-changed": false, "external-driver-port-changed": true}, wantValue: "failure"},
+		// system-drivers enum: only system-driver-port-changed checked; external flag ignored.
 		{name: "green/system-drivers/pending", mode: "green-when-complete", pendingOn: "system-drivers",
-			state: map[string]any{"at-system-driver-port-changed": true}, wantValue: "failure"},
+			state: map[string]any{"system-driver-port-changed": true}, wantValue: "failure"},
 		{name: "green/system-drivers/not-pending", mode: "green-when-complete", pendingOn: "system-drivers",
-			state: map[string]any{"at-system-driver-port-changed": false}, wantValue: "success"},
+			state: map[string]any{"system-driver-port-changed": false}, wantValue: "success"},
 		{name: "green/system-drivers/flag-unset_halts", mode: "green-when-complete", pendingOn: "system-drivers", wantErr: true},
 		// case C terminal — system-driver adapter layer: always greens (nothing after).
 		{name: "green/none/terminal", mode: "green-when-complete", pendingOn: "none", wantValue: "success"},
@@ -778,7 +777,7 @@ func TestAtVerifyExpectation(t *testing.T) {
 		{name: "green/pending-on-unset_halts", mode: "green-when-complete", wantErr: true},
 		{name: "green/pending-on-unknown_halts", mode: "green-when-complete", pendingOn: "bogus", wantErr: true},
 		{name: "green/drivers/flag-unset_halts", mode: "green-when-complete", pendingOn: "drivers",
-			state: map[string]any{"at-system-driver-port-changed": false}, wantErr: true},
+			state: map[string]any{"system-driver-port-changed": false}, wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

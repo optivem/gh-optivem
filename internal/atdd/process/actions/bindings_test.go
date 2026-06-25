@@ -1516,9 +1516,7 @@ func TestValidateOutputsAndScopes_CTPath_SystemDriverPortChanged_Halts(t *testin
 	ctx := statemachine.NewContext()
 	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["test-category"] = "contract"
-	// On the contract cascade the verdict lands namespaced (plan 20260606-1525);
-	// the fence reads the ct- key.
-	ctx.Set("ct-system-driver-port-changed", true)
+	ctx.Set("system-driver-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err == nil {
 		t.Fatalf("CT-path dsl-implementer emitting system-driver-port-changed=true must halt, got nil err")
@@ -1541,9 +1539,8 @@ func TestValidateOutputsAndScopes_ATPath_SystemDriverPortChanged_Allowed(t *test
 	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["test-category"] = "acceptance"
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
-	// On the acceptance cascade the verdicts land namespaced (plan 20260606-1525).
-	ctx.Set("at-system-driver-port-changed", true)
-	ctx.Set("at-external-driver-port-changed", true)
+	ctx.Set("system-driver-port-changed", true)
+	ctx.Set("external-driver-port-changed", true)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("AT-path system-driver-port-changed=true must be allowed, got err: %v", out.Err)
@@ -1553,48 +1550,10 @@ func TestValidateOutputsAndScopes_ATPath_SystemDriverPortChanged_Allowed(t *test
 	}
 }
 
-// landingStateKey namespaces the port-changed verdicts AND test-names by
-// cascade so the nested contract excursion can't clobber the acceptance
-// cascade's value (plan 20260606-1525; test-names added by plan 20260608-1231).
-// Every other output, and any unrecognised cascade, is the identity.
-func TestLandingStateKey_CascadeNamespacing(t *testing.T) {
-	cases := []struct {
-		key, testCategory, want string
-	}{
-		{"dsl-port-changed", "acceptance", "at-dsl-port-changed"},
-		{"dsl-port-changed", "contract", "ct-dsl-port-changed"},
-		{"system-driver-port-changed", "acceptance", "at-system-driver-port-changed"},
-		{"system-driver-port-changed", "contract", "ct-system-driver-port-changed"},
-		{"external-driver-port-changed", "acceptance", "at-external-driver-port-changed"},
-		{"external-driver-port-changed", "contract", "ct-external-driver-port-changed"},
-		// test-names is namespaced too (plan 20260608-1231).
-		{"test-names", "acceptance", "at-test-names"},
-		{"test-names", "contract", "ct-test-names"},
-		// isolated-test-names (stub-fidelity-test-writer, plan 20260620-2348) is
-		// namespaced under its OWN key — `ct-isolated-test-names`, distinct from
-		// `ct-test-names` — so the stub-only fidelity list never collides with the
-		// shared register's list under the same contract cascade.
-		{"isolated-test-names", "acceptance", "at-isolated-test-names"},
-		{"isolated-test-names", "contract", "ct-isolated-test-names"},
-		// Genuinely non-namespaced outputs are the identity.
-		{"scope-exception-reason", "contract", "scope-exception-reason"},
-		// Unrecognised / absent cascade falls back to the bare key (the
-		// downstream gate's strict "not set" check surfaces the wiring bug).
-		{"dsl-port-changed", "", "dsl-port-changed"},
-		{"system-driver-port-changed", "nonsense", "system-driver-port-changed"},
-	}
-	for _, c := range cases {
-		if got := landingStateKey(c.key, c.testCategory); got != c.want {
-			t.Errorf("landingStateKey(%q, %q) = %q, want %q", c.key, c.testCategory, got, c.want)
-		}
-	}
-}
-
-// The anti-clobber property at the landing layer: a port-changed verdict
-// flattened on the acceptance cascade lands under its `at-` key and NOT the
-// bare key, so a subsequent contract excursion (which writes only `ct-*`)
-// leaves it intact for the parent re-gate (plan 20260606-1525).
-func TestValidateOutputsAndScopes_PortChangedVerdicts_CascadeNamespaced(t *testing.T) {
+// Port-changed verdicts land under their bare keys; validate-outputs-and-scopes
+// does no namespacing — AT and CT cascades run sequentially so there is no
+// clobbering risk.
+func TestValidateOutputsAndScopes_PortChangedVerdicts_LandUnderBareKey(t *testing.T) {
 	dir := t.TempDir()
 	jsonl := filepath.Join(dir, "001-dsl-implementer.outputs.jsonl")
 	writeJSONL(t, jsonl, `{"system-driver-port-changed":true,"external-driver-port-changed":false}`)
@@ -1614,31 +1573,23 @@ func TestValidateOutputsAndScopes_PortChangedVerdicts_CascadeNamespaced(t *testi
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
 	}
-	if got := ctx.Get("at-system-driver-port-changed"); got != true {
-		t.Errorf("at-system-driver-port-changed: got %v, want true", got)
+	if got := ctx.Get("system-driver-port-changed"); got != true {
+		t.Errorf("system-driver-port-changed: got %v, want true", got)
 	}
-	if got := ctx.Get("at-external-driver-port-changed"); got != false {
-		t.Errorf("at-external-driver-port-changed: got %v, want false", got)
-	}
-	// The bare keys must NOT be written — that is the whole point of the
-	// namespacing (a CT excursion writing bare/ct- can't touch at-*).
-	if _, set := ctx.State["system-driver-port-changed"]; set {
-		t.Errorf("bare system-driver-port-changed must not be set; namespacing is single-backend")
-	}
-	if _, set := ctx.State["external-driver-port-changed"]; set {
-		t.Errorf("bare external-driver-port-changed must not be set; namespacing is single-backend")
+	if got := ctx.Get("external-driver-port-changed"); got != false {
+		t.Errorf("external-driver-port-changed: got %v, want false", got)
 	}
 	if got := ctx.Get("outputs-and-scopes-valid"); got != true {
 		t.Fatalf("outputs-and-scopes-valid: got %v, want true", got)
 	}
 }
 
-// The two contract-side test-name lists land under DISTINCT cascade keys so the
+// The two contract-side test-name lists land under DISTINCT bare keys so the
 // stub-fidelity-test-writer's isolated register never clobbers the
 // contract-test-writer's shared register (plan 20260620-2348). Both writers run
 // under test-category=contract inside the same external-system contract cycle;
-// without the dedicated `isolated-test-names` landing key they would both write
-// `ct-test-names` and last-write-wins would feed the wrong list to the probes
+// without the dedicated `isolated-test-names` key they would both write
+// `test-names` and last-write-wins would feed the wrong list to the probes
 // (and the @Isolated exact-set/empty tests would reach PROBE_CONTRACT_REAL —
 // which must never happen against the never-reset real driver).
 func TestValidateOutputsAndScopes_ContractTestNames_SeparateIsolatedKey(t *testing.T) {
@@ -1653,7 +1604,7 @@ func TestValidateOutputsAndScopes_ContractTestNames_SeparateIsolatedKey(t *testi
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	dir := t.TempDir()
 
-	// 1. The shared-register writer (contract-test-writer) lands ct-test-names.
+	// 1. The shared-register writer (contract-test-writer) lands test-names.
 	sharedJSONL := filepath.Join(dir, "001-contract-test-writer.outputs.jsonl")
 	writeJSONL(t, sharedJSONL, `{"dsl-port-changed":false,"test-names":["sharedA","sharedB"]}`)
 	ctx.Params["task-name"] = "write-contract-tests"
@@ -1663,7 +1614,7 @@ func TestValidateOutputsAndScopes_ContractTestNames_SeparateIsolatedKey(t *testi
 	}
 
 	// 2. The stub-only writer (stub-fidelity-test-writer) lands its list under
-	//    the DISTINCT ct-isolated-test-names key.
+	//    the DISTINCT isolated-test-names key.
 	isoJSONL := filepath.Join(dir, "002-stub-fidelity-test-writer.outputs.jsonl")
 	writeJSONL(t, isoJSONL, `{"isolated-test-names":["isoX","isoY"]}`)
 	ctx.Params["task-name"] = "write-stub-fidelity-tests"
@@ -1673,11 +1624,11 @@ func TestValidateOutputsAndScopes_ContractTestNames_SeparateIsolatedKey(t *testi
 	}
 
 	// Both lists coexist under distinct keys — neither clobbered the other.
-	if got, _ := ctx.Get("ct-test-names").([]string); len(got) != 2 || got[0] != "sharedA" {
-		t.Errorf("ct-test-names: got %v, want [sharedA sharedB]", ctx.Get("ct-test-names"))
+	if got, _ := ctx.Get("test-names").([]string); len(got) != 2 || got[0] != "sharedA" {
+		t.Errorf("test-names: got %v, want [sharedA sharedB]", ctx.Get("test-names"))
 	}
-	if got, _ := ctx.Get("ct-isolated-test-names").([]string); len(got) != 2 || got[0] != "isoX" {
-		t.Errorf("ct-isolated-test-names: got %v, want [isoX isoY]", ctx.Get("ct-isolated-test-names"))
+	if got, _ := ctx.Get("isolated-test-names").([]string); len(got) != 2 || got[0] != "isoX" {
+		t.Errorf("isolated-test-names: got %v, want [isoX isoY]", ctx.Get("isolated-test-names"))
 	}
 }
 
@@ -1837,8 +1788,8 @@ func TestValidateOutputsAndScopes_ExternalDriverPortChange_PreservesPortPaths(t 
 	ctx.Params["test-category"] = "acceptance"
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
 	// AT-cascade landed verdict (the meaningful port change).
-	ctx.Set("at-external-driver-port-changed", true)
-	ctx.Set("at-system-driver-port-changed", false)
+	ctx.Set("external-driver-port-changed", true)
+	ctx.Set("system-driver-port-changed", false)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)
@@ -1863,8 +1814,8 @@ func TestValidateOutputsAndScopes_NoPortChange_DoesNotPreservePortPaths(t *testi
 	ctx.Params["task-name"] = "implement-dsl"
 	ctx.Params["test-category"] = "acceptance"
 	ctx.State[CtxKeyPreAgentFingerprint] = WorkingTreeFingerprint{}
-	ctx.Set("at-external-driver-port-changed", false)
-	ctx.Set("at-system-driver-port-changed", false)
+	ctx.Set("external-driver-port-changed", false)
+	ctx.Set("system-driver-port-changed", false)
 	out := a.validateOutputsAndScopes(ctx)
 	if out.Err != nil {
 		t.Fatalf("unexpected err: %v", out.Err)

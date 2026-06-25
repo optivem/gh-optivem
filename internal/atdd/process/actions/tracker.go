@@ -111,7 +111,7 @@ func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
 	ctx.Set("checklist", r.Checklist.Body)
 	// External System Contract Criteria (optional). `ticket-has-escc` is the
 	// routing signal the contract/stub room reads to open regardless of the
-	// file-change-derived `at-external-driver-port-changed` cascade;
+	// file-change-derived `external-driver-port-changed` cascade;
 	// `escc-systems` feeds validate-external-systems-registered; the verbatim
 	// body flows to the contract-test writers via ${external-system-contract-
 	// criteria}. parse-ticket stays dumb — it reads only presence + names.

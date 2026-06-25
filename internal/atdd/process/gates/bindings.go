@@ -161,19 +161,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("fix-loop-progressing", b.fixLoopProgressing)
 	r.Register("expected-test-result", b.expectedTestResult)
 	r.Register("fix-on-failure-enabled", b.fixOnFailureEnabled)
-	// Cascade-namespaced port-changed verdicts (plan 20260606-1525). The
-	// landing layer (validate-outputs-and-scopes) writes the agent's bare
-	// `*-port-changed` output under an `at-`/`ct-` key chosen by the active
-	// `tests` cascade, so the nested contract excursion can't clobber the
-	// acceptance cascade's verdict. Each gateway is cascade-fixed, so each
-	// reads its own namespaced key. Only the verdicts actually gated are
-	// registered: `ct-system-driver-port-changed` / `ct-external-driver-
-	// port-changed` are written but read directly by the CT-path fence /
-	// never gated, so they need no binding.
-	r.Register("at-dsl-port-changed", b.atDslPortChanged)
-	r.Register("at-system-driver-port-changed", b.atSystemDriverPortChanged)
-	r.Register("at-external-driver-port-changed", b.atExternalDriverPortChanged)
-	r.Register("ct-dsl-port-changed", b.ctDslPortChanged)
+	// Port-changed verdicts: the writing-agent output flags consumed by the
+	// per-test-layer fanout in implement-and-verify-dsl and the parent re-gates.
+	// Both AT and CT cascades run sequentially, so each cascade reads the shared
+	// bare key — no namespacing needed.
+	r.Register("dsl-port-changed", b.dslPortChanged)
+	r.Register("system-driver-port-changed", b.systemDriverPortChanged)
+	r.Register("external-driver-port-changed", b.externalDriverPortChanged)
 	// ESCC-first contract-room entry (plan 20260620-1850). GATE_TICKET_HAS_ESCC
 	// in implement-external-drivers-if-needed opens the external contract/stub
 	// room when the ticket declares External System Contract Criteria. ESCC is
@@ -201,8 +195,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	// Stub-only fidelity leg guard (plan 20260620-2348). The stub-fidelity-test-
 	// writer authors the `Stub only:` register only when the ticket declares one
 	// (optional), so GATE_STUB_FIDELITY_PRESENT routes into the stub-only
-	// probe/verify iff it emitted a non-empty ct-isolated-test-names list, and
-	// past it otherwise — which also keeps an unset ${ct-isolated-test-names} away
+	// probe/verify iff it emitted a non-empty isolated-test-names list, and
+	// past it otherwise — which also keeps an unset ${isolated-test-names} away
 	// from the probe's strict ExpandParams. Presence-style (absent → false).
 	r.Register("stub-fidelity-tests-present", b.stubFidelityTestsPresent)
 	// Per-channel clone guard (plan 20260619-1139). Each unrolled per-channel
@@ -434,32 +428,26 @@ func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Ou
 	return statemachine.Outcome{Bool: yes}
 }
 
-// atDslPortChanged, atSystemDriverPortChanged, atExternalDriverPortChanged,
-// ctDslPortChanged are the writing-agent output flags consumed by the
-// per-test-layer fanout in implement-and-verify-dsl and the parent re-gates.
-// The agent emits the bare key via `gh optivem output write KEY=VAL`; the
-// landing layer (validate-outputs-and-scopes) flattens it from the
-// per-dispatch JSONL file into the cascade-namespaced `at-`/`ct-` ctx key
-// (plan 20260606-1525), so the nested contract excursion can't overwrite the
-// acceptance cascade's verdict. Each gateway is cascade-fixed and reads its
-// own namespaced key. Missing/unset is a bug — the writing-agent MID's BPMN
-// `outputs:` list MUST declare the key as required, so unset means the agent
-// skipped the `output write` call — and we halt rather than mis-route (same
-// doctrine as the older dslFlagsPresent gate).
-func (b bindings) atDslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "at-dsl-port-changed")
+// dslPortChanged, systemDriverPortChanged, externalDriverPortChanged are the
+// writing-agent output flags consumed by the per-test-layer fanout in
+// implement-and-verify-dsl and the parent re-gates. The agent emits the bare
+// key via `gh optivem output write KEY=VAL`; validate-outputs-and-scopes
+// flattens it directly into ctx.State under the same bare key. Missing/unset
+// is a bug — the writing-agent MID's BPMN `outputs:` list MUST declare the
+// key as required, so unset means the agent skipped the `output write` call —
+// and we halt rather than mis-route (same doctrine as the older dslFlagsPresent
+// gate). AT and CT cascades run sequentially so both read the same bare key
+// without collision.
+func (b bindings) dslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "dsl-port-changed")
 }
 
-func (b bindings) atSystemDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "at-system-driver-port-changed")
+func (b bindings) systemDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "system-driver-port-changed")
 }
 
-func (b bindings) atExternalDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "at-external-driver-port-changed")
-}
-
-func (b bindings) ctDslPortChanged(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "ct-dsl-port-changed")
+func (b bindings) externalDriverPortChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "external-driver-port-changed")
 }
 
 // ticketHasESCC is GATE_TICKET_HAS_ESCC, the ESCC-first entry to the external
@@ -484,8 +472,8 @@ func (b bindings) ticketHasESCC(ctx *statemachine.Context) statemachine.Outcome 
 //     has the behaviour, so the AT is expected to PASS exactly when no further
 //     plumbing change is pending and FAIL otherwise. "Pending" is scoped to
 //     this layer by verify-pending-on (which ports' changes still imply a
-//     downstream plumbing layer): dsl → at-dsl-port-changed (test-code layer);
-//     drivers → at-system-driver-port-changed || at-external-driver-port-changed
+//     downstream plumbing layer): dsl → dsl-port-changed (test-code layer);
+//     drivers → system-driver-port-changed || external-driver-port-changed
 //     (DSL layer); none → terminal layer, never pending (always PASS).
 //   - verify-mode == "red" or unset (change path, --target, no-arg full run):
 //     routes on the caller-pinned expected-test-result verbatim — the change
@@ -522,23 +510,21 @@ func (b bindings) atVerifyExpectation(ctx *statemachine.Context) statemachine.Ou
 
 // plumbingPending reports whether a further test-plumbing layer must still run
 // after the current one, scoped by the verify-pending-on call param (plan
-// 20260606-1518). The flags are the acceptance-cascade-namespaced verdicts
-// (at-*, plan 20260606-1525); each is strict (the writer/impl that runs
-// immediately before this gate must have emitted it) so an unset flag halts
-// rather than defaulting to "not pending" and mis-routing a still-red AT into
-// verify-pass.
+// 20260606-1518). Each flag is strict (the writer/impl that runs immediately
+// before this gate must have emitted it) so an unset flag halts rather than
+// defaulting to "not pending" and mis-routing a still-red AT into verify-pass.
 func plumbingPending(ctx *statemachine.Context) (bool, error) {
 	switch on := strings.TrimSpace(ctx.Params["verify-pending-on"]); on {
 	case "dsl":
-		return boolState(ctx, "at-dsl-port-changed")
+		return boolState(ctx, "dsl-port-changed")
 	case "system-drivers":
-		return boolState(ctx, "at-system-driver-port-changed")
+		return boolState(ctx, "system-driver-port-changed")
 	case "drivers":
-		sys, err := boolState(ctx, "at-system-driver-port-changed")
+		sys, err := boolState(ctx, "system-driver-port-changed")
 		if err != nil {
 			return false, err
 		}
-		ext, err := boolState(ctx, "at-external-driver-port-changed")
+		ext, err := boolState(ctx, "external-driver-port-changed")
 		if err != nil {
 			return false, err
 		}
@@ -621,18 +607,18 @@ func (b bindings) channelTouched(ctx *statemachine.Context) statemachine.Outcome
 // guard on the stub-only fidelity leg of the external-system contract cycle
 // (plan 20260620-2348). The stub-fidelity-test-writer authors tests ONLY when
 // the ticket declares a `Stub only:` register (optional per escc-format.md), so
-// this gate reads whether it emitted a non-empty `ct-isolated-test-names` list
+// this gate reads whether it emitted a non-empty `isolated-test-names` list
 // and routes into the stub-only probe/verify (true) or straight past it to the
 // cycle end (false). The false branch is load-bearing for more than skipping
 // wasted work: it prevents PROBE_CONTRACT_STUB_ISOLATED from receiving an unset
-// `${ct-isolated-test-names}`, which strict ExpandParams (run.go) would reject.
+// `${isolated-test-names}`, which strict ExpandParams (run.go) would reject.
 //
 // Presence-style, NOT strict: absent / nil / empty all mean "no fidelity tests"
 // → false (no error), mirroring scopeExceptionRequested. The list lands as
 // []string (validate-outputs-and-scopes coerces the string-list output); the
 // []any arm covers a hand-crafted-JSONL test fixture that skips that coercion.
 func (b bindings) stubFidelityTestsPresent(ctx *statemachine.Context) statemachine.Outcome {
-	switch v := ctx.Get("ct-isolated-test-names").(type) {
+	switch v := ctx.Get("isolated-test-names").(type) {
 	case []string:
 		return statemachine.Outcome{Bool: len(v) > 0}
 	case []any:

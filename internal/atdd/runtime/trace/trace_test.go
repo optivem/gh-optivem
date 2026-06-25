@@ -527,12 +527,12 @@ func TestStateDelta_LongValuesSortLast(t *testing.T) {
 	pre := map[string]string{}
 	post := map[string]string{
 		"phase-changed-files":             "a/long/path/one.java\na/long/path/two.java",
-		"at-external-driver-port-changed": "false",
-		"at-system-driver-port-changed":   "true",
+		"external-driver-port-changed": "false",
+		"system-driver-port-changed":   "true",
 	}
 
 	got := stateDelta(pre, post)
-	want := "at-system-driver-port-changed=true, at-external-driver-port-changed=false, phase-changed-files=a/long/path/one.java\na/long/path/two.java"
+	want := "system-driver-port-changed=true, external-driver-port-changed=false, phase-changed-files=a/long/path/one.java\na/long/path/two.java"
 	if got != want {
 		t.Errorf("stateDelta = %q, want %q", got, want)
 	}

@@ -130,14 +130,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 			return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 		}
 		for k, v := range flattened {
-			// Cascade-namespace the per-cascade outputs (plan 20260606-1525;
-			// test-names added by plan 20260608-1231): the agent emits the
-			// bare key, but namespacedLandingKeys members land under an
-			// `at-`/`ct-` key chosen by the active test-category so the nested
-			// contract excursion can't clobber the acceptance cascade's
-			// verdict or test-name list. landingStateKey is the identity for
-			// every other output.
-			ctx.Set(landingStateKey(k, ctx.Params["test-category"]), v)
+			ctx.Set(k, v)
 		}
 	}
 
@@ -145,15 +138,13 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// dsl-implementer dispatched on the contract-test path (test-category=contract)
 	// stimulates the External-System Driver only — the System Driver port is
 	// conceptually out of scope. If it emits system-driver-port-changed=true,
-	// that flag leaks up into the AT cycle's system-driver-adapter gate and
-	// fires a spurious adapter cycle. This is a structural invariant
+	// that flag fires a spurious adapter cycle. This is a structural invariant
 	// violation, not a recoverable agent-output problem (no fix-* pass can
 	// correct "wrong test path"), so it halts with a diagnostic rather than
-	// routing to the soft fix loop. The AT path (test-category=acceptance) emitting
-	// the same flag is correct and untouched. `test-category` reaches here via the
+	// routing to the soft fix loop. `test-category` reaches here via the
 	// wrapCallActivity param-merge from the IMPLEMENT_AND_VERIFY_DSL call site.
 	if ctx.Params["test-category"] == "contract" {
-		if changed, _ := ctx.State["ct-system-driver-port-changed"].(bool); changed {
+		if changed, _ := ctx.State["system-driver-port-changed"].(bool); changed {
 			return statemachine.Outcome{Err: fmt.Errorf(
 				"validate-outputs-and-scopes: CT-path dsl-implementer must not touch the System Driver port; contract tests stimulate the External-System Driver only (set system-driver-port-changed=false on the test-category=contract path)")}
 		}
@@ -166,11 +157,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 		if spec.Optional {
 			continue
 		}
-		// Check the cascade-namespaced landing key (plan 20260606-1525):
-		// the port-changed verdicts are flattened under their `at-`/`ct-`
-		// key, so the presence check must look there, not under the bare
-		// declared key. The agent-facing diagnostic still names the bare key.
-		if _, ok := ctx.State[landingStateKey(spec.Key, ctx.Params["test-category"])]; !ok {
+		if _, ok := ctx.State[spec.Key]; !ok {
 			missing = append(missing, spec.Key)
 		}
 	}
@@ -242,7 +229,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// when the landed verdict is true AND the subset is non-empty, so the
 	// compile-only CT DSL phase (which does not re-change the port) cannot
 	// clobber the AT phase's list.
-	if portChanged, _ := ctx.State[landingStateKey("external-driver-port-changed", ctx.Params["test-category"])].(bool); portChanged {
+	if portChanged, _ := ctx.State["external-driver-port-changed"].(bool); portChanged {
 		if portRoots, perr := ResolveLayerPaths([]string{"external-system-driver-port"}, cfg); perr == nil && len(portRoots) > 0 {
 			portRoot := portRoots[0]
 			var portPaths []string
@@ -288,57 +275,6 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	ctx.Unset("scope-violating-paths")
 	ctx.Set("outputs-and-scopes-valid", true)
 	return statemachine.Outcome{}
-}
-
-// namespacedLandingKeys are the bare agent outputs the landing layer rewrites
-// to a cascade-namespaced key — an `at-`/`ct-` prefix chosen by the active
-// test-category — so a nested contract excursion can't clobber the acceptance
-// cascade's value (plan 20260606-1525; extended to test-names by plan
-// 20260608-1231). The three port-changed verdicts (dsl-port-changed by the
-// test-code writers; the two driver-port flags by the DSL implementer) gate
-// downstream re-reads; test-names is the per-cascade list the GREEN verify
-// selects on. The map's meaning is "outputs that namespace by cascade tag," so
-// any future per-cascade output joins this one set rather than growing a
-// second allowlist.
-//
-// isolated-test-names is the stub-fidelity-test-writer's own per-cascade list
-// (plan 20260620-2348): it lands under `ct-isolated-test-names`, a key DISTINCT
-// from `ct-test-names`, so the stub-only fidelity register the new writer emits
-// never leaks into the shared-register PROBE_CONTRACT_REAL / PROBE_CONTRACT_STUB
-// (which select `${ct-test-names}`). The dedicated stub-only probe/verify pair
-// selects `${ct-isolated-test-names}` instead, keeping clean failure
-// localization (shared red ⇒ stub/real disagree; stub-only red ⇒ stub broken)
-// and keeping the never-resettable real driver away from exact-set/empty asserts.
-var namespacedLandingKeys = map[string]bool{
-	"dsl-port-changed":             true,
-	"system-driver-port-changed":   true,
-	"external-driver-port-changed": true,
-	"test-names":                   true,
-	"isolated-test-names":          true,
-}
-
-// landingStateKey returns the ctx.State key a flattened agent output lands
-// under (plan 20260606-1525; test-names added by plan 20260608-1231). The
-// namespacedLandingKeys outputs are prefixed by the active test-category —
-// acceptance → `at-`, contract → `ct-` — so the nested contract excursion
-// writes only `ct-*` and can't overwrite the acceptance cascade's `at-*`
-// value the parent re-gates / GREEN verify read. Every other output is the
-// identity. In production the emitters always carry a test-category (threaded
-// at their call sites); an unrecognised category falls back to the bare key,
-// where the gate's strict "not set" check surfaces the wiring bug loudly
-// rather than mis-routing.
-func landingStateKey(key, testCategory string) string {
-	if !namespacedLandingKeys[key] {
-		return key
-	}
-	switch testCategory {
-	case "acceptance":
-		return "at-" + key
-	case "contract":
-		return "ct-" + key
-	default:
-		return key
-	}
 }
 
 // phaseTaskName returns the writing-agent MID name to look up scope by.

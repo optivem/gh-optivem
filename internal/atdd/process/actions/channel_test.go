@@ -118,7 +118,7 @@ func TestValidateChannelsRegistered_TestInAConfiguredChannel_OK(t *testing.T) {
 	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
 
 	ctx := statemachine.NewContext()
-	ctx.Set("at-test-names", "shouldRejectQty100")
+	ctx.Set("test-names", "shouldRejectQty100")
 	if out := a.validateChannelsRegistered(ctx); out.Err != nil {
 		t.Fatalf("validate-channels-registered: unexpected err %v", out.Err)
 	}
@@ -133,7 +133,7 @@ func TestValidateChannelsRegistered_OrphanTestFailsLoud(t *testing.T) {
 	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
 
 	ctx := statemachine.NewContext()
-	ctx.Set("at-test-names", "shouldDoMobileThing")
+	ctx.Set("test-names", "shouldDoMobileThing")
 	out := a.validateChannelsRegistered(ctx)
 	if out.Err == nil {
 		t.Fatalf("validate-channels-registered: want hard error for a test in no configured channel, got nil")
@@ -144,7 +144,7 @@ func TestValidateChannelsRegistered_OrphanTestFailsLoud(t *testing.T) {
 }
 
 // TestValidateChannelsRegistered_StringListShape_OK is the rehearsal #72 repro at
-// the gate. The PRODUCTION shape of `at-test-names` is a `[]string` (it lands as
+// the gate. The PRODUCTION shape of `test-names` is a `[]string` (it lands as
 // a declared `string-list` output, outputs.go coerceJSONOutputValue), NOT the
 // plain `string` the older OK test above used. Pre-fix, GetString rendered the
 // slice as "[shouldRejectQty100]" (fmt.Sprint), splitTestNames comma-split that
@@ -157,7 +157,7 @@ func TestValidateChannelsRegistered_StringListShape_OK(t *testing.T) {
 	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
 
 	ctx := statemachine.NewContext()
-	ctx.Set("at-test-names", []string{"shouldRejectQty100"})
+	ctx.Set("test-names", []string{"shouldRejectQty100"})
 	if out := a.validateChannelsRegistered(ctx); out.Err != nil {
 		t.Fatalf("validate-channels-registered ([]string shape): unexpected err %v", out.Err)
 	}
@@ -172,7 +172,7 @@ func TestValidateChannelsRegistered_StringListShape_OrphanFailsLoud(t *testing.T
 	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
 
 	ctx := statemachine.NewContext()
-	ctx.Set("at-test-names", []string{"shouldDoMobileThing"})
+	ctx.Set("test-names", []string{"shouldDoMobileThing"})
 	out := a.validateChannelsRegistered(ctx)
 	if out.Err == nil {
 		t.Fatalf("validate-channels-registered ([]string shape): want hard error for an absent name, got nil")
