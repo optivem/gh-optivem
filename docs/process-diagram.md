@@ -927,7 +927,7 @@ flowchart TD
     GATE_EXTERNAL_SYSTEM_TOUCHED{External System Touched?}
     UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External System Driver Adapters]
     EXTERNAL_SYSTEM_SKIPPED(( ))
-    RECONCILE_EXTERNAL_CONTRACT_PRODUCER["Reconcile External Contract Producer<br/>ct-test-names = "]
+    RECONCILE_EXTERNAL_CONTRACT_PRODUCER["Reconcile External Contract Producer<br/>test-names = "]
     REDESIGN_EXTERNAL_PER_SYSTEM_END(( ))
 
     RESOLVE_EXTERNAL_SYSTEM --> GATE_EXTERNAL_SYSTEM_TOUCHED
