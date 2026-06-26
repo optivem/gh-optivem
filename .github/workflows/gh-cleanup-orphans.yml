@@ -63,11 +63,11 @@ jobs:
 
       - name: Run cleanup
         run: |
-          args="--owner $TEST_OWNER --all --delete"
+          args=(--owner "$TEST_OWNER" --all --delete)
           if [[ -n "$BEFORE_DATE" ]]; then
-            args="$args --before $BEFORE_DATE"
+            args+=(--before "$BEFORE_DATE")
           fi
-          bash scripts/cleanup-orphans.sh $args
+          bash scripts/cleanup-orphans.sh "${args[@]}"
         env:
           GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
           TEST_OWNER: ${{ vars.TEST_OWNER }}
