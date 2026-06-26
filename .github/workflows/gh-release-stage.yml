@@ -165,6 +165,8 @@ jobs:
   bump-patch-version:
     name: Bump Patch Version
     needs: [check, run]
+    permissions:
+      contents: write
     uses: ./.github/workflows/gh-bump-patch-version.yml
     secrets: inherit
 
