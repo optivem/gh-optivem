@@ -25,11 +25,34 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      # Pinned to the exact version used by the two other install sites
+      # (.github/workflows/_gh-acceptance-pipeline.yml and
+      # .github/actions/acceptance-test/action.yml) so all three linters stay
+      # in lockstep — a floating @v1 let install sites drift and surface
+      # different rule sets on the same files. `go install` lands the binary in
+      # $(go env GOPATH)/bin, which is on PATH; Go is already set up above.
+      - name: Install actionlint
+        run: |
+          set -euo pipefail
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          actionlint --version
+
       - name: Build
         run: go build ./...
 
       - name: Vet
         run: go vet ./...
+
+      # actionlint (no args) auto-discovers .github/workflows/*.yml and checks
+      # YAML syntax, ${{ }} expressions, action inputs, reusable-workflow
+      # inputs:/secrets:/outputs: references, needs: cycles, and shellcheck in
+      # run: blocks — failing fast here, before the slow test/Sonar steps.
+      # NOTE: actionlint does NOT model GitHub's reusable-workflow
+      # permission-inheritance rule (the class that broke gh-release-stage in
+      # run 28207902796). That is still only caught by GitHub server-side on
+      # trigger — this step is not a substitute for dispatching the workflow.
+      - name: Lint workflows
+        run: actionlint
 
       - name: Unit tests
         run: go test ./... -v
