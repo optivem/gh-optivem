@@ -116,6 +116,40 @@ func TestCheckPushPathsFilter_NonMatchingFilter(t *testing.T) {
 	}
 }
 
+// TestCheckPushPathsFilter_UnstagedFiles mirrors the real scaffold pipeline
+// ordering: the check runs in phaseApplyTemplate, before CommitAndPush stages
+// anything, so matching files exist on disk but are neither tracked nor staged.
+// The check must still pass — it evaluates against the set the upcoming commit
+// will include (tracked + untracked-not-ignored), not the git index.
+func TestCheckPushPathsFilter_UnstagedFiles(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not found on PATH")
+	}
+	repoDir := t.TempDir()
+	mustInitGitRepo(t, repoDir)
+
+	sysDir := filepath.Join(repoDir, "system")
+	if err := os.MkdirAll(sysDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sysDir, "main.go"), []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	wfDir := filepath.Join(repoDir, ".github", "workflows")
+	if err := os.MkdirAll(wfDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	wfPath := filepath.Join(wfDir, "commit-stage.yml")
+	if err := os.WriteFile(wfPath, []byte("on:\n  push:\n    paths:\n      - 'system/**'\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Deliberately do NOT `git add` — files are unstaged, as they are when the
+	// check actually runs. The pre-fix `git ls-files` code would have fataled here.
+	checkPushPathsFilter(wfPath, repoDir)
+}
+
 func mustInitGitRepo(t *testing.T, dir string) {
 	t.Helper()
 	mustGit(t, dir, "init")

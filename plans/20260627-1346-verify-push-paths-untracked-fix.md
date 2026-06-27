@@ -16,15 +16,11 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-Edit `internal/scaffolding/steps/verify.go` (~line 202): change `shell.Run("git ls-files", true, repoDir)` to `shell.Run("git ls-files --cached --others --exclude-standard", true, repoDir)`, and adjust the surrounding doc comment (verify.go:142–146) so it says the check matches "files the commit will include" rather than "tracked files." Then add the unstaged-files test case in `verify_test.go` (Step 2) and run `go test -p 2 ./internal/scaffolding/steps/...`. Single Go file change + one test; gh-optivem is Go-only, no parallel-language twins.
+All agent code work is done and committed (verify.go enumeration switched to `git ls-files --cached --others --exclude-standard`, comments/error message updated, unstaged-files test added, `go test -p 2 ./internal/scaffolding/steps/...` green). Only operator verification remains — see Verification below.
 
-## Steps
+## Verification (operator)
 
-- [ ] Step 1: In `internal/scaffolding/steps/verify.go` (~line 202, inside `checkPushPathsFilter`), change the enumeration command from `git ls-files` to `git ls-files --cached --others --exclude-standard`. This returns tracked + new-untracked-non-ignored files — the exact set `CommitAndPush` will commit — so the check no longer depends on whether files are staged at check time.
-- [ ] Step 2: Update the doc comment on `VerifyPushPathsFilter` / `checkPushPathsFilter` (verify.go:142–146 and any inline wording) so it describes matching against "files the upcoming commit will include," not "tracked files" — the old wording implied the index and was the source of the bug.
-- [ ] Step 3: In `internal/scaffolding/steps/verify_test.go`, add a test case that mirrors the real pipeline ordering: write `system/main.go` and a `commit-stage.yml` whose filter is `system/**`, **do not** `git add` them, and assert `checkPushPathsFilter` does not panic (the prior plain-`ls-files` code would have fataled here). Keep the existing matching/non-matching tests unchanged.
-- [ ] Step 4: Run `go test -p 2 ./internal/scaffolding/steps/...` (Windows rule: never unbounded `go test ./...`) and confirm green.
-- [ ] Step 5 (verification, operator): Re-run run 28290135277's workflow (the Smoke matrix) and confirm all 4 configs — monolith monorepo java, monolith multirepo dotnet, multitier monorepo ts, multitier multirepo java — pass.
+- [ ] Re-run run 28290135277's workflow (the Smoke matrix) and confirm all 4 configs — monolith monorepo java, monolith multirepo dotnet, multitier monorepo ts, multitier multirepo java — pass.
 
 ## Notes
 

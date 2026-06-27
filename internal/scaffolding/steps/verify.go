@@ -141,9 +141,9 @@ func scaffoldRepoDirs(cfg *config.Config) []string {
 
 // VerifyPushPathsFilter checks that every commit-stage workflow in each
 // scaffolded repo has an on.push.paths filter that matches at least one
-// tracked file in that repo. Runs before push so a misconfigured filter
-// surfaces as a precise scaffold-time error rather than a silent GitHub
-// trigger drop (which at runtime would be misread as a flake).
+// file the upcoming commit will include in that repo. Runs before push so a
+// misconfigured filter surfaces as a precise scaffold-time error rather than
+// a silent GitHub trigger drop (which at runtime would be misread as a flake).
 func VerifyPushPathsFilter(cfg *config.Config) {
 	log.Info("Verifying commit-stage push path filters...")
 	for _, repoDir := range scaffoldRepoDirs(cfg) {
@@ -199,7 +199,13 @@ func checkPushPathsFilter(wfPath, repoDir string) {
 		return
 	}
 
-	out, runErr := shell.Run("git ls-files", true, repoDir)
+	// Enumerate the file set the upcoming commit will contain: tracked
+	// (--cached) plus new untracked-but-not-ignored (--others
+	// --exclude-standard). This step runs in phaseApplyTemplate, before
+	// CommitAndPush stages anything, so plain `git ls-files` (index only)
+	// would see none of the freshly scaffolded files and every filter would
+	// falsely "match no file".
+	out, runErr := shell.Run("git ls-files --cached --others --exclude-standard", true, repoDir)
 	if runErr != nil {
 		log.Fatalf("git ls-files failed in %s: %v", repoDir, runErr)
 	}
@@ -216,7 +222,7 @@ func checkPushPathsFilter(wfPath, repoDir string) {
 		}
 	}
 	log.Fatalf(
-		"commit-stage workflow %s has an on.push.paths filter matching no tracked file in %s.\nPatterns: %v\nRun `git ls-files` in %s to inspect the tracked file set.",
+		"commit-stage workflow %s has an on.push.paths filter matching no committable file in %s.\nPatterns: %v\nRun `git ls-files --cached --others --exclude-standard` in %s to inspect the file set the commit will include.",
 		filepath.Base(wfPath), repoDir, positive, repoDir)
 }
 
