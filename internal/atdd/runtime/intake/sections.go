@@ -20,7 +20,9 @@ const (
 	// inner / contract loop — present only on stories that cross an external
 	// system boundary. Its presence opens the contract/stub room and each
 	// `External System: <name>` line names a boundary. The register bodies
-	// pass through verbatim to the contract-test writers (the parser stays
-	// dumb — see internal/atdd/assets/runtime/shared/escc-format.md).
+	// pass through verbatim to the contract-test writers; the parser stays
+	// *semantically* dumb (it interprets only presence + names) but does
+	// syntax-validate the bodies as Gherkin at intake — see gherkin.go and
+	// internal/atdd/assets/runtime/shared/escc-format.md.
 	SectionExternalSystemContractCriteria = "External System Contract Criteria"
 )

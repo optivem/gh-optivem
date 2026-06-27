@@ -8,9 +8,13 @@ has no actor action; the `When` belongs to the Acceptance Criteria).
 
 This file is the canonical, pinned vocabulary. Authors write it directly; the
 two contract-test writers (`contract-test-writer`, `stub-fidelity-test-writer`)
-are the only interpreters. `parse-ticket` stays dumb — it reads only the
-section's *presence* and each `External System: <name>` line, and passes the
-register bodies through verbatim.
+are the only interpreters of its *meaning*. `parse-ticket` stays *semantically*
+dumb — it reads only the section's *presence* and each `External System: <name>`
+line, and passes the register bodies through verbatim. It does, however,
+validate the **Gherkin syntax** of those bodies at intake (a typo'd
+`Given`/`Then` keyword fails fast as `STOP_PARSE_ERROR` with an author-relative
+line number) — it never interprets the pinned vocabulary below. The authored
+format in this file is unchanged; only step *syntax* is checked.
 
 ## Shape
 

@@ -2300,7 +2300,7 @@ func TestParseTicket_ChecklistSectionStashed(t *testing.T) {
 func TestParseTicket_ESCCStashedAndFlagged(t *testing.T) {
 	esccBody := "External System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\n  Stub only:\n    Given no products\n    Then ERP has no products"
 	tk := &fakeTracker{sections: map[string]string{
-		"Acceptance Criteria":               "Scenario: list",
+		"Acceptance Criteria":               "Scenario: list\n  Given a\n  When b\n  Then c",
 		"External System Contract Criteria": esccBody,
 	}}
 	a := newActions(Deps{Tracker: tk})
@@ -2324,7 +2324,7 @@ func TestParseTicket_ESCCStashedAndFlagged(t *testing.T) {
 
 func TestParseTicket_NoESCC_FlagFalse(t *testing.T) {
 	tk := &fakeTracker{sections: map[string]string{
-		"Acceptance Criteria": "Scenario: x",
+		"Acceptance Criteria": "Scenario: x\n  Given a\n  When b\n  Then c",
 	}}
 	a := newActions(Deps{Tracker: tk})
 	ctx := statemachine.NewContext()

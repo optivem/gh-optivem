@@ -19,8 +19,25 @@ func TestParse_AcceptanceCriteriaExtracted(t *testing.T) {
 	}
 }
 
+// A `Rule:`-grouped AC body must be extracted verbatim — the parser stays dumb,
+// interpreting only section presence, never the Feature/Rule/Scenario structure.
+func TestParse_AcceptanceCriteria_RuleBody_ExtractedVerbatim(t *testing.T) {
+	acBody := "Feature: Checkout\n  Rule: Shipping is $0.10/kg per unit\n\n    Scenario: single item\n      Given a product weighing 2kg\n      When I check out 1\n      Then shipping is $0.20"
+	body := "## Acceptance Criteria\n\n" + acBody + "\n"
+	r, err := Parse(body)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !r.AcceptanceCriteria.Found {
+		t.Fatalf("AcceptanceCriteria.Found: got false, want true")
+	}
+	if r.AcceptanceCriteria.Body != acBody {
+		t.Fatalf("Body not verbatim:\n got %q\nwant %q", r.AcceptanceCriteria.Body, acBody)
+	}
+}
+
 func TestParse_BugSectionsExtracted(t *testing.T) {
-	body := "## Steps to Reproduce\n\n1. one\n\n## Acceptance Criteria\n\nScenario: ok\n"
+	body := "## Steps to Reproduce\n\n1. one\n\n## Acceptance Criteria\n\nScenario: ok\n  Given x\n  When y\n  Then z\n"
 	r, err := Parse(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -76,7 +93,7 @@ func TestParse_ACAndChecklist_BothPresent_Rejected(t *testing.T) {
 }
 
 func TestParse_ACOnly_Passes(t *testing.T) {
-	body := "## Acceptance Criteria\n\nScenario: x\n"
+	body := "## Acceptance Criteria\n\nScenario: x\n  Given a\n  When b\n  Then c\n"
 	if _, err := Parse(body); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,7 +177,7 @@ func TestExtractChecklist_IgnoresNonCheckboxBullets(t *testing.T) {
 
 func TestParse_ESCCExtracted_NamesAndVerbatimBody(t *testing.T) {
 	escBody := "External System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\n  Stub only:\n    Given no products\n    Then ERP has no products"
-	body := "## Acceptance Criteria\n\nScenario: list\n\n## External System Contract Criteria\n\n" + escBody + "\n"
+	body := "## Acceptance Criteria\n\nScenario: list\n  Given a\n  When b\n  Then c\n\n## External System Contract Criteria\n\n" + escBody + "\n"
 	r, err := Parse(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -179,7 +196,7 @@ func TestParse_ESCCExtracted_NamesAndVerbatimBody(t *testing.T) {
 }
 
 func TestParse_ESCCMultipleSystems_InOrder(t *testing.T) {
-	body := "## Acceptance Criteria\n\nScenario: x\n\n## External System Contract Criteria\n\nExternal System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\nExternal System: Tax\n  Shared (stub + real):\n    Given rate 0.2\n    Then Tax has rate 0.2\n"
+	body := "## Acceptance Criteria\n\nScenario: x\n  Given a\n  When b\n  Then c\n\n## External System Contract Criteria\n\nExternal System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\nExternal System: Tax\n  Shared (stub + real):\n    Given rate 0.2\n    Then Tax has rate 0.2\n"
 	r, err := Parse(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -197,7 +214,7 @@ func TestParse_ESCCMultipleSystems_InOrder(t *testing.T) {
 }
 
 func TestParse_ESCCAbsent_NoSystems(t *testing.T) {
-	body := "## Acceptance Criteria\n\nScenario: x\n"
+	body := "## Acceptance Criteria\n\nScenario: x\n  Given a\n  When b\n  Then c\n"
 	r, err := Parse(body)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

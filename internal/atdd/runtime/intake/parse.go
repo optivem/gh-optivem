@@ -37,9 +37,12 @@ type ChecklistItem struct {
 // ESCCResult is the External System Contract Criteria section with its
 // `External System: <name>` lines pre-parsed into Systems. The embedded
 // Section carries the raw body verbatim so the contract-test writers receive
-// the register bodies unaltered (the parser stays dumb — it interprets only
-// presence + the named systems, never the Given/Then bodies). Systems is empty
-// when the section is absent or declares no `External System:` line.
+// the register bodies unaltered. The parser stays *semantically* dumb — it
+// interprets only presence + the named systems, never the meaning of the
+// Given/Then bodies — but it does validate the bodies' Gherkin *syntax* at
+// intake (see gherkin.go: validateESCCGherkin), so a malformed step fails fast
+// here rather than deep in a contract-test writer. Systems is empty when the
+// section is absent or declares no `External System:` line.
 type ESCCResult struct {
 	Section
 	Systems []string
@@ -85,9 +88,12 @@ var CanonicalHeadings = []string{
 }
 
 // Parse extracts canonical sections from issue-body markdown and runs
-// shape-level validation. Returns an error when the body is malformed
-// (currently: declaring both Acceptance Criteria and Checklist — they are
-// mutually exclusive at intake regardless of ticket-kind).
+// shape-level validation. Returns an error when the body is malformed:
+// declaring both Acceptance Criteria and Checklist (mutually exclusive at
+// intake regardless of ticket-kind), or an Acceptance Criteria / External
+// System Contract Criteria section whose step bodies are not well-formed
+// Gherkin syntax (see gherkin.go). It validates only syntax, never the pinned
+// vocabulary — that stays the test-writers' concern.
 //
 // Per-kind required-section enforcement (story → AC, the five task
 // subtypes that consume ${checklist} → Checklist, etc.) does NOT live
@@ -138,6 +144,19 @@ func ParseSections(sections map[string]string) (*Result, error) {
 	}
 	if r.AcceptanceCriteria.Found && r.Checklist.Found {
 		return nil, fmt.Errorf("ticket body declares both Acceptance Criteria and Checklist; pick one matching the ticket-kind")
+	}
+	// Syntax-validate the Gherkin step bodies (presence only is checked above;
+	// these gate well-formedness so a typo'd keyword fails fast here rather than
+	// deep in a run, in the test-writer agents). See gherkin.go.
+	if r.AcceptanceCriteria.Found {
+		if err := validateAcceptanceCriteriaGherkin(r.AcceptanceCriteria.Body); err != nil {
+			return nil, err
+		}
+	}
+	if r.ExternalSystemContractCriteria.Found {
+		if err := validateESCCGherkin(r.ExternalSystemContractCriteria.Body); err != nil {
+			return nil, err
+		}
 	}
 	return r, nil
 }
@@ -205,7 +224,8 @@ func ExtractChecklist(body string) ChecklistResult {
 // pre-parses every `External System: <name>` line into Systems. The embedded
 // Section carries the raw body verbatim so the contract-test writers receive
 // the register bodies unaltered. The parser interprets only presence + the
-// named systems — never the Given/Then register bodies.
+// named systems — never the *meaning* of the Given/Then register bodies —
+// though ParseSections does syntax-validate those bodies as Gherkin (gherkin.go).
 func ExtractESCC(body string) ESCCResult {
 	sec := ExtractSection(body, SectionExternalSystemContractCriteria)
 	return ESCCResult{Section: sec, Systems: externalSystemNames(sec.Body)}
