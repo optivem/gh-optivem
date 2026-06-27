@@ -60,6 +60,54 @@ func TestValidateAC_RuleNesting_Passes(t *testing.T) {
 	}
 }
 
+// Story tickets wrap the AC in a markdown code fence — the story Issue Form's
+// `render: markdown` wraps form submissions in ```markdown, and corpus tickets
+// hand-author ```gherkin. The enclosing fence must be stripped before parsing
+// so its lines are not mis-read as DocString separators (the closing ``` after
+// the last step would otherwise open a DocString that never closes → EOF).
+func TestValidateAC_FencedGherkin_Passes(t *testing.T) {
+	body := "```gherkin\nFeature: Charge shipping based on product weight\n\n  Rule: Shipping fee is $0.10 per kg per unit\n\n    Scenario: derived from weight\n      Given a product weighing 2kg\n      When I check out 1\n      Then shipping is 0.20\n```"
+	if err := validateAcceptanceCriteriaGherkin(body); err != nil {
+		t.Fatalf("unexpected error for ```gherkin-fenced AC: %v", err)
+	}
+}
+
+func TestValidateAC_FencedMarkdown_Passes(t *testing.T) {
+	body := "```markdown\nScenario: Foo\n  Given a\n  When b\n  Then c\n```"
+	if err := validateAcceptanceCriteriaGherkin(body); err != nil {
+		t.Fatalf("unexpected error for ```markdown-fenced AC: %v", err)
+	}
+}
+
+func TestValidateAC_FencedBare_Passes(t *testing.T) {
+	body := "```\nScenario: Foo\n  Given a\n  When b\n  Then c\n```"
+	if err := validateAcceptanceCriteriaGherkin(body); err != nil {
+		t.Fatalf("unexpected error for bare-fenced AC: %v", err)
+	}
+}
+
+// A typo'd step inside a fenced body must still fail, and the reported line must
+// be author-relative — i.e. counted against the original fenced body (where the
+// opening fence is line 1), not the de-fenced inner content.
+func TestValidateAC_FencedTypoStep_FailsWithAuthorLine(t *testing.T) {
+	// line 1: ```gherkin
+	// line 2: Scenario: Foo
+	// line 3:   Gven products Apple   <- typo
+	// line 4:   Then I see them
+	// line 5: ```
+	body := "```gherkin\nScenario: Foo\n  Gven products Apple\n  Then I see them\n```"
+	err := validateAcceptanceCriteriaGherkin(body)
+	if err == nil {
+		t.Fatalf("expected error for typo'd step in fenced AC, got nil")
+	}
+	if !strings.Contains(err.Error(), "line 3") {
+		t.Fatalf("error should report author-relative line 3: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Gven products Apple") {
+		t.Fatalf("error should quote the offending line: %v", err)
+	}
+}
+
 func TestValidateAC_ScenarioWithoutSteps_Fails(t *testing.T) {
 	body := "Scenario: empty"
 	err := validateAcceptanceCriteriaGherkin(body)
@@ -112,6 +160,15 @@ func TestValidateESCC_StepOutsideRegister_Fails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "register") {
 		t.Fatalf("error should mention the missing register: %v", err)
+	}
+}
+
+// A fenced ESCC body must strip its enclosing fence before translation, the
+// same as AC.
+func TestValidateESCC_Fenced_Passes(t *testing.T) {
+	body := "```gherkin\nExternal System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\n```"
+	if err := validateESCCGherkin(body); err != nil {
+		t.Fatalf("unexpected error for fenced ESCC: %v", err)
 	}
 }
 

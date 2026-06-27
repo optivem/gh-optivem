@@ -37,6 +37,11 @@ func newGherkinID() string { return "" }
 // document we feed the parser.
 var parseErrLocRE = regexp.MustCompile(`\((\d+):(\d+)\)`)
 
+// codeFenceRE matches a markdown code-fence run (three or more backticks or
+// tildes) at the start of a trimmed line. The capture is the fence run itself;
+// any info string (`gherkin`, `markdown`, …) follows it and is ignored.
+var codeFenceRE = regexp.MustCompile("^(`{3,}|~{3,})")
+
 // validateAcceptanceCriteriaGherkin validates that an Acceptance Criteria body
 // is well-formed Gherkin. AC is authored as bare `Scenario:` blocks with no
 // `Feature:` header, so a single synthetic `Feature: _` line is prepended
@@ -44,10 +49,10 @@ var parseErrLocRE = regexp.MustCompile(`\((\d+):(\d+)\)`)
 // tags/comments). Reported line numbers are offset-corrected back to the
 // author's body.
 func validateAcceptanceCriteriaGherkin(body string) error {
-	src, prepended := acceptanceGherkinSource(body)
+	src, prepended, stripped := acceptanceGherkinSource(body)
 	lineMap := func(n int) int {
 		if m := n - prepended; m >= 1 {
-			return m
+			return m + stripped
 		}
 		return n
 	}
@@ -85,15 +90,21 @@ func validateESCCGherkin(body string) error {
 	return assertGherkinSyntax(doc, SectionExternalSystemContractCriteria, lineMap)
 }
 
-// acceptanceGherkinSource returns the source to feed the parser and the number
-// of synthetic lines prepended (0 or 1). A `Feature: _` line is prepended
+// acceptanceGherkinSource returns the source to feed the parser, the number of
+// synthetic lines prepended (0 or 1), and the number of leading lines stripped
+// from an enclosing markdown code fence. A `Feature: _` line is prepended
 // unless the body already opens with a `Feature:` line (after optional leading
-// tags / comments / blanks), so authors keep writing bare scenarios.
-func acceptanceGherkinSource(body string) (string, int) {
-	if hasLeadingFeature(body) {
-		return body, 0
+// tags / comments / blanks), so authors keep writing bare scenarios. An
+// enclosing ```/~~~ fence (the story Issue Form's `render:` wrapper, or a
+// hand-authored ```gherkin block) is stripped first so the fence lines are not
+// mis-parsed as DocString separators; stripped is folded back into the caller's
+// line map so reported locations stay author-relative.
+func acceptanceGherkinSource(body string) (string, int, int) {
+	inner, stripped := stripEnclosingCodeFence(body)
+	if hasLeadingFeature(inner) {
+		return inner, 0, stripped
 	}
-	return "Feature: _\n" + body, 1
+	return "Feature: _\n" + inner, 1, stripped
 }
 
 // hasLeadingFeature reports whether body's first significant line (skipping
@@ -107,6 +118,59 @@ func hasLeadingFeature(body string) bool {
 		return strings.HasPrefix(t, "Feature:")
 	}
 	return false
+}
+
+// stripEnclosingCodeFence removes a single markdown code fence that wholly
+// encloses body and returns the inner content plus the number of leading lines
+// removed (the leading blanks before the opener plus the opener line itself).
+// It fires only when body's first non-blank line is a fence opener (```/~~~,
+// three or more, with or without an info string) AND its last non-blank line is
+// a matching closer (same fence char, at least as long, no info string). On any
+// other shape — no fence, an unterminated fence, or a fence wrapping only part
+// of the body — it returns (body, 0) unchanged. The leading-line count lets
+// callers keep Gherkin error locations author-relative.
+func stripEnclosingCodeFence(body string) (string, int) {
+	lines := strings.Split(body, "\n")
+	first := -1
+	for i, l := range lines {
+		if strings.TrimSpace(l) != "" {
+			first = i
+			break
+		}
+	}
+	if first < 0 {
+		return body, 0
+	}
+	fence := codeFenceRE.FindString(strings.TrimSpace(lines[first]))
+	if fence == "" {
+		return body, 0
+	}
+	last := -1
+	for i := len(lines) - 1; i > first; i-- {
+		if strings.TrimSpace(lines[i]) != "" {
+			last = i
+			break
+		}
+	}
+	if last < 0 || !isClosingFence(strings.TrimSpace(lines[last]), fence[0], len(fence)) {
+		return body, 0
+	}
+	return strings.Join(lines[first+1:last], "\n"), first + 1
+}
+
+// isClosingFence reports whether s is a bare closing fence: only the opener's
+// fence character, repeated at least as many times as the opener, with no
+// trailing info string (CommonMark forbids an info string on the closer).
+func isClosingFence(s string, fenceChar byte, minLen int) bool {
+	if len(s) < minLen {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] != fenceChar {
+			return false
+		}
+	}
+	return true
 }
 
 // esccRegisterLabel reports whether a trimmed line is one of the two ESCC
@@ -139,9 +203,10 @@ func esccGherkinSource(body string) (string, []int, error) {
 	}
 	emit("Feature: _", 0)
 
+	inner, stripped := stripEnclosingCodeFence(body)
 	haveRule, haveRegister := false, false
-	for i, raw := range strings.Split(body, "\n") {
-		origLine := i + 1
+	for i, raw := range strings.Split(inner, "\n") {
+		origLine := i + 1 + stripped
 		trimmed := strings.TrimSpace(raw)
 		if trimmed == "" {
 			continue
