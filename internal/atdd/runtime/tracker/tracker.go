@@ -99,4 +99,12 @@ type Tracker interface {
 	// keys — callers can distinguish "missing" from "blank" only
 	// when they care to.
 	ReadSections(ctx context.Context, i Issue, headings []string) (map[string]string, error)
+
+	// ReadBody returns the issue's raw body markdown verbatim. Unlike
+	// ReadSections it does not split or discard anything, so it is the
+	// source intake.Parse needs to enforce the closed-section whitelist
+	// and reject stray content (a pre-split section map has already
+	// dropped unknown headings and out-of-section text). The PARSE_TICKET
+	// service task reads the body here and hands it to intake.Parse.
+	ReadBody(ctx context.Context, i Issue) (string, error)
 }

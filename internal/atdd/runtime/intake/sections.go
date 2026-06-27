@@ -4,6 +4,12 @@
 // canonical heading shape, so the runtime can extract sections without an
 // LLM. The constants in this file are the single source of truth for those
 // headings; both the form labels and the parser key off them.
+//
+// The parser enforces a *closed* contract on the body (see Parse): it may
+// contain only these canonical sections, with no unknown headings and no
+// content outside a recognized section body. The whitelist is the union across
+// all ticket kinds — exactly the sections below — never per-kind, because
+// PARSE_TICKET runs before the ticket kind is known.
 package intake
 
 // Canonical issue-body section headings. The Issue Forms render each

@@ -435,6 +435,23 @@ func TestReadSections_StableKeySet(t *testing.T) {
 	}
 }
 
+func TestReadBody_ReturnsRawFileVerbatim(t *testing.T) {
+	body := "# Title\n\n## Description\n\nthe description\n\n## Checklist\n\n- [ ] step\n"
+	root := newBoard(t, map[string]string{"ready/x.md": body})
+	tr, _ := New(root, newFakeGit(t, root))
+	issue, err := tr.FindIssue(context.Background(), "x")
+	if err != nil {
+		t.Fatalf("FindIssue: %v", err)
+	}
+	got, err := tr.ReadBody(context.Background(), issue)
+	if err != nil {
+		t.Fatalf("ReadBody: %v", err)
+	}
+	if got != body {
+		t.Errorf("ReadBody: got %q, want %q (verbatim, including H1 title)", got, body)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Lower-level helpers
 // ---------------------------------------------------------------------------

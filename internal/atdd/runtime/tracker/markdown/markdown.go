@@ -295,6 +295,18 @@ func (t *Tracker) ReadSections(_ context.Context, i tracker.Issue, headings []st
 	return out, nil
 }
 
+// ReadBody returns the ticket file's raw contents verbatim — the source
+// intake.Parse needs to enforce the closed-section whitelist. The file's
+// leading H1 title is part of the body; intake.Parse tolerates a depth-1
+// heading outside the canonical sections, so the title does not read as stray.
+func (t *Tracker) ReadBody(_ context.Context, i tracker.Issue) (string, error) {
+	body, err := os.ReadFile(i.Handle)
+	if err != nil {
+		return "", fmt.Errorf("markdown: read %q: %w", i.Handle, err)
+	}
+	return string(body), nil
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

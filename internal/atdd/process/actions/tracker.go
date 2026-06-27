@@ -90,22 +90,28 @@ func (a actions) moveToInAcceptance(ctx *statemachine.Context) statemachine.Outc
 // placeholders (${acceptance-criteria}, ${checklist}).
 //
 // Wired in implement-ticket between MARK_IN_PROGRESS and GATE_TICKET_KIND
-// — runs once per ticket, before the gateway routes to the cycle. The
-// parser is ticket-kind-agnostic (Decision 2 in plan
-// 20260526-1300): it does shape-level validation only (AC XOR Checklist)
-// and lets the load-bearing placeholder check in clauderun.go enforce
-// per-kind required sections at dispatch time. That lets one PARSE_TICKET
-// node serve all six branches off GATE_TICKET_KIND.
+// — runs once per ticket, before the gateway routes to the cycle. It reads the
+// raw body via Tracker.ReadBody and hands it to intake.Parse, which both
+// extracts the sections and enforces the closed-section contract: only the
+// canonical headings, no unknown headings, no stray content, plus the
+// shape rules (AC XOR Checklist, Checklist-is-a-list, AC/ESCC Gherkin syntax).
+// The raw body (not a pre-split section map) is required because the whitelist
+// and stray-content checks have nothing to inspect once the body is split.
+//
+// The parser is ticket-kind-agnostic (Decision 2 in plan 20260526-1300): the
+// whitelist is the union across all kinds, and the load-bearing placeholder
+// check in clauderun.go enforces per-kind required sections at dispatch time.
+// That lets one PARSE_TICKET node serve all six branches off GATE_TICKET_KIND.
 func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
 	issue, err := issueFromContext(ctx)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("parse-ticket: %w", err)}
 	}
-	sections, err := a.deps.Tracker.ReadSections(context.Background(), issue, intake.CanonicalHeadings)
+	body, err := a.deps.Tracker.ReadBody(context.Background(), issue)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("parse-ticket: read sections: %w", err)}
+		return statemachine.Outcome{Err: fmt.Errorf("parse-ticket: read body: %w", err)}
 	}
-	r, err := intake.ParseSections(sections)
+	r, err := intake.Parse(body)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("parse-ticket: %w", err)}
 	}

@@ -530,6 +530,26 @@ func TestReadSections_ReturnsRequestedHeadings(t *testing.T) {
 	}
 }
 
+func TestReadBody_ReturnsRawBodyVerbatim(t *testing.T) {
+	body := "## Description\n\nIntro.\n\n## Acceptance Criteria\n\n- AC1\n"
+	bodyJSON, _ := json.Marshal(body)
+	gh := newFakeRunner(t)
+	gh.on(
+		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
+		[]byte(`{"body":`+string(bodyJSON)+`}`),
+		nil,
+	)
+	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
+	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
+	got, err := tr.ReadBody(context.Background(), issue)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != body {
+		t.Errorf("ReadBody: got %q, want %q (verbatim)", got, body)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Lower-level helpers
 // ---------------------------------------------------------------------------

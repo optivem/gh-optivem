@@ -300,6 +300,18 @@ func (t *Tracker) ReadSections(ctx context.Context, i tracker.Issue, headings []
 	return out, nil
 }
 
+// ReadBody fetches and returns the issue's raw body markdown verbatim — the
+// source intake.Parse needs to enforce the closed-section whitelist. A GitHub
+// issue body carries no H1 title (the title is separate metadata), so the body
+// is the section content directly.
+func (t *Tracker) ReadBody(ctx context.Context, i tracker.Issue) (string, error) {
+	owner, repo, num, err := parseIssueURL(i.URL)
+	if err != nil {
+		return "", err
+	}
+	return t.fetchIssueBody(ctx, owner, repo, num)
+}
+
 // fetchIssueBody runs `gh issue view <num> --json body --repo <owner>/<repo>`
 // and returns the decoded body string. Argv order matches the pre-Tracker
 // call sites in actions/bindings.go and gates/bindings.go so their tests'

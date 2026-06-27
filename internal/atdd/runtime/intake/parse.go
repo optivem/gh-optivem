@@ -88,21 +88,39 @@ var CanonicalHeadings = []string{
 }
 
 // Parse extracts canonical sections from issue-body markdown and runs
-// shape-level validation. Returns an error when the body is malformed:
-// declaring both Acceptance Criteria and Checklist (mutually exclusive at
-// intake regardless of ticket-kind), or an Acceptance Criteria / External
-// System Contract Criteria section whose step bodies are not well-formed
-// Gherkin syntax (see gherkin.go). It validates only syntax, never the pinned
-// vocabulary — that stays the test-writers' concern.
+// shape-level validation. The parser enforces a *closed* section contract:
+// the body may contain only the canonical sections (CanonicalHeadings), each
+// in its required shape, with no unknown headings and no stray content outside
+// a recognized section body. Returns an error when the body is malformed:
+//   - a heading that is not one of the canonical sections (validateBodyStructure);
+//   - non-blank content outside any canonical section body — preamble before the
+//     first heading, or prose under no recognized heading (validateBodyStructure);
+//   - declaring both Acceptance Criteria and Checklist (mutually exclusive at
+//     intake regardless of ticket-kind);
+//   - a Checklist whose body is not a bulleted/numbered list;
+//   - an Acceptance Criteria / External System Contract Criteria section whose
+//     step bodies are not well-formed Gherkin syntax (see gherkin.go). It
+//     validates only syntax, never the pinned vocabulary — that stays the
+//     test-writers' concern.
 //
-// Per-kind required-section enforcement (story → AC, the five task
-// subtypes that consume ${checklist} → Checklist, etc.) does NOT live
-// here. It is enforced by the load-bearing-placeholder check in
-// clauderun.go: a prompt that references ${acceptance-criteria} or
-// ${checklist} with no value fails dispatch fast. That keeps the parser
-// ticket-kind-agnostic so a single PARSE_TICKET service-task can run
-// before GATE_TICKET_KIND.
+// The whitelist is the UNION across all ticket kinds (exactly the canonical
+// sections), never per-kind: PARSE_TICKET runs before GATE_TICKET_KIND, so the
+// parser cannot know the kind. Per-kind required-section enforcement (story →
+// AC, the five task subtypes that consume ${checklist} → Checklist, etc.) does
+// NOT live here. It is enforced by the load-bearing-placeholder check in
+// clauderun.go: a prompt that references ${acceptance-criteria} or ${checklist}
+// with no value fails dispatch fast. That keeps the parser ticket-kind-agnostic
+// so a single PARSE_TICKET service-task can run before GATE_TICKET_KIND.
+//
+// Parse is the only entry point that sees the raw body, so it is the only one
+// that can enforce the whitelist + stray-content rule; the production intake
+// path (actions.parseTicket) feeds the raw body here via Tracker.ReadBody.
+// ParseSections (the section-map counterpart) runs the shape checks that need
+// only the extracted sections (XOR, Checklist-is-a-list, Gherkin).
 func Parse(body string) (*Result, error) {
+	if err := validateBodyStructure(body); err != nil {
+		return nil, err
+	}
 	sections := map[string]string{
 		SectionDescription:                    ExtractSection(body, SectionDescription).Body,
 		SectionAcceptanceCriteria:             ExtractSection(body, SectionAcceptanceCriteria).Body,
@@ -114,11 +132,16 @@ func Parse(body string) (*Result, error) {
 }
 
 // ParseSections is the section-keyed counterpart to Parse. It takes the
-// already-resolved sections (typically produced by tracker.Tracker.ReadSections
-// against CanonicalHeadings) and runs the same shape validation Parse
-// runs. Missing keys, empty values, and absent headings are treated
-// identically as "section not present" — the same as Parse's body-input
-// path, where an empty extracted body collapses to Section.Found = false.
+// already-resolved sections (keyed by CanonicalHeadings) and runs the shape
+// validation that needs only the extracted section bodies: AC-XOR-Checklist,
+// Checklist-is-a-list, and Gherkin syntax for AC / ESCC. Missing keys, empty
+// values, and absent headings are treated identically as "section not present"
+// — the same as Parse's body-input path, where an empty extracted body
+// collapses to Section.Found = false.
+//
+// It does NOT enforce the section whitelist or the no-stray-content rule: those
+// need the raw body (an already-split section map has discarded any unknown
+// heading or out-of-section content). Parse runs them before delegating here.
 func ParseSections(sections map[string]string) (*Result, error) {
 	section := func(name string) Section {
 		body := strings.Trim(sections[name], "\n")
@@ -144,6 +167,17 @@ func ParseSections(sections map[string]string) (*Result, error) {
 	}
 	if r.AcceptanceCriteria.Found && r.Checklist.Found {
 		return nil, fmt.Errorf("ticket body declares both Acceptance Criteria and Checklist; pick one matching the ticket-kind")
+	}
+	// The Checklist must be a bulleted/numbered list — prose under a Checklist
+	// heading is malformed. This is a format gate only; item *parsing* into
+	// ChecklistResult.Items stays checkbox-only (checklistLineRE), so a
+	// plain-bullet list passes here but yields zero typed Items. No production
+	// consumer branches on Items/CheckedCount (the raw body flows to the agent
+	// via ${checklist}), so that is intentional, not a regression.
+	if r.Checklist.Found {
+		if err := validateChecklistIsList(r.Checklist.Body); err != nil {
+			return nil, err
+		}
 	}
 	// Syntax-validate the Gherkin step bodies (presence only is checked above;
 	// these gate well-formedness so a typo'd keyword fails fast here rather than
@@ -250,6 +284,113 @@ func externalSystemNames(body string) []string {
 		}
 	}
 	return names
+}
+
+// isCanonicalHeading reports whether text matches one of CanonicalHeadings,
+// case-insensitively — the same comparison ExtractSection uses to locate a
+// section, so the whitelist accepts exactly the set extraction recognizes.
+func isCanonicalHeading(text string) bool {
+	for _, h := range CanonicalHeadings {
+		if strings.EqualFold(text, h) {
+			return true
+		}
+	}
+	return false
+}
+
+// blankHTMLComments returns body with every HTML comment span (`<!-- ... -->`,
+// including multi-line and unterminated) replaced by spaces, preserving
+// newlines so line numbers are unchanged. validateBodyStructure scans the
+// result so a `## Heading`-looking line or stray prose *inside* a comment is
+// neither whitelisted nor flagged as stray content.
+func blankHTMLComments(body string) string {
+	b := []byte(body)
+	for i := 0; i < len(b); {
+		if strings.HasPrefix(string(b[i:]), "<!--") {
+			stop := len(b)
+			if rel := strings.Index(string(b[i:]), "-->"); rel >= 0 {
+				stop = i + rel + len("-->")
+			}
+			for j := i; j < stop; j++ {
+				if b[j] != '\n' {
+					b[j] = ' '
+				}
+			}
+			i = stop
+			continue
+		}
+		i++
+	}
+	return string(b)
+}
+
+// validateBodyStructure enforces the closed-section contract on a raw ticket
+// body: every H2-or-deeper heading must be one of CanonicalHeadings, and every
+// non-blank line of content must sit inside a canonical section body. Tolerated
+// outside a section: blank/whitespace-only lines, HTML comments (blanked
+// above), and a depth-1 H1 line — the markdown-board ticket title the file
+// backend prepends (the GitHub backend never emits an H1 in the issue body).
+//
+// It mirrors ExtractSection's depth model: a canonical heading at depth d owns
+// every following line until the next heading at depth <= d, so a deeper
+// subheading nested under a canonical section is part of that section's body,
+// not a separate heading to whitelist.
+func validateBodyStructure(body string) error {
+	lines := strings.Split(blankHTMLComments(body), "\n")
+	inSection, sectionDepth := false, 0
+	for i, line := range lines {
+		depth, text, isHeading := headingDepthAndText(line)
+		if isHeading && depth >= 2 {
+			if inSection && depth > sectionDepth {
+				continue // nested subheading — part of the current section body
+			}
+			if !isCanonicalHeading(text) {
+				return fmt.Errorf("line %d: section %q is not an allowed heading; a ticket body may contain only: %s",
+					i+1, text, strings.Join(CanonicalHeadings, ", "))
+			}
+			inSection, sectionDepth = true, depth
+			continue
+		}
+		if inSection || isHeading { // section body, or a tolerated H1 title/divider
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue // blank / whitespace-only / blanked comment
+		}
+		return fmt.Errorf("line %d: stray content %q sits outside any canonical section; "+
+			"every line must be blank, an HTML comment, or inside one of: %s",
+			i+1, strings.TrimSpace(line), strings.Join(CanonicalHeadings, ", "))
+	}
+	return nil
+}
+
+// checklistItemRE matches any markdown list item: a bullet (`-`, `*`, `+`) or
+// an ordered marker (`1.`, `1)`), optional leading indent, with or without a
+// `[ ]`/`[x]` checkbox. It is the *format* gate for validateChecklistIsList;
+// item parsing into ChecklistResult.Items stays checkbox-only (checklistLineRE).
+var checklistItemRE = regexp.MustCompile(`^\s*([-*+]|\d+[.)])\s+\S`)
+
+// validateChecklistIsList asserts every non-blank line of a Checklist body is a
+// list item, allowing indented continuation lines under an item (wrapped text
+// or sub-bullets). Reports the first offending line (section-body-relative, the
+// same convention the Gherkin checks use) so a Checklist holding prose fails.
+func validateChecklistIsList(body string) error {
+	sawItem := false
+	for i, line := range strings.Split(body, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if checklistItemRE.MatchString(line) {
+			sawItem = true
+			continue
+		}
+		if sawItem && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")) {
+			continue // indented continuation under the preceding item
+		}
+		return fmt.Errorf("%s: line %d: %q is not a list item; the Checklist must be a bulleted or numbered list",
+			SectionChecklist, i+1, strings.TrimSpace(line))
+	}
+	return nil
 }
 
 // checklistLineRE matches a markdown task-list line: optional indent, a

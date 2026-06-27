@@ -90,11 +90,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("move-to-ready", a.moveToReady)
 	r.Register("move-to-in-progress", a.moveToInProgress)
 	r.Register("move-to-in-acceptance", a.moveToInAcceptance)
-	// PARSE_TICKET service task. Calls Tracker.ReadSections against
-	// intake.CanonicalHeadings, runs intake.ParseSections (shape-level
-	// validation — AC XOR Checklist), and stashes each section body into
-	// ctx.State for downstream prompt substitution. Per-kind required-
-	// section enforcement happens at dispatch time via the load-bearing
+	// PARSE_TICKET service task. Reads the raw body via Tracker.ReadBody and
+	// runs intake.Parse, which enforces the closed-section contract (only the
+	// canonical headings, no stray content) plus the shape rules (AC XOR
+	// Checklist, Checklist-is-a-list, AC/ESCC Gherkin), then stashes each
+	// section body into ctx.State for downstream prompt substitution. Per-kind
+	// required-section enforcement happens at dispatch time via the load-bearing
 	// placeholder check in clauderun.go.
 	r.Register("parse-ticket", a.parseTicket)
 	// verify-tests-pass no-progress guard (plan 20260615-1845 Step 4). Runs

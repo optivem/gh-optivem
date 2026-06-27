@@ -367,6 +367,9 @@ func (f fakeTracker) Subtypes(_ context.Context, _ tracker.Issue) ([]string, err
 func (f fakeTracker) ReadSections(context.Context, tracker.Issue, []string) (map[string]string, error) {
 	panic("fakeTracker.ReadSections: not implemented")
 }
+func (f fakeTracker) ReadBody(context.Context, tracker.Issue) (string, error) {
+	panic("fakeTracker.ReadBody: not implemented")
+}
 
 // ---------------------------------------------------------------------------
 // command-succeeded

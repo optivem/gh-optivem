@@ -2215,11 +2215,10 @@ func TestValidateOutputsAndScopes_JSONL_OptionalAbsenceTolerated(t *testing.T) {
 // parseTicket — body parsing + state population
 // ---------------------------------------------------------------------------
 
-// fakeTracker is a test-side tracker.Tracker that returns canned sections
-// from ReadSections. Other methods panic — only parseTicket exercises
-// ReadSections.
+// fakeTracker is a test-side tracker.Tracker that returns a canned raw body
+// from ReadBody. Other methods panic — only parseTicket exercises ReadBody.
 type fakeTracker struct {
-	sections   map[string]string
+	body       string
 	readErr    error
 	readCalled bool
 }
@@ -2240,8 +2239,11 @@ func (f *fakeTracker) Subtypes(context.Context, tracker.Issue) ([]string, error)
 	panic("fakeTracker.Subtypes: not implemented")
 }
 func (f *fakeTracker) ReadSections(_ context.Context, _ tracker.Issue, _ []string) (map[string]string, error) {
+	panic("fakeTracker.ReadSections: not implemented")
+}
+func (f *fakeTracker) ReadBody(_ context.Context, _ tracker.Issue) (string, error) {
 	f.readCalled = true
-	return f.sections, f.readErr
+	return f.body, f.readErr
 }
 
 func seedIssue(ctx *statemachine.Context) {
@@ -2252,12 +2254,8 @@ func seedIssue(ctx *statemachine.Context) {
 }
 
 func TestParseTicket_PopulatesStateOnHappyPath(t *testing.T) {
-	tk := &fakeTracker{sections: map[string]string{
-		"Description":         "Some prose.",
-		"Acceptance Criteria": "Scenario: x\n  Given y\n  When z\n  Then w",
-		"Steps to Reproduce":  "",
-		"Checklist":           "",
-	}}
+	tk := &fakeTracker{body: "## Description\n\nSome prose.\n\n" +
+		"## Acceptance Criteria\n\nScenario: x\n  Given y\n  When z\n  Then w\n"}
 	a := newActions(Deps{Tracker: tk})
 	ctx := statemachine.NewContext()
 	seedIssue(ctx)
@@ -2267,7 +2265,7 @@ func TestParseTicket_PopulatesStateOnHappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", out.Err)
 	}
 	if !tk.readCalled {
-		t.Fatalf("expected ReadSections to be called")
+		t.Fatalf("expected ReadBody to be called")
 	}
 	if got := ctx.GetString("description"); got != "Some prose." {
 		t.Errorf("description: got %q", got)
@@ -2281,9 +2279,7 @@ func TestParseTicket_PopulatesStateOnHappyPath(t *testing.T) {
 }
 
 func TestParseTicket_ChecklistSectionStashed(t *testing.T) {
-	tk := &fakeTracker{sections: map[string]string{
-		"Checklist": "- [x] One done\n- [ ] Two pending",
-	}}
+	tk := &fakeTracker{body: "## Checklist\n\n- [x] One done\n- [ ] Two pending\n"}
 	a := newActions(Deps{Tracker: tk})
 	ctx := statemachine.NewContext()
 	seedIssue(ctx)
@@ -2299,10 +2295,8 @@ func TestParseTicket_ChecklistSectionStashed(t *testing.T) {
 
 func TestParseTicket_ESCCStashedAndFlagged(t *testing.T) {
 	esccBody := "External System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\n  Stub only:\n    Given no products\n    Then ERP has no products"
-	tk := &fakeTracker{sections: map[string]string{
-		"Acceptance Criteria":               "Scenario: list\n  Given a\n  When b\n  Then c",
-		"External System Contract Criteria": esccBody,
-	}}
+	tk := &fakeTracker{body: "## Acceptance Criteria\n\nScenario: list\n  Given a\n  When b\n  Then c\n\n" +
+		"## External System Contract Criteria\n\n" + esccBody + "\n"}
 	a := newActions(Deps{Tracker: tk})
 	ctx := statemachine.NewContext()
 	seedIssue(ctx)
@@ -2323,9 +2317,7 @@ func TestParseTicket_ESCCStashedAndFlagged(t *testing.T) {
 }
 
 func TestParseTicket_NoESCC_FlagFalse(t *testing.T) {
-	tk := &fakeTracker{sections: map[string]string{
-		"Acceptance Criteria": "Scenario: x\n  Given a\n  When b\n  Then c",
-	}}
+	tk := &fakeTracker{body: "## Acceptance Criteria\n\nScenario: x\n  Given a\n  When b\n  Then c\n"}
 	a := newActions(Deps{Tracker: tk})
 	ctx := statemachine.NewContext()
 	seedIssue(ctx)
@@ -2342,10 +2334,7 @@ func TestParseTicket_NoESCC_FlagFalse(t *testing.T) {
 }
 
 func TestParseTicket_BothACAndChecklist_XORViolation(t *testing.T) {
-	tk := &fakeTracker{sections: map[string]string{
-		"Acceptance Criteria": "Scenario: x",
-		"Checklist":           "- [ ] step",
-	}}
+	tk := &fakeTracker{body: "## Acceptance Criteria\n\nScenario: x\n\n## Checklist\n\n- [ ] step\n"}
 	a := newActions(Deps{Tracker: tk})
 	ctx := statemachine.NewContext()
 	seedIssue(ctx)
