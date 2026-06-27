@@ -29,6 +29,21 @@ ${acceptance-criteria}
 
    To discover the surface you translate against: model each new test on the **existing sibling test** in `${at-test}` (same feature/area) — read it and copy its shape, annotations, and DSL chain. Reach the DSL builder surface in `${dsl-port}` via **targeted greps for the methods the Acceptance Criteria name** (the product/order/assertion builders the scenario implies), so you land on the right interfaces directly rather than reading the whole port tree. This is guidance, not a read cap: **read whatever you genuinely need to get the translation right** — when the correct builder/assertion or the chain shape is unclear, read the interface. A faithful 1:1 test matters more than a short read list.
 
+   **Group scenarios under a `Rule:`.** The Acceptance Criteria may group scenarios under official Gherkin `Rule:` blocks (`Feature:` → `Rule:` → `Scenario:`s) — each rule is a business rule plus the examples that illustrate it; the full shape is pinned in `ac-format.md`. Translate each `Rule:` with the **v1 grouping convention**: a `// Rule: <name>` comment block above the group, plus a shared method-name (or, in TS, test-title) prefix on every test under the rule. **No structural nesting** in v1 — no `@Nested`, no nested class, no native `describe(...)`. The grouping is **additive**: it sits alongside each test's existing channel-parameterization wrapper and the permanent WIP gate, never replacing them. Scenarios under a rule become its grouped tests; a flat (no-`Rule:`) AC stays flat. The rule statement/formula in the `Rule:` line is human-readable narrative only — never assert on it. Worked example (Java):
+
+   ```java
+   // Rule: Shipping is charged at $0.10 per kg per unit
+   @TestTemplate
+   @Channel({ChannelType.UI, ChannelType.API})
+   void shippingPerKgPerUnit_singleItem() { ... }
+
+   @TestTemplate
+   @Channel({ChannelType.UI, ChannelType.API})
+   void shippingPerKgPerUnit_scalesWithQuantity() { ... }
+   ```
+
+   (.NET: `// Rule:` above `[Theory]`+`[ChannelData(...)]` methods sharing a `ShippingPerKgPerUnit_` prefix; TS: `// Rule:` above the `forChannels(...)(() => { test('shippingPerKgPerUnit — …', …); })` block.) `@isolated` stays scenario-scoped inside a rule — mirror it per scenario exactly as for a flat scenario.
+
    **Keep GIVEN preconditions self-consistent.** When a GIVEN customizes an attribute that cross-references another seeded entity — for example a line item referencing a product by its key, an order naming a customer, a reservation naming a room, a discount naming a coupon code, or any field naming a country/currency — you must seed that referenced entity with the **same** value in the same GIVEN. Auto-seeded defaults use the default key, so once you override a cross-referencing attribute the default no longer matches and the precondition fails *before* the behavior under test runs (a false RED that no production code can turn green). Mirror the seed order shown in the sibling/reference test, and read its GIVEN setup to see which entities it seeds together. (Products/SKUs are only one illustration — the rule holds for any entity-to-entity reference.)
 
    **Behavior-change tickets — reconcile the pre-existing tests of the rule you are changing.** When the ticket *changes an existing business rule* (a bug fix or behavior change that moves or redefines a boundary, threshold, window, or rule already covered by acceptance tests), adding a new test for the new rule is **not enough**: any pre-existing test that still encodes the **old** rule will contradict your new one, and because the system-implementers can only edit production code (never tests), no single code value can satisfy both — the run stalls, trapped between an old test and a new test. You must update those obsolete tests too, so the whole suite has **one** consistent definition of the rule.

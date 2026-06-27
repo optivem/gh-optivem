@@ -52,3 +52,18 @@ The field type is `Optional<string>`.
 ## Awaitable ShouldSucceed
 
 `ThenSuccessPort extends PromiseLike<void>` — use `await ...shouldSucceed()`.
+
+## Rule Grouping
+
+Scenarios grouped under a Gherkin `Rule:` (see the architecture
+[Test File Rules](../../atdd/architecture/test.md) and the runtime `ac-format.md`)
+become a `// Rule: <name>` comment block plus a shared test-title prefix — no
+native `describe(...)`, composing with the `forChannels(...)` wrapper:
+
+```typescript
+// Rule: Shipping is charged at $0.10 per kg per unit
+forChannels(ChannelType.UI, ChannelType.API)(() => {
+    test('shippingPerKgPerUnit — single item', async ({ scenario }) => { ... });
+    test('shippingPerKgPerUnit — scales with quantity', async ({ scenario }) => { ... });
+});
+```

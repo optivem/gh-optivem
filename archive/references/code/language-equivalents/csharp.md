@@ -52,3 +52,21 @@ The field type is `string?`.
 ## Awaitable ShouldSucceed
 
 `IThenSuccess` implements `GetAwaiter()` — use `await ...ShouldSucceed()`.
+
+## Rule Grouping
+
+Scenarios grouped under a Gherkin `Rule:` (see the architecture
+[Test File Rules](../../atdd/architecture/test.md) and the runtime `ac-format.md`)
+become a `// Rule: <name>` comment block plus a shared PascalCase method-name
+prefix — no nested class, composing with the `[Theory]`/`[ChannelData]` wrapper:
+
+```csharp
+// Rule: Shipping is charged at $0.10 per kg per unit
+[Theory]
+[ChannelData(ChannelType.UI, ChannelType.API)]
+public async Task ShippingPerKgPerUnit_SingleItem(Channel channel) { ... }
+
+[Theory]
+[ChannelData(ChannelType.UI, ChannelType.API)]
+public async Task ShippingPerKgPerUnit_ScalesWithQuantity(Channel channel) { ... }
+```

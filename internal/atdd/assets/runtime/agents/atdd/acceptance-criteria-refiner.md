@@ -12,6 +12,8 @@ The task iterates over **all** acceptance criteria for the ticket
 - Proposes edits to existing ACs.
 - Adds new ACs when it sees scenarios that aren't covered.
 - Enforces Gherkin GIVEN-WHEN-THEN form throughout.
+- **Preserves** any author-written Gherkin `Rule:` grouping (see Additional
+  Notes below) — never flattens a rule into a bare scenario list.
 
 Once this task completes, a human confirms the refined ACs before
 downstream consumption.
@@ -30,7 +32,8 @@ downstream consumption.
    in Additional Notes below; propose edits to existing ACs and add new
    ACs to cover any gaps.
 3. Enforce Gherkin GIVEN-WHEN-THEN form on every scenario.
-4. Mutate `${parsed-concepts}` in place; set the `Refinement Changed`
+4. Preserve any author-written `Rule:` grouping (see Additional Notes).
+5. Mutate `${parsed-concepts}` in place; set the `Refinement Changed`
    flag if any change occurred.
 
 ## Additional Notes
@@ -57,6 +60,26 @@ the "what new ACs should I add?" decision.
   tag. This is a *suggestion*: the human confirm-after-refine gate reviews it
   before the writer ever mirrors it onto a test, and the author may add or
   remove the tag.
+
+### `Rule:` grouping — preserve only
+
+The AC body may group scenarios under official Gherkin `Rule:` blocks
+(`Feature:` → one-or-more `Rule:` → `Scenario:`s under each) — the canonical
+home for "a business rule + the examples that illustrate it." The rule
+statement (including any formula, e.g. "$0.10/kg/unit") lives in the `Rule:`
+name/description as human-readable narrative; it is never executed. The full
+shape is pinned in `ac-format.md`.
+
+When `Rule:` blocks are present:
+
+- **Preserve** the grouping. Never flatten a `Rule:` into bare scenarios, and
+  never move a scenario out from under its rule.
+- Place every scenario you **edit or add** under the **correct** `Rule:` — the
+  one whose statement it illustrates.
+- Apply the coverage rubric and `@isolated` tagging **within** rules, exactly as
+  you would for flat scenarios (`@isolated` stays scenario-scoped).
+- **v1 = preserve only.** Do **not** invent new rules, and do **not** auto-group
+  existing flat scenarios into rules. A flat AC stays flat.
 
 ACs describe end-to-end, user-observable behavior of the system. Do **not**
 add scenarios that assert an external system's own behavior (e.g. "ERP

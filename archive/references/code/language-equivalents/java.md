@@ -51,3 +51,21 @@ The field type is `String`.
 ## Awaitable ShouldSucceed
 
 Synchronous — no `await` needed.
+
+## Rule Grouping
+
+Scenarios grouped under a Gherkin `Rule:` (see the architecture
+[Test File Rules](../../atdd/architecture/test.md) and the runtime `ac-format.md`)
+become a `// Rule: <name>` comment block plus a shared camelCase method-name
+prefix — no `@Nested`, composing with the `@TestTemplate`/`@Channel` wrapper:
+
+```java
+// Rule: Shipping is charged at $0.10 per kg per unit
+@TestTemplate
+@Channel({ChannelType.UI, ChannelType.API})
+void shippingPerKgPerUnit_singleItem() { ... }
+
+@TestTemplate
+@Channel({ChannelType.UI, ChannelType.API})
+void shippingPerKgPerUnit_scalesWithQuantity() { ... }
+```
