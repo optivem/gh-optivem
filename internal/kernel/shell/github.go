@@ -528,18 +528,16 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 
 // RunWatchPushWorkflow watches a workflow whose run is triggered by a push
 // (e.g. the commit-stage workflows fired by the scaffold's initial push),
-// recovering from a specific GitHub flake: on a freshly created repo's first
-// push the Actions subsystem can fail to build the run graph, emitting one
-// synthetic startup_failure run and creating none of the real workflow runs —
-// so the expected push-triggered run never appears no matter how long we poll.
+// recovering from GitHub's first-push trigger drop: on a freshly created
+// repo's first push the Actions subsystem can fail to build the run graph —
+// emitting a startup_failure or simply dropping the trigger silently — so the
+// expected push-triggered run never appears.
 //
 // When the run does not appear within the appear-window, this re-fires the
-// workflow via workflow_dispatch and polls again, bounded to maxReDispatches.
-// The re-dispatch is gated on hasRecentStartupFailure: workflow_dispatch
-// bypasses the workflow's on.push filters, so re-dispatching unconditionally
-// would mask a genuinely broken trigger (e.g. a bad paths: filter). We only
-// re-dispatch when the startup_failure signature confirms the infra flake;
-// otherwise we fail loud so the real trigger bug surfaces.
+// workflow via workflow_dispatch, bounded to maxReDispatches. The on.push
+// paths: filter is validated statically before push (VerifyPushPathsFilter),
+// so re-dispatching unconditionally here is safe: a bad filter would have
+// been caught earlier.
 //
 // Actions-side analogue of MustRunPostCreatePush, which retries the ref-store
 // replica lag seen on the same fresh-repo first-push window.
@@ -553,15 +551,11 @@ func (g *GitHub) RunWatchPushWorkflow(workflow string, intervalSecs int) error {
 			return fmt.Errorf("no workflow runs found for %s (workflow: %s) after %d re-dispatch attempts", g.Repo, workflow, maxReDispatches)
 		}
 
-		if !g.hasRecentStartupFailure() {
-			// No phantom build failure: the push trigger genuinely did not
-			// fire (e.g. an on.push paths filter that does not match the
-			// scaffolded files). Re-dispatching would bypass that filter and
-			// hide the bug, so fail loud instead.
-			return fmt.Errorf("no run and no startup_failure for %s (workflow: %s): push trigger did not fire — check the workflow's on.push filters", g.Repo, workflow)
+		if g.hasRecentStartupFailure() {
+			log.Warnf("GitHub emitted a startup_failure and dropped the push trigger for %s — re-dispatching via workflow_dispatch (attempt %d/%d)", workflow, dispatched+1, maxReDispatches)
+		} else {
+			log.Warnf("Push-triggered run did not appear for %s (workflow: %s) — re-dispatching via workflow_dispatch (attempt %d/%d); on.push.paths filter was validated before push", workflow, g.Repo, dispatched+1, maxReDispatches)
 		}
-
-		log.Warnf("GitHub emitted a startup_failure and dropped the push trigger for %s — re-dispatching via workflow_dispatch (attempt %d/%d)", workflow, dispatched+1, maxReDispatches)
 		g.WorkflowRun(workflow, nil)
 		// Give GitHub a moment to register the dispatched run before the next
 		// appear-poll, mirroring verifyWorkflow's post-dispatch settle.

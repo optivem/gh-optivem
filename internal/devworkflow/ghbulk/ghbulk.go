@@ -256,18 +256,25 @@ func ForEachRepoByPrefix(owner, prefix string, opt Options, fn func(Repo) error)
 		if len(repos) == 0 {
 			return nil
 		}
-		for _, r := range repos {
-			if !strings.HasPrefix(r.Name, prefix) {
-				continue
-			}
-			if err := fn(r); err != nil {
-				return err
-			}
+		if err := processRepoPage(repos, prefix, fn); err != nil {
+			return err
 		}
 		if len(repos) < opt.pageSize() {
 			return nil
 		}
 	}
+}
+
+func processRepoPage(repos []Repo, prefix string, fn func(Repo) error) error {
+	for _, r := range repos {
+		if !strings.HasPrefix(r.Name, prefix) {
+			continue
+		}
+		if err := fn(r); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // DeleteRepo removes a repository in one call (DELETE /repos/owner/name).

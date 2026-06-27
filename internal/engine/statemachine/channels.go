@@ -337,8 +337,15 @@ func (e *Engine) unrollAnchor(
 	// Re-stitch edges: drop the two edges that touched the anchor, then wire
 	// pred → c0 → c1 → … → cN-1 → succ in declared item order, carrying
 	// the original seam predicates so any gateway guard on entry/exit survives.
-	rebuilt := make([]Edge, 0, len(proc.Edges)+len(itemNodes))
-	for _, ed := range proc.Edges {
+	rebuilt := rebuildEdgesAroundItems(proc.Edges, anchorID, itemNodes, inEdge, outEdge)
+	proc.Edges = rebuilt
+	proc.OutgoingByNode = indexOutgoing(rebuilt)
+	return nil
+}
+
+func rebuildEdgesAroundItems(existing []Edge, anchorID string, itemNodes []Node, inEdge, outEdge Edge) []Edge {
+	rebuilt := make([]Edge, 0, len(existing)+len(itemNodes))
+	for _, ed := range existing {
 		if ed.From == anchorID || ed.To == anchorID {
 			continue
 		}
@@ -353,11 +360,7 @@ func (e *Engine) unrollAnchor(
 		rebuilt = append(rebuilt, edge)
 		prevID = n.ID
 	}
-	rebuilt = append(rebuilt, Edge{From: prevID, To: outEdge.To, Predicate: outEdge.Predicate})
-
-	proc.Edges = rebuilt
-	proc.OutgoingByNode = indexOutgoing(rebuilt)
-	return nil
+	return append(rebuilt, Edge{From: prevID, To: outEdge.To, Predicate: outEdge.Predicate})
 }
 
 // linearNeighbours returns the sole incoming and outgoing edge of node id,

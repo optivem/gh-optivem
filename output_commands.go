@@ -101,25 +101,9 @@ func runOutputWrite(args []string, filePath string, hasFile bool, keysSpec strin
 	line := make(map[string]any, len(args))
 	seen := make(map[string]bool, len(args))
 	for _, arg := range args {
-		key, raw, err := splitOutputKeyValue(arg)
-		if err != nil {
+		if err := applyOutputArg(arg, declared, order, seen, line); err != nil {
 			return err
 		}
-		if seen[key] {
-			return fmt.Errorf("duplicate key %q in a single `output write` call "+
-				"(last-write-wins applies across calls, not within)", key)
-		}
-		seen[key] = true
-		keyType, ok := declared[key]
-		if !ok {
-			return fmt.Errorf("unknown output key %q; declared keys: %s",
-				key, strings.Join(order, ", "))
-		}
-		coerced, err := coerceOutputValue(raw, keyType, key)
-		if err != nil {
-			return err
-		}
-		line[key] = coerced
 	}
 
 	encoded, err := json.Marshal(line)
@@ -136,6 +120,29 @@ func runOutputWrite(args []string, filePath string, hasFile bool, keysSpec strin
 	if _, err := f.Write(append(encoded, '\n')); err != nil {
 		return fmt.Errorf("write to %s: %w", filePath, err)
 	}
+	return nil
+}
+
+func applyOutputArg(arg string, declared map[string]string, order []string, seen map[string]bool, line map[string]any) error {
+	key, raw, err := splitOutputKeyValue(arg)
+	if err != nil {
+		return err
+	}
+	if seen[key] {
+		return fmt.Errorf("duplicate key %q in a single `output write` call "+
+			"(last-write-wins applies across calls, not within)", key)
+	}
+	seen[key] = true
+	keyType, ok := declared[key]
+	if !ok {
+		return fmt.Errorf("unknown output key %q; declared keys: %s",
+			key, strings.Join(order, ", "))
+	}
+	coerced, err := coerceOutputValue(raw, keyType, key)
+	if err != nil {
+		return err
+	}
+	line[key] = coerced
 	return nil
 }
 

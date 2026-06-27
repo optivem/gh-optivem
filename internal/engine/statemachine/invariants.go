@@ -171,14 +171,7 @@ func ruleFixLoopsBack(eng *Engine) []Violation {
 			if !isFixDispatch(node) {
 				continue
 			}
-			loopsBack := false
-			for _, e := range proc.OutgoingByNode[node.ID] {
-				if reaches(proc, e.To, node.ID) {
-					loopsBack = true
-					break
-				}
-			}
-			if !loopsBack {
+			if !hasLoopBackEdge(proc, node.ID) {
 				out = append(out, Violation{
 					Process: proc.ID, Node: node.ID, Rule: rule,
 					Message: fmt.Sprintf("fixer dispatch (process %q) has no outgoing edge that loops back to it — re-verification cycle stripped", node.Raw.Process),
@@ -187,6 +180,15 @@ func ruleFixLoopsBack(eng *Engine) []Violation {
 		}
 	}
 	return out
+}
+
+func hasLoopBackEdge(proc *Process, nodeID string) bool {
+	for _, e := range proc.OutgoingByNode[nodeID] {
+		if reaches(proc, e.To, nodeID) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

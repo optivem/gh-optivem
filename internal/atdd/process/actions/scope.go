@@ -125,12 +125,7 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 		return statemachine.Outcome{Err: fmt.Errorf("check_phase_scope: %w", err)}
 	}
 
-	var violating []string
-	for _, m := range modified {
-		if !pathInScope(m, allowed) {
-			violating = append(violating, m)
-		}
-	}
+	violating := filterOutOfScopePaths(modified, allowed)
 	if len(violating) > 0 {
 		ctx.Set(CtxKeyPhaseScopeClean, false)
 		ctx.State[CtxKeyPhaseScopeViolatingPaths] = violating
@@ -144,6 +139,16 @@ func (a actions) checkPhaseScope(ctx *statemachine.Context) statemachine.Outcome
 	}
 	ctx.Set(CtxKeyPhaseScopeClean, true)
 	return statemachine.Outcome{Bool: true}
+}
+
+func filterOutOfScopePaths(paths, allowed []string) []string {
+	var out []string
+	for _, p := range paths {
+		if !pathInScope(p, allowed) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // ResolveLayerPaths joins a phase's layer list against the project's

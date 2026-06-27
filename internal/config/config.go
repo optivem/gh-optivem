@@ -1389,6 +1389,22 @@ func (c *Config) EffectiveLang() string {
 	return c.BackendLang
 }
 
+func applyLicenseAndDeployDefaults(f *RawFlags) error {
+	if f.License == "" {
+		f.License = projectconfig.LicenseMIT
+	}
+	if !projectconfig.IsValidLicense(f.License) {
+		return fmt.Errorf("--license %q must be one of mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense", f.License)
+	}
+	if f.Deploy == "" {
+		f.Deploy = projectconfig.DeployDocker
+	}
+	if !projectconfig.IsValidDeploy(f.Deploy) {
+		return fmt.Errorf("--deploy %q must be 'docker' or 'cloud-run'", f.Deploy)
+	}
+	return nil
+}
+
 // ValidateAndDeriveForYAML validates the YAML-affecting flag subset (the flags
 // BindConfigInitFlags binds) and returns a *Config populated with just the
 // fields steps.WriteOptivemYAMLToPath reads. Used by `gh optivem config init`
@@ -1421,17 +1437,8 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	// uses when the operator doesn't pass the flag. Defaulting here too
 	// means callers who build RawFlags by hand (tests, library users)
 	// see identical behaviour to flag-driven callers.
-	if f.License == "" {
-		f.License = projectconfig.LicenseMIT
-	}
-	if !projectconfig.IsValidLicense(f.License) {
-		return nil, fmt.Errorf("--license %q must be one of mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense", f.License)
-	}
-	if f.Deploy == "" {
-		f.Deploy = projectconfig.DeployDocker
-	}
-	if !projectconfig.IsValidDeploy(f.Deploy) {
-		return nil, fmt.Errorf("--deploy %q must be 'docker' or 'cloud-run'", f.Deploy)
+	if err := applyLicenseAndDeployDefaults(f); err != nil {
+		return nil, err
 	}
 	if msg := ValidateProjectURLFormat(f.ProjectURL); msg != "" {
 		return nil, fmt.Errorf("--project-url %s", msg)
@@ -1499,12 +1506,6 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 // Mismatched flags (e.g. --system-path on multitier) are still rejected
 // so a typo doesn't silently land in the YAML.
 func resolvePathFlagsForYAML(f *RawFlags) error {
-	reject := func(name, val string) error {
-		if val != "" {
-			return fmt.Errorf("--%s is not valid for --arch %s", name, f.Arch)
-		}
-		return nil
-	}
 	if f.SystemTestPath == "" {
 		f.SystemTestPath = DefaultSystemTestPath
 	}
@@ -1513,11 +1514,11 @@ func resolvePathFlagsForYAML(f *RawFlags) error {
 		if f.SystemPath == "" {
 			f.SystemPath = DefaultSystemPath
 		}
-		if err := reject("backend-path", f.BackendPath); err != nil {
-			return err
+		if f.BackendPath != "" {
+			return fmt.Errorf("--backend-path is not valid for --arch %s", f.Arch)
 		}
-		if err := reject("frontend-path", f.FrontendPath); err != nil {
-			return err
+		if f.FrontendPath != "" {
+			return fmt.Errorf("--frontend-path is not valid for --arch %s", f.Arch)
 		}
 	case "multitier":
 		if f.BackendPath == "" {
@@ -1526,8 +1527,8 @@ func resolvePathFlagsForYAML(f *RawFlags) error {
 		if f.FrontendPath == "" {
 			f.FrontendPath = DefaultFrontendPath
 		}
-		if err := reject("system-path", f.SystemPath); err != nil {
-			return err
+		if f.SystemPath != "" {
+			return fmt.Errorf("--system-path is not valid for --arch %s", f.Arch)
 		}
 	}
 	return nil

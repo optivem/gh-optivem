@@ -1377,45 +1377,50 @@ func TestClaudeRunDispatch_ScopedAgentWithoutDeclaredOutputs_SeedsEnvelopeChanne
 
 	for _, category := range []string{"test-agent", "prod-agent", "human"} {
 		t.Run(category, func(t *testing.T) {
-			tmpRepo := t.TempDir()
-			rs := &runState{runTimestamp: "20260528-150000", repoPath: tmpRepo}
-			gitFake := &fakeGit{
-				out: [][]byte{
-					[]byte("aaaaaaa1\n"),
-					[]byte("aaaaaaa1\n"),
-				},
-			}
-			claudeFake := &fakeClaude{}
-			opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
-			opts.RepoPath = tmpRepo
-			fn := buildEngineWithRunState(t, opts, defaultTestConfig(), rs)
-
-			ctx := newCtxWithIssue()
-			// category no longer gates the envelope — only the non-`none`
-			// scope does. Vary it to prove category-independence.
-			ctx.Params["category"] = category
-
-			out := fn(ctx)
-			if out.Err != nil {
-				t.Fatalf("dispatch: %v", out.Err)
-			}
-			if len(claudeFake.calls) != 1 {
-				t.Fatalf("want 1 runner call, got %d", len(claudeFake.calls))
-			}
-			gotFile := claudeFake.calls[0].OutputFilePath
-			wantFile := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260528-150000", "001-acceptance-test-writer.outputs.jsonl")
-			if gotFile != wantFile {
-				t.Errorf("OutputFilePath: got %q, want %q", gotFile, wantFile)
-			}
-			gotKeys := claudeFake.calls[0].OutputKeysSpec
-			wantKeys := "scope-exception-files:string-list,scope-exception-reason:string"
-			if gotKeys != wantKeys {
-				t.Errorf("OutputKeysSpec: got %q, want %q", gotKeys, wantKeys)
-			}
-			if got, _ := ctx.Get("output-file-path").(string); got != gotFile {
-				t.Errorf("output-file-path stash: got %q, want %q (validate-outputs-and-scopes must read the same path)", got, gotFile)
-			}
+			testScopedEnvelopeSeeding(t, category)
 		})
+	}
+}
+
+func testScopedEnvelopeSeeding(t *testing.T, category string) {
+	t.Helper()
+	tmpRepo := t.TempDir()
+	rs := &runState{runTimestamp: "20260528-150000", repoPath: tmpRepo}
+	gitFake := &fakeGit{
+		out: [][]byte{
+			[]byte("aaaaaaa1\n"),
+			[]byte("aaaaaaa1\n"),
+		},
+	}
+	claudeFake := &fakeClaude{}
+	opts := newDriverOpts(clauderun.Deps{Claude: claudeFake, Git: gitFake})
+	opts.RepoPath = tmpRepo
+	fn := buildEngineWithRunState(t, opts, defaultTestConfig(), rs)
+
+	ctx := newCtxWithIssue()
+	// category no longer gates the envelope — only the non-`none`
+	// scope does. Vary it to prove category-independence.
+	ctx.Params["category"] = category
+
+	out := fn(ctx)
+	if out.Err != nil {
+		t.Fatalf("dispatch: %v", out.Err)
+	}
+	if len(claudeFake.calls) != 1 {
+		t.Fatalf("want 1 runner call, got %d", len(claudeFake.calls))
+	}
+	gotFile := claudeFake.calls[0].OutputFilePath
+	wantFile := filepath.Join(tmpRepo, ".gh-optivem", "runs", "20260528-150000", "001-acceptance-test-writer.outputs.jsonl")
+	if gotFile != wantFile {
+		t.Errorf("OutputFilePath: got %q, want %q", gotFile, wantFile)
+	}
+	gotKeys := claudeFake.calls[0].OutputKeysSpec
+	wantKeys := "scope-exception-files:string-list,scope-exception-reason:string"
+	if gotKeys != wantKeys {
+		t.Errorf("OutputKeysSpec: got %q, want %q", gotKeys, wantKeys)
+	}
+	if got, _ := ctx.Get("output-file-path").(string); got != gotFile {
+		t.Errorf("output-file-path stash: got %q, want %q (validate-outputs-and-scopes must read the same path)", got, gotFile)
 	}
 }
 

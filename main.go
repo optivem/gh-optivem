@@ -433,6 +433,13 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 	// is now a no-op at init time.
 
 	allSteps = append(allSteps, stepDef{
+		name:     "Verify push path filters",
+		phase:    phaseApplyTemplate,
+		failHard: true,
+		fn:       func() { steps.VerifyPushPathsFilter(cfg) },
+	})
+
+	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",
 		phase:     phasePushScaffold,
 		alwaysRun: true,

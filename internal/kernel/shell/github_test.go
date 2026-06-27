@@ -170,12 +170,14 @@ func TestRunWatchWorkflow_AppearPollRetries504OnFirstAttempt(t *testing.T) {
 	}
 }
 
-// TestRunWatchPushWorkflow_FailsLoudWhenNoStartupFailure verifies the honest
-// gate: when the push-triggered run never appears AND there is no
-// startup_failure, the push trigger genuinely did not fire (e.g. a bad paths:
-// filter). We must fail loud and NOT workflow_dispatch — dispatch bypasses the
-// on.push filter and would mask the real bug.
-func TestRunWatchPushWorkflow_FailsLoudWhenNoStartupFailure(t *testing.T) {
+// TestRunWatchPushWorkflow_RecoversMissingRunWithoutStartupFailure verifies the
+// recovery path for the no-startup_failure variant of the GitHub first-push
+// flake: when the push-triggered run never appears and there is no
+// startup_failure, RunWatchPushWorkflow re-dispatches via workflow_dispatch
+// (bounded to maxReDispatches) rather than failing loud. The on.push.paths
+// filter is validated statically before push (VerifyPushPathsFilter), so
+// unconditional re-dispatch is safe.
+func TestRunWatchPushWorkflow_RecoversMissingRunWithoutStartupFailure(t *testing.T) {
 	var sleeps []time.Duration
 	withFakeSleep(t, &sleeps)
 
@@ -184,7 +186,6 @@ func TestRunWatchPushWorkflow_FailsLoudWhenNoStartupFailure(t *testing.T) {
 	runCaptureFn = func(_, _ string) (string, error) { return "", nil }
 	t.Cleanup(func() { runCaptureFn = orig })
 
-	// runFn backs WorkflowRun (the dispatch). It must never be called here.
 	var dispatched int32
 	withFakeRunFn(t, func(int) (string, error) {
 		atomic.AddInt32(&dispatched, 1)
@@ -193,11 +194,11 @@ func TestRunWatchPushWorkflow_FailsLoudWhenNoStartupFailure(t *testing.T) {
 
 	gh := &GitHub{Repo: "myorg/myrepo"}
 	err := gh.RunWatchPushWorkflow("backend-commit-stage.yml", 1)
-	if err == nil || !strings.Contains(err.Error(), "push trigger did not fire") {
-		t.Fatalf("err = %v, want one mentioning 'push trigger did not fire'", err)
+	if err == nil || !strings.Contains(err.Error(), "re-dispatch attempts") {
+		t.Fatalf("err = %v, want one mentioning 're-dispatch attempts'", err)
 	}
-	if got := atomic.LoadInt32(&dispatched); got != 0 {
-		t.Fatalf("dispatch calls = %d, want 0 (must not workflow_dispatch without a startup_failure)", got)
+	if got := atomic.LoadInt32(&dispatched); got != int32(maxReDispatches) {
+		t.Fatalf("dispatch calls = %d, want %d (one per re-dispatch)", got, maxReDispatches)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -135,6 +137,123 @@ func scaffoldRepoDirs(cfg *config.Config) []string {
 		dirs = append(dirs, cfg.FrontendRepoDir)
 	}
 	return dirs
+}
+
+// VerifyPushPathsFilter checks that every commit-stage workflow in each
+// scaffolded repo has an on.push.paths filter that matches at least one
+// tracked file in that repo. Runs before push so a misconfigured filter
+// surfaces as a precise scaffold-time error rather than a silent GitHub
+// trigger drop (which at runtime would be misread as a flake).
+func VerifyPushPathsFilter(cfg *config.Config) {
+	log.Info("Verifying commit-stage push path filters...")
+	for _, repoDir := range scaffoldRepoDirs(cfg) {
+		wfDir := filepath.Join(repoDir, ".github", "workflows")
+		if _, err := os.Stat(wfDir); errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		entries, err := os.ReadDir(wfDir)
+		if err != nil {
+			log.Fatalf("cannot read workflow dir %s: %v", wfDir, err)
+		}
+		for _, e := range entries {
+			if !isCommitStageWorkflow(e.Name()) {
+				continue
+			}
+			checkPushPathsFilter(filepath.Join(wfDir, e.Name()), repoDir)
+		}
+	}
+}
+
+func isCommitStageWorkflow(name string) bool {
+	return name == "commit-stage.yml" || strings.HasSuffix(name, "-commit-stage.yml")
+}
+
+type pushPathsFilter struct {
+	On struct {
+		Push struct {
+			Paths []string `yaml:"paths"`
+		} `yaml:"push"`
+	} `yaml:"on"`
+}
+
+func checkPushPathsFilter(wfPath, repoDir string) {
+	data, err := os.ReadFile(wfPath)
+	if err != nil {
+		log.Fatalf("cannot read workflow %s: %v", wfPath, err)
+	}
+	var wf pushPathsFilter
+	if err := yaml.Unmarshal(data, &wf); err != nil {
+		log.Fatalf("cannot parse workflow %s: %v", wfPath, err)
+	}
+	patterns := wf.On.Push.Paths
+	if len(patterns) == 0 {
+		return
+	}
+	var positive []string
+	for _, p := range patterns {
+		if !strings.HasPrefix(p, "!") {
+			positive = append(positive, p)
+		}
+	}
+	if len(positive) == 0 {
+		return
+	}
+
+	out, runErr := shell.Run("git ls-files", true, repoDir)
+	if runErr != nil {
+		log.Fatalf("git ls-files failed in %s: %v", repoDir, runErr)
+	}
+	for _, rawLine := range strings.Split(out, "\n") {
+		f := filepath.ToSlash(strings.TrimSpace(rawLine))
+		if f == "" {
+			continue
+		}
+		for _, p := range positive {
+			if matchGlobPath(p, f) {
+				log.Successf("Push path filter OK: %s", filepath.Base(wfPath))
+				return
+			}
+		}
+	}
+	log.Fatalf(
+		"commit-stage workflow %s has an on.push.paths filter matching no tracked file in %s.\nPatterns: %v\nRun `git ls-files` in %s to inspect the tracked file set.",
+		filepath.Base(wfPath), repoDir, positive, repoDir)
+}
+
+// matchGlobPath reports whether the GitHub Actions glob pattern p matches
+// filePath. Supports ** (zero or more path segments) as well as the standard
+// ?, *, and [...] wildcards from path.Match.
+func matchGlobPath(p, filePath string) bool {
+	p = filepath.ToSlash(p)
+	filePath = filepath.ToSlash(filePath)
+	if !strings.Contains(p, "**") {
+		matched, _ := path.Match(p, filePath)
+		return matched
+	}
+	return matchDoublestar(strings.Split(p, "/"), strings.Split(filePath, "/"))
+}
+
+// matchDoublestar implements ** glob matching by recursively aligning **
+// against zero or more path segments.
+func matchDoublestar(pat, fil []string) bool {
+	for len(pat) > 0 && len(fil) > 0 {
+		if pat[0] == "**" {
+			for i := 0; i <= len(fil); i++ {
+				if matchDoublestar(pat[1:], fil[i:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if m, _ := path.Match(pat[0], fil[0]); !m {
+			return false
+		}
+		pat, fil = pat[1:], fil[1:]
+	}
+	for len(pat) > 0 && pat[0] == "**" {
+		pat = pat[1:]
+	}
+	return len(pat) == 0 && len(fil) == 0
 }
 
 // VerifyCommitStage waits for commit stage workflow to pass.
