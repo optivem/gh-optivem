@@ -49,7 +49,10 @@ var codeFenceRE = regexp.MustCompile("^(`{3,}|~{3,})")
 // tags/comments). Reported line numbers are offset-corrected back to the
 // author's body.
 func validateAcceptanceCriteriaGherkin(body string) error {
-	src, prepended, stripped := acceptanceGherkinSource(body)
+	src, prepended, stripped, err := acceptanceGherkinSource(body)
+	if err != nil {
+		return err
+	}
 	lineMap := func(n int) int {
 		if m := n - prepended; m >= 1 {
 			return m + stripped
@@ -96,15 +99,20 @@ func validateESCCGherkin(body string) error {
 // unless the body already opens with a `Feature:` line (after optional leading
 // tags / comments / blanks), so authors keep writing bare scenarios. An
 // enclosing ```/~~~ fence (the story Issue Form's `render:` wrapper, or a
-// hand-authored ```gherkin block) is stripped first so the fence lines are not
+// hand-authored ```gherkin block) is de-fenced first so the fence lines are not
 // mis-parsed as DocString separators; stripped is folded back into the caller's
-// line map so reported locations stay author-relative.
-func acceptanceGherkinSource(body string) (string, int, int) {
-	inner, stripped := stripEnclosingCodeFence(body)
-	if hasLeadingFeature(inner) {
-		return inner, 0, stripped
+// line map so reported locations stay author-relative. A malformed fence
+// (unterminated, or non-blank content after the closer) is rejected with an
+// author-relative error rather than passed through.
+func acceptanceGherkinSource(body string) (string, int, int, error) {
+	inner, stripped, err := defenceGherkinBody(body, SectionAcceptanceCriteria)
+	if err != nil {
+		return "", 0, 0, err
 	}
-	return "Feature: _\n" + inner, 1, stripped
+	if hasLeadingFeature(inner) {
+		return inner, 0, stripped, nil
+	}
+	return "Feature: _\n" + inner, 1, stripped, nil
 }
 
 // hasLeadingFeature reports whether body's first significant line (skipping
@@ -120,16 +128,27 @@ func hasLeadingFeature(body string) bool {
 	return false
 }
 
-// stripEnclosingCodeFence removes a single markdown code fence that wholly
-// encloses body and returns the inner content plus the number of leading lines
-// removed (the leading blanks before the opener plus the opener line itself).
-// It fires only when body's first non-blank line is a fence opener (```/~~~,
-// three or more, with or without an info string) AND its last non-blank line is
-// a matching closer (same fence char, at least as long, no info string). On any
-// other shape — no fence, an unterminated fence, or a fence wrapping only part
-// of the body — it returns (body, 0) unchanged. The leading-line count lets
-// callers keep Gherkin error locations author-relative.
-func stripEnclosingCodeFence(body string) (string, int) {
+// defenceGherkinBody removes a single leading markdown code fence from body and
+// returns the inner content plus the number of leading lines removed (the
+// leading blanks before the opener plus the opener line itself). It fires only
+// when body's first non-blank line is a fence opener (```/~~~, three or more,
+// with or without an info string). In that case it scans forward for the
+// matching closer and *rejects* two malformed shapes rather than silently
+// passing the raw fences to the cucumber parser (which mis-reads them as
+// DocString separators — a closing ``` after the last step opens a DocString
+// that never closes → cryptic "unexpected end of file" EOF crash):
+//
+//   - no matching closer is found → "unterminated code fence".
+//   - a non-blank line exists after the closer → "content after the closing
+//     code fence" (the section must contain only the Gherkin block; this is the
+//     implementation-leaking-prose case — fail loud, do not strip).
+//
+// When the closer is the last non-blank line (the wholly-enclosed happy path) it
+// returns the inner content and the leading-line count. When body has no leading
+// fence (a bare-scenario AC) or is empty it returns (body, 0, nil) unchanged.
+// The leading-line count lets callers keep Gherkin error locations
+// author-relative; section names the AC/ESCC section in the error messages.
+func defenceGherkinBody(body, section string) (string, int, error) {
 	lines := strings.Split(body, "\n")
 	first := -1
 	for i, l := range lines {
@@ -139,23 +158,28 @@ func stripEnclosingCodeFence(body string) (string, int) {
 		}
 	}
 	if first < 0 {
-		return body, 0
+		return body, 0, nil
 	}
 	fence := codeFenceRE.FindString(strings.TrimSpace(lines[first]))
 	if fence == "" {
-		return body, 0
+		return body, 0, nil
 	}
-	last := -1
-	for i := len(lines) - 1; i > first; i-- {
-		if strings.TrimSpace(lines[i]) != "" {
-			last = i
+	closer := -1
+	for i := first + 1; i < len(lines); i++ {
+		if isClosingFence(strings.TrimSpace(lines[i]), fence[0], len(fence)) {
+			closer = i
 			break
 		}
 	}
-	if last < 0 || !isClosingFence(strings.TrimSpace(lines[last]), fence[0], len(fence)) {
-		return body, 0
+	if closer < 0 {
+		return "", 0, fmt.Errorf("%s: line %d: unterminated code fence", section, first+1)
 	}
-	return strings.Join(lines[first+1:last], "\n"), first + 1
+	for i := closer + 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) != "" {
+			return "", 0, fmt.Errorf("%s: line %d: content after the closing code fence — the %s section must contain only the Gherkin block; move notes to Description", section, i+1, section)
+		}
+	}
+	return strings.Join(lines[first+1:closer], "\n"), first + 1, nil
 }
 
 // isClosingFence reports whether s is a bare closing fence: only the opener's
@@ -203,7 +227,10 @@ func esccGherkinSource(body string) (string, []int, error) {
 	}
 	emit("Feature: _", 0)
 
-	inner, stripped := stripEnclosingCodeFence(body)
+	inner, stripped, err := defenceGherkinBody(body, SectionExternalSystemContractCriteria)
+	if err != nil {
+		return "", nil, err
+	}
 	haveRule, haveRegister := false, false
 	for i, raw := range strings.Split(inner, "\n") {
 		origLine := i + 1 + stripped

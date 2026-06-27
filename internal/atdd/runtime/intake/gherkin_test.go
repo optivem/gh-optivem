@@ -108,6 +108,55 @@ func TestValidateAC_FencedTypoStep_FailsWithAuthorLine(t *testing.T) {
 	}
 }
 
+// An AC authored as a ```gherkin block followed by a trailing explanatory
+// paragraph (the #76 shape: implementation-leaking prose after the closer) must
+// be *rejected* with an author-relative error — not stripped (which would let
+// the leak pass) and not crashed cryptically (today's EOF). The error must name
+// the offending line, the section, and the "after the closing code fence" cause.
+func TestValidateAC_FencedWithTrailingProse_Rejected(t *testing.T) {
+	// line 1: ```gherkin
+	// line 2: Scenario: Foo
+	// line 3:   Given a
+	// line 4:   When b
+	// line 5:   Then c
+	// line 6: ```
+	// line 7: (blank)
+	// line 8: This scenario is red — the fix extends the blackout end to 23:00.
+	body := "```gherkin\nScenario: Foo\n  Given a\n  When b\n  Then c\n```\n\nThis scenario is red — the fix extends the blackout end to 23:00."
+	err := validateAcceptanceCriteriaGherkin(body)
+	if err == nil {
+		t.Fatalf("expected error for trailing prose after the closing fence, got nil")
+	}
+	if !strings.Contains(err.Error(), "line 8") {
+		t.Fatalf("error should name the offending line 8: %v", err)
+	}
+	if !strings.Contains(err.Error(), "after the closing code fence") {
+		t.Fatalf("error should mention content after the closing code fence: %v", err)
+	}
+	if !strings.Contains(err.Error(), SectionAcceptanceCriteria) {
+		t.Fatalf("error should name the AC section: %v", err)
+	}
+}
+
+// An unterminated fence (opener with no matching closer) must be rejected with a
+// clear message, not a cryptic parser crash.
+func TestValidateAC_UnterminatedFence_Rejected(t *testing.T) {
+	body := "```gherkin\nScenario: Foo\n  Given a\n  When b\n  Then c"
+	err := validateAcceptanceCriteriaGherkin(body)
+	if err == nil {
+		t.Fatalf("expected error for unterminated code fence, got nil")
+	}
+	if !strings.Contains(err.Error(), "unterminated code fence") {
+		t.Fatalf("error should mention the unterminated fence: %v", err)
+	}
+	if !strings.Contains(err.Error(), "line 1") {
+		t.Fatalf("error should name the opener line 1: %v", err)
+	}
+	if !strings.Contains(err.Error(), SectionAcceptanceCriteria) {
+		t.Fatalf("error should name the AC section: %v", err)
+	}
+}
+
 func TestValidateAC_ScenarioWithoutSteps_Fails(t *testing.T) {
 	body := "Scenario: empty"
 	err := validateAcceptanceCriteriaGherkin(body)
@@ -169,6 +218,26 @@ func TestValidateESCC_Fenced_Passes(t *testing.T) {
 	body := "```gherkin\nExternal System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\n```"
 	if err := validateESCCGherkin(body); err != nil {
 		t.Fatalf("unexpected error for fenced ESCC: %v", err)
+	}
+}
+
+// A fenced ESCC body followed by trailing prose must be rejected too — the
+// de-fence helper is shared, so AC and ESCC fail loud the same way.
+func TestValidateESCC_FencedWithTrailingProse_Rejected(t *testing.T) {
+	// line 6 is the closer; line 8 is the offending prose.
+	body := "```gherkin\nExternal System: ERP\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then ERP has products Apple (1.00)\n```\n\nNote: this register is only exercised by the legacy suite."
+	err := validateESCCGherkin(body)
+	if err == nil {
+		t.Fatalf("expected error for trailing prose after the closing fence, got nil")
+	}
+	if !strings.Contains(err.Error(), "line 8") {
+		t.Fatalf("error should name the offending line 8: %v", err)
+	}
+	if !strings.Contains(err.Error(), "after the closing code fence") {
+		t.Fatalf("error should mention content after the closing code fence: %v", err)
+	}
+	if !strings.Contains(err.Error(), SectionExternalSystemContractCriteria) {
+		t.Fatalf("error should name the ESCC section: %v", err)
 	}
 }
 
