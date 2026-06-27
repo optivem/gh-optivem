@@ -20,7 +20,7 @@
 // first `# H1` heading with a filename fallback. Issue.URL is "" —
 // markdown items aren't URL-addressable from the public web; the
 // adapter routes everything through file paths. Issue.Handle is the
-// absolute file path, so SetStatus / Classify / ReadSections address
+// absolute file path, so SetStatus / Classify / ReadBody address
 // the file directly.
 //
 // All git mutations go through a GitRunner — the default shells out to
@@ -277,22 +277,6 @@ func (t *Tracker) Subtypes(_ context.Context, i tracker.Issue) ([]string, error)
 		return nil, nil
 	}
 	return []string{v}, nil
-}
-
-// ReadSections reads the file at i.Handle and returns its H2/H3
-// sections matching headings, via the shared parse.ExtractSection
-// walker. Absent headings map to "" so callers see a stable key set.
-func (t *Tracker) ReadSections(_ context.Context, i tracker.Issue, headings []string) (map[string]string, error) {
-	body, err := os.ReadFile(i.Handle)
-	if err != nil {
-		return nil, fmt.Errorf("markdown: read %q: %w", i.Handle, err)
-	}
-	s := string(body)
-	out := make(map[string]string, len(headings))
-	for _, h := range headings {
-		out[h] = parse.ExtractSection(s, h)
-	}
-	return out, nil
 }
 
 // ReadBody returns the ticket file's raw contents verbatim — the source

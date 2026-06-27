@@ -1,51 +1,13 @@
-// Package parse is the shared markdown body parser consumed by the
-// github and markdown tracker adapters. Both adapters operate on the
-// same content model — H2/H3 headings carve the body into named
-// sections — so the parse code lives in one place.
+// Package parse holds the shared markdown helpers the github and markdown
+// tracker adapters use to source an Issue.Title from a body — currently
+// just FirstH1. Section extraction + validation lives in the intake
+// package, which parses the raw body returned by Tracker.ReadBody.
 //
 // Import path is intentionally inside tracker/internal/ so only the
-// tracker subtree depends on it. Runtime code outside tracker/ never
-// parses issue bodies directly; it goes through Tracker.ReadSections
-// instead.
+// tracker subtree depends on it.
 package parse
 
 import "strings"
-
-// ExtractSection scans body for an H2-or-deeper markdown heading whose
-// text matches name (case-insensitive, exact after dropping leading
-// hashes and surrounding whitespace), and returns the section body —
-// every line from the next line to (but not including) the next heading
-// at the same or shallower depth, with surrounding blank lines trimmed.
-// Returns "" when the heading is absent or its body is empty.
-func ExtractSection(body, name string) string {
-	lines := strings.Split(body, "\n")
-	startIdx, startDepth := -1, 0
-	for i, line := range lines {
-		depth, text, ok := mdHeading(line)
-		if !ok || depth < 2 {
-			continue
-		}
-		if strings.EqualFold(text, name) {
-			startIdx, startDepth = i+1, depth
-			break
-		}
-	}
-	if startIdx < 0 {
-		return ""
-	}
-	endIdx := len(lines)
-	for i := startIdx; i < len(lines); i++ {
-		depth, _, ok := mdHeading(lines[i])
-		if !ok {
-			continue
-		}
-		if depth <= startDepth {
-			endIdx = i
-			break
-		}
-	}
-	return strings.Trim(strings.Join(lines[startIdx:endIdx], "\n"), "\n")
-}
 
 // FirstH1 returns the trimmed text of the first H1 (`# Title`) heading
 // in body, or "" when no H1 is present. Used by the markdown adapter

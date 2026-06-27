@@ -75,10 +75,9 @@ type Result struct {
 }
 
 // CanonicalHeadings is the ordered list of section headings every ticket
-// body may declare. Callers that source sections via
-// tracker.Tracker.ReadSections pass this slice as the `headings` argument
-// so the adapter returns every canonical section in one call; ParseSections
-// then validates the result against the shape rule (AC XOR Checklist).
+// body may declare — the closed whitelist Parse enforces (no other heading
+// is allowed) and the key set Parse extracts into the section map before
+// running the shape rules in ParseSections.
 var CanonicalHeadings = []string{
 	SectionDescription,
 	SectionAcceptanceCriteria,

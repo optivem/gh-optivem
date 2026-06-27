@@ -364,9 +364,6 @@ func (f fakeTracker) Classify(_ context.Context, _ tracker.Issue) (string, bool,
 func (f fakeTracker) Subtypes(_ context.Context, _ tracker.Issue) ([]string, error) {
 	return f.subtypes, f.subtypesErr
 }
-func (f fakeTracker) ReadSections(context.Context, tracker.Issue, []string) (map[string]string, error) {
-	panic("fakeTracker.ReadSections: not implemented")
-}
 func (f fakeTracker) ReadBody(context.Context, tracker.Issue) (string, error) {
 	panic("fakeTracker.ReadBody: not implemented")
 }

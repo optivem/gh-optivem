@@ -242,9 +242,9 @@ processes:
   # parsing pipeline (`read-ticket-type` / `read-subtype` / `parse-
   # ticket-body` service tasks plus three STOP nodes) collapses into
   # two nodes here: the PARSE_TICKET service-task (action: parse-ticket
-  # — Tracker.ReadSections → intake.ParseSections → ctx.State["ticket_*"])
-  # handles body extraction with shape-level validation (AC XOR
-  # Checklist), and the two-stage gateway handles type/subtype
+  # — Tracker.ReadBody → intake.Parse → ctx.State["ticket_*"]) handles
+  # body extraction with the closed-section whitelist + shape validation
+  # (AC XOR Checklist), and the two-stage gateway handles type/subtype
   # discrimination. Per-kind required-section enforcement lives
   # downstream at dispatch time via the load-bearing placeholder check
   # in clauderun.go.

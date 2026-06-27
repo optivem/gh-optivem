@@ -38,7 +38,7 @@ import "context"
 //
 // Repo is intentionally NOT a field. The two flows that historically
 // needed an owner/name pair (gh issue view --repo …) are subsumed by
-// Tracker.Classify and Tracker.ReadSections — the adapter knows where
+// Tracker.Classify and Tracker.ReadBody — the adapter knows where
 // the issue lives because it produced the Issue.
 type Issue struct {
 	ID     string
@@ -51,7 +51,7 @@ type Issue struct {
 // methods divide into two groups:
 //
 //   - Workflow:   FindIssue, SetStatus, Verify
-//   - Inspection: Classify, Subtypes, ReadSections
+//   - Inspection: Classify, Subtypes, ReadBody
 //
 // Adapters are constructed via Open (or directly via package
 // constructors in tests). All methods accept a context.Context and
@@ -93,18 +93,12 @@ type Tracker interface {
 	// frontmatter (single-element slice or empty).
 	Subtypes(ctx context.Context, i Issue) ([]string, error)
 
-	// ReadSections parses the issue body and returns the named
-	// sections (H2/H3 headings → body text). Section names that are
-	// not present in the body map to "" (empty string), not absent
-	// keys — callers can distinguish "missing" from "blank" only
-	// when they care to.
-	ReadSections(ctx context.Context, i Issue, headings []string) (map[string]string, error)
-
-	// ReadBody returns the issue's raw body markdown verbatim. Unlike
-	// ReadSections it does not split or discard anything, so it is the
-	// source intake.Parse needs to enforce the closed-section whitelist
-	// and reject stray content (a pre-split section map has already
-	// dropped unknown headings and out-of-section text). The PARSE_TICKET
-	// service task reads the body here and hands it to intake.Parse.
+	// ReadBody returns the issue's raw body markdown verbatim — no
+	// splitting, no discarding. It is the source intake.Parse needs to
+	// extract the canonical sections and enforce the closed-section
+	// whitelist + stray-content rule (a pre-split section map would have
+	// already dropped unknown headings and out-of-section text). The
+	// PARSE_TICKET service task reads the body here and hands it to
+	// intake.Parse.
 	ReadBody(ctx context.Context, i Issue) (string, error)
 }

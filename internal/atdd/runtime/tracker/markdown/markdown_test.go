@@ -405,35 +405,8 @@ func TestSubtypes_FrontmatterAbsent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ReadSections
+// ReadBody
 // ---------------------------------------------------------------------------
-
-func TestReadSections_StableKeySet(t *testing.T) {
-	body := "# Title\n\n" +
-		"## Description\n\nthe description\n\n" +
-		"## Acceptance Criteria\n\n- AC1\n- AC2\n\n" +
-		"## Checklist\n\n- [ ] step\n"
-	root := newBoard(t, map[string]string{"ready/x.md": body})
-	tr, _ := New(root, newFakeGit(t, root))
-	issue, err := tr.FindIssue(context.Background(), "x")
-	if err != nil {
-		t.Fatalf("FindIssue: %v", err)
-	}
-	got, err := tr.ReadSections(context.Background(), issue,
-		[]string{"Acceptance Criteria", "Checklist", "Missing"})
-	if err != nil {
-		t.Fatalf("ReadSections: %v", err)
-	}
-	if got["Acceptance Criteria"] != "- AC1\n- AC2" {
-		t.Errorf("Acceptance Criteria = %q", got["Acceptance Criteria"])
-	}
-	if got["Checklist"] != "- [ ] step" {
-		t.Errorf("Checklist = %q", got["Checklist"])
-	}
-	if got["Missing"] != "" {
-		t.Errorf("Missing = %q, want empty", got["Missing"])
-	}
-}
 
 func TestReadBody_ReturnsRawFileVerbatim(t *testing.T) {
 	body := "# Title\n\n## Description\n\nthe description\n\n## Checklist\n\n- [ ] step\n"

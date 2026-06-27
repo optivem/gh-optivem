@@ -15,9 +15,8 @@
 //
 // All six Tracker methods are implemented against the projectV2 path
 // (workflow methods) and against the issue-body REST path (inspection).
-// Section parsing delegates to the shared tracker/internal/parse package
-// consumed by both the github and markdown adapters — body content
-// model is identical, so there is one walker, one source of truth.
+// ReadBody returns the raw issue body; section extraction + validation
+// then lives in the intake package, not the adapter.
 package github
 
 import (
@@ -33,7 +32,6 @@ import (
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker/internal/parse"
 )
 
 // `gh api graphql` -f/-F variable prefixes reused across the GraphQL calls.
@@ -280,26 +278,6 @@ func (t *Tracker) Subtypes(ctx context.Context, i tracker.Issue) ([]string, erro
 	return subs, nil
 }
 
-// ReadSections fetches the issue body and returns the named H2/H3
-// sections as a map. Every requested heading appears in the result —
-// absent or empty sections map to "" so callers see a stable key set.
-// Heading matching is case-insensitive on the trimmed heading text.
-func (t *Tracker) ReadSections(ctx context.Context, i tracker.Issue, headings []string) (map[string]string, error) {
-	owner, repo, num, err := parseIssueURL(i.URL)
-	if err != nil {
-		return nil, err
-	}
-	body, err := t.fetchIssueBody(ctx, owner, repo, num)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]string, len(headings))
-	for _, h := range headings {
-		out[h] = parse.ExtractSection(body, h)
-	}
-	return out, nil
-}
-
 // ReadBody fetches and returns the issue's raw body markdown verbatim — the
 // source intake.Parse needs to enforce the closed-section whitelist. A GitHub
 // issue body carries no H1 title (the title is separate metadata), so the body
@@ -350,7 +328,7 @@ const issueTypeQuery = `query($owner: String!, $name: String!, $number: Int!) { 
 // ---------------------------------------------------------------------------
 
 // parseIssueURL splits a canonical github issue URL into (owner, repo,
-// number). Used by Classify / ReadSections to address the issue
+// number). Used by Classify / ReadBody to address the issue
 // without carrying repo on tracker.Issue. Returns a clear error on an
 // empty URL so callers see "tracker.Issue.URL is required" rather than
 // a downstream gh failure.

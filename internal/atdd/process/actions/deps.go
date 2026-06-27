@@ -54,7 +54,7 @@ type Deps struct {
 	// reports live under <TestsCwd>/<suite.Path>/<testCountPath>, so this is the
 	// base runner.NamesInReport reads from. Empty when no tests.yaml is wired.
 	TestsCwd string
-	// Tracker is the seam tracker-shaped actions (SetStatus, ReadSections,
+	// Tracker is the seam tracker-shaped actions (SetStatus, ReadBody,
 	// Classify, Subtypes, FindIssue) route through. Optional — withDefaults
 	// constructs a github adapter from ProjectURL + Gh when unset. Tests
 	// inject fakes either by setting ProjectURL + a fake Gh (the
@@ -143,7 +143,7 @@ func (d Deps) withDefaults() Deps {
 		// (driver.go) so SetStatus / Verify / FindIssue resolve against a
 		// real project; tests that don't exercise project ops can omit
 		// ProjectURL and the placeholder below keeps github.New from
-		// rejecting the call — issue-body ops (ReadSections / Classify)
+		// rejecting the call — issue-body ops (ReadBody / Classify)
 		// only need Issue.URL anyway.
 		url := d.ProjectURL
 		if url == "" {

@@ -16,9 +16,9 @@ import (
 // Compile-time interface assertion
 // ---------------------------------------------------------------------------
 
-// *Tracker must satisfy tracker.Tracker. The Classify / ReadSections
-// methods are stubbed in this step but they are present on the
-// receiver, so the assignment compiles today.
+// *Tracker must satisfy tracker.Tracker — the assignment is a
+// compile-time assertion that every interface method is present on the
+// receiver.
 var _ tracker.Tracker = (*Tracker)(nil)
 
 // ---------------------------------------------------------------------------
@@ -414,7 +414,7 @@ func TestVerify_GraphQLNotFound(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Classify / ReadSections
+// Classify / ReadBody
 // ---------------------------------------------------------------------------
 
 func TestClassify_NativeIssueType(t *testing.T) {
@@ -499,34 +499,6 @@ func TestSubtypes(t *testing.T) {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestReadSections_ReturnsRequestedHeadings(t *testing.T) {
-	body := "## Description\n\nIntro paragraph.\n\n" +
-		"## Acceptance Criteria\n\n- AC1\n- AC2\n\n" +
-		"## Checklist\n\n- [ ] Step\n"
-	bodyJSON, _ := json.Marshal(body)
-	gh := newFakeRunner(t)
-	gh.on(
-		[]string{"issue", "view", "42", "--json", "body", "--repo", "optivem/shop"},
-		[]byte(`{"body":` + string(bodyJSON) + `}`),
-		nil,
-	)
-	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
-	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
-	sections, err := tr.ReadSections(context.Background(), issue, []string{"Acceptance Criteria", "Checklist", "Missing"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got, want := sections["Acceptance Criteria"], "- AC1\n- AC2"; got != want {
-		t.Errorf("Acceptance Criteria: got %q, want %q", got, want)
-	}
-	if got, want := sections["Checklist"], "- [ ] Step"; got != want {
-		t.Errorf("Checklist: got %q, want %q", got, want)
-	}
-	if got := sections["Missing"]; got != "" {
-		t.Errorf("Missing: got %q, want empty string", got)
 	}
 }
 
