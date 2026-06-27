@@ -11,7 +11,9 @@ The failure is provided as `$ARGUMENTS`. Two accepted shapes — **a path is str
 
 If `$ARGUMENTS` is empty, ask the user for a path or pasted failure in one line, then proceed.
 
-## Phase 0 — Locate the artifacts
+## Phase 0 — Locate the artifacts and capture context
+
+First, capture the **machine name** by running `hostname` (Bash tool). Store it — it goes into the plan.
 
 Resolve, from whatever was passed, as many of these as exist (each points to the next):
 
@@ -58,10 +60,18 @@ Invoke the **`create-plan`** skill (via the Skill tool) with a synthesized idea 
 - the selected layer(s) and the specific change(s) for each, with the file each change lives in,
 - the prevention goal ("so a future run never …").
 
+The idea string **must** begin with a two-line header so the plan file records provenance:
+
+```
+Ticket: #<n> — <short ticket title>
+Machine: <hostname captured in Phase 0>
+```
+
 `/create-plan` owns the plan file (it writes `plans/YYYYMMDD-HHMM-<slug>.md` in the gh-optivem repo) and its own confirm-before-commit gate. This command stops once the plan is drafted — report the plan path and let the user refine/commit via the plan commands.
 
 ## Rules
 
+- **Every plan must record the ticket and machine.** The idea string passed to `/create-plan` must start with `Ticket: #<n> — <title>` and `Machine: <hostname>` so the plan file permanently records where the failure occurred.
 - **No code changes.** Output is a diagnosis + a plan. If a fix is obvious, capture it as a plan step — don't implement it here.
 - **Pin the root cause to `file:line` in the worktree before proposing anything.** Never propose from the trace alone.
 - **One fix → one layer → one file.** If a fix spans layers, split it into separate options so the user can pick per-layer.
