@@ -19,13 +19,14 @@ import (
 // which is what keeps build from growing a back-edge and turning the shared
 // dependency into an import cycle. Intra-build seams (steps -> compiler,runner;
 // preflight -> runner; componenttest -> runner) are leaf-internal and allowed.
+const (
+	buildProjectPrefix = "github.com/optivem/gh-optivem/internal/"
+	buildKernelPrefix  = "github.com/optivem/gh-optivem/internal/kernel/"
+	buildBuildPrefix   = "github.com/optivem/gh-optivem/internal/build/"
+)
+
 func TestBuildImportsKernelOnly(t *testing.T) {
 	t.Parallel()
-	const (
-		projectPrefix = "github.com/optivem/gh-optivem/internal/"
-		kernelPrefix  = "github.com/optivem/gh-optivem/internal/kernel/"
-		buildPrefix   = "github.com/optivem/gh-optivem/internal/build/"
-	)
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -34,25 +35,30 @@ func TestBuildImportsKernelOnly(t *testing.T) {
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		af, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
-		if err != nil {
-			t.Fatalf("parse %s: %v", path, err)
-		}
-		for _, imp := range af.Imports {
-			p, err := strconv.Unquote(imp.Path.Value)
-			if err != nil {
-				t.Fatalf("%s: unquote import %q: %v", path, imp.Path.Value, err)
-			}
-			if strings.HasPrefix(p, projectPrefix) &&
-				!strings.HasPrefix(p, kernelPrefix) && !strings.HasPrefix(p, buildPrefix) {
-				t.Errorf("%s imports %q: internal/build/** may import only internal/kernel/** "+
-					"or other internal/build/** packages (build is a shared leaf module; "+
-					"importing Scaffolding/Process would create a cycle).", path, p)
-			}
-		}
+		checkBuildFileImports(t, fset, path)
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("walk internal/build: %v", err)
+	}
+}
+
+func checkBuildFileImports(t *testing.T, fset *token.FileSet, path string) {
+	t.Helper()
+	af, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	for _, imp := range af.Imports {
+		p, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			t.Fatalf("%s: unquote import %q: %v", path, imp.Path.Value, err)
+		}
+		if strings.HasPrefix(p, buildProjectPrefix) &&
+			!strings.HasPrefix(p, buildKernelPrefix) && !strings.HasPrefix(p, buildBuildPrefix) {
+			t.Errorf("%s imports %q: internal/build/** may import only internal/kernel/** "+
+				"or other internal/build/** packages (build is a shared leaf module; "+
+				"importing Scaffolding/Process would create a cycle).", path, p)
+		}
 	}
 }

@@ -53,13 +53,8 @@ func (s *stubRunner) install() {
 	prevWrite := projectWriteSourceConfig
 	projectRunCapture = func(cmd, _ string) (string, error) {
 		s.calls = append(s.calls, runRecord{cmd: cmd, via: "RunCapture"})
-		for k, v := range s.captureResp {
-			if strings.Contains(cmd, k) {
-				if err := s.captureErr[k]; err != nil {
-					return v, err
-				}
-				return v, nil
-			}
+		if v, err, ok := s.lookupCapture(cmd); ok {
+			return v, err
 		}
 		return "", fmt.Errorf("stub: unmatched RunCapture %q", cmd)
 	}
@@ -69,13 +64,8 @@ func (s *stubRunner) install() {
 	}
 	projectRun = func(cmd string, _ bool, _ string) (string, error) {
 		s.calls = append(s.calls, runRecord{cmd: cmd, via: "Run"})
-		for k, v := range s.runOutput {
-			if strings.Contains(cmd, k) {
-				if err := s.runErr[k]; err != nil {
-					return v, err
-				}
-				return v, nil
-			}
+		if v, err, ok := s.lookupRun(cmd); ok {
+			return v, err
 		}
 		return "", nil
 	}
@@ -97,6 +87,24 @@ func (s *stubRunner) calledViaContaining(via, fragment string) []runRecord {
 		}
 	}
 	return out
+}
+
+func (s *stubRunner) lookupCapture(cmd string) (v string, err error, ok bool) {
+	for k, resp := range s.captureResp {
+		if strings.Contains(cmd, k) {
+			return resp, s.captureErr[k], true
+		}
+	}
+	return "", nil, false
+}
+
+func (s *stubRunner) lookupRun(cmd string) (v string, err error, ok bool) {
+	for k, resp := range s.runOutput {
+		if strings.Contains(cmd, k) {
+			return resp, s.runErr[k], true
+		}
+	}
+	return "", nil, false
 }
 
 // captureGraphqlOptions parses the JSON body sent to gh api graphql --input -

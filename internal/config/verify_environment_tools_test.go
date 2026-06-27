@@ -123,29 +123,34 @@ func TestVerifyEnvironment_CompilerMissing(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.lang, func(t *testing.T) {
-			dir := mkPathDir(t)
-			writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
-			writeStub(t, dir, "actionlint", "exit 0")
-			for _, c := range allCompilers {
-				if c == tc.missingTool {
-					continue
-				}
-				writeStub(t, dir, c, "exit 0")
-			}
-			setAllEnvTokens(t)
-
-			err := verifyEnvironmentWithClient([]string{tc.lang}, "", happyAuthClient())
-			if err == nil {
-				t.Fatalf("expected error when %s is missing for --lang %s, got nil", tc.missingTool, tc.lang)
-			}
-			msg := err.Error()
-			if !strings.Contains(msg, tc.missingTool+" not found on PATH") {
-				t.Errorf("error did not mention %s-missing. Got:\n%s", tc.missingTool, msg)
-			}
-			if !strings.Contains(msg, tc.hintSubstr) {
-				t.Errorf("error missing install hint %q for %s. Got:\n%s", tc.hintSubstr, tc.missingTool, msg)
-			}
+			runCompilerMissingSubtest(t, tc.lang, tc.missingTool, tc.hintSubstr, allCompilers)
 		})
+	}
+}
+
+func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr string, allCompilers []string) {
+	t.Helper()
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	for _, c := range allCompilers {
+		if c == missingTool {
+			continue
+		}
+		writeStub(t, dir, c, "exit 0")
+	}
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient([]string{lang}, "", happyAuthClient())
+	if err == nil {
+		t.Fatalf("expected error when %s is missing for --lang %s, got nil", missingTool, lang)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, missingTool+" not found on PATH") {
+		t.Errorf("error did not mention %s-missing. Got:\n%s", missingTool, msg)
+	}
+	if !strings.Contains(msg, hintSubstr) {
+		t.Errorf("error missing install hint %q for %s. Got:\n%s", hintSubstr, missingTool, msg)
 	}
 }
 

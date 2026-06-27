@@ -165,26 +165,13 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 		}
 		sub, ok := e.Processes[processName]
 		if !ok {
-			if processName != raw.Process {
-				return Outcome{Err: fmt.Errorf("call-activity references unknown process %q (from template %q)", processName, raw.Process)}
-			}
-			return Outcome{Err: fmt.Errorf("call-activity references unknown process %q", processName)}
+			return Outcome{Err: callActivityUnknownProcessErr(processName, raw.Process)}
 		}
-		// Push params; restore on exit. Caller-scoped state is preserved so
-		// gateway results from outer processes remain visible to inner gateways
-		// when they share binding names.
+		merged, err := mergeCallActivityParams(ctx.Params, raw.Params, ctx.State, processName)
+		if err != nil {
+			return Outcome{Err: err}
+		}
 		prev := ctx.Params
-		merged := make(map[string]string, len(prev)+len(raw.Params))
-		for k, v := range prev {
-			merged[k] = v
-		}
-		for k, v := range raw.Params {
-			expanded, err := ExpandParams(v, prev, ctx.State)
-			if err != nil {
-				return Outcome{Err: fmt.Errorf("call-activity %q param %q: %w", processName, k, err)}
-			}
-			merged[k] = expanded
-		}
 		ctx.Params = merged
 		defer func() { ctx.Params = prev }()
 
@@ -193,6 +180,31 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 		}
 		return Outcome{}
 	}
+}
+
+func callActivityUnknownProcessErr(processName, rawProcess string) error {
+	if processName != rawProcess {
+		return fmt.Errorf("call-activity references unknown process %q (from template %q)", processName, rawProcess)
+	}
+	return fmt.Errorf("call-activity references unknown process %q", processName)
+}
+
+// mergeCallActivityParams builds the merged params map for a call-activity
+// dispatch: the caller's params are copied in first, then raw call-site params
+// are template-expanded against the caller's scope and overlaid.
+func mergeCallActivityParams(prev map[string]string, rawParams map[string]string, state map[string]any, processName string) (map[string]string, error) {
+	merged := make(map[string]string, len(prev)+len(rawParams))
+	for k, v := range prev {
+		merged[k] = v
+	}
+	for k, v := range rawParams {
+		expanded, err := ExpandParams(v, prev, state)
+		if err != nil {
+			return nil, fmt.Errorf("call-activity %q param %q: %w", processName, k, err)
+		}
+		merged[k] = expanded
+	}
+	return merged, nil
 }
 
 // maxDispatchesPerProcess caps how many node dispatches RunProcess will

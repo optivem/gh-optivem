@@ -243,15 +243,20 @@ func TestPhaseScopes_NodeScopeFieldShape(t *testing.T) {
 			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
 				continue
 			}
-			scope := node.Raw.Scope
-			if scope != "" && scope != "none" {
-				t.Errorf("MID %q EXECUTE_AGENT: scope: %q — only %q is a recognised value", processName, scope, "none")
-			}
-			if scope == "none" && (len(node.Raw.Read) > 0 || len(node.Raw.Write) > 0) {
-				t.Errorf("MID %q EXECUTE_AGENT: scope: none must not co-exist with read: / write: lists", processName)
-			}
+			checkNodeScopeShape(t, processName, node.Raw)
 			break
 		}
+	}
+}
+
+func checkNodeScopeShape(t *testing.T, processName string, raw statemachine.RawNode) {
+	t.Helper()
+	scope := raw.Scope
+	if scope != "" && scope != "none" {
+		t.Errorf("MID %q EXECUTE_AGENT: scope: %q — only %q is a recognised value", processName, scope, "none")
+	}
+	if scope == "none" && (len(raw.Read) > 0 || len(raw.Write) > 0) {
+		t.Errorf("MID %q EXECUTE_AGENT: scope: none must not co-exist with read: / write: lists", processName)
 	}
 }
 

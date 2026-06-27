@@ -33,15 +33,6 @@ func (o StatusOptions) timeout() time.Duration {
 func Status(w io.Writer, sys *SystemConfig, opts StatusOptions) int {
 	client := &http.Client{Timeout: opts.timeout()}
 	down := 0
-	probe := func(name, url string) {
-		ok := probeOK(client, url)
-		symbol := "OK"
-		if !ok {
-			symbol = "DOWN"
-			down++
-		}
-		fmt.Fprintf(w, "  %s %s: %s\n", symbol, name, url)
-	}
 	for _, s := range sys.Systems {
 		desc := s.Description
 		if desc == "" {
@@ -54,16 +45,27 @@ func Status(w io.Writer, sys *SystemConfig, opts StatusOptions) int {
 			if c.URL == "" {
 				continue
 			}
-			probe(c.Name, c.URL)
+			down += writeProbe(w, client, c.Name, c.URL)
 		}
 		for _, e := range s.ExternalSystems {
 			if e.URL == "" {
 				continue
 			}
-			probe(e.Name, e.URL)
+			down += writeProbe(w, client, e.Name, e.URL)
 		}
 	}
 	return down
+}
+
+func writeProbe(w io.Writer, client *http.Client, name, url string) int {
+	symbol := "OK"
+	bump := 0
+	if !probeOK(client, url) {
+		symbol = "DOWN"
+		bump = 1
+	}
+	fmt.Fprintf(w, "  %s %s: %s\n", symbol, name, url)
+	return bump
 }
 
 // probeOK returns true iff a single GET against url returns 200 OK within the

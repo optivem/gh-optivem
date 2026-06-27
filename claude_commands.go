@@ -124,34 +124,75 @@ func runClaudeInstall() error {
 
 	added, updated, skipped := 0, 0, 0
 	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		content, err := fs.ReadFile(claudeassets.FS, "commands/"+entry.Name())
+		verb, err := processCommandEntry(destDir, entry)
 		if err != nil {
-			return fmt.Errorf("read embedded command %s: %w", entry.Name(), err)
+			return err
 		}
-		dest := filepath.Join(destDir, entry.Name())
-		existing, readErr := os.ReadFile(dest)
-		switch {
-		case readErr == nil && bytes.Equal(existing, content):
-			skipped++
-		case readErr == nil:
-			if err := os.WriteFile(dest, content, 0644); err != nil {
-				return fmt.Errorf("write %s: %w", dest, err)
-			}
+		switch verb {
+		case "added":
+			fmt.Printf("  Added:   %s\n", entry.Name())
+			added++
+		case "updated":
 			fmt.Printf("  Updated: %s\n", entry.Name())
 			updated++
 		default:
-			if err := os.WriteFile(dest, content, 0644); err != nil {
-				return fmt.Errorf("write %s: %w", dest, err)
-			}
-			fmt.Printf("  Added:   %s\n", entry.Name())
-			added++
+			skipped++
 		}
 	}
 	fmt.Printf("Commands: %d added, %d updated, %d already up to date\n", added, updated, skipped)
 	return nil
+}
+
+// processCommandEntry installs or skips one embedded command file into destDir.
+// Returns "added", "updated", or "" (skip) for non-dir entries; dirs return "".
+func processCommandEntry(destDir string, entry fs.DirEntry) (string, error) {
+	if entry.IsDir() {
+		return "", nil
+	}
+	content, err := fs.ReadFile(claudeassets.FS, "commands/"+entry.Name())
+	if err != nil {
+		return "", fmt.Errorf("read embedded command %s: %w", entry.Name(), err)
+	}
+	dest := filepath.Join(destDir, entry.Name())
+	existing, readErr := os.ReadFile(dest)
+	switch {
+	case readErr == nil && bytes.Equal(existing, content):
+		return "", nil
+	case readErr == nil:
+		if err := os.WriteFile(dest, content, 0644); err != nil {
+			return "", fmt.Errorf("write %s: %w", dest, err)
+		}
+		return "updated", nil
+	default:
+		if err := os.WriteFile(dest, content, 0644); err != nil {
+			return "", fmt.Errorf("write %s: %w", dest, err)
+		}
+		return "added", nil
+	}
+}
+
+// checkCommandEntry compares one embedded command file against the installed copy.
+// Returns "missing", "differs", "ok", or "" for directory entries.
+func checkCommandEntry(commandsDir string, entry fs.DirEntry) (string, error) {
+	if entry.IsDir() {
+		return "", nil
+	}
+	content, err := fs.ReadFile(claudeassets.FS, "commands/"+entry.Name())
+	if err != nil {
+		return "", fmt.Errorf("read embedded command %s: %w", entry.Name(), err)
+	}
+	dest := filepath.Join(commandsDir, entry.Name())
+	existing, readErr := os.ReadFile(dest)
+	switch {
+	case errors.Is(readErr, os.ErrNotExist):
+		return "missing", nil
+	case readErr != nil:
+		return "", fmt.Errorf("read %s: %w", dest, readErr)
+	case !bytes.Equal(existing, content):
+		return "differs", nil
+	default:
+		return "ok", nil
+	}
 }
 
 func runClaudeConfigure() error {
@@ -185,27 +226,20 @@ func runClaudeCheck() error {
 	}
 	missing, differs, inSync := 0, 0, 0
 	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		content, err := fs.ReadFile(claudeassets.FS, "commands/"+entry.Name())
+		status, err := checkCommandEntry(commandsDir, entry)
 		if err != nil {
-			return fmt.Errorf("read embedded command %s: %w", entry.Name(), err)
+			return err
 		}
-		dest := filepath.Join(commandsDir, entry.Name())
-		existing, readErr := os.ReadFile(dest)
-		switch {
-		case errors.Is(readErr, os.ErrNotExist):
+		switch status {
+		case "missing":
 			fmt.Printf("  missing: %s\n", entry.Name())
 			missing++
 			drift = true
-		case readErr != nil:
-			return fmt.Errorf("read %s: %w", dest, readErr)
-		case !bytes.Equal(existing, content):
+		case "differs":
 			fmt.Printf("  differs: %s\n", entry.Name())
 			differs++
 			drift = true
-		default:
+		case "ok":
 			inSync++
 		}
 	}

@@ -410,7 +410,10 @@ func verifyEnvironmentWithClient(langs []string, deploy string, client *http.Cli
 	if len(missing) == 0 && len(failures) == 0 {
 		return nil
 	}
+	return buildEnvVerifyError(missing, failures)
+}
 
+func buildEnvVerifyError(missing []string, failures []checkResult) error {
 	var b strings.Builder
 	if len(missing) > 0 {
 		fmt.Fprintf(&b, "Missing required environment variable(s): %s\n", strings.Join(missing, ", "))

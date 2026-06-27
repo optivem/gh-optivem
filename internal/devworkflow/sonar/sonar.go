@@ -127,35 +127,7 @@ func (c *Client) do(method, endpoint string, body io.Reader) ([]byte, error) {
 	_, retryErr := shell.RetryWithPolicy(
 		shell.RetryTransient(), shell.RetryHardFail(), "sonar-retry",
 		func() (string, error) {
-			var bodyReader io.Reader
-			if bodyBytes != nil {
-				bodyReader = strings.NewReader(string(bodyBytes))
-			}
-			req, err := http.NewRequest(method, endpoint, bodyReader)
-			if err != nil {
-				return "", fmt.Errorf("sonar: build request: %w", err)
-			}
-			req.Header.Set("Authorization", "Bearer "+c.Token)
-			if bodyReader != nil {
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			}
-			resp, err := c.HTTP.Do(req)
-			if err != nil {
-				wrapped := fmt.Errorf("sonar: %s %s: %w", method, endpoint, err)
-				return wrapped.Error(), wrapped
-			}
-			defer resp.Body.Close()
-			respBody, _ = io.ReadAll(resp.Body)
-			statusCode = resp.StatusCode
-			summary := fmt.Sprintf("HTTP %d\n%s", statusCode, string(respBody))
-			// Surface 5xx as an error so the classifier inspects `summary`
-			// and retries. 2xx and 4xx fall through to the post-loop check
-			// below — 4xx becomes an immediate hard-fail there.
-			if statusCode >= 500 {
-				return summary, fmt.Errorf("sonar: %s %s: HTTP %d: %s",
-					method, endpoint, statusCode, strings.TrimSpace(string(respBody)))
-			}
-			return summary, nil
+			return c.attemptRequest(method, endpoint, bodyBytes, &respBody, &statusCode)
 		})
 	if retryErr != nil && statusCode == 0 {
 		// Transport-level failure that never reached a response — return as-is.
@@ -166,6 +138,41 @@ func (c *Client) do(method, endpoint string, body io.Reader) ([]byte, error) {
 			method, endpoint, statusCode, strings.TrimSpace(string(respBody)))
 	}
 	return respBody, nil
+}
+
+// attemptRequest performs one HTTP attempt for do's retry loop. It writes the
+// response body and status code into the caller-owned slots so do can inspect
+// them after the retry loop regardless of which attempt produced the response.
+func (c *Client) attemptRequest(method, endpoint string, bodyBytes []byte, respBody *[]byte, statusCode *int) (string, error) {
+	var bodyReader io.Reader
+	if bodyBytes != nil {
+		bodyReader = strings.NewReader(string(bodyBytes))
+	}
+	req, err := http.NewRequest(method, endpoint, bodyReader)
+	if err != nil {
+		return "", fmt.Errorf("sonar: build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if bodyReader != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		wrapped := fmt.Errorf("sonar: %s %s: %w", method, endpoint, err)
+		return wrapped.Error(), wrapped
+	}
+	defer resp.Body.Close()
+	*respBody, _ = io.ReadAll(resp.Body)
+	*statusCode = resp.StatusCode
+	summary := fmt.Sprintf("HTTP %d\n%s", *statusCode, string(*respBody))
+	// Surface 5xx as an error so the classifier inspects `summary`
+	// and retries. 2xx and 4xx fall through to the post-loop check
+	// below — 4xx becomes an immediate hard-fail there.
+	if *statusCode >= 500 {
+		return summary, fmt.Errorf("sonar: %s %s: HTTP %d: %s",
+			method, endpoint, *statusCode, strings.TrimSpace(string(*respBody)))
+	}
+	return summary, nil
 }
 
 // MaxPage returns the index of the last page given a total result count and

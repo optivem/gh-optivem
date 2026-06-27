@@ -368,6 +368,22 @@ func (f fakeTracker) ReadBody(context.Context, tracker.Issue) (string, error) {
 	panic("fakeTracker.ReadBody: not implemented")
 }
 
+// assertGateErr checks a gate outcome's error state. Returns true when the
+// caller should continue to value-checking (no error expected, none received).
+func assertGateErr(t *testing.T, out statemachine.Outcome, wantErr bool) bool {
+	t.Helper()
+	if wantErr {
+		if out.Err == nil {
+			t.Fatalf("expected err, got %+v", out)
+		}
+		return false
+	}
+	if out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	return true
+}
+
 // ---------------------------------------------------------------------------
 // command-succeeded
 // ---------------------------------------------------------------------------
@@ -393,14 +409,8 @@ func TestCommandSucceeded(t *testing.T) {
 				ctx.Set("command-succeeded", tc.seed)
 			}
 			out := b.commandSucceeded(ctx)
-			if tc.err {
-				if out.Err == nil {
-					t.Fatalf("expected err, got %+v", out)
-				}
+			if !assertGateErr(t, out, tc.err) {
 				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Bool != tc.want {
 				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)
@@ -435,14 +445,8 @@ func TestTestOutcome(t *testing.T) {
 				ctx.Set("test-outcome", tc.seed)
 			}
 			out := b.testOutcome(ctx)
-			if tc.err {
-				if out.Err == nil {
-					t.Fatalf("expected err, got %+v", out)
-				}
+			if !assertGateErr(t, out, tc.err) {
 				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Value != tc.want {
 				t.Fatalf("Value: got %q, want %q", out.Value, tc.want)
@@ -476,14 +480,8 @@ func TestFixLoopProgressing(t *testing.T) {
 				ctx.Set("fix-loop-progressing", tc.seed)
 			}
 			out := b.fixLoopProgressing(ctx)
-			if tc.err {
-				if out.Err == nil {
-					t.Fatalf("expected err, got %+v", out)
-				}
+			if !assertGateErr(t, out, tc.err) {
 				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Bool != tc.want {
 				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)
@@ -517,14 +515,8 @@ func TestRealKind(t *testing.T) {
 				ctx.Set("real-kind", tc.seed)
 			}
 			out := b.realKind(ctx)
-			if tc.err {
-				if out.Err == nil {
-					t.Fatalf("expected err, got %+v", out)
-				}
+			if !assertGateErr(t, out, tc.err) {
 				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Value != tc.want {
 				t.Fatalf("Value: got %q, want %q", out.Value, tc.want)
@@ -556,14 +548,8 @@ func TestExternalSystemTouched(t *testing.T) {
 				ctx.Set("external-system-touched", tc.seed)
 			}
 			out := b.externalSystemTouched(ctx)
-			if tc.err {
-				if out.Err == nil {
-					t.Fatalf("expected err, got %+v", out)
-				}
+			if !assertGateErr(t, out, tc.err) {
 				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Bool != tc.want {
 				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)
@@ -638,14 +624,8 @@ func TestFixOnFailureEnabled(t *testing.T) {
 				ctx.Params["fix-on-failure"] = tc.param
 			}
 			out := b.fixOnFailureEnabled(ctx)
-			if tc.err {
-				if out.Err == nil {
-					t.Fatalf("expected err, got %+v", out)
-				}
+			if !assertGateErr(t, out, tc.err) {
 				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Bool != tc.wantBool {
 				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.wantBool)
@@ -916,14 +896,8 @@ func TestApprovalOutcome(t *testing.T) {
 				ctx.Set("approval-outcome", tc.seed)
 			}
 			out := b.approvalOutcome(ctx)
-			if tc.err {
-				if out.Err == nil {
-					t.Fatalf("expected err, got %+v", out)
-				}
+			if !assertGateErr(t, out, tc.err) {
 				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Value != tc.want {
 				t.Fatalf("Value: got %q, want %q", out.Value, tc.want)
@@ -955,14 +929,8 @@ func TestOutputsAndScopesValid(t *testing.T) {
 				ctx.Set("outputs-and-scopes-valid", tc.seed)
 			}
 			out := b.outputsAndScopesValid(ctx)
-			if tc.err {
-				if out.Err == nil {
-					t.Fatalf("expected err, got %+v", out)
-				}
+			if !assertGateErr(t, out, tc.err) {
 				return
-			}
-			if out.Err != nil {
-				t.Fatalf("unexpected err: %v", out.Err)
 			}
 			if out.Bool != tc.want {
 				t.Fatalf("Bool: got %v, want %v", out.Bool, tc.want)

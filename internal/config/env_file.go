@@ -46,10 +46,10 @@ func UserEnvFilePath() (string, error) {
 // open errors (e.g. permissions) are returned so the caller can surface them.
 func LoadEnvFile(path string) (loaded int, err error) {
 	f, err := os.Open(path)
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
 		return 0, err
 	}
 	defer f.Close()
@@ -70,10 +70,8 @@ func LoadEnvFile(path string) (loaded int, err error) {
 			continue
 		}
 		v = trimQuotes(strings.TrimSpace(v))
-		if os.Getenv(k) == "" {
-			if os.Setenv(k, v) == nil {
-				loaded++
-			}
+		if os.Getenv(k) == "" && os.Setenv(k, v) == nil {
+			loaded++
 		}
 	}
 	if scanErr := scanner.Err(); scanErr != nil {

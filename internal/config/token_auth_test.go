@@ -81,32 +81,41 @@ func TestTokenAuth_RetriesOn5xxThenSucceeds(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			var sleeps []time.Duration
-			restore := shell.SetSleepFnForTest(func(d time.Duration) { sleeps = append(sleeps, d) })
-			defer restore()
-
-			var calls int32
-			client := newTestClient(func(w http.ResponseWriter, _ *http.Request) {
-				n := atomic.AddInt32(&calls, 1)
-				switch n {
-				case 1, 2:
-					w.WriteHeader(504)
-					_, _ = io.WriteString(w, "Gateway Timeout")
-				default:
-					tc.successResponder(w)
-				}
-			})
-
-			if err := tc.invoke(client); err != nil {
-				t.Fatalf("expected success after retry, got error: %v", err)
-			}
-			if got := atomic.LoadInt32(&calls); got != 3 {
-				t.Fatalf("transport calls = %d, want 3 (504, 504, 200)", got)
-			}
-			if len(sleeps) != 2 {
-				t.Fatalf("sleeps = %d, want 2 backoffs between 3 attempts", len(sleeps))
-			}
+			assertRetrySucceeds(t, tc.successResponder, tc.invoke)
 		})
+	}
+}
+
+func assertRetrySucceeds(t *testing.T, successResponder func(http.ResponseWriter), invoke func(*http.Client) error) {
+	t.Helper()
+	var sleeps []time.Duration
+	restore := shell.SetSleepFnForTest(func(d time.Duration) { sleeps = append(sleeps, d) })
+	defer restore()
+
+	var calls int32
+	client := newTestClient(makeRetrySuccessHandler(&calls, successResponder))
+
+	if err := invoke(client); err != nil {
+		t.Fatalf("expected success after retry, got error: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Fatalf("transport calls = %d, want 3 (504, 504, 200)", got)
+	}
+	if len(sleeps) != 2 {
+		t.Fatalf("sleeps = %d, want 2 backoffs between 3 attempts", len(sleeps))
+	}
+}
+
+func makeRetrySuccessHandler(calls *int32, successResponder func(http.ResponseWriter)) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		n := atomic.AddInt32(calls, 1)
+		switch n {
+		case 1, 2:
+			w.WriteHeader(504)
+			_, _ = io.WriteString(w, "Gateway Timeout")
+		default:
+			successResponder(w)
+		}
 	}
 }
 

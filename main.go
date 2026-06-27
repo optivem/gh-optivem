@@ -601,23 +601,25 @@ func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) 
 			continue
 		}
 
-		if s.phase != prevPhase {
-			if s.phase != "" {
-				log.PhaseHeader(phaseIdx[s.phase], totalPhases, s.phase)
-			}
-			prevPhase = s.phase
-			posInPhase = 0
-		}
+		prevPhase, posInPhase = updatePhaseHeader(s, prevPhase, posInPhase, phaseIdx, totalPhases)
 		posInPhase++
 
 		if !runStep(s, posInPhase, totalByPhase[s.phase], failureNote) {
 			errors++
-			if s.failHard {
-				hardFailed = true
-			}
+			hardFailed = hardFailed || s.failHard
 		}
 	}
 	return errors, time.Since(totalStart)
+}
+
+func updatePhaseHeader(s stepDef, prevPhase string, posInPhase int, phaseIdx map[string]int, totalPhases int) (string, int) {
+	if s.phase == prevPhase {
+		return prevPhase, posInPhase
+	}
+	if s.phase != "" {
+		log.PhaseHeader(phaseIdx[s.phase], totalPhases, s.phase)
+	}
+	return s.phase, 0
 }
 
 func countStepsByPhase(allSteps []stepDef) map[string]int {

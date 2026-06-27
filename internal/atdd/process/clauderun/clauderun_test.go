@@ -2547,33 +2547,39 @@ var snakePlaceholderRe = regexp.MustCompile(`\$\{[a-z]+_[a-z]+[a-z_]*\}`)
 // every dispatched prompt — a snake placeholder there has the same
 // load-bearing failure mode as one in an agent body.
 func TestNoSnakeCasePlaceholdersInPromptBodies(t *testing.T) {
-	roots := []string{"runtime/agents/atdd", "runtime/shared"}
 	var offenders []string
-	for _, root := range roots {
-		err := fs.WalkDir(assets.FS, root, func(path string, d fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if d.IsDir() || !strings.HasSuffix(path, ".md") {
-				return nil
-			}
-			data, readErr := assets.FS.ReadFile(path)
-			if readErr != nil {
-				return readErr
-			}
-			for _, m := range snakePlaceholderRe.FindAllString(string(data), -1) {
-				offenders = append(offenders, path+": "+m)
-			}
-			return nil
-		})
+	for _, root := range []string{"runtime/agents/atdd", "runtime/shared"} {
+		found, err := collectSnakePlaceholders(root)
 		if err != nil {
 			t.Fatalf("walk %s: %v", root, err)
 		}
+		offenders = append(offenders, found...)
 	}
 	if len(offenders) > 0 {
 		t.Fatalf("snake-cased placeholders survive in embedded prompts; rename to kebab:\n  %s",
 			strings.Join(offenders, "\n  "))
 	}
+}
+
+func collectSnakePlaceholders(root string) ([]string, error) {
+	var offenders []string
+	err := fs.WalkDir(assets.FS, root, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".md") {
+			return nil
+		}
+		data, readErr := assets.FS.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for _, m := range snakePlaceholderRe.FindAllString(string(data), -1) {
+			offenders = append(offenders, path+": "+m)
+		}
+		return nil
+	})
+	return offenders, err
 }
 
 // TestRenderPrompt_NoSnakePlaceholdersInRenderedOutput renders the
@@ -2658,22 +2664,27 @@ func TestRenderGateMarkerExample(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.lang, func(t *testing.T) {
-			got := renderGateMarkerExample(tc.lang)
-			if got == "" {
-				t.Fatalf("renderGateMarkerExample(%q): got empty string", tc.lang)
-			}
-			for _, want := range tc.wantSubstrs {
-				if !strings.Contains(got, want) {
-					t.Errorf("renderGateMarkerExample(%q): missing substring %q\nrendered:\n%s", tc.lang, want, got)
-				}
-			}
-			// Drift-back regression guard: no per-ticket disable marker.
-			for _, forbid := range []string{"@Disabled", "Fact(Skip", "#71"} {
-				if strings.Contains(got, forbid) {
-					t.Errorf("renderGateMarkerExample(%q): rendered output mentions %q — drift back to per-ticket disable marker?\nrendered:\n%s", tc.lang, forbid, got)
-				}
-			}
+			checkGateMarkerLang(t, tc.lang, tc.wantSubstrs)
 		})
+	}
+}
+
+func checkGateMarkerLang(t *testing.T, lang string, wantSubstrs []string) {
+	t.Helper()
+	got := renderGateMarkerExample(lang)
+	if got == "" {
+		t.Fatalf("renderGateMarkerExample(%q): got empty string", lang)
+	}
+	for _, want := range wantSubstrs {
+		if !strings.Contains(got, want) {
+			t.Errorf("renderGateMarkerExample(%q): missing substring %q\nrendered:\n%s", lang, want, got)
+		}
+	}
+	// Drift-back regression guard: no per-ticket disable marker.
+	for _, forbid := range []string{"@Disabled", "Fact(Skip", "#71"} {
+		if strings.Contains(got, forbid) {
+			t.Errorf("renderGateMarkerExample(%q): rendered output mentions %q — drift back to per-ticket disable marker?\nrendered:\n%s", lang, forbid, got)
+		}
 	}
 }
 

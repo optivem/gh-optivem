@@ -563,9 +563,7 @@ func writeEdge(b *strings.Builder, e statemachine.Edge) {
 // and not "executed by" anyone in the same sense. TDD-stage classes
 // only set the stroke so they coexist with executor fill on the same
 // node (border + fill convey orthogonal signals).
-func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
-	var service, agent, human, errorEnd []string
-	var tddRed, tddGreen, tddRefactor []string
+func categorizeStyleNodes(process *statemachine.Process) (service, agent, human, errorEnd, tddRed, tddGreen, tddRefactor []string) {
 	ids := make([]string, 0, len(process.Nodes))
 	for id := range process.Nodes {
 		ids = append(ids, id)
@@ -594,6 +592,11 @@ func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
 			tddRefactor = append(tddRefactor, id)
 		}
 	}
+	return
+}
+
+func writeExecutorStyling(b *strings.Builder, process *statemachine.Process) {
+	service, agent, human, errorEnd, tddRed, tddGreen, tddRefactor := categorizeStyleNodes(process)
 	if len(service) > 0 {
 		b.WriteString("\n    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000\n")
 		fmt.Fprintf(b, "    class %s serviceNode\n", strings.Join(service, ","))

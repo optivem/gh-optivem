@@ -341,6 +341,14 @@ func enterParts(ev *Event) []string {
 	// The unrolling call-activity itself never trips this anyway: channel is
 	// pushed only on sub-process entry, after capture, so its ev.Params is the
 	// channel-agnostic parent scope and the chip simply doesn't fire.
+	return appendScopeDiscriminators(parts, ev)
+}
+
+// appendScopeDiscriminators adds inherited-scope discriminator chips (channel,
+// external-system-name) to parts. It skips any key already shown in a
+// CallActivity's params= chip to avoid duplication on the same line.
+func appendScopeDiscriminators(parts []string, ev *Event) []string {
+	node := ev.Node
 	for _, key := range []string{"channel", "external-system-name"} {
 		v := ev.Params[key]
 		if v == "" {

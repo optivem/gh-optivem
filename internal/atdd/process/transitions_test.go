@@ -933,6 +933,11 @@ func TestRedesignExternalSystemStructure_Wiring(t *testing.T) {
 	// 3. The per-system body: resolve + touched self-guard (the CT clone's), then
 	//    reshape consumer adapter → reconcile producer with test-names pinned
 	//    empty; an untouched clone skips.
+	checkRedesignPerSystemBody(t, eng)
+}
+
+func checkRedesignPerSystemBody(t *testing.T, eng *statemachine.Engine) {
+	t.Helper()
 	body, ok := eng.Processes["redesign-external-system-per-system"]
 	if !ok {
 		t.Fatalf("redesign-external-system-per-system process missing")

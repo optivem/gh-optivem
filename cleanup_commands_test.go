@@ -31,44 +31,51 @@ func TestParseSlugsRejectsBadShape(t *testing.T) {
 }
 
 func TestCommonFlagsToOptions(t *testing.T) {
-	t.Run("defaults", func(t *testing.T) {
-		f := commonFlags{DelaySecs: 10}
-		opt, err := f.toOptions()
-		if err != nil {
-			t.Fatalf("toOptions: %v", err)
-		}
-		if opt.DryRun {
-			t.Error("DryRun should default false")
-		}
-		if opt.DelayBetweenDeletes != 10*time.Second {
-			t.Errorf("delay = %v, want 10s", opt.DelayBetweenDeletes)
-		}
-		if !opt.BeforeDate.IsZero() {
-			t.Errorf("BeforeDate should be zero, got %v", opt.BeforeDate)
-		}
-	})
+	t.Run("defaults", func(t *testing.T) { testCommonFlagsDefaults(t) })
+	t.Run("before-date parses", func(t *testing.T) { testCommonFlagsBeforeDateParses(t) })
+	t.Run("before-date rejects bad format", func(t *testing.T) { testCommonFlagsRejectsBadFormat(t) })
+}
 
-	t.Run("before-date parses", func(t *testing.T) {
-		f := commonFlags{BeforeDate: "2026-01-15"}
-		opt, err := f.toOptions()
-		if err != nil {
-			t.Fatalf("toOptions: %v", err)
-		}
-		if opt.BeforeDate.Year() != 2026 || opt.BeforeDate.Month() != 1 || opt.BeforeDate.Day() != 15 {
-			t.Errorf("BeforeDate = %v, want 2026-01-15", opt.BeforeDate)
-		}
-	})
+func testCommonFlagsDefaults(t *testing.T) {
+	t.Helper()
+	f := commonFlags{DelaySecs: 10}
+	opt, err := f.toOptions()
+	if err != nil {
+		t.Fatalf("toOptions: %v", err)
+	}
+	if opt.DryRun {
+		t.Error("DryRun should default false")
+	}
+	if opt.DelayBetweenDeletes != 10*time.Second {
+		t.Errorf("delay = %v, want 10s", opt.DelayBetweenDeletes)
+	}
+	if !opt.BeforeDate.IsZero() {
+		t.Errorf("BeforeDate should be zero, got %v", opt.BeforeDate)
+	}
+}
 
-	t.Run("before-date rejects bad format", func(t *testing.T) {
-		f := commonFlags{BeforeDate: "01/15/2026"}
-		_, err := f.toOptions()
-		if err == nil {
-			t.Fatal("expected error for non-ISO date")
-		}
-		if !strings.Contains(err.Error(), "YYYY-MM-DD") {
-			t.Errorf("error should mention expected format: %v", err)
-		}
-	})
+func testCommonFlagsBeforeDateParses(t *testing.T) {
+	t.Helper()
+	f := commonFlags{BeforeDate: "2026-01-15"}
+	opt, err := f.toOptions()
+	if err != nil {
+		t.Fatalf("toOptions: %v", err)
+	}
+	if opt.BeforeDate.Year() != 2026 || opt.BeforeDate.Month() != 1 || opt.BeforeDate.Day() != 15 {
+		t.Errorf("BeforeDate = %v, want 2026-01-15", opt.BeforeDate)
+	}
+}
+
+func testCommonFlagsRejectsBadFormat(t *testing.T) {
+	t.Helper()
+	f := commonFlags{BeforeDate: "01/15/2026"}
+	_, err := f.toOptions()
+	if err == nil {
+		t.Fatal("expected error for non-ISO date")
+	}
+	if !strings.Contains(err.Error(), "YYYY-MM-DD") {
+		t.Errorf("error should mention expected format: %v", err)
+	}
 }
 
 func TestNewCleanupCmdSubcommands(t *testing.T) {

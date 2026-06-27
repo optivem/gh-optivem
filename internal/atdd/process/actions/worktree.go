@@ -20,13 +20,11 @@ import (
 // snapshot time and dirty afterwards still surfaces in the post-state
 // call).
 func (a actions) dirtyTreePaths(ctx context.Context) ([]string, error) {
-	gitArgs := func(extra ...string) []string {
-		if a.deps.RepoPath == "" {
-			return extra
-		}
-		return append([]string{"-C", a.deps.RepoPath}, extra...)
+	args := []string{"status", "--porcelain"}
+	if a.deps.RepoPath != "" {
+		args = append([]string{"-C", a.deps.RepoPath}, args...)
 	}
-	status, err := a.deps.Git.Run(ctx, gitArgs("status", "--porcelain")...)
+	status, err := a.deps.Git.Run(ctx, args...)
 	if err != nil {
 		return nil, fmt.Errorf("git status --porcelain: %w", err)
 	}
