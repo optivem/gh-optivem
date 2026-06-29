@@ -494,11 +494,49 @@ func (g *GitHub) hasRecentStartupFailure() bool {
 	return err == nil && strings.TrimSpace(out) != ""
 }
 
-// watchRunID streams a known run to completion, falling back to status polling
-// if `gh run watch` hits a rate limit mid-stream.
+// isTransientBadCredentials reports whether a failed gh command's combined
+// output carries GitHub's per-token-throttle signature — an HTTP 401 "Bad
+// credentials" returned (instead of 429/403) when concurrent jobs hammer
+// api.github.com with the same PAT. The token is valid; a retry clears it.
+// Mirrors the substring-detection style of Run's rate-limit check (above).
+func isTransientBadCredentials(out string) bool {
+	return strings.Contains(strings.ToLower(out), "bad credentials")
+}
+
+// watchRunID streams a known run to completion. Two recovery paths layer on top
+// of the plain `gh run watch`:
+//
+//   - Transient 401 "Bad credentials": GitHub's per-token throttle can return a
+//     401 (instead of 429/403) when concurrent matrix jobs hit api.github.com
+//     with the same PAT — the token is valid and a retry clears it (see
+//     isTransientBadCredentials). We retry the watch on the canonical backoff
+//     schedule. This narrowly overrides the package-wide hard-fail-on-4xx rule
+//     (classifyError / retryHardFail in retry.go) for the watch path only,
+//     mirroring how MustRunPostCreatePush overrides it for the post-create push
+//     window; the global rule must stay so check-* probes keep failing loud on
+//     4xx. Same transient is mitigated on the /user auth path by
+//     githubUserAuthCheck (internal/config/token_auth.go).
+//   - Rate limit: falls back to status polling (pollRunUntilComplete).
+//
+// The watch runs via runFn (the Run seam) so retry-path tests can stub it.
 func (g *GitHub) watchRunID(runID string, intervalSecs int) error {
 	log.Successf("Watching workflow run (polling every %ds): https://github.com/%s/actions/runs/%s", intervalSecs, g.Repo, runID)
-	_, err := Run(fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs), true, "")
+	watchCmd := fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs)
+	_, err := runWithRetryLoop(
+		func() (string, error) { return runFn(watchCmd, true, "") },
+		func(out string, err error) bool {
+			// Let a rate-limit error fall through to the polling fallback below;
+			// retry only on the transient 401 "Bad credentials" signature.
+			var rle *RateLimitExceeded
+			if errors.As(err, &rle) {
+				return false
+			}
+			return isTransientBadCredentials(out)
+		},
+		defaultRetryAttempts,
+		defaultRetryDelays,
+		"gh-watch-retry",
+	)
 	if err == nil {
 		return nil
 	}

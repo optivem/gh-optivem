@@ -139,12 +139,62 @@ func TestRepoExists_HardFail4xxNotARepoNotFoundStillErrors(t *testing.T) {
 	}
 }
 
+// TestWatchRunID_RetriesTransient401ThenSucceeds pins the per-token-throttle
+// mitigation: a transient HTTP 401 "Bad credentials" from `gh run watch` is
+// retried on the canonical backoff schedule, and a subsequent success returns
+// nil. Without this, a single throttle miss failed the whole stage even though
+// the token was valid (run 28361866952, prod-stage watch).
+func TestWatchRunID_RetriesTransient401ThenSucceeds(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	withFakeRunFn(t, func(n int) (string, error) {
+		if n == 1 {
+			return "failed to get run: HTTP 401: Bad credentials", errors.New("x")
+		}
+		return "", nil // watch succeeds on the retry
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	if err := gh.watchRunID("12345", 1); err != nil {
+		t.Fatalf("watchRunID: want nil after 401→success, got %v", err)
+	}
+	if len(sleeps) != 1 {
+		t.Fatalf("sleeps = %d, want 1 backoff between the 401 and the retry", len(sleeps))
+	}
+}
+
+// TestWatchRunID_NonTransientFailsFast confirms the watch retry is narrow: a
+// genuine non-401, non-rate-limit failure surfaces immediately with no retry,
+// so real breakage isn't papered over by the throttle mitigation.
+func TestWatchRunID_NonTransientFailsFast(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	var calls int32
+	withFakeRunFn(t, func(int) (string, error) {
+		atomic.AddInt32(&calls, 1)
+		return "command failed: some genuine error", errors.New("x")
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	if err := gh.watchRunID("12345", 1); err == nil {
+		t.Fatal("watchRunID: want error on non-transient failure, got nil")
+	}
+	if len(sleeps) != 0 {
+		t.Fatalf("sleeps = %d, want 0 (non-transient must not retry)", len(sleeps))
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("runFn calls = %d, want 1 (no retry on non-transient)", got)
+	}
+}
+
 // TestRunWatchWorkflow_AppearPollRetries504OnFirstAttempt covers Item 5: the
 // inner appear-poll RunCapture must retry on a transient before giving up.
-// We don't assert on the eventual RunWatchWorkflow return — gh run watch is
-// invoked via direct Run (not RunWithRetry, intentionally; it streams) so
-// it isn't stubbed and will fail. The test's assertion is "was the appear-
-// poll retry-aware?", which is verified by the runCaptureFn call count.
+// We don't assert on the eventual RunWatchWorkflow return — gh run watch runs
+// via runFn (the Run seam), left unstubbed here so it uses the real Run and
+// fails. The test's assertion is "was the appear-poll retry-aware?", which is
+// verified by the runCaptureFn call count.
 func TestRunWatchWorkflow_AppearPollRetries504OnFirstAttempt(t *testing.T) {
 	var sleeps []time.Duration
 	withFakeSleep(t, &sleeps)
