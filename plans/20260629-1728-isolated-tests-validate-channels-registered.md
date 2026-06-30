@@ -2,6 +2,11 @@
 
 # Plan: `validateChannelsRegistered` falsely flags isolated tests as orphan channels
 
+## TL;DR
+
+**Why:** `validateChannelsRegistered` in `channel.go` only checks `acceptance-<ch>` suite reports, but `@isolated` tests never appear in those reports — they run in `acceptance-isolated-<ch>` suites. The RED verify step also only runs `--suite=acceptance`, so no `acceptance-isolated-*` reports exist on disk when the validator checks, causing a hard halt on any ticket that produces isolated tests.
+**End result:** After the three fixes land, the validator will also look in `acceptance-isolated-*` reports (Fix A), the RED verify will produce those reports by running `--suite=acceptance-isolated` as well (Fix B), and the acceptance-test-writer prompt will document that `@isolated` tests must not use `forChannels()` (Fix C) — eliminating this false-halt class for all future isolated-test-producing tickets.
+
 Ticket: #76 — Bug: Order cancellation blackout on Dec 31 ends at 22:30 instead of 23:00
 Machine: ValentinaLaptop
 
