@@ -61,8 +61,8 @@ type SuiteResult struct {
 //     started the system via `gh optivem system start`).
 //  2. Filters suites per opts.Suite (a set; empty means all). Errors out
 //     with the available ids if any requested id doesn't match.
-//  3. Runs each remaining suite. After the last suite (or first failure),
-//     prints a summary table.
+//  3. Runs each remaining suite. After all suites run (regardless of
+//     individual failures), prints a summary table.
 //
 // testsCwd is tests.json's dir (setupCommands and suite.path resolve against
 // it). systemCwd is unused today but retained in the signature so callers don't
@@ -115,6 +115,13 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 	anyNamed := false
 	executedNames := map[string]bool{}
 
+	// firstErr holds the first suite command failure. The runner continues
+	// running all remaining suites rather than aborting on the first failure
+	// so that every partition writes its report to disk — validate-channels-
+	// registered reads those reports after the runner exits, and an early
+	// abort leaves the isolated partitions' reports absent (plan 20260629-1726).
+	var firstErr error
+
 	for _, suite := range suites {
 		start := time.Now()
 		executed, counted, names, err := runOneSuite(suite, tests.TestFilter, tests.TestFilterJoin, testsCwd, opts)
@@ -129,7 +136,10 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 			Duration: dur,
 		})
 		if err != nil {
-			return fmt.Errorf("suite %s: %w", suite.Name, err)
+			if firstErr == nil {
+				firstErr = fmt.Errorf("suite %s: %w", suite.Name, err)
+			}
+			continue
 		}
 		if counted {
 			anyCounted = true
@@ -141,6 +151,12 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 				executedNames[n] = true
 			}
 		}
+	}
+
+	// A suite command failure (e.g. RED verify) takes priority over the
+	// presence and zero-count checks, which are only meaningful for a clean run.
+	if firstErr != nil {
+		return firstErr
 	}
 
 	// For a named run with an observable report, the presence check subsumes
