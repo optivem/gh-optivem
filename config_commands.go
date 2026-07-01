@@ -309,20 +309,9 @@ func runConfigMigrate(path string) (bool, error) {
 	if path == "" {
 		return false, fmt.Errorf("config migrate: path is required")
 	}
-	raw, err := os.ReadFile(path)
+	root, doc, err := readConfigMigrateDoc(path)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return false, projectconfig.MissingFileError(path)
-		}
-		return false, fmt.Errorf("config migrate: read %s: %w", path, err)
-	}
-	var root yaml.Node
-	if err := yaml.Unmarshal(raw, &root); err != nil {
-		return false, fmt.Errorf("config migrate: parse %s: %w", path, err)
-	}
-	doc := documentMappingNode(&root)
-	if doc == nil {
-		return false, fmt.Errorf("config migrate: %s: top-level document is not a mapping", path)
+		return false, err
 	}
 	projectNode := mappingValue(doc, "project")
 	if projectNode == nil || projectNode.Kind != yaml.MappingNode {
@@ -330,43 +319,14 @@ func runConfigMigrate(path string) (bool, error) {
 	}
 
 	changed := false
-
-	// Back-fill project.provider when absent.
-	if mappingValue(projectNode, "provider") == nil {
-		url := scalarValue(mappingValue(projectNode, "url"))
-		provider := inferProvider(url)
-		prependMappingEntry(projectNode, "provider", provider)
+	if backfillProjectProvider(projectNode) {
 		changed = true
 	}
-
-	// Back-fill repos: when absent on a multi-repo project. inferRepos
-	// returns nil for configs the field shouldn't touch (mono-repo,
-	// missing architecture, no tier slugs) so this branch is a no-op for
-	// every layout that doesn't need iteration.
-	if mappingValue(doc, "repos") == nil {
-		paths := inferRepos(doc)
-		if len(paths) > 0 {
-			appendReposEntry(doc, paths)
-			changed = true
-		}
+	if backfillRepos(doc) {
+		changed = true
 	}
-
-	// Back-fill system.db-migration-path when absent on a config whose
-	// architecture is set. The migration set is shared infrastructure
-	// (one Flyway-ordered tree consumed by every SUT, 3 langs × 2
-	// archs) and the gh-optivem-owned default `system/db/migrations`
-	// matches the shop template's existing layout. Operators who set a
-	// non-default value are unaffected — back-fill applies only when the
-	// field is absent. This is the one-shot SSoT-join precedent
-	// (matching the pre-this-plan handling of sut-namespace): once the
-	// field exists, migrate never rewrites it.
-	systemNode := mappingValue(doc, "system")
-	if systemNode != nil && systemNode.Kind == yaml.MappingNode {
-		if scalarValue(mappingValue(systemNode, "architecture")) != "" &&
-			mappingValue(systemNode, "db-migration-path") == nil {
-			appendMappingEntry(systemNode, "db-migration-path", projectconfig.DefaultDbMigrationPath)
-			changed = true
-		}
+	if backfillDbMigrationPath(doc) {
+		changed = true
 	}
 
 	// Per doctrine, migrate does NOT back-fill missing canonical Family B
@@ -379,14 +339,95 @@ func runConfigMigrate(path string) (bool, error) {
 	if !changed {
 		return false, nil
 	}
-	out, err := yaml.Marshal(&root)
-	if err != nil {
-		return false, fmt.Errorf("config migrate: marshal: %w", err)
-	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
-		return false, fmt.Errorf("config migrate: write %s: %w", path, err)
+	if err := writeConfigMigrateDoc(path, root); err != nil {
+		return false, err
 	}
 	return true, nil
+}
+
+// readConfigMigrateDoc reads path and parses it via yaml.v3's Node API,
+// returning both the document root (for re-marshaling) and its top-level
+// mapping (for field lookups).
+func readConfigMigrateDoc(path string) (*yaml.Node, *yaml.Node, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil, projectconfig.MissingFileError(path)
+		}
+		return nil, nil, fmt.Errorf("config migrate: read %s: %w", path, err)
+	}
+	var root yaml.Node
+	if err := yaml.Unmarshal(raw, &root); err != nil {
+		return nil, nil, fmt.Errorf("config migrate: parse %s: %w", path, err)
+	}
+	doc := documentMappingNode(&root)
+	if doc == nil {
+		return nil, nil, fmt.Errorf("config migrate: %s: top-level document is not a mapping", path)
+	}
+	return &root, doc, nil
+}
+
+// writeConfigMigrateDoc marshals root back to YAML and writes it to path.
+func writeConfigMigrateDoc(path string, root *yaml.Node) error {
+	out, err := yaml.Marshal(root)
+	if err != nil {
+		return fmt.Errorf("config migrate: marshal: %w", err)
+	}
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		return fmt.Errorf("config migrate: write %s: %w", path, err)
+	}
+	return nil
+}
+
+// backfillProjectProvider adds project.provider, inferred from
+// project.url, when absent. Reports whether it made a change.
+func backfillProjectProvider(projectNode *yaml.Node) bool {
+	if mappingValue(projectNode, "provider") != nil {
+		return false
+	}
+	url := scalarValue(mappingValue(projectNode, "url"))
+	prependMappingEntry(projectNode, "provider", inferProvider(url))
+	return true
+}
+
+// backfillRepos adds repos: when absent on a multi-repo project.
+// inferRepos returns nil for configs the field shouldn't touch (mono-repo,
+// missing architecture, no tier slugs), so this is a no-op for every
+// layout that doesn't need iteration. Reports whether it made a change.
+func backfillRepos(doc *yaml.Node) bool {
+	if mappingValue(doc, "repos") != nil {
+		return false
+	}
+	paths := inferRepos(doc)
+	if len(paths) == 0 {
+		return false
+	}
+	appendReposEntry(doc, paths)
+	return true
+}
+
+// backfillDbMigrationPath adds system.db-migration-path when absent on a
+// config whose architecture is set. The migration set is shared
+// infrastructure (one Flyway-ordered tree consumed by every SUT, 3 langs
+// × 2 archs) and the gh-optivem-owned default `system/db/migrations`
+// matches the shop template's existing layout. Operators who set a
+// non-default value are unaffected — back-fill applies only when the
+// field is absent. This is the one-shot SSoT-join precedent (matching the
+// pre-this-plan handling of sut-namespace): once the field exists,
+// migrate never rewrites it. Reports whether it made a change.
+func backfillDbMigrationPath(doc *yaml.Node) bool {
+	systemNode := mappingValue(doc, "system")
+	if systemNode == nil || systemNode.Kind != yaml.MappingNode {
+		return false
+	}
+	if scalarValue(mappingValue(systemNode, "architecture")) == "" {
+		return false
+	}
+	if mappingValue(systemNode, "db-migration-path") != nil {
+		return false
+	}
+	appendMappingEntry(systemNode, "db-migration-path", projectconfig.DefaultDbMigrationPath)
+	return true
 }
 
 // inferRepos reads the document mapping and returns the project-internal

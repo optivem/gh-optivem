@@ -639,52 +639,75 @@ func (t *Tracker) fetchProjectItems(ctx context.Context, limit int) ([]projectIt
 		if remaining := limit - len(items); remaining < first {
 			first = remaining
 		}
-		args := []string{
-			"api", "graphql",
-			"-F", ghVarLogin + t.owner,
-			"-F", ghVarNumber + strconv.Itoa(t.number),
-			"-F", "first=" + strconv.Itoa(first),
-			"-f", ghVarQuery + query,
-		}
-		if after != "" {
-			args = append(args, "-F", "after="+after)
-		}
-		out, err := t.gh.Run(ctx, args...)
+		out, err := t.gh.Run(ctx, projectItemsPageArgs(t.owner, t.number, query, first, after)...)
 		if err != nil {
 			return nil, err
 		}
-		// Decode page. Use map[string]... at the data level so the same
-		// shape decodes whether ownerKind is "organization" or "user".
-		var resp projectItemsResponse
-		if err := json.Unmarshal(out, &resp); err != nil {
-			return nil, fmt.Errorf("github: parse projectV2 items: %w", err)
+		owned, err := decodeProjectItemsPage(out, t.ownerKind, t.owner, t.number)
+		if err != nil {
+			return nil, err
 		}
-		owned := resp.Data[t.ownerKind].ProjectV2
-		if owned == nil {
-			return nil, fmt.Errorf("github: project %s/#%d not found", t.owner, t.number)
-		}
-		for _, n := range owned.Items.Nodes {
-			items = append(items, projectItem{
-				ID:     n.ID,
-				Status: extractStatusFieldValue(n.FieldValues.Nodes),
-				Content: projectItemContent{
-					Type:       n.Content.Typename,
-					Number:     n.Content.Number,
-					URL:        n.Content.URL,
-					Title:      n.Content.Title,
-					Repository: n.Content.Repository.NameWithOwner,
-				},
-			})
-			if len(items) >= limit {
-				break
-			}
-		}
+		items = appendProjectItemsPage(items, owned.Items.Nodes, limit)
 		if !owned.Items.PageInfo.HasNextPage || owned.Items.PageInfo.EndCursor == "" {
 			break
 		}
 		after = owned.Items.PageInfo.EndCursor
 	}
 	return items, nil
+}
+
+// projectItemsPageArgs builds the `gh api graphql` arguments for one page
+// of fetchProjectItems, including the optional after-cursor.
+func projectItemsPageArgs(owner string, number int, query string, first int, after string) []string {
+	args := []string{
+		"api", "graphql",
+		"-F", ghVarLogin + owner,
+		"-F", ghVarNumber + strconv.Itoa(number),
+		"-F", "first=" + strconv.Itoa(first),
+		"-f", ghVarQuery + query,
+	}
+	if after != "" {
+		args = append(args, "-F", "after="+after)
+	}
+	return args
+}
+
+// decodeProjectItemsPage parses one page of projectItemsQuery output and
+// returns the owner's projectV2 payload. Use map[string]... at the data
+// level so the same shape decodes whether ownerKind is "organization" or
+// "user".
+func decodeProjectItemsPage(out []byte, ownerKind, owner string, number int) (*projectItemsResponseProjectV2, error) {
+	var resp projectItemsResponse
+	if err := json.Unmarshal(out, &resp); err != nil {
+		return nil, fmt.Errorf("github: parse projectV2 items: %w", err)
+	}
+	owned := resp.Data[ownerKind].ProjectV2
+	if owned == nil {
+		return nil, fmt.Errorf("github: project %s/#%d not found", owner, number)
+	}
+	return owned, nil
+}
+
+// appendProjectItemsPage flattens a page's item nodes onto items, stopping
+// once limit is reached.
+func appendProjectItemsPage(items []projectItem, nodes []projectItemNode, limit int) []projectItem {
+	for _, n := range nodes {
+		items = append(items, projectItem{
+			ID:     n.ID,
+			Status: extractStatusFieldValue(n.FieldValues.Nodes),
+			Content: projectItemContent{
+				Type:       n.Content.Typename,
+				Number:     n.Content.Number,
+				URL:        n.Content.URL,
+				Title:      n.Content.Title,
+				Repository: n.Content.Repository.NameWithOwner,
+			},
+		})
+		if len(items) >= limit {
+			break
+		}
+	}
+	return items
 }
 
 // extractStatusFieldValue walks an item's field-value nodes and returns

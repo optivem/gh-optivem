@@ -64,21 +64,32 @@ func TestValidateVerifyFlags(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := ValidateVerifyFlags(tc.langs, tc.deploy)
-			if tc.wantErr && err == nil {
-				t.Fatalf("expected error, got nil")
-			}
-			if !tc.wantErr && err != nil {
-				t.Fatalf("expected nil error, got %v", err)
-			}
-			if err == nil {
-				return
-			}
-			msg := err.Error()
-			for _, s := range tc.wantSubstrs {
-				if !strings.Contains(msg, s) {
-					t.Errorf("error missing substring %q. Got:\n%s", s, msg)
-				}
-			}
+			assertVerifyFlagsErr(t, err, tc.wantErr, tc.wantSubstrs)
 		})
+	}
+}
+
+func assertVerifyFlagsErr(t *testing.T, err error, wantErr bool, wantSubstrs []string) {
+	t.Helper()
+
+	if wantErr && err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !wantErr && err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if err == nil {
+		return
+	}
+	assertErrSubstrings(t, err.Error(), wantSubstrs)
+}
+
+func assertErrSubstrings(t *testing.T, msg string, wantSubstrs []string) {
+	t.Helper()
+
+	for _, s := range wantSubstrs {
+		if !strings.Contains(msg, s) {
+			t.Errorf("error missing substring %q. Got:\n%s", s, msg)
+		}
 	}
 }

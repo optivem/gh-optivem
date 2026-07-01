@@ -332,23 +332,7 @@ func (a actions) snapshotWorkingTree(ctx *statemachine.Context) statemachine.Out
 // a deliberately-permissive caller. We don't double-enforce.
 func readOutputsJSONL(path string, declared []statemachine.OutputSpec) (map[string]any, error) {
 	out := map[string]any{}
-	typeByKey := make(map[string]string, len(declared)+2)
-	for _, o := range declared {
-		typeByKey[o.Key] = o.Type
-	}
-	// Universal envelope keys (plan 20260528-1150). When the MID declares
-	// no outputs but the dispatcher seeded the envelope channel (because
-	// category: prod-agent), the JSONL may carry scope-exception-* lines
-	// the coercer must shape correctly — coerceJSONOutputValue's default
-	// branch returns the JSON-decoded []any as-is, but
-	// scopeExceptionRequested gate type-asserts []string, so an
-	// uncoerced value mis-routes the cycle to FIX. A MID-declared entry
-	// for the same key always wins (we only fill gaps).
-	for _, o := range statemachine.EnvelopeOutputSpecs() {
-		if _, ok := typeByKey[o.Key]; !ok {
-			typeByKey[o.Key] = o.Type
-		}
-	}
+	typeByKey := buildOutputTypeIndex(declared)
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -366,25 +350,58 @@ func readOutputsJSONL(path string, declared []statemachine.OutputSpec) (map[stri
 		if len(line) == 0 {
 			continue
 		}
-		var row map[string]any
-		if err := json.Unmarshal(line, &row); err != nil {
-			return nil, fmt.Errorf("agent emitted malformed output line: %q: %w", string(line), err)
-		}
-		if row == nil {
-			return nil, fmt.Errorf("agent emitted malformed output line: %q (not a JSON object)", string(line))
-		}
-		for k, v := range row {
-			coerced, err := coerceJSONOutputValue(k, v, typeByKey[k])
-			if err != nil {
-				return nil, err
-			}
-			out[k] = coerced
+		if err := applyOutputLine(line, typeByKey, out); err != nil {
+			return nil, err
 		}
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("read outputs file: %w", err)
 	}
 	return out, nil
+}
+
+// buildOutputTypeIndex merges the MID's declared OutputSpec types with the
+// universal envelope keys (plan 20260528-1150). When the MID declares no
+// outputs but the dispatcher seeded the envelope channel (because
+// category: prod-agent), the JSONL may carry scope-exception-* lines the
+// coercer must shape correctly — coerceJSONOutputValue's default branch
+// returns the JSON-decoded []any as-is, but scopeExceptionRequested gate
+// type-asserts []string, so an uncoerced value mis-routes the cycle to
+// FIX. A MID-declared entry for the same key always wins (we only fill
+// gaps).
+func buildOutputTypeIndex(declared []statemachine.OutputSpec) map[string]string {
+	typeByKey := make(map[string]string, len(declared)+2)
+	for _, o := range declared {
+		typeByKey[o.Key] = o.Type
+	}
+	for _, o := range statemachine.EnvelopeOutputSpecs() {
+		if _, ok := typeByKey[o.Key]; !ok {
+			typeByKey[o.Key] = o.Type
+		}
+	}
+	return typeByKey
+}
+
+// applyOutputLine decodes one JSONL line into a row of key/value pairs,
+// coerces each value per typeByKey, and merges the result into out
+// (last-write-wins across lines, since callers invoke this once per line
+// in file order).
+func applyOutputLine(line []byte, typeByKey map[string]string, out map[string]any) error {
+	var row map[string]any
+	if err := json.Unmarshal(line, &row); err != nil {
+		return fmt.Errorf("agent emitted malformed output line: %q: %w", string(line), err)
+	}
+	if row == nil {
+		return fmt.Errorf("agent emitted malformed output line: %q (not a JSON object)", string(line))
+	}
+	for k, v := range row {
+		coerced, err := coerceJSONOutputValue(k, v, typeByKey[k])
+		if err != nil {
+			return err
+		}
+		out[k] = coerced
+	}
+	return nil
 }
 
 // coerceJSONOutputValue normalises a value decoded from one JSONL line to

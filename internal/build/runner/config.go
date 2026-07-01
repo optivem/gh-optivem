@@ -187,48 +187,69 @@ func LoadTests(path string) (*TestsConfig, error) {
 	if err := unmarshalConfig(path, data, &cfg); err != nil {
 		return nil, fmt.Errorf("tests config %s: expected JSON or YAML file format, but content is not valid: %w", path, err)
 	}
-	for i, sc := range cfg.SetupCommands {
-		if sc.Name == "" {
-			return nil, fmt.Errorf("tests config %s: setupCommands[%d] missing name", path, i)
-		}
-		if sc.Command == "" {
-			return nil, fmt.Errorf("tests config %s: setupCommands[%d] (%s) missing command", path, i, sc.Name)
-		}
+	if err := validateSetupCommands(path, cfg.SetupCommands); err != nil {
+		return nil, err
 	}
 	if len(cfg.Suites) == 0 {
 		return nil, fmt.Errorf("tests config %s: suites[] is empty", path)
 	}
-	for i, s := range cfg.Suites {
-		if s.ID == "" {
-			return nil, fmt.Errorf("tests config %s: suites[%d] missing id", path, i)
-		}
-		if s.Name == "" {
-			return nil, fmt.Errorf("tests config %s: suites[%d] (%s) missing name", path, i, s.ID)
-		}
-		if s.Command == "" {
-			return nil, fmt.Errorf("tests config %s: suites[%d] (%s) missing command", path, i, s.ID)
-		}
-		// Reject non-portable path separators in the fields the runner resolves
-		// with filepath.Join (Path, TestReportPath, TestCountPath). A backslash
-		// is a directory separator on Windows but a literal filename character
-		// on Linux, so a Windows-authored `build\test-results\test` silently
-		// fails to resolve on a Linux CI runner — the report then reads as
-		// "0 executed", masquerading downstream as an empty selection. Caught
-		// here, at the source, for every run mode. Command/setupCommand are NOT
-		// checked: those are shell invocations that legitimately carry `.\` (e.g.
-		// `.\gradlew.bat`). This is a rejection, not a rewrite — the config must
-		// use forward slashes, which resolve on every OS.
-		for _, pf := range []struct{ key, val string }{
-			{"path", s.Path},
-			{"testReportPath", s.TestReportPath},
-			{"testCountPath", s.TestCountPath},
-		} {
-			if strings.Contains(pf.val, "\\") {
-				return nil, fmt.Errorf("tests config %s: suites[%d] (%s) %s %q uses a backslash separator — use forward slashes so the path resolves on every OS", path, i, s.ID, pf.key, pf.val)
-			}
-		}
+	if err := validateSuites(path, cfg.Suites); err != nil {
+		return nil, err
 	}
 	return &cfg, nil
+}
+
+func validateSetupCommands(path string, cmds []SetupCommand) error {
+	for i, sc := range cmds {
+		if sc.Name == "" {
+			return fmt.Errorf("tests config %s: setupCommands[%d] missing name", path, i)
+		}
+		if sc.Command == "" {
+			return fmt.Errorf("tests config %s: setupCommands[%d] (%s) missing command", path, i, sc.Name)
+		}
+	}
+	return nil
+}
+
+func validateSuites(path string, suites []Suite) error {
+	for i, s := range suites {
+		if s.ID == "" {
+			return fmt.Errorf("tests config %s: suites[%d] missing id", path, i)
+		}
+		if s.Name == "" {
+			return fmt.Errorf("tests config %s: suites[%d] (%s) missing name", path, i, s.ID)
+		}
+		if s.Command == "" {
+			return fmt.Errorf("tests config %s: suites[%d] (%s) missing command", path, i, s.ID)
+		}
+		if err := validateSuitePathSeparators(path, i, s); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateSuitePathSeparators rejects non-portable path separators in the
+// fields the runner resolves with filepath.Join (Path, TestReportPath,
+// TestCountPath). A backslash is a directory separator on Windows but a
+// literal filename character on Linux, so a Windows-authored
+// `build\test-results\test` silently fails to resolve on a Linux CI runner —
+// the report then reads as "0 executed", masquerading downstream as an empty
+// selection. Caught here, at the source, for every run mode.
+// Command/setupCommand are NOT checked: those are shell invocations that
+// legitimately carry `.\` (e.g. `.\gradlew.bat`). This is a rejection, not a
+// rewrite — the config must use forward slashes, which resolve on every OS.
+func validateSuitePathSeparators(path string, i int, s Suite) error {
+	for _, pf := range []struct{ key, val string }{
+		{"path", s.Path},
+		{"testReportPath", s.TestReportPath},
+		{"testCountPath", s.TestCountPath},
+	} {
+		if strings.Contains(pf.val, "\\") {
+			return fmt.Errorf("tests config %s: suites[%d] (%s) %s %q uses a backslash separator — use forward slashes so the path resolves on every OS", path, i, s.ID, pf.key, pf.val)
+		}
+	}
+	return nil
 }
 
 // FindSuite returns the suite with the given id, or nil if not found.

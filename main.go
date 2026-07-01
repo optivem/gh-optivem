@@ -256,22 +256,8 @@ the URL back into gh-optivem.yaml.`,
 // loadProjectConfigForInit resolves the gh-optivem.yaml path using the
 // shared flag > env > default cascade and produces a *projectconfig.Config
 // for init to consume. The cascade has two halves keyed off
-// projectconfig.ResolvePath's explicit return:
-//
-// Explicit path (operator passed --config / -c, or set GH_OPTIVEM_CONFIG):
-// honour today's behaviour — write the YAML at that path if missing +
-// YAML-affecting flags supplied; prompt-and-write at that path if missing
-// + TTY; terse MissingFileError otherwise. The operator chose the on-disk
-// location, so we always materialize there. Returns sourcePath = the
-// absolute path so the project-board step can write the auto-created URL
-// back into the same file.
-//
-// Default path (CWD/gh-optivem.yaml, no flag, no env var): keep the
-// config in memory and let steps.WriteOptivemYAML be the sole on-disk
-// writer (inside the scaffold dir). Pre-existing CWD files are still
-// loaded and respected — operator-authored input is never silently
-// relocated. Returns sourcePath = "" for the in-memory cases so
-// downstream guards on SourceConfigPath == "" short-circuit correctly.
+// projectconfig.ResolvePath's explicit return; see loadExplicitProjectConfig
+// and loadDefaultProjectConfig for what each half does.
 func loadProjectConfigForInit(flagPath string, f *config.RawFlags) (*projectconfig.Config, string, error) {
 	path, explicit := projectconfig.ResolvePath(flagPath)
 	abs, err := filepath.Abs(path)
@@ -280,24 +266,43 @@ func loadProjectConfigForInit(flagPath string, f *config.RawFlags) (*projectconf
 	}
 
 	if explicit {
-		if _, statErr := os.Stat(abs); errors.Is(statErr, fs.ErrNotExist) && hasYAMLAffectingFlags(f) {
-			if _, err := configinit.Run(f, abs, false); err != nil {
-				return nil, "", err
-			}
-		} else if err := configinit.EnsureExists(abs); err != nil {
-			return nil, "", err
-		}
-		pc, err := configcheck.LoadFromPath(abs)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				return nil, "", projectconfig.MissingFileError(abs)
-			}
-			return nil, "", err
-		}
-		return pc, abs, nil
+		return loadExplicitProjectConfig(abs, f)
 	}
+	return loadDefaultProjectConfig(abs, f)
+}
 
-	// Default path: respect a pre-existing CWD file (operator-authored input).
+// loadExplicitProjectConfig handles the case where the operator passed
+// --config / -c, or set GH_OPTIVEM_CONFIG: write the YAML at that path if
+// missing + YAML-affecting flags supplied; prompt-and-write at that path if
+// missing + TTY; terse MissingFileError otherwise. The operator chose the
+// on-disk location, so we always materialize there. Returns sourcePath =
+// the absolute path so the project-board step can write the auto-created
+// URL back into the same file.
+func loadExplicitProjectConfig(abs string, f *config.RawFlags) (*projectconfig.Config, string, error) {
+	if _, statErr := os.Stat(abs); errors.Is(statErr, fs.ErrNotExist) && hasYAMLAffectingFlags(f) {
+		if _, err := configinit.Run(f, abs, false); err != nil {
+			return nil, "", err
+		}
+	} else if err := configinit.EnsureExists(abs); err != nil {
+		return nil, "", err
+	}
+	pc, err := configcheck.LoadFromPath(abs)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, "", projectconfig.MissingFileError(abs)
+		}
+		return nil, "", err
+	}
+	return pc, abs, nil
+}
+
+// loadDefaultProjectConfig handles the CWD/gh-optivem.yaml, no flag, no env
+// var case: keep the config in memory and let steps.WriteOptivemYAML be the
+// sole on-disk writer (inside the scaffold dir). Pre-existing CWD files are
+// still loaded and respected — operator-authored input is never silently
+// relocated. Returns sourcePath = "" for the in-memory cases so downstream
+// guards on SourceConfigPath == "" short-circuit correctly.
+func loadDefaultProjectConfig(abs string, f *config.RawFlags) (*projectconfig.Config, string, error) {
 	if _, statErr := os.Stat(abs); statErr == nil {
 		pc, err := configcheck.LoadFromPath(abs)
 		if err != nil {

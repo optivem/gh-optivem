@@ -481,27 +481,34 @@ func mergeClaudeMD(claudeDir string) error {
 	return nil
 }
 
-// claudeMDMissingSections returns the ## sections from src that are not
-// already present in dst, matched by the ## header line.
-func claudeMDMissingSections(dst, src string) []string {
-	dstHeaders := make(map[string]bool)
-	for _, line := range strings.Split(dst, "\n") {
+// mdHeaders returns the set of ## header lines (trimmed) found in text.
+func mdHeaders(text string) map[string]bool {
+	headers := make(map[string]bool)
+	for _, line := range strings.Split(text, "\n") {
 		if strings.HasPrefix(line, "## ") {
-			dstHeaders[strings.TrimSpace(line)] = true
+			headers[strings.TrimSpace(line)] = true
 		}
 	}
+	return headers
+}
 
-	var sections []string
+// mdSection is one ## header and its body (including the header line) as
+// found in a CLAUDE.md-style document.
+type mdSection struct {
+	header string
+	body   string
+}
+
+// splitMDSections splits src into its ## sections, in order.
+func splitMDSections(src string) []mdSection {
+	var sections []mdSection
 	var current strings.Builder
 	var currentHeader string
 
 	for _, line := range strings.Split(src, "\n") {
 		if strings.HasPrefix(line, "## ") {
 			if currentHeader != "" {
-				sec := strings.TrimRight(current.String(), "\n")
-				if !dstHeaders[currentHeader] {
-					sections = append(sections, sec)
-				}
+				sections = append(sections, mdSection{header: currentHeader, body: strings.TrimRight(current.String(), "\n")})
 				current.Reset()
 			}
 			currentHeader = strings.TrimSpace(line)
@@ -512,9 +519,20 @@ func claudeMDMissingSections(dst, src string) []string {
 		}
 	}
 	if currentHeader != "" && current.Len() > 0 {
-		sec := strings.TrimRight(current.String(), "\n")
-		if !dstHeaders[currentHeader] {
-			sections = append(sections, sec)
+		sections = append(sections, mdSection{header: currentHeader, body: strings.TrimRight(current.String(), "\n")})
+	}
+	return sections
+}
+
+// claudeMDMissingSections returns the ## sections from src that are not
+// already present in dst, matched by the ## header line.
+func claudeMDMissingSections(dst, src string) []string {
+	dstHeaders := mdHeaders(dst)
+
+	var sections []string
+	for _, sec := range splitMDSections(src) {
+		if !dstHeaders[sec.header] {
+			sections = append(sections, sec.body)
 		}
 	}
 	return sections

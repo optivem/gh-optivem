@@ -858,6 +858,24 @@ func TestRenderPrompt_HeadlessSuffixOmittedWhenNotHeadless(t *testing.T) {
 // implementer prompt references it once and follows with a per-agent
 // appendix. If someone deletes the constant or unregisters the
 // substitution, this test fires.
+// reEntryPolicyAgentParams supplies the NodeParams each agent's body needs
+// directly, since this test bypasses the call-activity/unroll machinery that
+// normally binds them in production:
+//   - system-driver-adapter-implementer is channel-aware (plan 20260530-1725
+//     Item 0): its body references ${channel}, bound per channel by the
+//     adapter unroll.
+//   - dsl-implementer's body names the test layer via ${test-category}
+//     (acceptance/contract); production fills it from the inherited
+//     call-activity param scope.
+//   - external-system-driver-adapter-implementer is per-external-system
+//     (plan 20260615-0755): its body references ${external-system-name},
+//     bound by UnrollExternalSystems.
+var reEntryPolicyAgentParams = map[string]map[string]string{
+	"dsl-implementer":                            {"test-category": "contract"},
+	"system-driver-adapter-implementer":          {"channel": "api"},
+	"external-system-driver-adapter-implementer": {"external-system-name": "erp"},
+}
+
 func TestRenderPrompt_ReEntryPolicySubstitutes(t *testing.T) {
 	agentsToCheck := []string{
 		"dsl-implementer",
@@ -868,36 +886,24 @@ func TestRenderPrompt_ReEntryPolicySubstitutes(t *testing.T) {
 		t.Run(agent, func(t *testing.T) {
 			opts := newOpts()
 			opts.Agent = agent
-			// system-driver-adapter-implementer is channel-aware (plan
-			// 20260530-1725 Item 0): its body references ${channel}, bound per
-			// channel by the adapter unroll. Supply it directly for the render.
-			if agent == "system-driver-adapter-implementer" {
-				opts.NodeParams = map[string]string{"channel": "api"}
-			}
-			// dsl-implementer's body names the test layer via ${test-category}
-			// (acceptance/contract); production fills it from the inherited
-			// call-activity param scope. Supply it directly for the render.
-			if agent == "dsl-implementer" {
-				opts.NodeParams = map[string]string{"test-category": "contract"}
-			}
-			// external-system-driver-adapter-implementer is per-external-system
-			// (plan 20260615-0755): its body references ${external-system-name},
-			// bound by UnrollExternalSystems. Supply it directly for the render.
-			if agent == "external-system-driver-adapter-implementer" {
-				opts.NodeParams = map[string]string{"external-system-name": "erp"}
-			}
+			opts.NodeParams = reEntryPolicyAgentParams[agent]
 
 			got, err := renderPrompt(opts)
 			if err != nil {
 				t.Fatalf("renderPrompt(%s): %v", agent, err)
 			}
-			if strings.Contains(got, "${re-entry-policy}") {
-				t.Errorf("%s: ${re-entry-policy} survived in rendered prompt", agent)
-			}
-			if !strings.Contains(got, "If your previous WRITE didn't compile") {
-				t.Errorf("%s: rendered prompt missing re-entry-policy clause; got:\n%s", agent, got)
-			}
+			assertReEntryPolicySubstituted(t, agent, got)
 		})
+	}
+}
+
+func assertReEntryPolicySubstituted(t *testing.T, agent, got string) {
+	t.Helper()
+	if strings.Contains(got, "${re-entry-policy}") {
+		t.Errorf("%s: ${re-entry-policy} survived in rendered prompt", agent)
+	}
+	if !strings.Contains(got, "If your previous WRITE didn't compile") {
+		t.Errorf("%s: rendered prompt missing re-entry-policy clause; got:\n%s", agent, got)
 	}
 }
 
