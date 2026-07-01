@@ -34,7 +34,8 @@ jobs:
       - name: Install actionlint
         run: |
           set -euo pipefail
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          # Commit hash for tag v1.7.12 — pin to a commit, not a mutable tag (SonarCloud go:S8545).
+          go install github.com/rhysd/actionlint/cmd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
           actionlint --version
 
       - name: Build

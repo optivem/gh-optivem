@@ -2315,7 +2315,13 @@ func openFlowFile(runDir string) (*os.File, error) {
 // than warned — unlike the file-open path, there is nothing the operator
 // can act on.
 func headCommitSHA(repoPath string) string {
-	cmd := exec.Command("git", gitRevParse, "--short", "HEAD")
+	return gitOutput(repoPath, gitRevParse, "--short", "HEAD")
+}
+
+// gitOutput runs `git <args...>` in repoPath (or the current directory when
+// repoPath is empty) and returns trimmed stdout, or "" on any error.
+func gitOutput(repoPath string, args ...string) string {
+	cmd := exec.Command("git", args...)
 	if repoPath != "" {
 		cmd.Dir = repoPath
 	}
@@ -2332,15 +2338,7 @@ func headCommitSHA(repoPath string) string {
 // abbreviated so the `base..HEAD` range and the compare URL are
 // unambiguous.
 func fullHeadSHA(repoPath string) string {
-	cmd := exec.Command("git", gitRevParse, "HEAD")
-	if repoPath != "" {
-		cmd.Dir = repoPath
-	}
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return gitOutput(repoPath, gitRevParse, "HEAD")
 }
 
 // commitsSince returns the commits reachable from HEAD but not from
@@ -2413,15 +2411,7 @@ func compareURL(repoPath, baseSHA string, commitCount int) string {
 // currentBranch returns the checked-out branch name, "HEAD" in detached-
 // HEAD state, or "" on error.
 func currentBranch(repoPath string) string {
-	cmd := exec.Command("git", gitRevParse, "--abbrev-ref", "HEAD")
-	if repoPath != "" {
-		cmd.Dir = repoPath
-	}
-	out, err := cmd.Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
+	return gitOutput(repoPath, gitRevParse, "--abbrev-ref", "HEAD")
 }
 
 // remoteWebURL resolves the origin remote to its https browser URL,

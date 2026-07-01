@@ -194,13 +194,19 @@ func (t *Tracker) Verify(ctx context.Context) error {
 // issueTypeResponse mirrors the `gh api graphql` repository.issue.issueType
 // payload Classify reads.
 type issueTypeResponse struct {
-	Data struct {
-		Repository struct {
-			Issue struct {
-				IssueType *issueTypeNode `json:"issueType"`
-			} `json:"issue"`
-		} `json:"repository"`
-	} `json:"data"`
+	Data issueTypeResponseData `json:"data"`
+}
+
+type issueTypeResponseData struct {
+	Repository issueTypeResponseRepository `json:"repository"`
+}
+
+type issueTypeResponseRepository struct {
+	Issue issueTypeResponseIssue `json:"issue"`
+}
+
+type issueTypeResponseIssue struct {
+	IssueType *issueTypeNode `json:"issueType"`
 }
 
 type issueTypeNode struct {
@@ -480,17 +486,21 @@ type projectItemContent struct {
 // fetchProjectItems decodes. The map[string] at the data level absorbs the
 // "organization" vs "user" owner-kind alternation in a single shape.
 type projectItemsResponse struct {
-	Data map[string]struct {
-		ProjectV2 *struct {
-			Items struct {
-				PageInfo struct {
-					HasNextPage bool   `json:"hasNextPage"`
-					EndCursor   string `json:"endCursor"`
-				} `json:"pageInfo"`
-				Nodes []projectItemNode `json:"nodes"`
-			} `json:"items"`
-		} `json:"projectV2"`
-	} `json:"data"`
+	Data map[string]projectItemsResponseOwner `json:"data"`
+}
+
+type projectItemsResponseOwner struct {
+	ProjectV2 *projectItemsResponseProjectV2 `json:"projectV2"`
+}
+
+type projectItemsResponseProjectV2 struct {
+	Items struct {
+		PageInfo struct {
+			HasNextPage bool   `json:"hasNextPage"`
+			EndCursor   string `json:"endCursor"`
+		} `json:"pageInfo"`
+		Nodes []projectItemNode `json:"nodes"`
+	} `json:"items"`
 }
 
 type projectItemNode struct {
@@ -524,13 +534,15 @@ type projectItemNodeContent struct {
 // projectFieldsResponse mirrors the projectFieldsQuery payload
 // lookupStatusOption decodes when resolving the Status field + option IDs.
 type projectFieldsResponse struct {
-	Data map[string]struct {
-		ProjectV2 *struct {
-			Fields struct {
-				Nodes []projectField `json:"nodes"`
-			} `json:"fields"`
-		} `json:"projectV2"`
-	} `json:"data"`
+	Data map[string]projectFieldsResponseOwner `json:"data"`
+}
+
+type projectFieldsResponseOwner struct {
+	ProjectV2 *struct {
+		Fields struct {
+			Nodes []projectField `json:"nodes"`
+		} `json:"fields"`
+	} `json:"projectV2"`
 }
 
 type projectField struct {

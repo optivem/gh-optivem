@@ -2324,12 +2324,12 @@ func formatStreamEvent(line []byte) (string, bool) {
 			return "", false
 		}
 		if env.Result == "" {
-			return "─── result ───\n", true
+			return resultDivider, true
 		}
 		if strings.HasSuffix(env.Result, "\n") {
-			return "─── result ───\n" + env.Result, true
+			return resultDivider + env.Result, true
 		}
-		return "─── result ───\n" + env.Result + "\n", true
+		return resultDivider + env.Result + "\n", true
 	}
 	return "", true
 }

@@ -803,10 +803,10 @@ func lintHistoryOneRepo(repo, ref string, limit int) ([]string, error) {
 // remote-tracking ref is preferred so lint-history reports against the
 // authoritative trunk, not a stale local branch.
 func mainLintRef(repo string) string {
-	if exec.Command("git", "-C", repo, gitSubRevParse, "--verify", gitFlagQuiet, "origin/main").Run() == nil {
+	if _, err := captureGit(repo, gitSubRevParse, "--verify", gitFlagQuiet, "origin/main"); err == nil {
 		return "origin/main"
 	}
-	if exec.Command("git", "-C", repo, gitSubRevParse, "--verify", gitFlagQuiet, "main").Run() == nil {
+	if _, err := captureGit(repo, gitSubRevParse, "--verify", gitFlagQuiet, "main"); err == nil {
 		return "main"
 	}
 	return ""
@@ -1120,10 +1120,8 @@ func gitCachedClean(repo string) (bool, error) {
 // hasUpstream reports whether the repo's current branch has a remote tracking
 // branch. Repos without one are skipped — mirrors commit.sh:188 and sync.sh:30.
 func hasUpstream(repo string) bool {
-	cmd := exec.Command("git", "-C", repo, gitSubRevParse, gitFlagAbbrevRef, "--symbolic-full-name", "@{u}")
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	return cmd.Run() == nil
+	_, err := captureGit(repo, gitSubRevParse, gitFlagAbbrevRef, "--symbolic-full-name", "@{u}")
+	return err == nil
 }
 
 // untrackedLines returns the lines from `git status --short` that begin with

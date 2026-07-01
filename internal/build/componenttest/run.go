@@ -308,7 +308,11 @@ func selectComponents(all []Component, requested []string) ([]Component, error) 
 // dockerAvailable reports whether a Docker daemon is reachable, by running
 // `docker info` quietly (output discarded — this is a preflight, not a suite).
 func dockerAvailable() bool {
-	cmd := exec.Command("docker", "info")
+	dockerPath, err := exec.LookPath("docker")
+	if err != nil {
+		return false
+	}
+	cmd := exec.Command(dockerPath, "info")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	return cmd.Run() == nil

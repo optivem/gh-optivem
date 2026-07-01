@@ -64,9 +64,6 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: read
-
 jobs:
   preflight:
     name: Preflight
@@ -89,6 +86,8 @@ jobs:
   commit-stage:
     name: Commit Stage
     uses: ./.github/workflows/gh-commit-stage.yml
+    permissions:
+      contents: read
     secrets: inherit
 
   check:
@@ -98,6 +97,8 @@ jobs:
       ${{ !failure() && !cancelled() &&
       (inputs.debug-shop-head || needs.preflight.outputs.shop-release-exists == 'true') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       verify-level: ${{ steps.mode.outputs.verify-level }}
       head-mode: ${{ steps.mode.outputs.head-mode }}
@@ -156,7 +157,8 @@ jobs:
       # the same command path a real user runs, not a CI-only shortcut.
       - name: Install actionlint
         # Pinned to match shop's lint-workflows.yml — see acceptance-test/action.yml.
-        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+        # Commit hash for tag v1.7.12 — pin to a commit, not a mutable tag (SonarCloud go:S8545).
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
 
       - name: Verify acceptance pipeline environment
         env:
@@ -477,6 +479,8 @@ jobs:
       needs.check.outputs.verify-level != 'none' &&
       needs.check.outputs.smoke-matrix != '{"include":[]}' }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
       GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -527,6 +531,8 @@ jobs:
       needs.check.outputs.matrix != '{"include":[]}' &&
       (needs.smoke.result == 'success' || needs.smoke.result == 'skipped') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       VERIFY_TOKEN: ${{ secrets.VERIFY_TOKEN }}
       GH_TOKEN: ${{ secrets.VERIFY_TOKEN }}
@@ -663,6 +669,8 @@ jobs:
     needs: [smoke, run, create-prerelease]
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v6

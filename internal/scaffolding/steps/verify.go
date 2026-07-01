@@ -27,6 +27,8 @@ const (
 
 	msgStagePassed = "%s passed!"
 	msgStageFailed = "%s failed!"
+
+	commitStageWorkflowFile = "commit-stage.yml"
 )
 
 // VerifyCompileSystem compiles the system tier(s) locally to catch broken
@@ -165,15 +167,19 @@ func VerifyPushPathsFilter(cfg *config.Config) {
 }
 
 func isCommitStageWorkflow(name string) bool {
-	return name == "commit-stage.yml" || strings.HasSuffix(name, "-commit-stage.yml")
+	return name == commitStageWorkflowFile || strings.HasSuffix(name, "-commit-stage.yml")
 }
 
 type pushPathsFilter struct {
-	On struct {
-		Push struct {
-			Paths []string `yaml:"paths"`
-		} `yaml:"push"`
-	} `yaml:"on"`
+	On pushPathsFilterOn `yaml:"on"`
+}
+
+type pushPathsFilterOn struct {
+	Push pushPathsFilterPush `yaml:"push"`
+}
+
+type pushPathsFilterPush struct {
+	Paths []string `yaml:"paths"`
 }
 
 func checkPushPathsFilter(wfPath, repoDir string) {
@@ -270,10 +276,10 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 	if cfg.Arch == "monolith" {
 		if cfg.RepoStrategy == "monorepo" {
-			verifyNamedWorkflow(gh, "Commit stage", "commit-stage.yml", 60)
+			verifyNamedWorkflow(gh, "Commit stage", commitStageWorkflowFile, 60)
 		} else {
 			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
-			verifyNamedWorkflow(ghSystem, "Commit stage", "commit-stage.yml", 60)
+			verifyNamedWorkflow(ghSystem, "Commit stage", commitStageWorkflowFile, 60)
 		}
 	} else if cfg.RepoStrategy == "monorepo" {
 		verifyNamedWorkflow(gh, "Backend commit stage", "backend-commit-stage.yml", 60)
