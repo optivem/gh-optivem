@@ -22,6 +22,7 @@ type tokenRoutes struct {
 	dockerhub http.HandlerFunc
 	sonar     http.HandlerFunc
 	github    map[string]http.HandlerFunc
+	ghcr      http.HandlerFunc
 }
 
 func routedAuthClient(routes tokenRoutes) *http.Client {
@@ -52,6 +53,13 @@ func routedAuthClient(routes tokenRoutes) *http.Client {
 			w.Header().Set("X-OAuth-Scopes", "repo, workflow, write:packages, read:packages")
 			w.WriteHeader(http.StatusOK)
 			_, _ = io.WriteString(w, `{"login":"test-user"}`)
+		case "ghcr.io":
+			if routes.ghcr != nil {
+				routes.ghcr(w, req)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{"token":"jwt"}`)
 		default:
 			w.WriteHeader(http.StatusOK)
 		}
@@ -223,5 +231,35 @@ func TestVerifyEnvironment_GitHubMissingScope(t *testing.T) {
 				t.Errorf("error missing hint %q for %s. Got:\n%s", tc.hintSubstr, tc.envVar, msg)
 			}
 		})
+	}
+}
+
+// TestVerifyEnvironment_GHCROCIExchangeFails covers the gap this plan closes:
+// GHCR_TOKEN passes the api.github.com scope check (200, read:packages) but
+// the actual ghcr.io OCI token exchange returns no bearer — the case that
+// let a bad token slip through scaffold-time verification and only fail
+// later in the scheduled runtime pipeline.
+func TestVerifyEnvironment_GHCROCIExchangeFails(t *testing.T) {
+	plantHappyTools(t)
+	setAllEnvTokens(t)
+	stubShellSleep(t)
+
+	client := routedAuthClient(tokenRoutes{
+		ghcr: func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = io.WriteString(w, `{"errors":[{"code":"DENIED","message":"requested access to the resource is denied"}]}`)
+		},
+	})
+
+	err := verifyEnvironmentWithClient(nil, "", client)
+	if err == nil {
+		t.Fatal("expected error when the ghcr.io token exchange returns no bearer, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "GHCR_TOKEN") {
+		t.Errorf("error did not name GHCR_TOKEN. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "Failed to obtain a GHCR registry token from ghcr.io") {
+		t.Errorf("error did not include the OCI-exchange failure hint. Got:\n%s", msg)
 	}
 }

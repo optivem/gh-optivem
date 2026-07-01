@@ -106,7 +106,8 @@ the CLI consumes is present and accepted by its provider.
   DOCKERHUB_USERNAME  — read from env, used for the Docker Hub login call
   DOCKERHUB_TOKEN     — POST hub.docker.com/v2/users/login
   SONAR_TOKEN         — GET sonarcloud.io/api/authentication/validate
-  GHCR_TOKEN          — GET api.github.com/user (and read:packages scope)
+  GHCR_TOKEN          — GET api.github.com/user (and read:packages scope),
+                        then the real ghcr.io OCI token exchange
   WORKFLOW_TOKEN      — GET api.github.com/user (and repo + workflow scopes)
   REPO_TOKEN          — GET api.github.com/user (and repo scope)
   npm                 — required when --lang includes typescript

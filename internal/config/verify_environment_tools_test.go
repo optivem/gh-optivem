@@ -18,7 +18,8 @@ import (
 //   - hub.docker.com         → 200 {"token":"jwt"}
 //   - sonarcloud.io          → 200 {"valid":true}
 //   - api.github.com         → 200 with X-OAuth-Scopes covering every scope
-//                              VerifyEnvironment asks for
+//     VerifyEnvironment asks for
+//   - ghcr.io                → 200 {"token":"jwt"} (OCI token exchange)
 func happyAuthClient() *http.Client {
 	return &http.Client{Transport: &fakeRoundTripper{handler: func(w http.ResponseWriter, req *http.Request) {
 		switch req.URL.Host {
@@ -32,6 +33,9 @@ func happyAuthClient() *http.Client {
 			w.Header().Set("X-OAuth-Scopes", "repo, workflow, write:packages, read:packages")
 			w.WriteHeader(http.StatusOK)
 			_, _ = io.WriteString(w, `{"login":"test-user"}`)
+		case "ghcr.io":
+			w.WriteHeader(http.StatusOK)
+			_, _ = io.WriteString(w, `{"token":"jwt"}`)
 		default:
 			w.WriteHeader(http.StatusOK)
 		}

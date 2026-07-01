@@ -12,6 +12,79 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
+// TestGhcrOCITokenExchange_EmptyTokenFails covers the failure path this plan
+// closes: ghcr.io answers 200 but the body carries no `.token` (or answers
+// an auth-denied 4xx), so the exchange must fail loud instead of the caller
+// treating a missing bearer as success.
+func TestGhcrOCITokenExchange_EmptyTokenFails(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "200 with no token field", status: http.StatusOK, body: `{}`},
+		{name: "403 denied", status: http.StatusForbidden, body: `{"errors":[{"code":"DENIED"}]}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := newTestClient(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = io.WriteString(w, tc.body)
+			})
+
+			err := ghcrOCITokenExchange(client, "tok", "some-owner")
+			if err == nil {
+				t.Fatal("expected error when ghcr.io returns no bearer, got nil")
+			}
+			if !strings.Contains(err.Error(), "Failed to obtain a GHCR registry token from ghcr.io") {
+				t.Errorf("error missing OCI-exchange hint. Got: %v", err)
+			}
+		})
+	}
+}
+
+// TestGhcrOCITokenExchange_Succeeds is the happy-path parity case: a
+// non-empty `.token` in the body is accepted regardless of status-code
+// nuance, mirroring ghcr_bearer_for in ghcr-probe.sh.
+func TestGhcrOCITokenExchange_Succeeds(t *testing.T) {
+	client := newTestClient(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"token":"bearer-jwt"}`)
+	})
+
+	if err := ghcrOCITokenExchange(client, "tok", "some-owner"); err != nil {
+		t.Fatalf("expected success, got error: %v", err)
+	}
+}
+
+// TestWarnIfExpiringSoon covers the three states of the classic-PAT
+// expiration header: absent (fine-grained tokens / OAuth apps), present with
+// plenty of runway, and present within the 7-day escalation window. The
+// function only logs — these tests just confirm it doesn't panic or error
+// on any shape of input, since log output isn't captured here.
+func TestWarnIfExpiringSoon(t *testing.T) {
+	cases := []struct {
+		name   string
+		header string
+	}{
+		{name: "absent", header: ""},
+		{name: "far in the future", header: time.Now().Add(365 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout)},
+		{name: "within 7 days", header: time.Now().Add(3 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout)},
+		{name: "unparseable", header: "not-a-date"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := &http.Response{Header: http.Header{}}
+			if tc.header != "" {
+				resp.Header.Set(githubTokenExpirationHeader, tc.header)
+			}
+			warnIfExpiringSoon(resp, "GHCR_TOKEN") // must not panic
+		})
+	}
+}
+
 // fakeRoundTripper routes every outgoing request to a single test handler,
 // regardless of the hardcoded host (hub.docker.com / sonarcloud.io /
 // api.github.com). Lets us exercise the retry wrappers without exposing

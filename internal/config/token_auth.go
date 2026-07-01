@@ -242,6 +242,8 @@ func verifyGitHubToken(client *http.Client, token, name string, requiredScopes [
 		return fmt.Errorf("unexpected HTTP %d from GitHub", resp.StatusCode)
 	}
 
+	warnIfExpiringSoon(resp, name)
+
 	// X-OAuth-Scopes is comma-separated for classic PATs (e.g. "repo, workflow").
 	scopes := resp.Header.Get("X-OAuth-Scopes")
 	if scopes == "" {
@@ -262,14 +264,12 @@ func verifyGitHubToken(client *http.Client, token, name string, requiredScopes [
 }
 
 // verifyGHCRToken validates the GHCR_TOKEN as a GitHub PAT via the GitHub
-// API, then confirms it carries the 'read:packages' (and ideally
-// 'write:packages') scope required to pull/push images from GHCR.
-//
-// We don't authenticate against ghcr.io/v2/ directly because Docker
-// Registry v2 uses a bearer-token exchange flow — plain basic auth against
-// /v2/ can return 401 even for valid credentials. Verifying the underlying
-// PAT via api.github.com is faster and gives a clearer error message.
-func verifyGHCRToken(client *http.Client, username, token string) error {
+// API, confirms it carries the 'read:packages' (and ideally
+// 'write:packages') scope required to pull/push images from GHCR, then
+// exercises the actual ghcr.io OCI bearer-token exchange the runtime
+// pipelines depend on (see ghcrOCITokenExchange) — the api.github.com check
+// alone can pass for a token that ghcr.io's own auth flow still rejects.
+func verifyGHCRToken(client *http.Client, token string) error {
 	resp, err := githubUserAuthCheck(client, token)
 	if err != nil {
 		return err
@@ -292,7 +292,104 @@ func verifyGHCRToken(client *http.Client, username, token string) error {
 		return fmt.Errorf("GHCR_TOKEN is missing required package scopes (current scopes: %s).\n    "+
 			"Regenerate the token with write:packages + read:packages at https://github.com/settings/tokens", scopes)
 	}
+
+	warnIfExpiringSoon(resp, "GHCR_TOKEN")
+
+	body, _ := io.ReadAll(resp.Body)
+	var user struct {
+		Login string `json:"login"`
+	}
+	_ = json.Unmarshal(body, &user)
+	if user.Login == "" {
+		return fmt.Errorf("could not determine the GitHub account for GHCR_TOKEN (empty /user response) — " +
+			"cannot verify the ghcr.io token exchange")
+	}
+
+	return ghcrOCITokenExchange(client, token, user.Login)
+}
+
+// ghcrOCITokenExchange performs the same ghcr.io OCI bearer-token exchange
+// the runtime pipelines rely on (academy/actions/shared/ghcr-probe.sh:38-49),
+// so a token that fails the real registry auth flow is caught here instead
+// of only in a scheduled CI run.
+//
+// The scope path is scopeOwner + a fixed "probe" placeholder repo, not a
+// real package — confirmed live against ghcr.io/token that the exchange
+// issues a bearer identically whether the scoped repo exists or not (a
+// missing package fails the later manifest request, not the token exchange
+// itself), so no real target package is needed to validate the token.
+func ghcrOCITokenExchange(client *http.Client, token, scopeOwner string) error {
+	url := fmt.Sprintf("https://ghcr.io/token?service=ghcr.io&scope=repository:%s/probe:pull", scopeOwner)
+
+	var statusCode int
+	var respBody []byte
+	_, retryErr := shell.RetryWithPolicy(
+		shell.RetryTransient(), shell.RetryHardFail(), "ghcr-token-exchange-retry",
+		func() (string, error) {
+			req, err := http.NewRequest("GET", url, nil)
+			if err != nil {
+				return "", fmt.Errorf(errFmtBuildRequest, err)
+			}
+			req.SetBasicAuth("x-access-token", token)
+			resp, err := client.Do(req)
+			if err != nil {
+				return err.Error(), fmt.Errorf(errFmtNetwork, err)
+			}
+			defer resp.Body.Close()
+			statusCode = resp.StatusCode
+			respBody, _ = io.ReadAll(resp.Body)
+			summary := fmt.Sprintf("HTTP %d\n%s", statusCode, string(respBody))
+			if statusCode >= 500 {
+				return summary, fmt.Errorf("HTTP %d from ghcr.io", statusCode)
+			}
+			return summary, nil
+		})
+	if retryErr != nil && statusCode == 0 {
+		return retryErr
+	}
+
+	var body struct {
+		Token string `json:"token"`
+	}
+	_ = json.Unmarshal(respBody, &body)
+	if body.Token == "" {
+		return fmt.Errorf("Failed to obtain a GHCR registry token from ghcr.io (HTTP %d) — the OCI token "+
+			"exchange the runtime pipelines depend on returned no bearer.\n    "+
+			"Verify GHCR_TOKEN carries write:packages + read:packages scopes and is not expired/revoked\n    "+
+			"at https://github.com/settings/tokens\n    Response: %s",
+			statusCode, truncate(string(respBody), 200))
+	}
 	return nil
+}
+
+// githubTokenExpirationHeader is set by GitHub on classic-PAT responses
+// (absent for fine-grained tokens and OAuth apps).
+const githubTokenExpirationHeader = "github-authentication-token-expiration"
+
+// githubTokenExpirationLayout matches GitHub's documented format, e.g.
+// "2026-07-08 00:00:00 UTC".
+const githubTokenExpirationLayout = "2006-01-02 15:04:05 MST"
+
+// warnIfExpiringSoon reads the classic-PAT expiration header, if present,
+// and logs a warning with the expiration date — escalated when the token
+// expires within 7 days, since these PATs back cron-scheduled pipelines
+// that will start failing silently once they lapse.
+func warnIfExpiringSoon(resp *http.Response, name string) {
+	raw := resp.Header.Get(githubTokenExpirationHeader)
+	if raw == "" {
+		return
+	}
+	expiresAt, err := time.Parse(githubTokenExpirationLayout, raw)
+	if err != nil {
+		return
+	}
+	until := time.Until(expiresAt)
+	if until <= 7*24*time.Hour {
+		log.Warnf("%s expires %s (in %s) — rotate it soon; this backs a cron-scheduled pipeline "+
+			"that will start failing silently once it lapses.", name, expiresAt.Format("2006-01-02"), until.Round(time.Hour))
+		return
+	}
+	log.Warnf("%s expires %s.", name, expiresAt.Format("2006-01-02"))
 }
 
 // VerifyEnvironment runs every readiness check the gh-optivem CLI needs
@@ -377,7 +474,7 @@ func verifyEnvironmentWithClient(langs []string, deploy string, client *http.Cli
 		checks = append(checks,
 			check{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
 			check{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
-			check{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.dockerHubUsername, e.ghcrToken) }},
+			check{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.ghcrToken) }},
 			check{"WORKFLOW_TOKEN", func() error {
 				return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN", []string{"repo", "workflow"})
 			}},
