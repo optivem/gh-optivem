@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Batch CC=19–20 items (next-easiest wins, ~10 items): `claude_commands.go` L449 (CC=19), `main.go` L275 (CC=19), `internal/atdd/process/clauderun/clauderun_test.go` L861 (CC=19), `internal/atdd/runtime/driver/driver.go` L705 (CC=19), `internal/atdd/runtime/tracker/github/github.go` L549 (CC=19), `internal/config/verify_flags_test.go` L14 (CC=19), `internal/kernel/projectconfig/config_test.go` L491 (CC=19), `internal/atdd/process/actions/outputs.go` L325 (CC=20), `internal/build/runner/config.go` L181 (CC=20), `config_commands.go` L308 (CC=20). Read each, extract helpers, run package tests, commit.
+Batch CC=19–20 items (next-easiest wins, ~8 items): `claude_commands.go` L486 (CC=19), `main.go` L275 (CC=19), `internal/atdd/process/clauderun/clauderun_test.go` L861 (CC=19), `internal/atdd/runtime/tracker/github/github.go` L633 (CC=19), `internal/config/verify_flags_test.go` L14 (CC=19), `internal/atdd/process/actions/outputs.go` L333 (CC=20), `internal/build/runner/config.go` L181 (CC=20), `config_commands.go` L308 (CC=20). Read each, extract helpers, run package tests, commit.
 
 **Run started:** 2026-06-25 09:44 UTC
 **Source:** `/fix-sonar-warnings` run on `gh-optivem` (SonarCloud project `optivem_gh-optivem`).
@@ -39,15 +39,15 @@ Work one function at a time. For each:
 Group by file to amortize context. SonarCloud re-analysis clears each finding on
 the next commit-stage run — no API mutation needed.
 
-## Items (87 findings across 50 files)
+## Items (84 findings across 48 files)
 
 ### `claude_commands.go` (2)
-- [ ] L349 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
-- [ ] L449 — Refactor this method to reduce its Cognitive Complexity from 19 to the 15 allowed.
+- [ ] L386 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
+- [ ] L486 — Refactor this method to reduce its Cognitive Complexity from 19 to the 15 allowed.
 
 ### `cleanup_commands.go` (2)
-- [ ] L260 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
-- [ ] L356 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
+- [ ] L267 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
+- [ ] L363 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
 
 ### `compile_summary.go` (1)
 - [ ] L76 — Refactor this method to reduce its Cognitive Complexity from 28 to the 15 allowed.
@@ -60,51 +60,51 @@ the next commit-stage run — no API mutation needed.
 - [ ] L111 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
 
 ### `cross_repo_commands.go` (3)
-- [ ] L142 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
-- [ ] L503 — Refactor this method to reduce its Cognitive Complexity from 52 to the 15 allowed.
-- [ ] L281 — Refactor this method to reduce its Cognitive Complexity from 37 to the 15 allowed.
+- [ ] L150 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
+- [ ] L511 — Refactor this method to reduce its Cognitive Complexity from 52 to the 15 allowed.
+- [ ] L289 — Refactor this method to reduce its Cognitive Complexity from 37 to the 15 allowed.
 
 ### `doctor_orphans.go` (2)
 - [ ] L62 — Refactor this method to reduce its Cognitive Complexity from 20 to the 15 allowed.
 - [ ] L161 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
 
 ### `internal/atdd/phase_scopes_test.go` (1)
-- [ ] L298 — Refactor this method to reduce its Cognitive Complexity from 28 to the 15 allowed.
+- [ ] L303 — Refactor this method to reduce its Cognitive Complexity from 28 to the 15 allowed.
 
 ### `internal/atdd/process/actions/bindings_test.go` (5)
 - [ ] L475 — Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed.
 - [ ] L392 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
 - [ ] L1024 — Refactor this method to reduce its Cognitive Complexity from 27 to the 15 allowed.
-- [ ] L2407 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
-- [ ] L2487 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
+- [ ] L2393 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
+- [ ] L2473 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
 
 ### `internal/atdd/process/actions/command.go` (1)
-- [ ] L91 — Refactor this method to reduce its Cognitive Complexity from 23 to the 15 allowed.
+- [ ] L95 — Refactor this method to reduce its Cognitive Complexity from 23 to the 15 allowed.
 
 ### `internal/atdd/process/actions/fix_progress_test.go` (1)
 - [ ] L14 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
 
 ### `internal/atdd/process/actions/outputs.go` (2)
-- [ ] L114 — Refactor this method to reduce its Cognitive Complexity from 42 to the 15 allowed.
-- [ ] L325 — Refactor this method to reduce its Cognitive Complexity from 20 to the 15 allowed.
+- [ ] L122 — Refactor this method to reduce its Cognitive Complexity from 42 to the 15 allowed.
+- [ ] L333 — Refactor this method to reduce its Cognitive Complexity from 20 to the 15 allowed.
 
 ### `internal/atdd/process/actions/scope.go` (1)
-- [ ] L159 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
+- [ ] L164 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
 
 ### `internal/atdd/process/clauderun/clauderun.go` (4)
-- [ ] L1116 — Refactor this method to reduce its Cognitive Complexity from 49 to the 15 allowed.
-- [ ] L600 — Refactor this method to reduce its Cognitive Complexity from 20 to the 15 allowed.
-- [ ] L799 — Refactor this method to reduce its Cognitive Complexity from 31 to the 15 allowed.
-- [ ] L2235 — Refactor this method to reduce its Cognitive Complexity from 39 to the 15 allowed.
+- [ ] L1122 — Refactor this method to reduce its Cognitive Complexity from 49 to the 15 allowed.
+- [ ] L606 — Refactor this method to reduce its Cognitive Complexity from 20 to the 15 allowed.
+- [ ] L805 — Refactor this method to reduce its Cognitive Complexity from 31 to the 15 allowed.
+- [ ] L2251 — Refactor this method (`formatStreamEvent`) to reduce its Cognitive Complexity from 39 to the 15 allowed.
 
 ### `internal/atdd/process/clauderun/clauderun_test.go` (1)
 - [ ] L861 — Refactor this method to reduce its Cognitive Complexity from 19 to the 15 allowed.
 
 ### `internal/atdd/process/gates/bindings_test.go` (4)
-- [ ] L579 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
-- [ ] L661 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
-- [ ] L731 — Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed.
-- [ ] L819 — Refactor this method to reduce its Cognitive Complexity from 29 to the 15 allowed.
+- [ ] L565 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
+- [ ] L641 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
+- [ ] L711 — Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed.
+- [ ] L799 — Refactor this method to reduce its Cognitive Complexity from 29 to the 15 allowed.
 
 ### `internal/atdd/process/run_default_test.go` (4)
 - [ ] L37 — Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed.
@@ -117,11 +117,10 @@ the next commit-stage run — no API mutation needed.
 - [ ] L541 — Refactor this method to reduce its Cognitive Complexity from 33 to the 15 allowed.
 - [ ] L689 — Refactor this method to reduce its Cognitive Complexity from 33 to the 15 allowed.
 
-### `internal/atdd/runtime/driver/driver.go` (4)
+### `internal/atdd/runtime/driver/driver.go` (3)
 - [ ] L256 — Refactor this method to reduce its Cognitive Complexity from 55 to the 15 allowed.
 - [ ] L2117 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
 - [ ] L1200 — Refactor this method to reduce its Cognitive Complexity from 48 to the 15 allowed.
-- [ ] L705 — Refactor this method to reduce its Cognitive Complexity from 19 to the 15 allowed.
 
 ### `internal/atdd/runtime/driver/embedded_smoke_test.go` (1)
 - [ ] L36 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
@@ -143,7 +142,7 @@ the next commit-stage run — no API mutation needed.
 - [ ] L132 — Refactor this method to reduce its Cognitive Complexity from 37 to the 15 allowed.
 
 ### `internal/atdd/runtime/tracker/github/github.go` (1)
-- [ ] L549 — Refactor this method to reduce its Cognitive Complexity from 19 to the 15 allowed.
+- [ ] L633 — Refactor this method to reduce its Cognitive Complexity from 19 to the 15 allowed.
 
 ### `internal/build/compiler/compiler_test.go` (1)
 - [ ] L119 — Refactor this method to reduce its Cognitive Complexity from 27 to the 15 allowed.
@@ -165,7 +164,7 @@ the next commit-stage run — no API mutation needed.
 - [ ] L15 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
 
 ### `internal/build/runner/tests.go` (2)
-- [ ] L421 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
+- [ ] L441 — Refactor this method (`runOneSuite`) to reduce its Cognitive Complexity from 25 to the 15 allowed.
 - [ ] L73 — Refactor this method to reduce its Cognitive Complexity from 35 to the 15 allowed.
 
 ### `internal/config/config.go` (1)
@@ -196,12 +195,9 @@ the next commit-stage run — no API mutation needed.
 - [ ] L347 — Refactor this method to reduce its Cognitive Complexity from 32 to the 15 allowed.
 - [ ] L175 — Refactor this method to reduce its Cognitive Complexity from 30 to the 15 allowed.
 
-### `internal/engine/statemachine/reuse_process_test.go` (1)
-- [ ] L62 — Refactor this method to reduce its Cognitive Complexity from 20 to the 15 allowed.
-
 ### `internal/engine/statemachine/run.go` (2)
-- [ ] L230 — Refactor this method to reduce its Cognitive Complexity from 32 to the 15 allowed.
-- [ ] L44 — Refactor this method to reduce its Cognitive Complexity from 33 to the 15 allowed.
+- [ ] L249 — Refactor this method (`runProcess`) to reduce its Cognitive Complexity from 32 to the 15 allowed.
+- [ ] L51 — Refactor this method to reduce its Cognitive Complexity from 33 to the 15 allowed.
 
 ### `internal/kernel/approval/approval.go` (1)
 - [ ] L159 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
@@ -211,9 +207,6 @@ the next commit-stage run — no API mutation needed.
 - [ ] L1247 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
 - [ ] L1101 — Refactor this method to reduce its Cognitive Complexity from 20 to the 15 allowed.
 - [ ] L673 — Refactor this method to reduce its Cognitive Complexity from 124 to the 15 allowed.
-
-### `internal/kernel/projectconfig/config_test.go` (1)
-- [ ] L491 — Refactor this method to reduce its Cognitive Complexity from 19 to the 15 allowed.
 
 ### `internal/kernel/shell/retrycore_test.go` (1)
 - [ ] L15 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
