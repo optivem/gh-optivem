@@ -607,18 +607,9 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	deps = deps.withDefaults()
 	opts = opts.withDefaults()
 
-	prompt := opts.RawPrompt
-	if prompt == "" {
-		var err error
-		prompt, err = renderPrompt(opts)
-		if err != nil {
-			return RunResult{}, fmt.Errorf("clauderun: render prompt: %w", err)
-		}
-		if leftovers := findUnfilledPlaceholders(prompt); len(leftovers) > 0 {
-			return RunResult{}, fmt.Errorf(
-				"clauderun: prompt has unfilled placeholders after substitution: %s\n  this usually means the field was not seeded into Context.State before dispatch — check seedScopeState and preResolveIssue",
-				strings.Join(leftovers, ", "))
-		}
+	prompt, err := resolveDispatchPrompt(opts)
+	if err != nil {
+		return RunResult{}, err
 	}
 
 	if opts.PromptLogPath != "" {
@@ -678,68 +669,13 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	// plans/20260623-0910-classify-headless-result-text-for-retry.md.
 	var (
 		runResult        RunResult
-		lastStderr       []byte
 		lastClassifyText string
 		startedAt        time.Time
 	)
 	attempt := func() (string, error) {
-		// Fresh stderr capture per attempt so the classifier sees only this
-		// attempt's failure tail, not a previous attempt's. Tee so we keep the
-		// operator-visible stream; bounded to a reasonable cap to avoid
-		// pathological memory growth on a chatty runner.
-		var stderrCapture cappedBuffer
-		stderrCapture.cap = 64 * 1024
-		runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
-
-		// Headless-only stdout capture, same bounded tee as stderr above. The
-		// stream-json error lands on stdout (see the haystack note above), so
-		// fold it into the classification text. Interactive mode is left
-		// untouched: its TUI keys interactivity off stdout being a real TTY, so
-		// wrapping runnerStdout in a MultiWriter would break rendering (the
-		// runnerStdout note above flags exactly this).
-		var stdoutCapture cappedBuffer
-		runStdout := runnerStdout
-		if opts.Headless {
-			stdoutCapture.cap = 64 * 1024
-			runStdout = io.MultiWriter(runnerStdout, &stdoutCapture)
-		}
-
-		startedAt = nowFn()
 		var runErr error
-		runResult, runErr = deps.Claude.Run(ctx, RunOpts{
-			Prompt:            prompt,
-			Headless:          opts.Headless,
-			Model:             opts.Model,
-			Effort:            opts.Effort,
-			Dir:               opts.RepoPath,
-			Stdin:             opts.Stdin,
-			Stdout:            runStdout,
-			Stderr:            runStderr,
-			Out:               opts.Out,
-			OutputFilePath:    opts.OutputFilePath,
-			OutputKeysSpec:    opts.OutputKeysSpec,
-			EventsLogPath:     opts.EventsLogPath,
-			EventsTextLogPath: opts.EventsTextLogPath,
-			PidFilePath:       opts.PidFilePath,
-			Approval:          opts.Approval,
-		})
-		lastStderr = stderrCapture.Bytes()
-		if runErr != nil {
-			writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
-			// Hand RetryWithPolicy the combined failure tail across stderr, the
-			// parsed headless result text, and the captured stdout tail: it
-			// retries only when this matches transientStderrRegex and not
-			// hardFailStderrRegex. Same string feeds classifyRunError below so
-			// the rate-limit / auth friendly message also fires when the signal
-			// arrived on stdout rather than stderr.
-			lastClassifyText = strings.Join([]string{
-				string(lastLines(lastStderr, 20)),
-				runResult.ResultText,
-				string(lastLines(stdoutCapture.Bytes(), 20)),
-			}, "\n")
-			return lastClassifyText, runErr
-		}
-		return "", nil
+		runResult, lastClassifyText, startedAt, runErr = runDispatchAttempt(ctx, deps, opts, runnerStdout, prompt)
+		return lastClassifyText, runErr
 	}
 
 	if _, runErr := shell.RetryWithPolicy(transientStderrRegex, hardFailStderrRegex, "clauderun", attempt); runErr != nil {
@@ -766,6 +702,87 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 
 	writeExitBanner(opts, len(changed), nowFn().Sub(startedAt), runResult.Usage, nil)
 	return runResult, nil
+}
+
+// resolveDispatchPrompt returns opts.RawPrompt verbatim when set, otherwise
+// renders the embedded per-agent prompt and rejects it if any ${name}
+// placeholder survived substitution.
+func resolveDispatchPrompt(opts Options) (string, error) {
+	if opts.RawPrompt != "" {
+		return opts.RawPrompt, nil
+	}
+	prompt, err := renderPrompt(opts)
+	if err != nil {
+		return "", fmt.Errorf("clauderun: render prompt: %w", err)
+	}
+	if leftovers := findUnfilledPlaceholders(prompt); len(leftovers) > 0 {
+		return "", fmt.Errorf(
+			"clauderun: prompt has unfilled placeholders after substitution: %s\n  this usually means the field was not seeded into Context.State before dispatch — check seedScopeState and preResolveIssue",
+			strings.Join(leftovers, ", "))
+	}
+	return prompt, nil
+}
+
+// runDispatchAttempt runs a single agent subprocess attempt for Dispatch's
+// shell.RetryWithPolicy loop and reports back the classification text
+// RetryWithPolicy and classifyRunError need on failure.
+//
+// Fresh stderr/stdout capture per attempt so the classifier sees only this
+// attempt's failure tail, not a previous attempt's. Tee so we keep the
+// operator-visible stream; bounded to a reasonable cap to avoid pathological
+// memory growth on a chatty runner. The stdout tee is headless-only: the
+// stream-json error lands on stdout in that mode (see the haystack note on
+// Dispatch), so it's folded into the classification text there. Interactive
+// mode is left untouched: its TUI keys interactivity off stdout being a real
+// TTY, so wrapping runnerStdout in a MultiWriter would break rendering (the
+// runnerStdout note on Dispatch flags exactly this).
+func runDispatchAttempt(ctx context.Context, deps Deps, opts Options, runnerStdout io.Writer, prompt string) (RunResult, string, time.Time, error) {
+	var stderrCapture cappedBuffer
+	stderrCapture.cap = 64 * 1024
+	runStderr := io.MultiWriter(opts.Stderr, &stderrCapture)
+
+	var stdoutCapture cappedBuffer
+	runStdout := runnerStdout
+	if opts.Headless {
+		stdoutCapture.cap = 64 * 1024
+		runStdout = io.MultiWriter(runnerStdout, &stdoutCapture)
+	}
+
+	startedAt := nowFn()
+	runResult, runErr := deps.Claude.Run(ctx, RunOpts{
+		Prompt:            prompt,
+		Headless:          opts.Headless,
+		Model:             opts.Model,
+		Effort:            opts.Effort,
+		Dir:               opts.RepoPath,
+		Stdin:             opts.Stdin,
+		Stdout:            runStdout,
+		Stderr:            runStderr,
+		Out:               opts.Out,
+		OutputFilePath:    opts.OutputFilePath,
+		OutputKeysSpec:    opts.OutputKeysSpec,
+		EventsLogPath:     opts.EventsLogPath,
+		EventsTextLogPath: opts.EventsTextLogPath,
+		PidFilePath:       opts.PidFilePath,
+		Approval:          opts.Approval,
+	})
+	if runErr == nil {
+		return runResult, "", startedAt, nil
+	}
+
+	writeExitBanner(opts, 0, nowFn().Sub(startedAt), runResult.Usage, runErr)
+	// Hand RetryWithPolicy the combined failure tail across stderr, the
+	// parsed headless result text, and the captured stdout tail: it retries
+	// only when this matches transientStderrRegex and not hardFailStderrRegex.
+	// Same string feeds classifyRunError in Dispatch so the rate-limit / auth
+	// friendly message also fires when the signal arrived on stdout rather
+	// than stderr.
+	classifyText := strings.Join([]string{
+		string(lastLines(stderrCapture.Bytes(), 20)),
+		runResult.ResultText,
+		string(lastLines(stdoutCapture.Bytes(), 20)),
+	}, "\n")
+	return runResult, classifyText, startedAt, runErr
 }
 
 // nowFn is a package-level seam so tests can pin elapsed time in banner

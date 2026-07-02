@@ -60,10 +60,7 @@ var pidFileRe = regexp.MustCompile(`^([0-9]+)-([a-z0-9][a-z0-9-]*)\.pid$`)
 var runDirRe = regexp.MustCompile(`^(.+)-([0-9]+)$`)
 
 func runDoctorOrphans(stdin io.Reader, stdout io.Writer) error {
-	fmt.Fprintln(stdout, separator)
-	fmt.Fprintln(stdout, "  Doctor — orphan claude subprocesses from crashed implement runs")
-	fmt.Fprintln(stdout, separator)
-	fmt.Fprintln(stdout)
+	printOrphansHeader(stdout)
 
 	stateDir, err := userstate.Dir()
 	if err != nil {
@@ -76,9 +73,43 @@ func runDoctorOrphans(stdin io.Reader, stdout io.Writer) error {
 		return fmt.Errorf("doctor --orphans: scan %s: %w", runsDir, err)
 	}
 
-	var orphans []pidMarkerFile
-	staleCleaned := 0
-	live := 0
+	orphans, staleCleaned, live := classifyPidMarkers(files)
+	reportOrphanCleanupCounts(stdout, staleCleaned, live)
+	if len(orphans) == 0 {
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "  No orphan claude subprocesses found.")
+		fmt.Fprintln(stdout, separator)
+		return nil
+	}
+
+	printOrphanList(stdout, orphans)
+
+	result, err := killOrphansInteractive(stdin, stdout, orphans)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, separator)
+	if result.killFailures > 0 {
+		return fmt.Errorf("doctor --orphans: %d kill(s) failed", result.killFailures)
+	}
+	return nil
+}
+
+// printOrphansHeader writes the doctor --orphans banner.
+func printOrphansHeader(stdout io.Writer) {
+	fmt.Fprintln(stdout, separator)
+	fmt.Fprintln(stdout, "  Doctor — orphan claude subprocesses from crashed implement runs")
+	fmt.Fprintln(stdout, separator)
+	fmt.Fprintln(stdout)
+}
+
+// classifyPidMarkers splits files into stale (child already dead, and
+// removed as a side effect), live (parent still running — touching it
+// would race the running implement), and orphan (parent gone, child
+// still alive).
+func classifyPidMarkers(files []pidMarkerFile) (orphans []pidMarkerFile, staleCleaned, live int) {
 	for _, f := range files {
 		switch {
 		case !processAlive(f.Marker.ChildPid):
@@ -87,27 +118,27 @@ func runDoctorOrphans(stdin io.Reader, stdout io.Writer) error {
 			_ = os.Remove(f.Path)
 			staleCleaned++
 		case processAlive(f.Marker.ParentPid):
-			// Parent still running → live dispatch in progress.
-			// Touching it would race the running implement; skip.
 			live++
 		default:
 			orphans = append(orphans, f)
 		}
 	}
+	return orphans, staleCleaned, live
+}
 
+// reportOrphanCleanupCounts prints the stale-cleaned and live-skipped
+// tallies, if non-zero.
+func reportOrphanCleanupCounts(stdout io.Writer, staleCleaned, live int) {
 	if staleCleaned > 0 {
 		fmt.Fprintf(stdout, "  Cleaned up %d stale marker file(s) (child already dead).\n", staleCleaned)
 	}
 	if live > 0 {
 		fmt.Fprintf(stdout, "  Skipped %d marker(s) for live dispatches in progress.\n", live)
 	}
-	if len(orphans) == 0 {
-		fmt.Fprintln(stdout)
-		fmt.Fprintln(stdout, "  No orphan claude subprocesses found.")
-		fmt.Fprintln(stdout, separator)
-		return nil
-	}
+}
 
+// printOrphanList prints the found-orphans listing with per-entry age.
+func printOrphanList(stdout io.Writer, orphans []pidMarkerFile) {
 	fmt.Fprintln(stdout)
 	fmt.Fprintf(stdout, "  Found %d orphan claude subprocess(es):\n\n", len(orphans))
 	now := time.Now()
@@ -117,13 +148,17 @@ func runDoctorOrphans(stdin io.Reader, stdout io.Writer) error {
 		fmt.Fprintf(stdout, "      cwd: %s\n", o.Marker.Cwd)
 	}
 	fmt.Fprintln(stdout)
+}
 
+// killOrphansInteractive prompts the operator per orphan and kills the
+// ones they confirm, tallying kill failures in the returned result.
+func killOrphansInteractive(stdin io.Reader, stdout io.Writer, orphans []pidMarkerFile) (orphanScanResult, error) {
 	result := orphanScanResult{}
 	for _, o := range orphans {
 		prompt := fmt.Sprintf("Kill pid %d (%s, %s)?", o.Marker.ChildPid, o.Agent, o.RunTimestamp)
 		yes, err := promptio.ConfirmYN(stdin, stdout, prompt)
 		if err != nil {
-			return fmt.Errorf("doctor --orphans: prompt: %w", err)
+			return result, fmt.Errorf("doctor --orphans: prompt: %w", err)
 		}
 		if !yes {
 			fmt.Fprintf(stdout, "  Kept pid %d.\n", o.Marker.ChildPid)
@@ -140,13 +175,7 @@ func runDoctorOrphans(stdin io.Reader, stdout io.Writer) error {
 		}
 		fmt.Fprintf(stdout, "  ✓ Killed pid %d and removed marker.\n", o.Marker.ChildPid)
 	}
-
-	fmt.Fprintln(stdout)
-	fmt.Fprintln(stdout, separator)
-	if result.killFailures > 0 {
-		return fmt.Errorf("doctor --orphans: %d kill(s) failed", result.killFailures)
-	}
-	return nil
+	return result, nil
 }
 
 // loadPidMarkers walks runsDir and returns every parseable PID marker

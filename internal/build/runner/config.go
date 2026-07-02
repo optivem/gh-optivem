@@ -153,27 +153,34 @@ func LoadSystem(path string) (*SystemConfig, error) {
 		return nil, fmt.Errorf("system config %s: systems[] is empty", path)
 	}
 	for i, s := range cfg.Systems {
-		if s.Label == "" {
-			return nil, fmt.Errorf("system config %s: systems[%d] missing label", path, i)
-		}
-		if s.ComposeFile == "" {
-			return nil, fmt.Errorf("system config %s: systems[%d] (%s) missing composeFile", path, i, s.Label)
-		}
-		for j, c := range s.Components {
-			if c.Name == "" {
-				return nil, fmt.Errorf("system config %s: systems[%d] (%s) components[%d] missing name", path, i, s.Label, j)
-			}
-		}
-		for j, e := range s.ExternalSystems {
-			if e.Name == "" {
-				return nil, fmt.Errorf("system config %s: systems[%d] (%s) externalSystems[%d] missing name", path, i, s.Label, j)
-			}
-			if e.URL == "" {
-				return nil, fmt.Errorf("system config %s: systems[%d] (%s) externalSystems[%d] (%s) missing url", path, i, s.Label, j, e.Name)
-			}
+		if err := validateSystemEntry(path, i, s); err != nil {
+			return nil, err
 		}
 	}
 	return &cfg, nil
+}
+
+func validateSystemEntry(path string, i int, s SystemEntry) error {
+	if s.Label == "" {
+		return fmt.Errorf("system config %s: systems[%d] missing label", path, i)
+	}
+	if s.ComposeFile == "" {
+		return fmt.Errorf("system config %s: systems[%d] (%s) missing composeFile", path, i, s.Label)
+	}
+	for j, c := range s.Components {
+		if c.Name == "" {
+			return fmt.Errorf("system config %s: systems[%d] (%s) components[%d] missing name", path, i, s.Label, j)
+		}
+	}
+	for j, e := range s.ExternalSystems {
+		if e.Name == "" {
+			return fmt.Errorf("system config %s: systems[%d] (%s) externalSystems[%d] missing name", path, i, s.Label, j)
+		}
+		if e.URL == "" {
+			return fmt.Errorf("system config %s: systems[%d] (%s) externalSystems[%d] (%s) missing url", path, i, s.Label, j, e.Name)
+		}
+	}
+	return nil
 }
 
 // LoadTests reads and validates tests.{yaml,json} from path. The format is

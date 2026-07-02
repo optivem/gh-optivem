@@ -1104,12 +1104,19 @@ func (c *Config) validateSystemDriverAdapterChannels() error {
 	for _, ch := range c.Channels {
 		declared[ch] = struct{}{}
 	}
+	if err := validateDeclaredAdapterMembers(members, declared, c.Channels); err != nil {
+		return err
+	}
+	return c.validateAdapterMembersCoverage(members)
+}
+
+// validateDeclaredAdapterMembers checks the first two bullets of Rule 24: every
+// member names a declared channel, and every member value is a fully resolved,
+// repo-relative path.
+func validateDeclaredAdapterMembers(members map[string]string, declared map[string]struct{}, channels []string) error {
 	for _, ch := range sortedKeys(members) {
 		if _, ok := declared[ch]; !ok {
-			if lower := strings.ToLower(ch); lower != ch && isCanonicalChannel(lower) {
-				return fmt.Errorf("config: system-test.system-driver-adapter-channels: member %q must be lowercase; did you mean %q?", ch, lower)
-			}
-			return fmt.Errorf("config: system-test.system-driver-adapter-channels: member %q is not a declared channel (channels: %v)", ch, c.Channels)
+			return undeclaredAdapterChannelError(ch, channels)
 		}
 		val := members[ch]
 		if strings.Contains(val, "${") {
@@ -1119,19 +1126,36 @@ func (c *Config) validateSystemDriverAdapterChannels() error {
 			return err
 		}
 	}
-	if c.System.Architecture != "" {
-		var missing []string
-		for _, ch := range c.Channels {
-			if members[ch] == "" {
-				missing = append(missing, ch)
-			}
-		}
-		if len(missing) > 0 {
-			sort.Strings(missing)
-			return fmt.Errorf("config: system.architecture is set; system-test.system-driver-adapter-channels is missing a member for declared channel(s) %v (each channel needs an explicit adapter path — derive is rejected)", missing)
+	return nil
+}
+
+// undeclaredAdapterChannelError builds the error for a member whose channel
+// isn't declared, offering a did-you-mean when a casing slip on a real
+// channel is the likely cause.
+func undeclaredAdapterChannelError(ch string, channels []string) error {
+	if lower := strings.ToLower(ch); lower != ch && isCanonicalChannel(lower) {
+		return fmt.Errorf("config: system-test.system-driver-adapter-channels: member %q must be lowercase; did you mean %q?", ch, lower)
+	}
+	return fmt.Errorf("config: system-test.system-driver-adapter-channels: member %q is not a declared channel (channels: %v)", ch, channels)
+}
+
+// validateAdapterMembersCoverage checks the third bullet of Rule 24: once
+// system.architecture is set, every declared channel has a member.
+func (c *Config) validateAdapterMembersCoverage(members map[string]string) error {
+	if c.System.Architecture == "" {
+		return nil
+	}
+	var missing []string
+	for _, ch := range c.Channels {
+		if members[ch] == "" {
+			missing = append(missing, ch)
 		}
 	}
-	return nil
+	if len(missing) == 0 {
+		return nil
+	}
+	sort.Strings(missing)
+	return fmt.Errorf("config: system.architecture is set; system-test.system-driver-adapter-channels is missing a member for declared channel(s) %v (each channel needs an explicit adapter path — derive is rejected)", missing)
 }
 
 // validateSonar enforces Rules 17/18. Split out to keep Validate's body

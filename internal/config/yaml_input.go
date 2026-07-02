@@ -53,47 +53,8 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 		f.Deploy = projectconfig.DeployDocker
 	}
 
-	// Tier paths + langs.
-	switch f.Arch {
-	case "monolith":
-		if pc.System.Path == "" || pc.System.Repo == "" || pc.System.Lang == "" {
-			return missingYAMLField("system.{path,repo,lang}")
-		}
-		f.SystemPath = pc.System.Path
-		f.Lang = pc.System.Lang
-	case "multitier":
-		if pc.System.Backend.IsEmpty() || pc.System.Frontend.IsEmpty() {
-			return missingYAMLField("system.backend / system.frontend")
-		}
-		f.BackendPath = pc.System.Backend.Path
-		f.FrontendPath = pc.System.Frontend.Path
-		f.BackendLang = pc.System.Backend.Lang
-		f.FrontendLang = pc.System.Frontend.Lang
-	case "microservices":
-		// Microservices is YAML-authored only (D7): the service list comes from
-		// the backend-services: map (mirroring external-systems:), never from
-		// flags. Project Validate has already enforced the shape (>=1 service,
-		// per-service completeness, single frontend); fill the RawFlags carrier
-		// in sorted-name order so the scaffolder iterates deterministically.
-		if len(pc.System.BackendServices) == 0 {
-			return missingYAMLField("system.backend-services")
-		}
-		if pc.System.Frontend.IsEmpty() {
-			return missingYAMLField("system.frontend")
-		}
-		for _, name := range pc.BackendServiceNames() {
-			svc := pc.System.BackendServices[name]
-			f.BackendServices = append(f.BackendServices, BackendService{
-				Name:         name,
-				Path:         svc.Path,
-				Lang:         svc.Lang,
-				Repo:         svc.Repo,
-				SonarProject: svc.SonarProject,
-			})
-		}
-		f.FrontendPath = pc.System.Frontend.Path
-		f.FrontendLang = pc.System.Frontend.Lang
-		f.FrontendRepoSlug = pc.System.Frontend.Repo
+	if err := fillTierFieldsFromYAML(f, pc); err != nil {
+		return err
 	}
 
 	if pc.SystemTest.IsEmpty() {
@@ -112,6 +73,69 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 	}
 	f.Owner = owner
 	f.Repo = repo
+	return nil
+}
+
+// fillTierFieldsFromYAML dispatches to the per-architecture tier-path/lang
+// filler for f.Arch.
+func fillTierFieldsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
+	switch f.Arch {
+	case "monolith":
+		return fillMonolithFieldsFromYAML(f, pc)
+	case "multitier":
+		return fillMultitierFieldsFromYAML(f, pc)
+	case "microservices":
+		return fillMicroservicesFieldsFromYAML(f, pc)
+	}
+	return nil
+}
+
+func fillMonolithFieldsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
+	if pc.System.Path == "" || pc.System.Repo == "" || pc.System.Lang == "" {
+		return missingYAMLField("system.{path,repo,lang}")
+	}
+	f.SystemPath = pc.System.Path
+	f.Lang = pc.System.Lang
+	return nil
+}
+
+func fillMultitierFieldsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
+	if pc.System.Backend.IsEmpty() || pc.System.Frontend.IsEmpty() {
+		return missingYAMLField("system.backend / system.frontend")
+	}
+	f.BackendPath = pc.System.Backend.Path
+	f.FrontendPath = pc.System.Frontend.Path
+	f.BackendLang = pc.System.Backend.Lang
+	f.FrontendLang = pc.System.Frontend.Lang
+	return nil
+}
+
+// fillMicroservicesFieldsFromYAML fills the backend-services + frontend
+// carrier fields. Microservices is YAML-authored only (D7): the service
+// list comes from the backend-services: map (mirroring external-systems:),
+// never from flags. Project Validate has already enforced the shape (>=1
+// service, per-service completeness, single frontend); fill the RawFlags
+// carrier in sorted-name order so the scaffolder iterates deterministically.
+func fillMicroservicesFieldsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
+	if len(pc.System.BackendServices) == 0 {
+		return missingYAMLField("system.backend-services")
+	}
+	if pc.System.Frontend.IsEmpty() {
+		return missingYAMLField("system.frontend")
+	}
+	for _, name := range pc.BackendServiceNames() {
+		svc := pc.System.BackendServices[name]
+		f.BackendServices = append(f.BackendServices, BackendService{
+			Name:         name,
+			Path:         svc.Path,
+			Lang:         svc.Lang,
+			Repo:         svc.Repo,
+			SonarProject: svc.SonarProject,
+		})
+	}
+	f.FrontendPath = pc.System.Frontend.Path
+	f.FrontendLang = pc.System.Frontend.Lang
+	f.FrontendRepoSlug = pc.System.Frontend.Repo
 	return nil
 }
 

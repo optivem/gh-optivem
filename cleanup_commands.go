@@ -265,6 +265,24 @@ names are deleted unconditionally (no prefix check). Both can be combined.`,
 }
 
 func runCleanupRepos(owner, prefix string, explicit []string, opt ghbulk.Options) error {
+	printReposHeader(owner, prefix, explicit, opt)
+
+	deleted, err := deleteReposByPrefix(owner, prefix, opt)
+	if err != nil {
+		return err
+	}
+	explicitDeleted, err := deleteExplicitRepos(owner, explicit, opt)
+	if err != nil {
+		return err
+	}
+	deleted += explicitDeleted
+
+	printReposSummary(deleted, opt)
+	return nil
+}
+
+// printReposHeader renders the repos-cleanup banner.
+func printReposHeader(owner, prefix string, explicit []string, opt ghbulk.Options) {
 	fmt.Println(cleanupSeparator)
 	fmt.Println("  GitHub Repo Cleanup")
 	fmt.Printf("  Owner:  %s\n", owner)
@@ -278,43 +296,58 @@ func runCleanupRepos(owner, prefix string, explicit []string, opt ghbulk.Options
 		fmt.Println(dryRunModeLine)
 	}
 	fmt.Println(cleanupSeparator)
+}
 
-	deleted := 0
-	if prefix != "" {
-		foundAny := false
-		err := ghbulk.ForEachRepoByPrefix(owner, prefix, opt, func(r ghbulk.Repo) error {
-			foundAny = true
-			if err := ghbulk.DeleteRepo(owner, r.Name, opt); err != nil {
-				return err
-			}
-			if !opt.DryRun {
-				deleted++
-			}
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-		if !foundAny {
-			fmt.Printf("  No repos found matching prefix '%s' under %s.\n", prefix, owner)
-		}
+// deleteReposByPrefix deletes every repo under owner whose name starts with
+// prefix. Returns 0, nil immediately when prefix is empty.
+func deleteReposByPrefix(owner, prefix string, opt ghbulk.Options) (int, error) {
+	if prefix == "" {
+		return 0, nil
 	}
-	for _, name := range explicit {
-		if err := ghbulk.DeleteRepo(owner, name, opt); err != nil {
+	deleted := 0
+	foundAny := false
+	err := ghbulk.ForEachRepoByPrefix(owner, prefix, opt, func(r ghbulk.Repo) error {
+		foundAny = true
+		if err := ghbulk.DeleteRepo(owner, r.Name, opt); err != nil {
 			return err
 		}
 		if !opt.DryRun {
 			deleted++
 		}
+		return nil
+	})
+	if err != nil {
+		return deleted, err
 	}
+	if !foundAny {
+		fmt.Printf("  No repos found matching prefix '%s' under %s.\n", prefix, owner)
+	}
+	return deleted, nil
+}
 
+// deleteExplicitRepos deletes each named repo under owner unconditionally
+// (no prefix check).
+func deleteExplicitRepos(owner string, explicit []string, opt ghbulk.Options) (int, error) {
+	deleted := 0
+	for _, name := range explicit {
+		if err := ghbulk.DeleteRepo(owner, name, opt); err != nil {
+			return deleted, err
+		}
+		if !opt.DryRun {
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
+// printReposSummary renders the repos-cleanup closing line.
+func printReposSummary(deleted int, opt ghbulk.Options) {
 	fmt.Println()
 	if opt.DryRun {
 		fmt.Println("✅ Dry run complete. Re-run without --dry-run to delete.")
 	} else {
 		fmt.Printf("✅ Done. Deleted %d repo(s).\n", deleted)
 	}
-	return nil
 }
 
 // ── sonar-projects ──────────────────────────────────────────────────────

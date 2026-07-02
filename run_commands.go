@@ -15,6 +15,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -71,49 +72,64 @@ renders inline on github.com.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			cwd, err := os.Getwd()
 			exitOnError(err)
-			var runDir string
-			if len(args) == 0 {
-				// Skip pre-feature runs and runs that bombed before
-				// any dispatch — they have no sidecar, so picking
-				// the strict mtime-latest would error noisily and
-				// point at the wrong run. LatestRunWithSummary lands
-				// on the newest run with actual content instead.
-				runDir, err = driver.LatestRunWithSummary(cwd)
-				exitOnError(err)
-			} else {
-				runDir = filepath.Join(cwd, ".gh-optivem", "runs", args[0])
-			}
+			runDir, err := resolveRunDir(cwd, args)
+			exitOnError(err)
 			if markdown {
-				// Prefer the emitted file over re-rendering from
-				// records so the replay is byte-identical with what
-				// the run wrote at exit.
-				digestPath := filepath.Join(runDir, "summary.md")
-				if _, err := os.Stat(digestPath); err != nil {
-					if os.IsNotExist(err) {
-						exitOnError(fmt.Errorf("no run digest at %s; this run pre-dates the summary.md feature", digestPath))
-					}
-					exitOnError(fmt.Errorf("stat %s: %w", digestPath, err))
-				}
-				exitOnError(driver.PrintRunDigestFile(cmd.OutOrStdout(), digestPath))
+				exitOnError(printRunDigest(cmd.OutOrStdout(), runDir))
 				return
 			}
-			summaryPath := filepath.Join(runDir, "summary.jsonl")
-			if _, err := os.Stat(summaryPath); err != nil {
-				if os.IsNotExist(err) {
-					exitOnError(fmt.Errorf("no summary sidecar at %s; this run pre-dates the summary feature or no agents dispatched", summaryPath))
-				}
-				exitOnError(fmt.Errorf("stat %s: %w", summaryPath, err))
-			}
-			exitOnError(driver.PrintSummaryFile(cmd.OutOrStdout(), summaryPath))
-			// Step-execution table (agents + commands, with per-step timing).
-			// Sibling sidecar; runs predating the feature have no steps.jsonl,
-			// so its absence is silent — the agent table above still prints.
-			stepsPath := filepath.Join(runDir, "steps.jsonl")
-			if _, err := os.Stat(stepsPath); err == nil {
-				exitOnError(driver.PrintStepSummaryFile(cmd.OutOrStdout(), stepsPath))
-			}
+			exitOnError(printRunSummaryTables(cmd.OutOrStdout(), runDir))
 		},
 	}
 	cmd.Flags().BoolVar(&markdown, "markdown", false, "Print the human run digest (summary.md) instead of the table")
 	return cmd
+}
+
+// resolveRunDir picks the run directory a `run summary` invocation targets.
+// No positional arg → the newest run with an actual sidecar: pre-feature
+// runs and runs that bombed before any dispatch have no sidecar, so picking
+// the strict mtime-latest would error noisily and point at the wrong run.
+// One positional arg → that run-ts directory, taken as given.
+func resolveRunDir(cwd string, args []string) (string, error) {
+	if len(args) == 0 {
+		return driver.LatestRunWithSummary(cwd)
+	}
+	return filepath.Join(cwd, ".gh-optivem", "runs", args[0]), nil
+}
+
+// printRunDigest prints the human run digest (summary.md). It prefers the
+// emitted file over re-rendering from records so the replay is byte-identical
+// with what the run wrote at exit.
+func printRunDigest(w io.Writer, runDir string) error {
+	digestPath := filepath.Join(runDir, "summary.md")
+	if _, err := os.Stat(digestPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("no run digest at %s; this run pre-dates the summary.md feature", digestPath)
+		}
+		return fmt.Errorf("stat %s: %w", digestPath, err)
+	}
+	return driver.PrintRunDigestFile(w, digestPath)
+}
+
+// printRunSummaryTables prints the per-agent summary table from
+// summary.jsonl, followed by the step-execution table when steps.jsonl is
+// present. That sidecar is a sibling; runs predating the feature have no
+// steps.jsonl, so its absence is silent — the agent table above still
+// prints.
+func printRunSummaryTables(w io.Writer, runDir string) error {
+	summaryPath := filepath.Join(runDir, "summary.jsonl")
+	if _, err := os.Stat(summaryPath); err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("no summary sidecar at %s; this run pre-dates the summary feature or no agents dispatched", summaryPath)
+		}
+		return fmt.Errorf("stat %s: %w", summaryPath, err)
+	}
+	if err := driver.PrintSummaryFile(w, summaryPath); err != nil {
+		return err
+	}
+	stepsPath := filepath.Join(runDir, "steps.jsonl")
+	if _, err := os.Stat(stepsPath); err == nil {
+		return driver.PrintStepSummaryFile(w, stepsPath)
+	}
+	return nil
 }

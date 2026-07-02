@@ -36,19 +36,7 @@ import (
 func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 	tempDir := t.TempDir()
 
-	// Sanity: the temp dir really is empty of the v1 scaffolding paths.
-	// If a future change creates these on TempDir setup (none does today,
-	// but a hook could), this assertion prevents the test from passing
-	// for the wrong reason.
-	for _, sub := range []string{
-		".claude",
-		filepath.Join("docs", "atdd", "process"),
-		filepath.Join("docs", "atdd", "process", "process-flow.yaml"),
-	} {
-		if _, err := os.Stat(filepath.Join(tempDir, sub)); !errors.Is(err, fs.ErrNotExist) {
-			t.Fatalf("temp dir %q must not contain %q (err: %v)", tempDir, sub, err)
-		}
-	}
+	assertNoV1ScaffoldingPaths(t, tempDir)
 
 	eng, err := process.Load()
 	if err != nil {
@@ -59,19 +47,47 @@ func TestEmbeddedArtifacts_LoadInConsumerEmptyDir(t *testing.T) {
 	}
 
 	set := agents.DefaultAgentSet()
+	assertAllAgentPromptsLoad(t, set)
+	assertEveryStaticAgentHasPrompt(t, eng, set)
+}
+
+// assertNoV1ScaffoldingPaths is the sanity check that the temp dir really is
+// empty of the v1 scaffolding paths. If a future change creates these on
+// TempDir setup (none does today, but a hook could), this assertion prevents
+// the test from passing for the wrong reason.
+func assertNoV1ScaffoldingPaths(t *testing.T, tempDir string) {
+	t.Helper()
+	for _, sub := range []string{
+		".claude",
+		filepath.Join("docs", "atdd", "process"),
+		filepath.Join("docs", "atdd", "process", "process-flow.yaml"),
+	} {
+		if _, err := os.Stat(filepath.Join(tempDir, sub)); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("temp dir %q must not contain %q (err: %v)", tempDir, sub, err)
+		}
+	}
+}
+
+// assertAllAgentPromptsLoad checks that every agent in the set resolves its
+// embedded prompt.
+func assertAllAgentPromptsLoad(t *testing.T, set *agents.AgentSet) {
+	t.Helper()
 	for _, name := range set.Names() {
 		if _, err := set.Prompt(name); err != nil {
 			t.Errorf("agents.Prompt(%q) failed: %v", name, err)
 		}
 	}
+}
 
-	// Every static (non-templated, non-human) agent reference in the YAML
-	// must have a corresponding embedded prompt. Without this, a YAML
-	// node could reference a `${name}` that the consumer was expected to
-	// supply — exactly the dependency this plan removes. Templated
-	// `${agent}` nodes (resolved at runtime via call-activity params)
-	// are skipped here; their resolved values are covered by the
-	// existing TestClaudeRunDispatch_ExpandsTemplatedNodeFields.
+// assertEveryStaticAgentHasPrompt checks that every static (non-templated,
+// non-human) agent reference in the YAML has a corresponding embedded
+// prompt. Without this, a YAML node could reference a `${name}` that the
+// consumer was expected to supply — exactly the dependency this plan
+// removes. Templated `${agent}` nodes (resolved at runtime via call-activity
+// params) are skipped here; their resolved values are covered by the
+// existing TestClaudeRunDispatch_ExpandsTemplatedNodeFields.
+func assertEveryStaticAgentHasPrompt(t *testing.T, eng *statemachine.Engine, set *agents.AgentSet) {
+	t.Helper()
 	for processName, process := range eng.Processes {
 		for nodeID, node := range process.Nodes {
 			if node.Kind != statemachine.UserTask {
