@@ -377,6 +377,29 @@ if [[ ! -f "$CONFIG_FULL" ]]; then
   exit 2
 fi
 
+# Quarantine legacy: delete the exercised stack's legacy test tree from this
+# disposable worktree so no rehearsal phase can ever hit a
+# STOP_SCOPE_VIOLATION triggered by a legacy call site breaking on an
+# in-scope DTO change. No restore step — the worktree (and this deletion
+# inside it) is discarded at cleanup regardless of outcome, and the shop
+# repo's real branches keep legacy fully intact everywhere else.
+case "$CONFIG" in
+  *typescript*) LEGACY_DIR="system-test/typescript/tests/legacy" ;;
+  *java*)       LEGACY_DIR="system-test/java/src/test/java/com/mycompany/myshop/systemtest/legacy" ;;
+  *dotnet*)     LEGACY_DIR="system-test/dotnet/SystemTests/Legacy" ;;
+  *)
+    echo "ERROR: could not determine stack (typescript/java/dotnet) from config '$CONFIG' to quarantine legacy tests." >&2
+    exit 2
+    ;;
+esac
+LEGACY_FULL="$WORKTREE_PATH/$LEGACY_DIR"
+if [[ -d "$LEGACY_FULL" ]]; then
+  rm -rf "$LEGACY_FULL"
+  log "Quarantined legacy tests: removed $(display_path "$LEGACY_FULL") from the rehearsal worktree."
+else
+  log "No legacy tests found at $(display_path "$LEGACY_FULL") — nothing to quarantine."
+fi
+
 # --auto is a root flag (before `implement`); --headless and --log-file
 # are implement subcommand flags (after). Assemble two arrays so each
 # lands in the right position when expanded.
