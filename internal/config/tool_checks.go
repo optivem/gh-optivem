@@ -16,7 +16,9 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"os/exec"
+	"time"
 
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
@@ -31,17 +33,33 @@ type check struct {
 	fn   func() error
 }
 
+// ghAuthRetrySleep is the backoff between the two `gh auth status` attempts.
+// A package-level seam so tests can override it to a no-op instead of paying
+// the real 2-5s jittered wait. See verifyGhAuth.
+var ghAuthRetrySleep = time.Sleep
+
 // verifyGhAuth checks that the gh CLI is installed and authenticated. Uses
 // plain `gh auth status` (no -h flag) for symmetry with internal/shell/github.go,
 // which never locks host either — both use whichever default host `gh` is
 // configured for.
+//
+// The `gh auth status` call is retried once on failure: when concurrent
+// acceptance-matrix jobs run against the same VERIFY_TOKEN, GitHub's
+// per-token throttling can return a transient auth failure even though the
+// token is valid. One jittered retry makes that vanishingly rare, mirroring
+// the HTTP sibling githubUserAuthCheck (token_auth.go). A genuinely
+// unauthenticated token still fails both attempts and surfaces the error.
 func verifyGhAuth() error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return errors.New("gh CLI not found on PATH.\n    " +
 			"Install: https://cli.github.com/")
 	}
-	cmd := exec.Command("gh", "auth", "status")
-	out, err := cmd.CombinedOutput()
+	out, err := exec.Command("gh", "auth", "status").CombinedOutput()
+	if err != nil {
+		// 2-5s jittered backoff so concurrent retriers don't re-collide.
+		ghAuthRetrySleep(2*time.Second + time.Duration(rand.IntN(3001))*time.Millisecond)
+		out, err = exec.Command("gh", "auth", "status").CombinedOutput()
+	}
 	if err != nil {
 		return fmt.Errorf("gh CLI is not authenticated.\n    "+
 			"Run: gh auth login\n    "+

@@ -3,11 +3,23 @@ package config
 import (
 	"io"
 	"net/http"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
+
+// stubGhAuthRetrySleep overrides verifyGhAuth's backoff to a no-op for the
+// duration of the test, so retry-path tests don't pay the real 2-5s wait.
+func stubGhAuthRetrySleep(t *testing.T) {
+	t.Helper()
+	orig := ghAuthRetrySleep
+	ghAuthRetrySleep = func(time.Duration) {}
+	t.Cleanup(func() { ghAuthRetrySleep = orig })
+}
 
 // happyAuthClient returns an http.Client whose fake transport answers every
 // supported provider URL with a "valid" response. Used by tool-presence
@@ -67,6 +79,7 @@ func TestVerifyEnvironment_GhMissing(t *testing.T) {
 // VerifyEnvironment must surface the auth-failure hint and include the
 // stub's output.
 func TestVerifyEnvironment_GhAuthFails(t *testing.T) {
+	stubGhAuthRetrySleep(t) // always-fail path retries once; skip the real backoff
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo You are not logged into any GitHub hosts\nexit 1")
 	writeStub(t, dir, "actionlint", "exit 0")
@@ -85,6 +98,40 @@ func TestVerifyEnvironment_GhAuthFails(t *testing.T) {
 	}
 	if !strings.Contains(msg, "You are not logged into any GitHub hosts") {
 		t.Errorf("error did not include the gh stub's output. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_GhAuthRetryRecovers covers the transient-flake path:
+// a `gh` stub that fails its FIRST `gh auth status` and succeeds on the
+// SECOND (a marker file toggles the exit code between invocations). With the
+// one-shot retry in verifyGhAuth, VerifyEnvironment must recover and return
+// nil — a single blip under concurrent matrix load no longer kills the combo.
+func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
+	stubGhAuthRetrySleep(t) // no real backoff between the two attempts
+	dir := mkPathDir(t)
+
+	// Fail while the marker is absent (first call), plant it, exit 1; on the
+	// second call the marker exists, so exit 0.
+	marker := filepath.Join(dir, "gh_flaky_marker")
+	var body string
+	if runtime.GOOS == "windows" {
+		body = "if exist \"" + marker + "\" exit 0\n" +
+			"type nul > \"" + marker + "\"\n" +
+			"echo transient auth blip\n" +
+			"exit 1"
+	} else {
+		body = "if [ -f \"" + marker + "\" ]; then exit 0; fi\n" +
+			": > \"" + marker + "\"\n" +
+			"echo transient auth blip\n" +
+			"exit 1"
+	}
+	writeStub(t, dir, "gh", body)
+	writeStub(t, dir, "actionlint", "exit 0")
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient(nil, "", happyAuthClient())
+	if err != nil {
+		t.Fatalf("expected nil after the retry recovered gh auth, got:\n%s", err)
 	}
 }
 
