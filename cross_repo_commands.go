@@ -214,13 +214,38 @@ func runCommit(msg string, opts commitOptions) error {
 		// with the dirty state. This is the behaviour change the new
 		// order enforces: declined = nothing happens, no hidden
 		// pull/push side-effect.
+		// On a pull/rebase or push failure we no longer abort the whole
+		// run. If our commit already landed, the repo is committed-but-
+		// unpushed: name it distinctly (so the operator knows to finish the
+		// push) and keep going for the remaining repos — a stranded commit
+		// in one repo is independent of the others. runCommit returns a
+		// non-zero error at the end when any repo was stranded, so the
+		// overall exit code still fails loud.
 		didPush := false
 		if hasUp && (didCommit || workingClean) {
-			if err := runGit(repo, "pull", gitFlagRebase); err != nil {
-				return fmt.Errorf("git pull --rebase in %s: %w", repo, err)
+			if err := pullRebaseUpstream(repo); err != nil {
+				if didCommit {
+					c.committed++
+					c.committedNotPushed++
+					fmt.Printf("  ⚠ Committed but NOT pushed — pull/rebase failed: %v\n", err)
+					fmt.Printf("     Finish the push: re-run `gh optivem commit`, or `git -C %s push`.\n", repo)
+					continue
+				}
+				c.syncFailed++
+				fmt.Printf("  ⚠ Not synced — pull/rebase failed (nothing committed locally): %v\n", err)
+				continue
 			}
 			if err := pushWithRebaseRetry(repo); err != nil {
-				return err
+				if didCommit {
+					c.committed++
+					c.committedNotPushed++
+					fmt.Printf("  ⚠ Committed but NOT pushed — push failed: %v\n", err)
+					fmt.Printf("     Finish the push: re-run `gh optivem commit`, or `git -C %s push`.\n", repo)
+					continue
+				}
+				c.syncFailed++
+				fmt.Printf("  ⚠ Not synced — push failed (nothing committed locally): %v\n", err)
+				continue
 			}
 			didPush = true
 		}
@@ -249,28 +274,44 @@ func runCommit(msg string, opts commitOptions) error {
 	fmt.Println(workspaceSeparator)
 	fmt.Println(commitSummaryLine(c))
 	fmt.Println(workspaceSeparator)
+	// Fail loud on any stranded/failed repo so scripted callers see a
+	// non-zero exit — the per-repo warnings above name each one.
+	if c.committedNotPushed > 0 || c.syncFailed > 0 {
+		return fmt.Errorf("%d repo(s) committed but not pushed, %d sync failure(s) — see the per-repo warnings above", c.committedNotPushed, c.syncFailed)
+	}
 	return nil
 }
 
 // commitCounts tracks the per-repo terminal outcomes of one `gh optivem
-// commit` invocation. Every iterated repo lands in exactly one of the six
-// buckets — committed+pushed, committed+local-only, declined, clean+synced,
-// or idle — so the summary line totals match the scope size.
+// commit` invocation. Every iterated repo lands in exactly one terminal
+// outcome — committed+pushed, committed+local-only, committed-but-not-pushed
+// (stranded), declined, clean+synced, sync-failed, or idle — so the summary
+// line totals match the scope size (committedNotPushed rolls up under
+// committed alongside pushed + localOnly).
 type commitCounts struct {
-	committed   int // commits that landed (= pushed + localOnly)
-	pushed      int // committed AND pushed to upstream
-	localOnly   int // committed AND no upstream (not pushed)
-	declined    int // dirty tree, operator answered 'n' at the prompt
-	cleanSynced int // clean tree WITH upstream — pull+push ran, no commit attempted
-	idle        int // clean tree, no upstream — nothing to do
+	committed          int // commits that landed (= pushed + localOnly + committedNotPushed)
+	pushed             int // committed AND pushed to upstream
+	localOnly          int // committed AND no upstream (not pushed)
+	committedNotPushed int // committed locally but pull/rebase or push failed — STRANDED
+	declined           int // dirty tree, operator answered 'n' at the prompt
+	cleanSynced        int // clean tree WITH upstream — pull+push ran, no commit attempted
+	idle               int // clean tree, no upstream — nothing to do
+	syncFailed         int // clean tree WITH upstream — pull/push failed, nothing committed
 }
 
 // commitSummaryLine renders the one-line breakdown printed at the end of
 // `gh optivem commit`. Kept as a pure function so unit tests can pin the
 // exact wording without spinning up a workspace scope.
 func commitSummaryLine(c commitCounts) string {
-	return fmt.Sprintf("  Done. %d committed (%d pushed, %d local only), %d declined, %d clean (%d pulled+pushed, %d idle).",
+	line := fmt.Sprintf("  Done. %d committed (%d pushed, %d local only), %d declined, %d clean (%d pulled+pushed, %d idle).",
 		c.committed, c.pushed, c.localOnly, c.declined, c.cleanSynced+c.idle, c.cleanSynced, c.idle)
+	// Only append the warning when something went wrong, so the ordinary
+	// happy-path summary (and its pinned tests) stay unchanged.
+	if c.committedNotPushed > 0 || c.syncFailed > 0 {
+		line += fmt.Sprintf("\n  ⚠ %d committed but NOT pushed, %d sync failure(s) — see the per-repo warnings above.",
+			c.committedNotPushed, c.syncFailed)
+	}
+	return line
 }
 
 // workingTreeClean reports whether `git status --short` is empty in repo —
@@ -444,7 +485,7 @@ func runSync() error {
 	fmt.Println("  Sync All Repos")
 	fmt.Println(workspaceSeparator)
 
-	synced, skipped := 0, 0
+	synced, skipped, failed := 0, 0, 0
 	for _, repo := range scope.Folders {
 		if !hasUpstream(repo) {
 			skipped++
@@ -453,11 +494,15 @@ func runSync() error {
 		fmt.Println()
 		fmt.Printf("--- %s ---\n", relOrSelf(repo))
 		fmt.Printf("  %s\n", tbdModeBanner(repo))
-		if err := runGit(repo, "pull", gitFlagRebase); err != nil {
-			return fmt.Errorf("git pull --rebase in %s: %w", repo, err)
+		if err := pullRebaseUpstream(repo); err != nil {
+			failed++
+			fmt.Printf("  ⚠ Not synced — pull/rebase failed: %v\n", err)
+			continue
 		}
 		if err := pushWithRebaseRetry(repo); err != nil {
-			return err
+			failed++
+			fmt.Printf("  ⚠ Not synced — push failed: %v\n", err)
+			continue
 		}
 		synced++
 		fmt.Println("  ✓ Pulled and pushed")
@@ -465,8 +510,11 @@ func runSync() error {
 
 	fmt.Println()
 	fmt.Println(workspaceSeparator)
-	fmt.Printf("  Done. %d synced, %d skipped (no remote).\n", synced, skipped)
+	fmt.Printf("  Done. %d synced, %d skipped (no remote), %d failed.\n", synced, skipped, failed)
 	fmt.Println(workspaceSeparator)
+	if failed > 0 {
+		return fmt.Errorf("%d repo(s) failed to sync — see the per-repo warnings above", failed)
+	}
 	return nil
 }
 
@@ -1003,13 +1051,53 @@ func pushWithRebaseRetry(repo string) error {
 		}
 		fmt.Printf("  ↻ racing origin/main, retrying (%d/%d)…\n", attempt, maxPushAttempts-1)
 		// Tree is clean at this point — we only enter the push retry
-		// loop after a successful commit (or on a cleanSynced repo),
-		// so plain `git pull --rebase` works without any stash detour.
-		if err := runGit(repo, "pull", gitFlagRebase); err != nil {
+		// loop after a successful commit (or on a cleanSynced repo), so
+		// the pull works without any stash detour. Explicit single-target
+		// (pullRebaseUpstream) rather than a bare `git pull --rebase` so a
+		// multi-worktree checkout can't resolve multiple rebase heads.
+		if err := pullRebaseUpstream(repo); err != nil {
 			return fmt.Errorf("git pull --rebase in %s during push retry: %w", repo, err)
 		}
 	}
 	return nil
+}
+
+// pullRebaseUpstream runs `git pull --rebase <remote> <branch>` with the
+// remote and remote-side branch resolved explicitly from the current branch's
+// tracking config, instead of a bare `git pull --rebase`. The bare form lets
+// git infer the rebase target from FETCH_HEAD; in a checkout with many
+// worktrees that inference can resolve to more than one merge head and abort
+// with "fatal: Cannot rebase onto multiple branches" (observed 2026-07-08 in a
+// 15-worktree repo, where the bare command was not deterministically
+// reproducible). Naming a single remote branch guarantees exactly one rebase
+// target regardless of FETCH_HEAD state. Callers must have already confirmed
+// hasUpstream(repo).
+func pullRebaseUpstream(repo string) error {
+	remote, branch, err := upstreamRemoteBranch(repo)
+	if err != nil {
+		return err
+	}
+	return runGit(repo, "pull", gitFlagRebase, remote, branch)
+}
+
+// upstreamRemoteBranch resolves the current branch's tracking remote and the
+// remote-side branch name from git config (branch.<name>.remote and
+// branch.<name>.merge). Callers gate on hasUpstream(repo), so an unset value
+// here is a real misconfiguration rather than the ordinary no-upstream case.
+func upstreamRemoteBranch(repo string) (remote, branch string, err error) {
+	cur := currentBranch(repo)
+	if cur == "" || cur == "HEAD" {
+		return "", "", fmt.Errorf("cannot resolve upstream in %s: detached HEAD", repo)
+	}
+	remoteOut, rerr := captureGit(repo, "config", "--get", "branch."+cur+".remote")
+	mergeOut, merr := captureGit(repo, "config", "--get", "branch."+cur+".merge")
+	remote = strings.TrimSpace(remoteOut)
+	merge := strings.TrimSpace(mergeOut)
+	if rerr != nil || merr != nil || remote == "" || merge == "" {
+		return "", "", fmt.Errorf("no tracking config for branch %q in %s (branch.%s.remote / branch.%s.merge unset)", cur, repo, cur, cur)
+	}
+	branch = strings.TrimPrefix(merge, "refs/heads/")
+	return remote, branch, nil
 }
 
 // currentBranch returns the short ref name of HEAD in repo (e.g. "main" or

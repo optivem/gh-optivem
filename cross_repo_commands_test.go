@@ -227,6 +227,16 @@ func TestCommitSummaryLine(t *testing.T) {
 			in:   commitCounts{committed: 2, pushed: 1, localOnly: 1, declined: 1, cleanSynced: 1, idle: 1},
 			want: "  Done. 2 committed (1 pushed, 1 local only), 1 declined, 2 clean (1 pulled+pushed, 1 idle).",
 		},
+		{
+			name: "stranded: committed-but-not-pushed appends the warning line",
+			in:   commitCounts{committed: 1, committedNotPushed: 1},
+			want: "  Done. 1 committed (0 pushed, 0 local only), 0 declined, 0 clean (0 pulled+pushed, 0 idle).\n  ⚠ 1 committed but NOT pushed, 0 sync failure(s) — see the per-repo warnings above.",
+		},
+		{
+			name: "sync failure appends the warning line",
+			in:   commitCounts{cleanSynced: 1, syncFailed: 2},
+			want: "  Done. 0 committed (0 pushed, 0 local only), 0 declined, 1 clean (1 pulled+pushed, 0 idle).\n  ⚠ 0 committed but NOT pushed, 2 sync failure(s) — see the per-repo warnings above.",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -354,6 +364,113 @@ func TestPushWithRebaseRetry_LosesRace_RecoversAndPushes(t *testing.T) {
 	out := captureGitOut(t, a, "log", "--pretty=%s", "origin/main")
 	if !strings.Contains(out, "from a") || !strings.Contains(out, "from b") {
 		t.Errorf("expected both commits on origin/main, got:\n%s", out)
+	}
+}
+
+func TestUpstreamRemoteBranch_MainTracksOrigin(t *testing.T) {
+	_, clone := initBareAndClone(t)
+	remote, branch, err := upstreamRemoteBranch(clone)
+	if err != nil {
+		t.Fatalf("upstreamRemoteBranch: %v", err)
+	}
+	if remote != "origin" || branch != "main" {
+		t.Errorf("got remote=%q branch=%q, want origin/main", remote, branch)
+	}
+}
+
+func TestUpstreamRemoteBranch_FeatureBranch(t *testing.T) {
+	_, clone := initBareAndClone(t)
+	mustGit(t, clone, "checkout", "-q", "-b", "feature/x")
+	if err := os.WriteFile(filepath.Join(clone, "x.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatalf("write x: %v", err)
+	}
+	mustGit(t, clone, "add", ".")
+	mustGit(t, clone, "commit", "-q", "-m", "x")
+	mustGit(t, clone, "push", "-q", "-u", "origin", "feature/x")
+
+	remote, branch, err := upstreamRemoteBranch(clone)
+	if err != nil {
+		t.Fatalf("upstreamRemoteBranch: %v", err)
+	}
+	if remote != "origin" || branch != "feature/x" {
+		t.Errorf("got remote=%q branch=%q, want origin/feature/x", remote, branch)
+	}
+}
+
+func TestUpstreamRemoteBranch_NoUpstream_Errors(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "no-up")
+	initTestRepo(t, repo)
+	mustGit(t, repo, "checkout", "-q", "-b", "feature/local")
+	if _, _, err := upstreamRemoteBranch(repo); err == nil {
+		t.Fatalf("expected error for a branch with no tracking config")
+	}
+}
+
+func TestPullRebaseUpstream_BringsInRemoteCommit(t *testing.T) {
+	origin, a := initBareAndClone(t)
+
+	// A second clone lands a commit on origin/main.
+	rootB := t.TempDir()
+	b := filepath.Join(rootB, "b")
+	mustGit(t, rootB, "clone", "-q", origin, b)
+	mustGit(t, b, "config", "user.email", "test@example.com")
+	mustGit(t, b, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(b, "from-b.txt"), []byte("b\n"), 0o644); err != nil {
+		t.Fatalf("write from-b: %v", err)
+	}
+	mustGit(t, b, "add", ".")
+	mustGit(t, b, "commit", "-q", "-m", "from b")
+	mustGit(t, b, "push", "-q", "origin", "main")
+
+	if err := pullRebaseUpstream(a); err != nil {
+		t.Fatalf("pullRebaseUpstream: %v", err)
+	}
+	out := captureGitOut(t, a, "log", "--pretty=%s", "HEAD")
+	if !strings.Contains(out, "from b") {
+		t.Errorf("expected 'from b' pulled into local main, got:\n%s", out)
+	}
+}
+
+// TestPullRebaseUpstream_WithManyWorktrees_Succeeds exercises the exact
+// condition the fix targets: a checkout with several worktrees (each on its
+// own rehearsal branch) plus a local main that is ahead 1 / behind 1. The
+// bare `git pull --rebase` could abort here with "Cannot rebase onto multiple
+// branches"; the explicit single-target form must rebase cleanly.
+func TestPullRebaseUpstream_WithManyWorktrees_Succeeds(t *testing.T) {
+	origin, a := initBareAndClone(t)
+
+	wtRoot := t.TempDir()
+	for i := 0; i < 5; i++ {
+		wt := filepath.Join(wtRoot, fmt.Sprintf("wt%d", i))
+		mustGit(t, a, "worktree", "add", "-q", "-b", fmt.Sprintf("rehearsal/%d", i), wt)
+	}
+
+	// origin/main advances via a second clone.
+	rootB := t.TempDir()
+	b := filepath.Join(rootB, "b")
+	mustGit(t, rootB, "clone", "-q", origin, b)
+	mustGit(t, b, "config", "user.email", "test@example.com")
+	mustGit(t, b, "config", "user.name", "Test")
+	if err := os.WriteFile(filepath.Join(b, "from-b.txt"), []byte("b\n"), 0o644); err != nil {
+		t.Fatalf("write from-b: %v", err)
+	}
+	mustGit(t, b, "add", ".")
+	mustGit(t, b, "commit", "-q", "-m", "from b")
+	mustGit(t, b, "push", "-q", "origin", "main")
+
+	// Local main also has a commit → ahead 1, behind 1.
+	if err := os.WriteFile(filepath.Join(a, "from-a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write from-a: %v", err)
+	}
+	mustGit(t, a, "add", ".")
+	mustGit(t, a, "commit", "-q", "-m", "from a")
+
+	if err := pullRebaseUpstream(a); err != nil {
+		t.Fatalf("pullRebaseUpstream with worktrees present: %v", err)
+	}
+	out := captureGitOut(t, a, "log", "--pretty=%s", "HEAD")
+	if !strings.Contains(out, "from a") || !strings.Contains(out, "from b") {
+		t.Errorf("expected both commits after rebase, got:\n%s", out)
 	}
 }
 

@@ -55,7 +55,11 @@ func runBranchStart(name string) error {
 	if err := runGit(".", "checkout", "main"); err != nil {
 		return fmt.Errorf("git checkout main in .: %w", err)
 	}
-	if err := runGit(".", "pull", "--rebase"); err != nil {
+	// Explicit single-target pull (pullRebaseUpstream) rather than a bare
+	// `git pull --rebase`: in a multi-worktree checkout the bare form can
+	// resolve more than one rebase head and abort with "Cannot rebase onto
+	// multiple branches" (see cross_repo_commands.go).
+	if err := pullRebaseUpstream("."); err != nil {
 		return fmt.Errorf("git pull --rebase in .: %w", err)
 	}
 	if err := runGit(".", "checkout", "-b", trimmed); err != nil {
