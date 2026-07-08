@@ -207,20 +207,23 @@ func TestExecuteAgent_ScopeExceptionRoutesToStopViolation(t *testing.T) {
 	//    not requested -> normal validation. The old direct
 	//    GATE_SCOPE_EXCEPTION_REQUESTED -> STOP_SCOPE_VIOLATION edge is gone:
 	//    STOP_SCOPE_VIOLATION is now reached via GATE_SCOPE_EXCEPTION_NEEDS_ESCC
-	//    (see TestExecuteAgent_GuardB_ESCCReroute).
+	//    (see TestExecuteAgent_GuardB_ScopeExceptionKindReroute).
 	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "CATEGORIZE_SCOPE_EXCEPTION", "scope-exception-requested == true")
 	notEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "STOP_SCOPE_VIOLATION")
 	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_REQUESTED", "GATE_OUTPUTS_AND_SCOPES_VALID", "scope-exception-requested == false")
 }
 
-// Guard B (plan 20260620-2348): a scope-exception is categorized before it
-// halts. CATEGORIZE_SCOPE_EXCEPTION stamps scope-exception-needs-escc, and
+// Guard B (plan 20260620-2348, generalized to a 3-way fork by plan
+// 20260708-1038): a scope-exception is categorized before it halts.
+// CATEGORIZE_SCOPE_EXCEPTION stamps scope-exception-kind, and
 // GATE_SCOPE_EXCEPTION_NEEDS_ESCC forks the loud ESCC_UNDECLARED_HALT (the
-// ticket lacks its ## External System Contract Criteria section) from the
-// generic STOP_SCOPE_VIOLATION (the BPMN scope: is too narrow). This pins the
-// three reroute cases at the graph level; the categorizer's bool decision for
-// each case is unit-tested in actions/TestCategorizeScopeException.
-func TestExecuteAgent_GuardB_ESCCReroute(t *testing.T) {
+// ticket lacks its ## External System Contract Criteria section), the loud
+// CONTRADICTORY_TESTS_HALT (the change would only satisfy a new test by
+// contradicting a pre-existing one), from the generic STOP_SCOPE_VIOLATION
+// (the BPMN scope: is too narrow). This pins the three reroute cases at the
+// graph level; the categorizer's enum decision for each case is unit-tested
+// in actions/TestCategorizeScopeException.
+func TestExecuteAgent_GuardB_ScopeExceptionKindReroute(t *testing.T) {
 	eng := loadSnapshot(t)
 	proc, ok := eng.Processes["execute-agent"]
 	if !ok {
@@ -239,27 +242,31 @@ func TestExecuteAgent_GuardB_ESCCReroute(t *testing.T) {
 		t.Errorf("CATEGORIZE_SCOPE_EXCEPTION action = %q, want %q", cat.Raw.Action, "categorize-scope-exception")
 	}
 
-	// 2. The reroute gate binds the categorizer's stamped bool.
+	// 2. The reroute gate binds the categorizer's stamped enum.
 	gate, ok := proc.Nodes["GATE_SCOPE_EXCEPTION_NEEDS_ESCC"]
 	if !ok {
 		t.Fatalf("execute-agent: GATE_SCOPE_EXCEPTION_NEEDS_ESCC node missing")
 	}
-	if gate.Raw.Binding != "scope-exception-needs-escc" {
-		t.Errorf("GATE_SCOPE_EXCEPTION_NEEDS_ESCC binding = %q, want %q", gate.Raw.Binding, "scope-exception-needs-escc")
+	if gate.Raw.Binding != "scope-exception-kind" {
+		t.Errorf("GATE_SCOPE_EXCEPTION_NEEDS_ESCC binding = %q, want %q", gate.Raw.Binding, "scope-exception-kind")
 	}
 
-	// 3. ESCC_UNDECLARED_HALT is an error-end-event so the halt bubbles up (its
-	//    id ends `_HALT` but not `_INFRA_HALT`, so the quantified
-	//    halt-terminals-are-error-end rule does not cover it — pinned here,
-	//    mirroring CONTRACT_REAL_UPSTREAM_GAP_HALT).
+	// 3. ESCC_UNDECLARED_HALT and CONTRADICTORY_TESTS_HALT are error-end-events
+	//    so the halt bubbles up (their ids end `_HALT` but not `_INFRA_HALT`,
+	//    so the quantified halt-terminals-are-error-end rule does not cover
+	//    them — pinned here, mirroring CONTRACT_REAL_UPSTREAM_GAP_HALT).
 	if n := proc.Nodes["ESCC_UNDECLARED_HALT"]; n.Kind != statemachine.ErrorEndEvent {
 		t.Errorf("ESCC_UNDECLARED_HALT kind = %v, want statemachine.ErrorEndEvent", n.Kind)
 	}
+	if n := proc.Nodes["CONTRADICTORY_TESTS_HALT"]; n.Kind != statemachine.ErrorEndEvent {
+		t.Errorf("CONTRADICTORY_TESTS_HALT kind = %v, want statemachine.ErrorEndEvent", n.Kind)
+	}
 
-	// 4. The categorizer feeds the reroute gate; the gate forks the two halts.
+	// 4. The categorizer feeds the reroute gate; the gate forks the three halts.
 	wantEdge(t, proc, "CATEGORIZE_SCOPE_EXCEPTION", "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "")
-	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "ESCC_UNDECLARED_HALT", "scope-exception-needs-escc == true")
-	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "STOP_SCOPE_VIOLATION", "scope-exception-needs-escc == false")
+	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "ESCC_UNDECLARED_HALT", "scope-exception-kind == escc-undeclared")
+	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "CONTRADICTORY_TESTS_HALT", "scope-exception-kind == contradictory-tests")
+	wantEdge(t, proc, "GATE_SCOPE_EXCEPTION_NEEDS_ESCC", "STOP_SCOPE_VIOLATION", "scope-exception-kind == other")
 }
 
 // Both verify-tests-pass and verify-tests-fail must route

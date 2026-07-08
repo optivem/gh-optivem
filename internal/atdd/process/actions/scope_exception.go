@@ -37,32 +37,48 @@ var contractStubScopeLayers = []string{
 	"external-system-simulator",
 }
 
-// categorizeScopeException is Guard B (plan 20260620-2348). It runs on the
-// scope-exception==true branch of execute-agent, immediately before
-// GATE_SCOPE_EXCEPTION_NEEDS_ESCC, and stamps
-// ctx.State["scope-exception-needs-escc"] = true IFF
+// atTestScopeLayers is the write-scope layer that identifies a contradictory-
+// tests scope-exception (plan 20260708-1038): a prod-writing agent (e.g.
+// system-implementer) refuses to touch acceptance-test files because doing so
+// would satisfy one test only by breaking another. Resolved the same
+// directory-keyed way as contractStubScopeLayers, not reason-string parsing.
+var atTestScopeLayers = []string{"at-test"}
+
+// categorizeScopeException is Guard B (plan 20260620-2348, generalized by plan
+// 20260708-1038). It runs on the scope-exception==true branch of execute-agent,
+// immediately before GATE_SCOPE_EXCEPTION_NEEDS_ESCC, and stamps
+// ctx.State["scope-exception-kind"] to one of:
 //
-//	(≥1 scope-exception-files entry sits under a contractStubScopeLayers family)
-//	AND (ticket-has-escc == false).
+//   - "escc-undeclared":    ≥1 scope-exception-files entry sits under a
+//     contractStubScopeLayers family, AND ticket-has-escc == false.
+//   - "contradictory-tests": (escc-undeclared does not apply) AND ≥1
+//     scope-exception-files entry sits under the at-test family — a
+//     contradictory-tests case (per system-implementer.md's own
+//     "contradictory tests" refusal doctrine).
+//   - "other":              neither of the above (the generic, unchanged case).
 //
-// True routes the cycle to ESCC_UNDECLARED_HALT with an actionable "add a ##
-// External System Contract Criteria section" diagnostic instead of the cryptic
-// generic STOP_SCOPE_VIOLATION; false keeps STOP_SCOPE_VIOLATION unchanged (a
-// non-contract scope-exception, or one on a ticket that already declares ESCC).
+// escc-undeclared routes to ESCC_UNDECLARED_HALT (actionable "add a ##
+// External System Contract Criteria section" diagnostic); contradictory-tests
+// routes to CONTRADICTORY_TESTS_HALT (actionable "reconcile the test via
+// acceptance-test-writer" diagnostic — never "widen scope", which is the wrong
+// fix for a contradictory-tests halt); other keeps STOP_SCOPE_VIOLATION
+// unchanged.
 //
 // Categorization is by directory-prefix match (pathInScope) against the
-// resolved contract/stub families — the same directory-keyed contract the
-// scope check itself uses ([[feedback_port_changed_flags_directory_keyed]]) —
-// not method/pattern guessing.
+// resolved families — the same directory-keyed contract the scope check
+// itself uses ([[feedback_port_changed_flags_directory_keyed]]) — not
+// method/pattern guessing. escc-undeclared is checked first: the two families
+// are disjoint path prefixes in practice, but this ordering is deliberate and
+// pins the case an entry could ever satisfy both.
 //
 // scope-exception-files and ticket-has-escc are both already in ctx.State
 // (validate-outputs-and-scopes flattens the agent's scope-exception envelope;
 // parse-ticket stamps ticket-has-escc once per ticket), so this action reads
 // state and resolves config — no agent, no shell-out. Hard config errors
-// (gh-optivem.yaml missing, a contract/stub layer unresolvable) surface as
-// Outcome.Err since they indicate a wiring/config problem, not an agent-output
-// one; the contract/stub layers are validated at the preflight scope sweep, so
-// an unresolvable layer here is a genuine config break.
+// (gh-optivem.yaml missing, a layer unresolvable) surface as Outcome.Err since
+// they indicate a wiring/config problem, not an agent-output one; the layers
+// are validated at the preflight scope sweep, so an unresolvable layer here is
+// a genuine config break.
 func (a actions) categorizeScopeException(ctx *statemachine.Context) statemachine.Outcome {
 	cfg := a.deps.Config
 	if cfg == nil {
@@ -72,27 +88,44 @@ func (a actions) categorizeScopeException(ctx *statemachine.Context) statemachin
 	files, _ := ctx.State["scope-exception-files"].([]string)
 	hasESCC, _ := ctx.State["ticket-has-escc"].(bool)
 
-	families, err := ResolveLayerPaths(contractStubScopeLayers, cfg)
+	contractFamilies, err := ResolveLayerPaths(contractStubScopeLayers, cfg)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("categorize-scope-exception: %w", err)}
+	}
+	atTestFamilies, err := ResolveLayerPaths(atTestScopeLayers, cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("categorize-scope-exception: %w", err)}
 	}
 
-	var contractFiles []string
+	var contractFiles, atTestFiles []string
 	for _, f := range files {
 		f = strings.TrimSpace(f)
-		if f != "" && pathInScope(f, families) {
+		if f == "" {
+			continue
+		}
+		if pathInScope(f, contractFamilies) {
 			contractFiles = append(contractFiles, f)
+		}
+		if pathInScope(f, atTestFamilies) {
+			atTestFiles = append(atTestFiles, f)
 		}
 	}
 
-	needsESCC := len(contractFiles) > 0 && !hasESCC
-	ctx.Set("scope-exception-needs-escc", needsESCC)
+	kind := "other"
+	switch {
+	case len(contractFiles) > 0 && !hasESCC:
+		kind = "escc-undeclared"
+	case len(atTestFiles) > 0:
+		kind = "contradictory-tests"
+	}
+	ctx.Set("scope-exception-kind", kind)
 
-	if needsESCC {
-		// Surface the actionable, system-named diagnostic on stderr — the
-		// error-end-event name is rendered literally (run.go does not
-		// ExpandParams terminal names), so the dynamic system name rides here
-		// rather than in ESCC_UNDECLARED_HALT's label.
+	// Surface the actionable, system-named diagnostic on stderr — the
+	// error-end-event name is rendered literally (run.go does not
+	// ExpandParams terminal names), so the dynamic detail rides here rather
+	// than in the terminal event's label.
+	switch kind {
+	case "escc-undeclared":
 		who := "the external system"
 		if systems := contractStubSystemNames(contractFiles, cfg); len(systems) > 0 {
 			who = "external system(s) " + strings.Join(systems, ", ")
@@ -100,6 +133,10 @@ func (a actions) categorizeScopeException(ctx *statemachine.Context) statemachin
 		fmt.Fprintf(a.deps.Stderr,
 			"categorize-scope-exception: the agent refused to write external contract/stub files for %s, but the ticket declares no External System Contract Criteria. Add a `## External System Contract Criteria` section naming the external system and re-run.\n  contract/stub files: %s\n",
 			who, strings.Join(contractFiles, ", "))
+	case "contradictory-tests":
+		fmt.Fprintf(a.deps.Stderr,
+			"categorize-scope-exception: the agent refused to write acceptance-test files because doing so would satisfy this change only by contradicting a pre-existing test. Reconcile the conflicting test via acceptance-test-writer — do not widen this agent's write scope — and re-run.\n  acceptance-test files: %s\n",
+			strings.Join(atTestFiles, ", "))
 	}
 	return statemachine.Outcome{}
 }

@@ -140,11 +140,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	//   - Layer 2: phase-scope-clean runs after the agent commits; reads the
 	//     check-phase-scope action's structured result; false → STOP_SCOPE_VIOLATION.
 	r.Register("scope-exception-requested", b.scopeExceptionRequested)
-	// Guard B — GATE_SCOPE_EXCEPTION_NEEDS_ESCC (plan 20260620-2348). Pure
-	// state-reader of the bool the categorize-scope-exception action stamps on
-	// the scope-exception==true branch; true → ESCC_UNDECLARED_HALT, false →
-	// STOP_SCOPE_VIOLATION. Strict (the action runs immediately upstream).
-	r.Register("scope-exception-needs-escc", b.scopeExceptionNeedsESCC)
+	// Guard B — GATE_SCOPE_EXCEPTION_NEEDS_ESCC (plan 20260620-2348, generalized
+	// to a 3-way enum by plan 20260708-1038). State-reader of the enum
+	// categorize-scope-exception stamps on the scope-exception==true branch:
+	// escc-undeclared → ESCC_UNDECLARED_HALT, contradictory-tests →
+	// CONTRADICTORY_TESTS_HALT, other → STOP_SCOPE_VIOLATION. Strict (the
+	// action runs immediately upstream).
+	r.Register("scope-exception-kind", b.scopeExceptionKind)
 	r.Register("phase-scope-clean", b.phaseScopeClean)
 	// Post-RED-DSL flag-presence validation (per plan 20260518-1144 item 4):
 	// the two RED-DSL phase-output flags (system_driver_interface_changed,
@@ -270,21 +272,36 @@ func (b bindings) scopeExceptionRequested(ctx *statemachine.Context) statemachin
 	return statemachine.Outcome{Bool: len(files) > 0}
 }
 
-// scopeExceptionNeedsESCC is GATE_SCOPE_EXCEPTION_NEEDS_ESCC, Guard B's reroute
-// gate (plan 20260620-2348). The categorize-scope-exception action — which has
-// the Config the bindings package lacks — runs immediately upstream on the
-// scope-exception==true branch and stamps ctx.State["scope-exception-needs-escc"]
-// = (the refused files are external contract/stub work AND the ticket declared
-// no External System Contract Criteria). This gate reads it back: true →
-// ESCC_UNDECLARED_HALT (actionable "add a ## External System Contract Criteria
-// section"); false → STOP_SCOPE_VIOLATION (the generic refusal halt, unchanged).
+// scopeExceptionKind is GATE_SCOPE_EXCEPTION_NEEDS_ESCC, Guard B's reroute gate
+// (plan 20260620-2348, generalized to a 3-way enum by plan 20260708-1038). The
+// categorize-scope-exception action — which has the Config the bindings
+// package lacks — runs immediately upstream on the scope-exception==true
+// branch and stamps ctx.State["scope-exception-kind"] to one of
+// escc-undeclared | contradictory-tests | other. This gate reads it back:
+// escc-undeclared → ESCC_UNDECLARED_HALT (actionable "add a ## External System
+// Contract Criteria section"); contradictory-tests → CONTRADICTORY_TESTS_HALT
+// (actionable "reconcile the test via acceptance-test-writer"); other →
+// STOP_SCOPE_VIOLATION (the generic refusal halt, unchanged).
 //
-// Strict (boolStateGate) — the action always runs immediately before this gate
-// on the scope-exception branch, so a missing key is a wiring bug, not a default
-// no. Same doctrine as externalSystemTouched / channelTouched (action stamps,
-// gate reads).
-func (b bindings) scopeExceptionNeedsESCC(ctx *statemachine.Context) statemachine.Outcome {
-	return boolStateGate(ctx, "scope-exception-needs-escc")
+// Strict on unset/unrecognised — the action always runs immediately before
+// this gate on the scope-exception branch, so a missing or out-of-enum value
+// is a wiring bug, not a default no. Mirrors testOutcome / realKind (enum
+// state-reader, halt loudly on drift) rather than boolStateGate.
+func (b bindings) scopeExceptionKind(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["scope-exception-kind"]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("scope-exception-kind: not set in Context — categorize-scope-exception action did not run")}
+	}
+	s, ok := v.(string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("scope-exception-kind: %T, want string", v)}
+	}
+	switch s {
+	case "escc-undeclared", "contradictory-tests", "other":
+		return statemachine.Outcome{Value: s}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("scope-exception-kind: unrecognised value %q (categorize-scope-exception stamped a value the gate does not handle)", s)}
+	}
 }
 
 // dslFlagsPresent is the flag-presence-validation gateway sitting

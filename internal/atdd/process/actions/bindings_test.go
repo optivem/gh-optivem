@@ -151,50 +151,72 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 // categorizeScopeException — Guard B (plan 20260620-2348)
 // ---------------------------------------------------------------------------
 
-// TestCategorizeScopeException covers the three reroute cases the gate forks on:
-// contract/stub files + no ESCC → needs-escc (ESCC_UNDECLARED_HALT); the same
-// files + ESCC declared → not (generic STOP_SCOPE_VIOLATION); non-contract files
-// → not. Path layers resolve via writePhaseScopeTestConfig (ct-test =
-// .../tests/latest/contract, external-system-driver-adapter =
-// driver/.../external-adapter, system path = system/monolith/typescript).
+// TestCategorizeScopeException covers the reroute cases the gate forks on:
+// contract/stub files + no ESCC → escc-undeclared (ESCC_UNDECLARED_HALT); the
+// same files + ESCC declared → other (generic STOP_SCOPE_VIOLATION); at-test
+// files → contradictory-tests (CONTRADICTORY_TESTS_HALT); files under neither
+// family → other; and (both families present, no ESCC) → escc-undeclared,
+// pinning the deliberate precedence. Path layers resolve via
+// writePhaseScopeTestConfig (ct-test = .../tests/latest/contract,
+// external-system-driver-adapter = driver/.../external-adapter, at-test =
+// .../tests/latest/acceptance, system path = system/monolith/typescript).
 func TestCategorizeScopeException(t *testing.T) {
 	cfg := writePhaseScopeTestConfig(t, t.TempDir())
 	cases := []struct {
 		name    string
 		files   []string
 		hasESCC bool
-		want    bool
+		want    string
 	}{
 		{
 			name:  "contract_test_file_no_escc_needs",
 			files: []string{"system-test/typescript/tests/latest/contract/ErpContractTest.ts"},
-			want:  true,
+			want:  "escc-undeclared",
 		},
 		{
 			name:  "external_stub_adapter_file_no_escc_needs",
 			files: []string{"driver/typescript/src/external-adapter/erp/ErpStub.ts"},
-			want:  true,
+			want:  "escc-undeclared",
 		},
 		{
 			name:  "dsl_port_file_no_escc_needs",
 			files: []string{"dsl/typescript/src/port/ErpDriver.ts"},
-			want:  true,
+			want:  "escc-undeclared",
 		},
 		{
 			name:    "contract_file_with_escc_does_not_need",
 			files:   []string{"system-test/typescript/tests/latest/contract/ErpContractTest.ts"},
 			hasESCC: true,
-			want:    false,
+			want:    "other",
 		},
 		{
 			name:  "non_contract_file_does_not_need",
 			files: []string{"system/monolith/typescript/src/ProductController.ts"},
-			want:  false,
+			want:  "other",
 		},
 		{
 			name:  "no_files_does_not_need",
 			files: nil,
-			want:  false,
+			want:  "other",
+		},
+		{
+			name:  "at_test_file_is_contradictory_tests",
+			files: []string{"system-test/typescript/tests/latest/acceptance/PlaceOrderTest.ts"},
+			want:  "contradictory-tests",
+		},
+		{
+			name:    "at_test_file_with_escc_is_still_contradictory_tests",
+			files:   []string{"system-test/typescript/tests/latest/acceptance/PlaceOrderTest.ts"},
+			hasESCC: true,
+			want:    "contradictory-tests",
+		},
+		{
+			name: "contract_and_at_test_files_no_escc_prefers_escc_undeclared",
+			files: []string{
+				"system-test/typescript/tests/latest/contract/ErpContractTest.ts",
+				"system-test/typescript/tests/latest/acceptance/PlaceOrderTest.ts",
+			},
+			want: "escc-undeclared",
 		},
 	}
 	for _, tc := range cases {
@@ -209,9 +231,9 @@ func TestCategorizeScopeException(t *testing.T) {
 			if out.Err != nil {
 				t.Fatalf("unexpected error: %v", out.Err)
 			}
-			got, _ := ctx.Get("scope-exception-needs-escc").(bool)
+			got, _ := ctx.Get("scope-exception-kind").(string)
 			if got != tc.want {
-				t.Fatalf("scope-exception-needs-escc: got %v, want %v", got, tc.want)
+				t.Fatalf("scope-exception-kind: got %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -236,6 +258,34 @@ func TestCategorizeScopeException_DiagnosticNamesSystemAndAction(t *testing.T) {
 		if !strings.Contains(stderr.String(), want) {
 			t.Errorf("diagnostic should mention %q; got:\n%s", want, stderr.String())
 		}
+	}
+}
+
+// The contradictory-tests diagnostic names the conflicting acceptance-test
+// files and tells the author to reconcile via acceptance-test-writer — the
+// actionable guidance the literal CONTRADICTORY_TESTS_HALT label cannot carry
+// (terminal names are not param-expanded), and critically NOT "widen scope"
+// (widening write scope cannot fix a genuine test contradiction).
+func TestCategorizeScopeException_ContradictoryTestsDiagnosticNamesFileAndAction(t *testing.T) {
+	cfg := writePhaseScopeTestConfig(t, t.TempDir())
+	var stderr bytes.Buffer
+	a := newActions(Deps{Config: cfg, Stderr: &stderr})
+	ctx := statemachine.NewContext()
+	ctx.Set("scope-exception-files", []string{"system-test/typescript/tests/latest/acceptance/PlaceOrderTest.ts"})
+	ctx.Set("ticket-has-escc", false)
+	if out := a.categorizeScopeException(ctx); out.Err != nil {
+		t.Fatalf("unexpected error: %v", out.Err)
+	}
+	for _, want := range []string{"PlaceOrderTest.ts", "acceptance-test-writer"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("diagnostic should mention %q; got:\n%s", want, stderr.String())
+		}
+	}
+	// It's fine for the diagnostic to clarify "do not widen scope" — the bug
+	// this guards against is telling the human to widen scope as the fix
+	// (the STOP_SCOPE_VIOLATION-style advice), which is wrong for this case.
+	if strings.Contains(stderr.String(), "widen scope and re-run") {
+		t.Errorf("diagnostic must not tell the human to widen scope as the fix; got:\n%s", stderr.String())
 	}
 }
 
