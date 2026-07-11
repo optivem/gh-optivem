@@ -45,4 +45,5 @@ Notes:
 
 ## Additional Notes
 
+- Import hygiene (see the preamble's compile rule): when a DSL method that would have used an import — e.g. a `Map`-based builder — isn't emitted for this scenario, delete the import it left dangling. An unused import fails the terminal quality gate even though it compiles.
 - ${re-entry-policy} For this agent the "broken/missing piece" is typically a forgotten driver stub in the System Driver port (`${system-driver-port}`) or External System Driver port (`${external-system-driver-port}`). Do not change DSL Core (`${dsl-core}`) semantics in the fix.

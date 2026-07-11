@@ -49,6 +49,14 @@ depend on genuinely lacks what you need and it is in your write scope
 is out of scope, emit the scope-exception envelope instead of leaving a
 broken call for downstream.
 
+Leave **no unused imports/usings** behind. The scaffold's quality gate
+treats them as hard errors — Checkstyle `UnusedImports` for Java,
+`noUnusedLocals`/ESLint for TypeScript, unused-`using` analyzers for
+.NET — and it fails the terminal scan even when every test is green. The
+in-loop compile gate (`javac`/`tsc`/`dotnet build`) does **not** catch
+them, so no one downstream will tell you. After your final edit, re-read
+your imports and remove every one your code no longer references.
+
 ## System-running roles: self-verify by running your slice
 
 Compiling is the **floor** for author agents — the stateless ones that
