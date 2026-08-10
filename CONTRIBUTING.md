@@ -24,6 +24,9 @@ Rehearse several tickets back-to-back, unattended:
 ```bash
 cd ../shop
 
+# Single
+bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh 72 --config gh-optivem-monolith-typescript.yaml
+
 # Full corpus (61 65 68 69 70 71 72 76 78 79 80 81), default java config:
 bash ../gh-optivem/scripts/atdd-rehearsal-loop.sh
 
