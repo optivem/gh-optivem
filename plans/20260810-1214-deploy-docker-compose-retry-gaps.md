@@ -1,5 +1,7 @@
 # 2026-08-10 10:14:12 UTC — Close the two no-retry gaps in `deploy-docker-compose` that fail the acceptance stage on transient registry errors
 
+🤖 **Picked up by agent** — `Valentina_Desk` at `2026-08-10T10:29:04Z`
+
 ## TL;DR
 
 **Why:** gh-optivem run [31365614953](https://github.com/optivem/gh-optivem/actions/runs/31365614953) failed two matrix legs (`multitier/multirepo/typescript/dotnet` job `93391979695`, `multitier/monorepo/typescript/dotnet` job `93391979701`). Both surfaced identically — `TestValidMultitierConfigurations` failing at `internal/config/config_system_test.go:292` with "expected exit code 0, got 1" — but the real cause is two *independent* holes in `optivem/actions/deploy-docker-compose@v1`, where a transient Docker registry error is not retried: (A) `docker compose up -d` is not wrapped in `retry_run` at all, so a Docker Hub `502 Bad Gateway` while resolving a `# syntax=docker/dockerfile:1.4` directive killed the run outright; (B) GHCR's secondary-rate-limit `403` is worded like an auth denial (`denied: permission_denied` / `Forbidden`), so `_RETRY_HARD_FAIL` classifies it as a hard failure and `retry_run docker compose pull` passed it through with zero attempts (step duration `1799ms` — no backoff). Neither is a product bug: the scaffolded apps, the shop templates, and the Go system test are all innocent.
@@ -45,35 +47,11 @@ DockerHub-502-BadGateway:      force-retry=no hard-fail=no  transient=YES -> RET
 
 ## ▶ Next executable step (resume here)
 
-**Step 1** — in the sibling `actions` repo, edit `deploy-docker-compose/start.sh` lines 28–35: wrap both `docker compose up -d` branches in `retry_run` (`retry_run docker compose -f "$COMPOSE_FILE" up -d` and `retry_run docker compose up -d`), and change the `echo "🐳 Running docker compose up..."` on line 28 to `echo "🐳 Running docker compose up (with retry)..."` to match line 20's phrasing. `retry.sh` is already sourced at line 5, so no new source line is needed. This is a self-contained 3-line edit that closes Gap A; it unblocks Step 4's test run and is independent of Steps 2–3.
+**Step 7 — move the `optivem/actions` `v1` tag.** All code changes are done, tested, and committed (actions: `start.sh`, `retry.sh`, `_test-retry.sh`; gh-optivem: the regenerated `.github/scripts/retry.sh`). Shop workflows pin `optivem/actions/deploy-docker-compose@v1`, so **the fix is inert in CI until this tag moves**. Check the `actions` repo's release/ledger rules first, then retag `v1` at its current `main` HEAD. This is a third-party-visible release action — confirm with the user before tagging or pushing. Once done, the plan is complete: delete this file and hand the operator re-run in `## Verification` back to the user.
 
 ## Steps
 
-- [ ] **Step 1 — Wrap `docker compose up -d` in `retry_run` (Gap A).** In `actions/deploy-docker-compose/start.sh`, wrap both branches at lines 32 and 34 with `retry_run`, and update the line-28 echo to say "(with retry)". Safe to retry: `compose up` is declarative and converges on re-run.
-
-- [ ] **Step 2 — Reclaim GHCR secondary-rate-limit `403`s as transient (Gap B).** In `actions/shared/retry.sh:101`, extend `_RETRY_FORCE_RETRY` with an `exceeded a secondary rate limit` clause. Deliberately narrow — a genuine GHCR auth denial carries no rate-limit wording and must keep failing fast. Add an explanatory comment above it in the same style as the existing SonarCloud JRE block (`retry.sh:~85-100`), noting: GHCR phrases a rate-limit as `denied: permission_denied … HTTP status code 403 "Forbidden"`, which collides with the `denied: permission` and `Forbidden` clauses in `_RETRY_HARD_FAIL`; this is a throttle, not an authz decision; and the worst case for a genuinely-forbidden pull is exhausting the retries before the same non-zero exit.
-  - *Chosen over* widening `_RETRY_RETRYABLE` or narrowing `_RETRY_HARD_FAIL`: force-retry is the established mechanism for "phrases like a hard-fail, is in fact transient", and it leaves real `403`s failing fast.
-
-- [ ] **Step 3 — Give the docker deploy path a longer backoff.** GHCR's message says "wait a few minutes", but the shared `_RETRY_DELAYS=(5 15 45)` (`retry.sh:35`) totals only 65s — likely too short to outlast the throttle. In `actions/deploy-docker-compose/start.sh`, after sourcing `retry.sh`, override the wrapper's own knobs for this script only:
-  ```bash
-  # GHCR secondary rate limits ask for "a few minutes"; the shared 5/15/45
-  # ladder (65s) is too short to outlast one. Override the wrapper knobs for
-  # the deploy path only — retry_run re-reads these on every call.
-  _RETRY_ATTEMPTS=5
-  _RETRY_DELAYS=(15 45 90 180)   # 330s ≈ 5.5 min total
-  ```
-  - *Chosen over* extending the shared `_RETRY_DELAYS`: `retry_run` re-reads `_RETRY_ATTEMPTS`/`_RETRY_DELAYS` into the core knobs on every call (`retry.sh:~112-115`) and `retry-core.sh:41-44` documents per-wrapper override as supported, so this is the intended seam. It keeps the blast radius on the docker deploy path and leaves the `gh` / `sonar` / `git` retry timings untouched.
-
-- [ ] **Step 4 — Add regression tests.** In `actions/shared/_test-retry.sh`, add two `run_case` entries mirroring the existing sonar force-retry cases (lines 104–131) and the narrowness case (~line 163):
-  - (a) GHCR secondary-rate-limit `403` → retries, then succeeds on attempt 2.
-  - (b) Bare `denied: permission_denied` / `Forbidden` **without** the rate-limit phrase → still hard-fails, 1 attempt, no retry.
-  Use the verbatim error strings from the Evidence section so the test pins the real GHCR wording, not a paraphrase.
-
-- [ ] **Step 5 — Re-sync the vendored copy.** Run `bash "$ACADEMY_ROOT/actions/scripts/sync-shared.sh"` to regenerate `gh-optivem/.github/scripts/retry.sh`. This picks up both the new GHCR clause and the pre-existing Gap C drift. Do **not** hand-edit the vendored file — it is banner-marked `GENERATED — DO NOT EDIT`.
-
-- [ ] **Step 6 — Commit both repos.** Commit `actions` (Steps 1–4) and `gh-optivem` (Step 5's regenerated file) separately, each scoped to its own repo. Per repo convention, commit only with explicit user approval.
-
-- [ ] **Step 7 — Move the `optivem/actions` `v1` tag.** Shop workflows pin `optivem/actions/deploy-docker-compose@v1`, so the fix is inert until the tag moves. Follow the `actions` repo's normal release procedure (check its release/ledger rules before tagging).
+- [ ] **Step 7 — Move the `optivem/actions` `v1` tag.** Shop workflows pin `optivem/actions/deploy-docker-compose@v1`, so the fix is inert until the tag moves. Follow the `actions` repo's normal release procedure (check its release/ledger rules before tagging). Third-party-visible — confirm with the user before tagging or pushing.
 
 ## Verification
 
