@@ -3,6 +3,7 @@ package shell
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/kernel/log"
@@ -23,9 +25,45 @@ const (
 	rateLimitThreshold = 50
 	pollMaxDuration    = 60 * time.Minute
 
+	// watchMaxDuration bounds the primary `gh run watch` wait. GitHub can hold
+	// a run object in a non-terminal state long after its last job finishes —
+	// 49m and 40m observed on 2026-08-11 (runs 31501646364 / 31506724695, for
+	// ~1m of real job time each) — and `gh run watch` returns only when the
+	// object flips. Without a bound the CLI waits on GitHub's bookkeeping
+	// rather than on the work, silently, until an outer timeout kills it.
+	//
+	// Arithmetic against that outer backstop: the scaffold verifier runs under
+	// `go test -timeout 2h` (.github/actions/acceptance-test/action.yml). A
+	// stalled run costs at most watchMaxDuration + pollMaxDuration =
+	// 30m + 60m = 90m, leaving 30m of headroom. Only one run can ever spend
+	// that budget — when both phases expire watchRunID returns an error and
+	// handleWorkflowResult fatals, so the cost cannot accumulate across stages.
+	watchMaxDuration = 30 * time.Minute
+
+	// watchHeartbeatInterval is how often a live watch prints a progress line.
+	// Coarse enough not to spam a 10-minute stage, frequent enough that a
+	// stall is visible within minutes instead of only in hindsight.
+	watchHeartbeatInterval = 5 * time.Minute
+
+	// commandKillGrace bounds how long RunWithDeadline waits, after killing a
+	// timed-out process, for its inherited stdout/stderr pipes to close — so a
+	// surviving grandchild cannot re-introduce the hang the deadline removes.
+	commandKillGrace = 10 * time.Second
+
 	errMsgInvalidCommand = "invalid command %q: %w"
 	errMsgEmptyCommand   = "empty command"
 )
+
+// nowFn is the clock seam for bounded waits (watch deadline, poll deadline,
+// elapsed-time reporting). Package-level so tests can install a fake clock and
+// reach a 60-minute deadline in microseconds instead of 60 real minutes.
+var nowFn = time.Now
+
+// ErrCommandDeadlineExceeded is wrapped into the error RunWithDeadline returns
+// when a command is killed for outrunning its wall-clock bound. Callers use
+// errors.Is to tell "the external system never answered" apart from "the
+// command answered, with a failure" — the two need different recovery.
+var ErrCommandDeadlineExceeded = errors.New("command deadline exceeded")
 
 // RateLimitExceeded is returned when a gh command fails due to rate limiting.
 type RateLimitExceeded struct {
@@ -55,14 +93,67 @@ func Run(cmdStr string, check bool, cwd string) (string, error) {
 	output := string(out)
 
 	if err != nil {
-		lower := strings.ToLower(output)
-		if strings.Contains(lower, "rate limit") || strings.Contains(lower, "api rate limit exceeded") {
-			return output, &RateLimitExceeded{Msg: fmt.Sprintf("GitHub API rate limit exceeded. Command: %s\n%s", cmdStr, output)}
-		}
-		if check {
-			return output, fmt.Errorf("command failed: %s: %w\n%s", cmdStr, err, output)
-		}
-		log.Warnf("command failed (check=false, continuing): %s: %v\n%s", cmdStr, err, output)
+		return commandFailure(cmdStr, output, err, check)
+	}
+	return output, nil
+}
+
+// commandFailure applies the package's shared post-run failure policy, used by
+// every Run* variant so they cannot drift: a rate-limit signature always
+// surfaces as a typed RateLimitExceeded (callers need to back off regardless of
+// check), any other failure is returned when check is set and otherwise logged
+// — never silently swallowed.
+func commandFailure(cmdStr, output string, err error, check bool) (string, error) {
+	lower := strings.ToLower(output)
+	if strings.Contains(lower, "rate limit") || strings.Contains(lower, "api rate limit exceeded") {
+		return output, &RateLimitExceeded{Msg: fmt.Sprintf("GitHub API rate limit exceeded. Command: %s\n%s", cmdStr, output)}
+	}
+	if check {
+		return output, fmt.Errorf("command failed: %s: %w\n%s", cmdStr, err, output)
+	}
+	log.Warnf("command failed (check=false, continuing): %s: %v\n%s", cmdStr, err, output)
+	return output, nil
+}
+
+// RunWithDeadline is Run with a hard wall-clock bound: if the command has not
+// exited within timeout, the subprocess is killed and the returned error wraps
+// ErrCommandDeadlineExceeded. Use it for waits whose duration is dictated by an
+// external system rather than by local work — `gh run watch` is the motivating
+// case, since it returns only once GitHub flips the run object to a terminal
+// state and that flip has been observed to lag ~49m past the last job.
+//
+// Killing matters as much as timing out: abandoning the goroutine would leave
+// an orphaned `gh` behind (the incident log ends with "Terminate orphan
+// process: pid (23650) (gh)"), so the context kills the process and WaitDelay
+// bounds the wait on its pipes.
+func RunWithDeadline(cmdStr string, check bool, cwd string, timeout time.Duration) (string, error) {
+	parts, err := splitCommand(cmdStr)
+	if err != nil {
+		return "", fmt.Errorf(errMsgInvalidCommand, cmdStr, err)
+	}
+	if len(parts) == 0 {
+		return "", errors.New(errMsgEmptyCommand)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, pathx.NormalizeExe(parts[0]), parts[1:]...)
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
+	cmd.WaitDelay = commandKillGrace
+
+	out, runErr := cmd.CombinedOutput()
+	output := string(out)
+
+	// Check the context first: a killed process also reports a run error, and
+	// the deadline is the more actionable of the two explanations.
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return output, fmt.Errorf("%w: %s did not finish within %s", ErrCommandDeadlineExceeded, cmdStr, timeout)
+	}
+	if runErr != nil {
+		return commandFailure(cmdStr, output, runErr, check)
 	}
 	return output, nil
 }
@@ -91,14 +182,7 @@ func RunStdin(cmdStr, stdin string, check bool, cwd string) (string, error) {
 	output := string(out)
 
 	if err != nil {
-		lower := strings.ToLower(output)
-		if strings.Contains(lower, "rate limit") || strings.Contains(lower, "api rate limit exceeded") {
-			return output, &RateLimitExceeded{Msg: fmt.Sprintf("GitHub API rate limit exceeded. Command: %s\n%s", cmdStr, output)}
-		}
-		if check {
-			return output, fmt.Errorf("command failed: %s: %w\n%s", cmdStr, err, output)
-		}
-		log.Warnf("command failed (check=false, continuing): %s: %v\n%s", cmdStr, err, output)
+		return commandFailure(cmdStr, output, err, check)
 	}
 	return output, nil
 }
@@ -517,18 +601,76 @@ func isTransientBadCredentials(out string) bool {
 //     4xx. Same transient is mitigated on the /user auth path by
 //     githubUserAuthCheck (internal/config/token_auth.go).
 //   - Rate limit: falls back to status polling (pollRunUntilComplete).
+//   - Watch deadline (watchMaxDuration): GitHub can hold a run object
+//     non-terminal long after its jobs finish, and `gh run watch` blocks until
+//     it flips. On expiry the subprocess is killed and we fall back to the same
+//     bounded polling; if that expires too, we fail loud (never silently pass).
 //
-// The watch runs via runFn (the Run seam) so retry-path tests can stub it.
+// The watch runs via watchRunFn (the RunWithDeadline seam) so retry- and
+// deadline-path tests can stub it without a real subprocess.
 func (g *GitHub) watchRunID(runID string, intervalSecs int) error {
-	log.Successf("Watching workflow run (polling every %ds): https://github.com/%s/actions/runs/%s", intervalSecs, g.Repo, runID)
+	runURL := g.runURL(runID)
+	started := nowFn()
+	log.Successf("Watching workflow run (polling every %ds, %s watch deadline): %s", intervalSecs, watchMaxDuration, runURL)
+
+	err := g.runBoundedWatch(runID, runURL, intervalSecs, started)
+	if err == nil {
+		return nil
+	}
+
+	var rle *RateLimitExceeded
+	switch {
+	case errors.As(err, &rle):
+		return g.pollAfterWatch(runID, runURL, started,
+			fmt.Sprintf("rate limit hit while watching run %s", runID))
+	case errors.Is(err, ErrCommandDeadlineExceeded):
+		return g.pollAfterWatch(runID, runURL, started,
+			fmt.Sprintf("watch deadline of %s expired for run %s without GitHub reporting a terminal state", watchMaxDuration, runID))
+	default:
+		return err
+	}
+}
+
+// runURL is the human-facing URL for a run. Every watch-path message carries
+// it, because it is the one thing an operator needs when a watch fails and the
+// only way to tell a GitHub-side stall from a genuinely failing workflow.
+func (g *GitHub) runURL(runID string) string {
+	return fmt.Sprintf("https://github.com/%s/actions/runs/%s", g.Repo, runID)
+}
+
+// watchRunFn executes the bounded `gh run watch`. Package-level so tests can
+// drive the deadline → polling → loud-failure sequence without a real
+// subprocess (see SetWatchRunFnForTest).
+var watchRunFn = RunWithDeadline
+
+// runBoundedWatch runs `gh run watch` under watchMaxDuration, with a heartbeat
+// so the wait is visible while it happens. The deadline spans the whole retry
+// loop, not each attempt: the budget is "how long we are willing to wait for
+// this run", and a 401 retry spends the same budget rather than resetting it.
+func (g *GitHub) runBoundedWatch(runID, runURL string, intervalSecs int, started time.Time) error {
 	watchCmd := fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs)
+	deadline := started.Add(watchMaxDuration)
+
+	sp := spinner.Start(fmt.Sprintf("Watching workflow run %s", runID))
+	defer sp.Stop()
+	stopHeartbeat := startWatchHeartbeat(sp, runURL, started)
+	defer stopHeartbeat()
+
 	_, err := runWithRetryLoop(
-		func() (string, error) { return runFn(watchCmd, true, "") },
+		func() (string, error) {
+			remaining := deadline.Sub(nowFn())
+			if remaining <= 0 {
+				return "", fmt.Errorf("%w: gh run watch for run %s exceeded %s", ErrCommandDeadlineExceeded, runID, watchMaxDuration)
+			}
+			return watchRunFn(watchCmd, true, "", remaining)
+		},
 		func(out string, err error) bool {
-			// Let a rate-limit error fall through to the polling fallback below;
-			// retry only on the transient 401 "Bad credentials" signature.
+			// Rate limit and deadline expiry both route to the polling fallback
+			// in watchRunID — retrying the watch would only re-spend a budget
+			// that has already proved insufficient. Retry only on the transient
+			// 401 "Bad credentials" signature.
 			var rle *RateLimitExceeded
-			if errors.As(err, &rle) {
+			if errors.As(err, &rle) || errors.Is(err, ErrCommandDeadlineExceeded) {
 				return false
 			}
 			return isTransientBadCredentials(out)
@@ -537,18 +679,66 @@ func (g *GitHub) watchRunID(runID string, intervalSecs int) error {
 		defaultRetryDelays,
 		"gh-watch-retry",
 	)
-	if err == nil {
-		return nil
-	}
+	return err
+}
 
-	// If gh run watch failed due to rate limiting, fall back to polling run status.
-	var rle *RateLimitExceeded
-	if !errors.As(err, &rle) {
-		return err
-	}
+// startWatchHeartbeat prints a periodic progress line for a watch in flight and
+// returns an idempotent stop func.
+//
+// The spinner alone is not enough here: GitHub Actions logs are non-TTY, so the
+// animated line never renders and the whole watch window reads as a blank
+// stretch — exactly the silence that hid a 49-minute GitHub-side stall
+// (zero log output from 14:27:45 to 15:18:00 on 2026-08-11). The log line is
+// what makes a stall visible as it happens; the spinner update is for TTY.
+func startWatchHeartbeat(sp *spinner.Spinner, runURL string, started time.Time) func() {
+	done := make(chan struct{})
+	finished := make(chan struct{})
 
-	log.Infof("Rate limit hit while watching run %s — switching to polling mode...", runID)
-	return g.pollRunUntilComplete(runID)
+	go func() {
+		defer close(finished)
+		t := time.NewTicker(watchHeartbeatInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				el := elapsedSince(started)
+				sp.Update(fmt.Sprintf("%s elapsed", el))
+				log.Infof("Still watching %s — %s elapsed of a %s watch deadline", runURL, el, watchMaxDuration)
+			}
+		}
+	}()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			close(done)
+			<-finished
+		})
+	}
+}
+
+// pollAfterWatch runs the bounded polling fallback after the watch gave up, and
+// on failure reports the run URL plus total elapsed time across both phases so
+// the operator gets the link without grepping the log.
+//
+// Per the repo's fail-loud convention this never coerces a non-answer into
+// success: an exhausted watch + exhausted poll is an error, and every caller
+// (verify.go's handleWorkflowResult) fatals on it.
+func (g *GitHub) pollAfterWatch(runID, runURL string, started time.Time, reason string) error {
+	log.Warnf("Switching to polling mode — %s: %s", reason, runURL)
+	if err := g.pollRunUntilComplete(runID); err != nil {
+		return fmt.Errorf("workflow run %s never reported a terminal state: %w (%s; %s elapsed across watch + polling)",
+			runURL, err, reason, elapsedSince(started))
+	}
+	return nil
+}
+
+// elapsedSince reports wall time since t on the nowFn seam, rounded to the
+// second so error messages stay readable.
+func elapsedSince(t time.Time) time.Duration {
+	return nowFn().Sub(t).Round(time.Second)
 }
 
 // RunWatchWorkflow watches the latest run for a specific workflow name.
@@ -605,15 +795,17 @@ func (g *GitHub) RunWatchPushWorkflow(workflow string, intervalSecs int) error {
 // Waits for rate limit reset between polls. Returns nil if the run succeeded, error otherwise.
 // Bounded by pollMaxDuration so a stuck run / permanently malformed output cannot loop forever.
 // Uses Run (combined output) so rate-limit classification in Run triggers the wait-and-retry path.
+// Runs on the nowFn/sleepFn clock seams so the 60-minute bound is reachable in
+// a test without waiting 60 real minutes.
 func (g *GitHub) pollRunUntilComplete(runID string) error {
-	deadline := time.Now().Add(pollMaxDuration)
+	deadline := nowFn().Add(pollMaxDuration)
 	viewCmd := fmt.Sprintf("gh run view %s --repo %s --json status,conclusion --jq '[.status,.conclusion] | join(\",\")'", runID, g.Repo)
 
 	sp := spinner.Start(fmt.Sprintf("Polling workflow run %s (every 60s)", runID))
 	defer sp.Stop()
 
 	for {
-		if time.Now().After(deadline) {
+		if nowFn().After(deadline) {
 			return fmt.Errorf("polling run %s timed out after %s", runID, pollMaxDuration)
 		}
 
@@ -624,7 +816,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 			var rle *RateLimitExceeded
 			if errors.As(err, &rle) {
 				sp.Update("rate limit hit, retrying in 60s")
-				time.Sleep(60 * time.Second)
+				sleepFn(60 * time.Second)
 				continue
 			}
 			return fmt.Errorf("failed to poll run %s: %w", runID, err)
@@ -633,7 +825,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 		parts := strings.SplitN(strings.TrimSpace(statusOut), ",", 2)
 		if len(parts) < 2 {
 			log.Warnf("Unexpected run view output for %s: %q — retrying in 30s", runID, statusOut)
-			time.Sleep(30 * time.Second)
+			sleepFn(30 * time.Second)
 			continue
 		}
 		status, conclusion := parts[0], parts[1]
@@ -650,7 +842,7 @@ func (g *GitHub) pollRunUntilComplete(runID string) error {
 		}
 
 		sp.Update(fmt.Sprintf("status: %s", status))
-		time.Sleep(60 * time.Second)
+		sleepFn(60 * time.Second)
 	}
 }
 

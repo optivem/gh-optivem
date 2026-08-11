@@ -2,8 +2,10 @@ package shell
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -89,6 +91,83 @@ func withFakeRunFn(t *testing.T, script func(callNum int) (string, error)) {
 	t.Cleanup(func() { runFn = orig })
 }
 
+// withFakeWatchFn swaps watchRunFn — the deadline-bounded runner `gh run watch`
+// goes through — to return what script dictates per call number. The returned
+// slice records the timeout each call was handed, which is how the deadline
+// tests prove a bound was actually applied. Restores on cleanup.
+func withFakeWatchFn(t *testing.T, script func(callNum int) (string, error)) *[]time.Duration {
+	t.Helper()
+	var mu sync.Mutex
+	var timeouts []time.Duration
+	orig := watchRunFn
+	watchRunFn = func(_ string, _ bool, _ string, timeout time.Duration) (string, error) {
+		mu.Lock()
+		timeouts = append(timeouts, timeout)
+		n := len(timeouts)
+		mu.Unlock()
+		out, err := script(n)
+		if err == nil {
+			return out, nil
+		}
+		// Deadline errors must stay matchable via errors.Is — that's the signal
+		// watchRunID routes on. Anything else is rewrapped the way Run wraps a
+		// real failure, so the retry classifier sees a realistic string shape.
+		if errors.Is(err, ErrCommandDeadlineExceeded) {
+			return out, err
+		}
+		return out, errors.New(out)
+	}
+	t.Cleanup(func() { watchRunFn = orig })
+	return &timeouts
+}
+
+// fakeClock drives nowFn and sleepFn from a virtual clock, so bounded waits
+// (the 30m watch deadline, the 60m poll deadline) are reachable in
+// microseconds. Every sleepFn call advances the clock by its own duration —
+// the same relationship the real pair has, minus the wall-clock cost.
+type fakeClock struct {
+	mu    sync.Mutex
+	now   time.Time
+	slept []time.Duration
+}
+
+func withFakeClock(t *testing.T) *fakeClock {
+	t.Helper()
+	c := &fakeClock{now: time.Unix(0, 0).UTC()}
+	origNow, origSleep := nowFn, sleepFn
+	nowFn = func() time.Time {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		return c.now
+	}
+	sleepFn = func(d time.Duration) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.now = c.now.Add(d)
+		c.slept = append(c.slept, d)
+	}
+	t.Cleanup(func() { nowFn, sleepFn = origNow, origSleep })
+	return c
+}
+
+func (c *fakeClock) sleeps() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.slept)
+}
+
+// withFakeRateLimitOK stubs runCaptureFn so the CheckRateLimit call inside each
+// poll iteration reports ample budget instead of shelling out to a real
+// `gh api rate_limit`.
+func withFakeRateLimitOK(t *testing.T) {
+	t.Helper()
+	orig := runCaptureFn
+	runCaptureFn = func(string, string) (string, error) {
+		return `{"remaining":5000,"reset":0}`, nil
+	}
+	t.Cleanup(func() { runCaptureFn = orig })
+}
+
 // TestRepoExists_Retries504sThen404Returns covers Item 4 from the retry-gaps
 // plan: with RepoExists wrapping Run via RunWithRetry, a transient 504 must
 // retry and an eventual 404 must surface as the "not found" outcome
@@ -148,7 +227,7 @@ func TestWatchRunID_RetriesTransient401ThenSucceeds(t *testing.T) {
 	var sleeps []time.Duration
 	withFakeSleep(t, &sleeps)
 
-	withFakeRunFn(t, func(n int) (string, error) {
+	withFakeWatchFn(t, func(n int) (string, error) {
 		if n == 1 {
 			return "failed to get run: HTTP 401: Bad credentials", errors.New("x")
 		}
@@ -172,7 +251,7 @@ func TestWatchRunID_NonTransientFailsFast(t *testing.T) {
 	withFakeSleep(t, &sleeps)
 
 	var calls int32
-	withFakeRunFn(t, func(int) (string, error) {
+	withFakeWatchFn(t, func(int) (string, error) {
 		atomic.AddInt32(&calls, 1)
 		return "command failed: some genuine error", errors.New("x")
 	})
@@ -185,7 +264,105 @@ func TestWatchRunID_NonTransientFailsFast(t *testing.T) {
 		t.Fatalf("sleeps = %d, want 0 (non-transient must not retry)", len(sleeps))
 	}
 	if got := atomic.LoadInt32(&calls); got != 1 {
-		t.Fatalf("runFn calls = %d, want 1 (no retry on non-transient)", got)
+		t.Fatalf("watchRunFn calls = %d, want 1 (no retry on non-transient)", got)
+	}
+}
+
+// TestWatchRunID_HappyPathIsBoundedButDoesNotWait pins that adding the deadline
+// changed nothing on the happy path: the watch is handed a bound, returns
+// immediately, and never touches the polling fallback or any backoff.
+func TestWatchRunID_HappyPathIsBoundedButDoesNotWait(t *testing.T) {
+	clock := withFakeClock(t)
+
+	timeouts := withFakeWatchFn(t, func(int) (string, error) { return "", nil })
+
+	var pollCalls int32
+	withFakeRunFn(t, func(int) (string, error) {
+		atomic.AddInt32(&pollCalls, 1)
+		return "completed,success", nil
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	if err := gh.watchRunID("12345", 1); err != nil {
+		t.Fatalf("watchRunID: want nil on the happy path, got %v", err)
+	}
+	if len(*timeouts) != 1 {
+		t.Fatalf("watchRunFn calls = %d, want 1", len(*timeouts))
+	}
+	if got := (*timeouts)[0]; got != watchMaxDuration {
+		t.Fatalf("watch timeout = %s, want the full %s budget on the first attempt", got, watchMaxDuration)
+	}
+	if got := atomic.LoadInt32(&pollCalls); got != 0 {
+		t.Fatalf("poll calls = %d, want 0 (a successful watch must not fall back to polling)", got)
+	}
+	if clock.sleeps() != 0 {
+		t.Fatalf("sleeps = %d, want 0 (the happy path must not wait out any deadline)", clock.sleeps())
+	}
+}
+
+// TestWatchRunID_DeadlineExpiryFallsBackToPolling covers the core of the fix:
+// when `gh run watch` outruns watchMaxDuration — GitHub holding the run object
+// non-terminal long after its jobs finished — the watch is abandoned and the
+// already-bounded polling fallback takes over and can still report success.
+// The deadline must not be retried: re-spending an exhausted budget is exactly
+// the two-hour silence this change removes.
+func TestWatchRunID_DeadlineExpiryFallsBackToPolling(t *testing.T) {
+	withFakeClock(t)
+	withFakeRateLimitOK(t)
+
+	timeouts := withFakeWatchFn(t, func(int) (string, error) {
+		return "", fmt.Errorf("%w: gh run watch stalled", ErrCommandDeadlineExceeded)
+	})
+
+	var pollCalls int32
+	withFakeRunFn(t, func(int) (string, error) {
+		atomic.AddInt32(&pollCalls, 1)
+		return "completed,success", nil
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	if err := gh.watchRunID("12345", 1); err != nil {
+		t.Fatalf("watchRunID: want nil (polling fallback saw success), got %v", err)
+	}
+	if len(*timeouts) != 1 {
+		t.Fatalf("watchRunFn calls = %d, want 1 (deadline expiry must not be retried)", len(*timeouts))
+	}
+	if got := atomic.LoadInt32(&pollCalls); got == 0 {
+		t.Fatal("poll calls = 0, want >= 1 (deadline expiry must fall through to pollRunUntilComplete)")
+	}
+}
+
+// TestWatchRunID_BothDeadlinesExpireFailsLoud pins the fail-loud contract: a
+// run that outlives the watch deadline AND the polling deadline is an error,
+// never a silent pass, and the message must be actionable on its own — the run
+// URL so the operator doesn't have to reconstruct it, and the elapsed time so
+// the scale of the stall is visible without reading timestamps.
+func TestWatchRunID_BothDeadlinesExpireFailsLoud(t *testing.T) {
+	withFakeClock(t)
+	withFakeRateLimitOK(t)
+
+	withFakeWatchFn(t, func(int) (string, error) {
+		return "", fmt.Errorf("%w: gh run watch stalled", ErrCommandDeadlineExceeded)
+	})
+
+	// The run never leaves in_progress, so the fallback polls until its own
+	// bound expires — the virtual clock advances 60s per iteration.
+	withFakeRunFn(t, func(int) (string, error) { return "in_progress,", nil })
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	err := gh.watchRunID("12345", 1)
+	if err == nil {
+		t.Fatal("watchRunID: want an error when both the watch and the poll deadline expire, got nil")
+	}
+	for _, want := range []string{
+		"https://github.com/myorg/myrepo/actions/runs/12345",
+		"polling run 12345 timed out",
+		fmt.Sprintf("watch deadline of %s expired", watchMaxDuration),
+		"elapsed across watch + polling",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q does not mention %q — the message is the whole point of this path", err, want)
+		}
 	}
 }
 

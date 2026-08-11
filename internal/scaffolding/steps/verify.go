@@ -29,6 +29,15 @@ const (
 	msgStageFailed = "%s failed!"
 
 	commitStageWorkflowFile = "commit-stage.yml"
+
+	// watchIntervalSecs is how often `gh run watch` polls a run for these
+	// stages. At the previous 300s the poll granularity dominated the wait:
+	// two runs of ~1 minute of real job time cost 10m20s of Phase 9 wall
+	// clock. 60s matches what the commit-stage and cleanup watches already
+	// used and reclaims that latency. Safe against rate limiting: each watch
+	// is preceded by CheckRateLimit(), and one `gh run watch` per minute per
+	// stage is negligible against the 5000/hour core budget.
+	watchIntervalSecs = 60
 )
 
 // VerifyCompileSystem compiles the system tier(s) locally to catch broken
@@ -276,19 +285,19 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 
 	if cfg.Arch == "monolith" {
 		if cfg.RepoStrategy == "monorepo" {
-			verifyNamedWorkflow(gh, "Commit stage", commitStageWorkflowFile, 60)
+			verifyNamedWorkflow(gh, "Commit stage", commitStageWorkflowFile, watchIntervalSecs)
 		} else {
 			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
-			verifyNamedWorkflow(ghSystem, "Commit stage", commitStageWorkflowFile, 60)
+			verifyNamedWorkflow(ghSystem, "Commit stage", commitStageWorkflowFile, watchIntervalSecs)
 		}
 	} else if cfg.RepoStrategy == "monorepo" {
-		verifyNamedWorkflow(gh, "Backend commit stage", "backend-commit-stage.yml", 60)
-		verifyNamedWorkflow(gh, "Frontend commit stage", "frontend-commit-stage.yml", 60)
+		verifyNamedWorkflow(gh, "Backend commit stage", "backend-commit-stage.yml", watchIntervalSecs)
+		verifyNamedWorkflow(gh, "Frontend commit stage", "frontend-commit-stage.yml", watchIntervalSecs)
 	} else {
 		ghBackend := gh.ForRepo(cfg.BackendFullRepo)
 		ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
-		verifyNamedWorkflow(ghBackend, "Backend commit stage", "backend-commit-stage.yml", 60)
-		verifyNamedWorkflow(ghFrontend, "Frontend commit stage", "frontend-commit-stage.yml", 60)
+		verifyNamedWorkflow(ghBackend, "Backend commit stage", "backend-commit-stage.yml", watchIntervalSecs)
+		verifyNamedWorkflow(ghFrontend, "Frontend commit stage", "frontend-commit-stage.yml", watchIntervalSecs)
 	}
 }
 
@@ -325,7 +334,7 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 	go func() {
 		defer wg.Done()
 		shell.CheckRateLimit()
-		latestErr = gh.RunWatchWorkflow("acceptance-stage.yml", 300)
+		latestErr = gh.RunWatchWorkflow("acceptance-stage.yml", watchIntervalSecs)
 	}()
 
 	if includeLegacy {
@@ -333,7 +342,7 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 		go func() {
 			defer wg.Done()
 			shell.CheckRateLimit()
-			legacyErr = gh.RunWatchWorkflow("acceptance-stage-legacy.yml", 300)
+			legacyErr = gh.RunWatchWorkflow("acceptance-stage-legacy.yml", watchIntervalSecs)
 		}()
 	}
 
@@ -376,21 +385,21 @@ func VerifyQA(cfg *config.Config, gh *shell.GitHub) {
 func VerifyQAStage(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Triggering and verifying QA stage...")
 
-	verifyWorkflow(gh, "QA stage", "qa-stage.yml", nil, 300)
+	verifyWorkflow(gh, "QA stage", "qa-stage.yml", nil, watchIntervalSecs)
 }
 
 // VerifyQASignoff triggers and verifies QA signoff.
 func VerifyQASignoff(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Triggering and verifying QA signoff...")
 
-	verifyWorkflow(gh, "QA signoff", "qa-signoff.yml", map[string]string{"result": "approved"}, 300)
+	verifyWorkflow(gh, "QA signoff", "qa-signoff.yml", map[string]string{"result": "approved"}, watchIntervalSecs)
 }
 
 // VerifyProdStage triggers and verifies production stage.
 func VerifyProdStage(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Triggering and verifying production stage...")
 
-	verifyWorkflow(gh, "Production stage", "prod-stage.yml", nil, 300)
+	verifyWorkflow(gh, "Production stage", "prod-stage.yml", nil, watchIntervalSecs)
 }
 
 // VerifyCleanup triggers cleanup.yml in dry-run mode in every repo where it
@@ -419,8 +428,7 @@ func VerifyCleanup(cfg *config.Config, gh *shell.GitHub) {
 }
 
 func verifyCleanupIn(gh *shell.GitHub, label string) {
-	// Cleanup is short-lived; poll every 60s instead of the 300s default.
-	verifyWorkflow(gh, label, "cleanup.yml", map[string]string{"dry-run": "true"}, 60)
+	verifyWorkflow(gh, label, "cleanup.yml", map[string]string{"dry-run": "true"}, watchIntervalSecs)
 }
 
 // verifyNamedWorkflow watches a commit-stage workflow whose run is fired by the

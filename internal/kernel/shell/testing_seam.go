@@ -23,6 +23,16 @@ func SetRunFnForTest(fn func(string, bool, string) (string, error)) (restore fun
 	return func() { runFn = orig }
 }
 
+// SetWatchRunFnForTest swaps the package-level watchRunFn (the deadline-bounded
+// runner `gh run watch` goes through) so tests can drive the watch path's
+// deadline → polling → loud-failure sequence without a real `gh` binary and
+// without waiting out a 30-minute deadline. Returns a restore func.
+func SetWatchRunFnForTest(fn func(string, bool, string, time.Duration) (string, error)) (restore func()) {
+	orig := watchRunFn
+	watchRunFn = fn
+	return func() { watchRunFn = orig }
+}
+
 // SetRunCaptureFnForTest swaps the package-level runCaptureFn (the function
 // RunCaptureWithRetry shells out to) so tests can exercise call sites like
 // RunWatchWorkflow's appear-poll loop without a real `gh` binary.
