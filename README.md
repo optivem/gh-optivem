@@ -109,18 +109,28 @@ That copies the Optivem slash commands into `~/.claude/commands/` and merges the
 
 ## Generate your project
 
-`gh optivem init` creates your GitHub repository, applies the project template, sets up the pipeline and waits for the pipeline to wait.
+`gh optivem init` creates your GitHub repository, applies the project template, sets up the pipeline and waits for it to pass.
 
-Run it with your project's values:
+Run it with your project's values. Which language flags you pass depends on `--arch`.
+
+**Multitier** — separate `backend/` and `frontend/` trees, each with its own language:
 
 ```bash
-gh optivem init --owner <username|organization> --repo <repo_name> --system-name "<system_name>" --arch multitier --repo-strategy <monorepo|multirepo> --backend-lang <java|dotnet|typescript> --frontend-lang typescript --test-lang <java|dotnet|typescript>
+gh optivem init --owner <username|organization> --repo <repo_name> --system-name "<system_name>" --repo-strategy <monorepo|multirepo> --arch multitier --backend-lang <java|dotnet|typescript> --frontend-lang typescript --test-lang <java|dotnet|typescript>
 ```
+
+**Monolith** — a single `system/` tree in one language, so there is no separate frontend flag:
+
+```bash
+gh optivem init --owner <username|organization> --repo <repo_name> --system-name "<system_name>" --repo-strategy <monorepo|multirepo> --arch monolith --monolith-lang <java|dotnet|typescript> --test-lang <java|dotnet|typescript>
+```
+
+Either way, `--test-lang` is independent of the system language(s), and `--repo-strategy` works with both architectures.
 
 For example:
 
 ```bash
-gh optivem init --owner valentinajemuovic --repo book-shop --system-name "Book Shop" --arch multitier --repo-strategy monorepo --backend-lang dotnet --frontend-lang typescript --test-lang java
+gh optivem init --owner valentinajemuovic --repo book-shop --system-name "Book Shop" --repo-strategy monorepo --arch multitier --backend-lang dotnet --frontend-lang typescript --test-lang java
 ```
 
 ## Clone project repository

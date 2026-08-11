@@ -96,7 +96,8 @@ func verifyDockerHubAuth(client *http.Client, username, token string) error {
 	case http.StatusUnauthorized:
 		return fmt.Errorf("Docker Hub rejected credentials (HTTP 401).\n    "+
 			"Check DOCKERHUB_USERNAME (%q) matches the owner of DOCKERHUB_TOKEN,\n    "+
-			"and that the PAT is Active at https://app.docker.com/settings/personal-access-tokens", username)
+			"and that the PAT is Active at https://app.docker.com/settings/personal-access-tokens\n    "+
+			"(Read-only access is enough)", username)
 	default:
 		return fmt.Errorf("unexpected HTTP %d from Docker Hub: %s", statusCode, truncate(string(respBody), 200))
 	}

@@ -577,7 +577,7 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: typescript (multitier)")
 	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
 	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
-	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (required; e.g. https://github.com/orgs/<org>/projects/<n>)")
+	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (optional — init auto-creates a board and writes the URL back when omitted; e.g. https://github.com/orgs/<org>/projects/<n>)")
 	// Tier paths default to the flat scaffold layout — the same layout
 	// `gh optivem init` itself produces. Pass these flags only to point
 	// the YAML at a non-flat existing repo.
