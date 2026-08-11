@@ -116,7 +116,7 @@ kill them.`,
   gh optivem implement 42 --log-file run.log --log-level phase  # quiet log
   gh optivem implement 42 --show-prompt
   gh optivem implement 42 --keep-runs 0   # never prune
-  gh optivem --auto implement 42 --headless   # auto-approve everything except commit/fix; run claude -p`,
+  gh optivem --auto implement 42 --headless   # auto-approve every tier below the confirm floor (default: human); run claude -p`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			issueSource, err := resolveIssueSource(issueArg, args)

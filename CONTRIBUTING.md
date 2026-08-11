@@ -367,7 +367,7 @@ The `regenerate-diagram` workflow watches `internal/atdd/process/process-flow.ya
 
 Useful flags:
 
-- `--auto` (root flag, before `implement`) + `--headless` — fully autonomous mode: auto-approve everything except commit/fix, run each subagent as `claude -p` instead of an interactive session. Supersedes the deprecated `--autonomous` alias (which still works but warns and rewrites itself to `--auto --headless`).
+- `--auto` (root flag, before `implement`) + `--headless` — fully autonomous mode: auto-approve every approval tier below the `--confirm` floor (default floor `human`, i.e. everything but human-tier STOPs), run each subagent as `claude -p` instead of an interactive session. Supersedes the deprecated `--autonomous` alias (which still works but warns and rewrites itself to `--auto --headless`).
 - `--manual-agents` — v1 two-window dispatch (driver pauses, human launches the agent in a separate Claude Code session, presses Enter to advance). Right tool when bisecting "did v2 misroute?" vs. "did v1 see the commit?".
 
 Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `task_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [pipeline overrides](README.md#pipeline-overrides) section in the README.
@@ -568,7 +568,7 @@ All four fields are optional; absent means "use the embedded default." To experi
 
 ## How it works
 
-See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` logic, setup steps, and verification levels.
+See [docs/how-it-works.md](docs/how-it-works.md) for a detailed walkthrough of the `main.go` startup logic and the `init` scaffolding pipeline — its phased step list and how `--verify-level` selects the verification steps.
 
 For the ATDD pipeline orchestration view, see the rendered [process diagram](docs/process-diagram.md). It is regenerated automatically whenever the canonical YAML at `internal/atdd/process/process-flow.yaml` changes; do not edit the diagram by hand.
 

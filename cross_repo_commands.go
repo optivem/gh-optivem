@@ -139,7 +139,7 @@ Interactively neither flag is needed: you confirm against the printed file list.
 	}
 	cmd.Flags().StringVar(&opts.Repo, "repo", "", "Only operate on the named repo")
 	cmd.Flags().StringVar(&opts.Paths, "paths", "", `Stage only these space-separated paths (requires --repo)`)
-	cmd.Flags().BoolVar(&opts.Yes, "yes", false, "Skip per-repo confirmation (required without a TTY). Per-command primitive — kept separate from the global --auto policy so scripts using `commit --yes \"msg\"` keep skipping the prompt even when --auto is set with the default --confirm=commit,fix exclusion.")
+	cmd.Flags().BoolVar(&opts.Yes, "yes", false, "Skip per-repo confirmation (required without a TTY). Per-command primitive — kept separate from the global --auto policy: the prompt is registered at the `human` tier, which no reachable --confirm floor auto-yeses, so `commit --yes \"msg\"` is the only way for a script to skip it.")
 	cmd.Flags().BoolVar(&opts.All, "all", false,
 		"With --yes, stage all tracked changes (git add -A scope). Required when --paths is not given — a blanket stage is opt-in for scripted callers, the same foot-gun guard as --include-untracked. No effect interactively or with --paths.")
 	cmd.Flags().BoolVar(&opts.IncludeUntracked, "include-untracked", false,

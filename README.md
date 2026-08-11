@@ -113,6 +113,16 @@ gh optivem claude setup
 
 Re-run any time after upgrading the extension to pick up new or updated commands and configuration rules.
 
+### Check for drift
+
+Report differences between the embedded assets and your `~/.claude/` without writing anything:
+
+```bash
+gh optivem claude check
+```
+
+For each embedded slash command it reports missing / differs / in sync, then whether `settings.json` is missing any Optivem permissions or hooks and whether `CLAUDE.md` is missing any Optivem rule section. Exits non-zero when any drift is found, so it can gate CI — run `gh optivem claude setup` to bring `~/.claude/` back in sync.
+
 ## Environment Variables
 
 Provide these credentials one of two ways:
@@ -134,7 +144,7 @@ The credentials, either way:
 - `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens, selecting **No expiration**.
 - `REPO_TOKEN` — GitHub PAT with `repo` scope (classic) or `Contents: Read` on each component repo (fine-grained). Create at https://github.com/settings/tokens or https://github.com/settings/personal-access-tokens, selecting **No expiration** for the classic form.
 
-These three back cron-scheduled pipelines (e.g. `acceptance-stage-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — a classic PAT with an expiration date will eventually lapse and start failing the schedule silently, with no scaffold-time signal. `gh optivem environment verify` warns when a classic PAT's expiration is within 7 days, but "No expiration" avoids the rotation chore entirely for these specific tokens.
+The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines (e.g. `<arch>-<lang>-acceptance-stage-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — a classic PAT with an expiration date will eventually lapse and start failing the schedule silently, with no scaffold-time signal. `gh optivem environment verify` warns when a classic PAT's expiration is within 7 days, but "No expiration" avoids the rotation chore entirely for these specific tokens.
 
 _These are read from your local environment at scaffold time and then propagated as variables and secrets onto the GitHub repos that `gh optivem init` creates, so the pipelines it generates can pull base images from Docker Hub under the authenticated rate limit (rather than the much lower anonymous one), publish and pull pipeline images to/from GHCR, send analysis to SonarCloud, and dispatch cross-repo workflows — all without you having to set each secret in the GitHub UI afterwards._
 
@@ -167,7 +177,7 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 - `--owner` — GitHub owner (user or org) for the scaffolded repo(s).
 - `--repo` — repo name (or monorepo root name for multi-repo layouts).
 - `--system-name` — human-readable system name (e.g. `"Page Turner"`).
-- `--arch` — system architecture: `monolith` or `multitier`.
+- `--arch` — system architecture: `monolith` or `multitier`. (A third architecture, `microservices`, is YAML-authored only — declare it directly in `gh-optivem.yaml` under `system.backend-services:`, not via this flag.)
 - `--repo-strategy` — `monorepo` or `multirepo`.
 - Implementation language — which flag applies depends on `--arch`:
   - `--monolith-lang` — system language when `--arch monolith`: `java`, `dotnet`, or `typescript`.
@@ -237,7 +247,7 @@ Source-level compile of the system tier (`dotnet build` / `./gradlew compileJava
 
 ```bash
 gh optivem system compile                 # system tier only
-gh optivem compile                        # shortcut: system + test tiers (halts on first failure)
+gh optivem compile                        # shortcut: system + component-test + system-test tiers (halts on first failure)
 ```
 
 `compile` is the source-level build — distinct from `system build` (`docker compose build` / container image build). The two must not be conflated.
@@ -257,7 +267,7 @@ gh optivem system build --rebuild         # force full rebuild (no layer cache r
 
 ```bash
 gh optivem system start
-gh optivem system start --restart         # force tear-down + restart
+gh optivem system start --restart         # recreate changed services (keeps the database running — no full down/up)
 gh optivem system start --log-lines 200   # lines of compose logs to dump on health-probe failure (default 50)
 gh optivem system start --up-timeout 10m  # per-attempt timeout for `docker compose up -d` (default 5m)
 ```
@@ -271,7 +281,7 @@ gh optivem system status
 gh optivem system status --timeout 5s    # per-URL probe timeout (default 2s)
 ```
 
-No retries, no waiting — pair with `system start` for the lifecycle ("did it come up?"). After a successful `gh optivem implement --issue N`, the same block is printed automatically as an `=== System endpoints ===` banner.
+No retries, no waiting — pair with `system start` for the lifecycle ("did it come up?").
 
 #### Stop system
 
@@ -283,58 +293,92 @@ gh optivem system stop
 
 #### Clean system
 
-`docker compose down -v --rmi local` — delete volumes + locally-built images. Analog of `dotnet clean` / `./gradlew clean`: deletes build outputs without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem system clean && gh optivem test run`.
+`docker compose down -v --rmi local` — delete volumes + locally-built images. Analog of `dotnet clean` / `./gradlew clean`: deletes build outputs without touching the dependency cache (registry-pulled images are kept). Chain it explicitly for a fresh start: `gh optivem system clean && gh optivem system-test run`.
 
 ```bash
 gh optivem system clean
 ```
 
-### System tests
+### Tests
 
-#### Setup tests
+Tests are organised as two **levels**, each with its own noun and the same `run` / `setup` / `compile` verb set:
+
+- **`component-test`** — the commit-stage suites declared in each component's `component-tests.yaml`. No compose, no system lifecycle, no health probe: each suite's command runs in the component directory.
+- **`system-test`** — the suites declared in `tests.yaml`, run against an already-running system.
+
+The bare verb **`gh optivem test`** is the for-all aggregate: it walks every level cheapest-first, halting on the first failure.
+
+#### Run everything (pyramid order)
+
+```bash
+gh optivem test                           # component-test suites → system start → system-test run → system stop
+gh optivem test --assume-running          # CI: skip the start/stop, the caller owns the system lifecycle
+```
+
+`test` manages the system lifecycle itself by default. CI already starts and stops the system explicitly around its acceptance stage, so it passes `--assume-running` to avoid double-managing it.
+
+#### Component tests
+
+```bash
+gh optivem component-test run                                  # every suite × every component
+gh optivem component-test run --suite unit                     # narrow to one suite id (repeatable, comma-separated, or a suiteGroups alias)
+gh optivem component-test run --suite component --component backend   # narrow to one component (repeatable, comma-separated)
+gh optivem component-test run --test T1,T2                     # narrow to given test names
+gh optivem component-test run --sample                         # use each suite's sampleTest field as the test name
+gh optivem component-test run --list                           # print each component's suite ids and exit
+gh optivem component-test setup [--component backend]          # run each component's setupCommands
+gh optivem component-test compile [--component backend]        # compile the component-test tier
+```
+
+`--suite` / `--component` narrow the run for local feedback only; CI gates on the full run. Pending suites print a notice and pass; suites that need Docker fail fast when no daemon is reachable.
+
+#### Setup system tests
 
 Run `setupCommands` from `tests.yaml` (`npm ci`, restore, compile test sources, ...).
 
 ```bash
-gh optivem test setup
+gh optivem system-test setup
 ```
 
-#### Compile tests
+#### Compile system tests
 
-Source-level compile of the test tier only.
+Source-level compile of the system-test tier only.
 
 ```bash
-gh optivem test compile
+gh optivem system-test compile
 ```
 
-#### Run tests
+#### Run system tests
 
 > [!WARNING]
-> The system must already be running (`gh optivem system start`). `test run` health-probes every entry in `systems.yaml` first; if any aren't up, it errors out with "start it first with `gh optivem system start`" rather than silently starting them.
+> The system must already be running (`gh optivem system start`). `system-test run` health-probes every entry in `systems.yaml` first; if any aren't up, it errors out with "start it first with `gh optivem system start`" rather than silently starting them.
 
 Run all tests:
 
 ```bash
-gh optivem test run                       # run every suite against the already-running system
+gh optivem system-test run                       # run every suite against the already-running system
 ```
 
 Run specific suites:
 
 ```bash
-gh optivem test run --suite smoke         # run only the suite with this id
-gh optivem test run --suite acceptance-api --suite acceptance-ui   # multiple suites, repeatable
-gh optivem test run --suite acceptance-api,acceptance-ui           # ...or comma-separated
-gh optivem test run --list                # print suite ids from tests.yaml and exit
+gh optivem system-test run --suite smoke         # run only the suite with this id
+gh optivem system-test run --suite acceptance-api --suite acceptance-ui   # multiple suites, repeatable
+gh optivem system-test run --suite acceptance-api,acceptance-ui           # ...or comma-separated
+gh optivem system-test run --suite acceptance    # group alias: expands to every acceptance-* suite
+gh optivem system-test run --list                # print suite ids from tests.yaml and exit
 ```
 
 Run specific tests:
 
 ```bash
-gh optivem test run --test "MyTest"       # narrow execution to one test name (substituted into the suite's testFilter)
-gh optivem test run --test T1 --test T2   # multiple names, repeatable
-gh optivem test run --test T1,T2          # ...or comma-separated
-gh optivem test run --sample              # use each suite's sampleTest field as the test name
+gh optivem system-test run --test "MyTest"       # narrow execution to one test name (substituted into the suite's testFilter)
+gh optivem system-test run --test T1 --test T2   # multiple names, repeatable
+gh optivem system-test run --test T1,T2          # ...or comma-separated
+gh optivem system-test run --sample              # use each suite's sampleTest field as the test name
 ```
+
+`--test` cannot be combined with multiple `--suite` values — a test name is substituted into one suite's `testFilter`, so applying it across suites is ambiguous. Narrow to a single `--suite`, or run the command once per suite.
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for playwright/jest (`--grep 'T1|T2'`) where `|` is alternation at the value level; `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`) where the flag itself must repeat; `"fragment-or"` (for `&`-prefixed injection fragments) substitutes per name, joins with `|`, wraps in `( ... )`, and injects as one expression — required for dotnet (`&(DisplayName~T1|DisplayName~T2)`) whose `--filter` parser ORs full property terms, not bare values. Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 
@@ -368,35 +412,39 @@ Each run prints a `Mode:` banner showing the resolved scope — `Mode: workspace
 `gh optivem` prompts on every confirmation by default. To run unattended, opt into auto-approve policy with `--auto`:
 
 ```bash
-gh optivem --auto implement --issue 42          # skip everything except commit + fix (default exclusion)
-gh optivem --auto --confirm= implement          # truly autonomous: prompt only on human STOP nodes
-gh optivem --auto --confirm=fix implement       # narrower: prompt only on fix-agent dispatch (and human)
+gh optivem --auto implement --issue 42                 # truly autonomous: prompt only on human-tier sites
+gh optivem --auto --confirm=prod-commit implement      # narrower: still prompt on both commit tiers (and human)
+gh optivem --auto --confirm=prod-agent implement       # narrower still: prompt from production-agent dispatch upward
 ```
 
-`--auto` is a root-level persistent flag. When set, every confirmation auto-yeses *except* the categories listed in `--confirm`:
+`--auto` is a root-level persistent flag. `--confirm` takes a **single tier**, which becomes the *threshold floor*: sites at or above the floor still prompt, sites strictly below it auto-yes. The tiers, ordered low-to-high by stakes:
 
-| Category | Covers |
+| Tier | Covers |
 |---|---|
-| `commit` | git commit confirmations (lands on GitHub history) |
-| `fix` | ATDD approve nodes wrapping `fix-*` agent dispatch (recovery flow) |
-| `release` | ATDD release confirmer |
-| `prompt` | low-stakes interactive prompts (init walks, doctor, bug-report, ATDD non-fix approve) |
-| `human` | ATDD `agent: human` STOP nodes — always confirmed, cannot be auto-yes'd |
+| `command` | execute-command BPMN nodes (compile / build / start / test run). Cheap, no AI cost, no global state mutation. |
+| `prod-agent` | execute-agent for production code (`implement-*`, `update-*`, `refactor-system`). AI cost; produces reviewable diffs. |
+| `test-agent` | execute-agent for tests (`write-*-tests`, `refactor-tests`). Tests-as-contract — ranked above `prod-agent` because broken tests mask regressions. |
+| `prod-commit` | commit node after a production-agent phase. Persistent git write. |
+| `test-commit` | commit node after a test-agent phase. Persistent git write of the test contract. |
+| `human` | fix-`*` agents, `refine-acceptance-criteria`, BPMN STOP nodes, release. Top tier — always prompts, cannot be auto-yes'd at any reachable floor. |
 
-Default `--confirm` when `--auto` is set and `--confirm` is omitted: `commit,fix` (plus implicit `human`). This protects the two expensive failure modes (publishing the wrong commit; auto-rewriting files in a recovery flow) by default. Override with an explicit `--confirm=<categories>` to narrow or broaden.
+Default `--confirm` when `--auto` is set and `--confirm` is omitted: `human` — i.e. truly autonomous, everything below the human tier auto-yeses. Pass a lower tier to keep prompting on it and everything above it.
+
+> [!WARNING]
+> `--confirm` is a single tier, not a list: a comma-separated value (`--confirm=commit,fix`) is rejected. An explicit empty `--confirm=` resolves the floor to the lowest tier, which makes *every* site prompt — the opposite of autonomous.
 
 Environment variables:
 
 - `GH_OPTIVEM_AUTO=true` — same as `--auto`.
-- `GH_OPTIVEM_CONFIRM=<categories>` — same as `--confirm=<categories>`.
+- `GH_OPTIVEM_CONFIRM=<tier>` — same as `--confirm=<tier>`.
 
 Flag overrides env; both override default. A one-line banner is emitted to stderr at command start showing the resolved policy and where each part came from:
 
 ```
-Auto: true (auto-source: flag, confirm-source: default → commit,fix)
+Auto: true (auto-source: flag, confirm-source: default → floor=human)
 ```
 
-The per-command `--yes` flag on `commit` skips the per-repo confirmation directly, independent of `--auto`. The two compose: `gh optivem --auto commit "msg"` also commits without prompting unless `commit` is in the confirm set (it is, by default). Because `--yes` removes the human review of the staged file list, it refuses a blanket `git add -A` unless you opt in with `--all` (or scope the stage with `--paths`) — and refuses untracked files unless you add `--include-untracked`. This keeps unrelated working-tree changes (e.g. parallel-agent WIP) from being swept into a scripted commit.
+The per-command `--yes` flag on `commit` skips the per-repo confirmation directly, independent of `--auto`. The two do *not* compose: the cross-repo `commit` prompt is registered at the `human` tier, so `gh optivem --auto commit "msg"` still asks per repo — `--yes` is the only way to skip it. Because `--yes` removes the human review of the staged file list, it refuses a blanket `git add -A` unless you opt in with `--all` (or scope the stage with `--paths`) — and refuses untracked files unless you add `--include-untracked`. This keeps unrelated working-tree changes (e.g. parallel-agent WIP) from being swept into a scripted commit.
 
 ## Cleanup
 
@@ -417,10 +465,29 @@ gh optivem cleanup sonar-projects myorg --prefix myorg_course-tester- --dry-run
 Once a scaffolded project carries a valid `gh-optivem.yaml` and the sibling repos are cloned next to it, the `implement` subcommand walks the configured process-flow state machine for one ticket:
 
 ```bash
-gh optivem implement --issue 42                                # walk the pipeline for a specific issue
+gh optivem implement 42                                        # walk the pipeline for a specific issue (positional)
+gh optivem implement --issue 42                                # ...or the flag form (supply exactly one)
 gh optivem implement --issue https://github.com/myorg/myrepo/issues/42
 gh optivem implement                                           # pick the top Ready ticket and walk the pipeline from START
 ```
+
+#### Team handoff (`--target` / `--channel`)
+
+With no `--target`, `implement` walks the whole pipeline start to end — the fullstack-developer default. A ticket can instead be produced in contiguous slices that different teams own, handed off via commit:
+
+| `--target` | Slice | `--channel` |
+|---|---|---|
+| `test` | The shared, channel-agnostic contract (acceptance tests + DSL + driver ports + external system) the whole team mobs. Ends RED by design. | rejected |
+| `driver-adapter` | One channel's test-side System Driver adapter. | required |
+| `system` | One channel's system (the first channel also builds the channel-agnostic common layer). | required |
+
+```bash
+gh optivem implement 42 --target test                          # whole team: shared RED contract
+gh optivem implement 42 --target driver-adapter --channel api  # API team: its driver adapter
+gh optivem implement 42 --target system --channel api          # API team: its system (channel green)
+```
+
+`--channel` is validated against the project's `channels:` list. There is no resume status file — a slice reads how far the ticket got from the committed tree, so it refuses to start until its upstream slice is committed.
 
 `implement` accepts the same per-invocation flags whether or not `--issue` was passed:
 
@@ -449,6 +516,18 @@ For skipping confirmation prompts during a pipeline run (or any other `gh optive
 
 Project-stable overrides (`process_flow:`, `task_prompts:`, `node_extras:`, `node_replacements:`) live in `gh-optivem.yaml` and are read at startup.
 
+### Inspecting a past run
+
+`gh optivem run summary` replays the per-agent summary table from a run's on-disk sidecar (`.gh-optivem/runs/<ts>/summary.jsonl`), written one line per dispatch as the run progresses — so a binary crash mid-run still leaves every row that completed before the bust.
+
+```bash
+gh optivem run summary                     # most-recently-modified run under <cwd>/.gh-optivem/runs/
+gh optivem run summary 20260528-150000     # a specific run-timestamp directory
+gh optivem run summary --markdown          # the human run digest (summary.md) instead of the table
+```
+
+Columns: agent, model, effort, elapsed, in / out tokens, `$` cost. A step-execution table follows when `steps.jsonl` is present.
+
 ### Process diagram
 
 To inspect the configured process-flow Mermaid diagram without running the pipeline:
@@ -458,6 +537,22 @@ gh optivem process show                            # print the canonical Mermaid
 gh optivem process show > docs/process-diagram.md  # regenerate the committed diagram
 ```
 
+To see which paths each agent phase is allowed to touch (`process-flow.yaml` × `gh-optivem.yaml`):
+
+```bash
+gh optivem process scope                              # every phase
+gh optivem process scope write-acceptance-tests       # one phase
+```
+
+Without a `gh-optivem.yaml` in scope, layer names print bare; with one, they resolve to physical paths.
+
+### Architecture diagram
+
+```bash
+gh optivem architecture show                              # print the architecture Mermaid markdown to stdout
+gh optivem architecture show > docs/architecture-diagram.md   # regenerate the committed diagram
+```
+
 ## Trunk-based development helpers
 
 `gh optivem doctor`, `branch`, `pr`, and `hooks` encapsulate the trunk-based development rituals from [docs/tbd.md](docs/tbd.md) so the operator runs one command instead of three.
@@ -465,6 +560,7 @@ gh optivem process show > docs/process-diagram.md  # regenerate the committed di
 ```bash
 gh optivem doctor                              # verify the three global git config keys docs/tbd.md mandates
 gh optivem doctor --fix                        # set any missing or wrong keys to the required values
+gh optivem doctor --orphans                    # sweep for orphan claude subprocesses from crashed `implement` runs
 gh optivem branch start feature/payments       # checkout main, pull --rebase, checkout -b <name> off latest origin/main
 gh optivem branch refresh                      # fetch origin, rebase current branch onto origin/main, push --force-with-lease (refuses on main)
 gh optivem pr merge                            # squash-merge a PR via `gh pr merge` (TBD-safe: never a merge commit)
@@ -475,6 +571,8 @@ gh optivem hooks install                       # install a pre-push hook that re
 
 `pr merge` defaults to `--squash`; `--rebase` is opt-in and the two are mutually exclusive. The `--merge` mode is intentionally not exposed because merge commits on `main` break the linear-trunk invariant. Pass any other `gh pr merge` flags directly to the underlying CLI.
 
+`doctor --orphans` runs the orphan-recovery sweep *instead of* the git-config check (invoke the command twice to run both). It lists the `claude` subprocesses tracked by per-dispatch PID markers under the user-level state dir and classifies each as stale (child already dead — silently cleaned), live (parent still running — left alone), or orphan (child alive, parent dead — prompts y/n to kill). Orphans are what a force-cancelled `implement` run leaves behind: Ctrl+C in the parent terminal, terminal closed, kernel kill, or a panic in a child.
+
 ## Methodology assets
 
 `gh optivem` ships its ATDD methodology assets (the per-phase agent prompts and the shared preamble) embedded in the binary. They are fed to the `claude -p` subprocess via argv at dispatch time and are never written to disk in consumer repos — scaffolded projects hold zero ATDD assets locally, and updates propagate simply by upgrading the `gh-optivem` binary.
@@ -484,4 +582,6 @@ gh optivem hooks install                       # install a pre-push hook that re
 - [Trunk Based Development (TBD)](docs/tbd.md) — how to work with `main` in this repo (and the repos it scaffolds), the role of `pull --rebase`, when to use short-lived PRs, and why the version-bump bot is just another committer.
 - [Process diagram](docs/process-diagram.md) — committed Mermaid diagram of the configured implementation process flow (regenerate with `gh optivem process show`).
 - [BPMN process design](docs/bpmn-process-design.md) — the *why* behind the five-level process model (TOP / CYCLE / HIGH / MID / LOW): primitives, doctrine decisions, and the ticket-to-cycle mapping.
+- [Architecture diagram](docs/architecture-diagram.md) — committed Mermaid diagram of the ATDD layered architecture (regenerate with `gh optivem architecture show`).
+- [How it works](docs/how-it-works.md) — what `gh optivem init` actually does: startup, the phased scaffolding step list, and how `--verify-level` selects the verification steps.
 
