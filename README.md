@@ -10,42 +10,37 @@ A GitHub CLI extension that scaffolds a full delivery pipeline and then drives t
 
 ## Install
 
-Check whether you already have it:
+```bash
+gh extension install optivem/gh-optivem
+```
+
+Check that it worked:
 
 ```bash
 gh optivem --version
 ```
 
-If not installed:
-
-```bash
-gh extension install optivem/gh-optivem
-```
-
-If already installed, upgrade to the latest version:
-
-```bash
-gh extension upgrade optivem
-```
-
-To uninstall:
-
-```bash
-gh extension remove optivem
-```
-
 ## Generate your project
 
-Run `gh optivem init` — it will create your GitHub repository, apply the project template, set up CI/CD, and verify the pipeline.
+`gh optivem init` creates your GitHub repository, applies the project template, sets up the pipeline and waits for the pipeline to wait.
 
-- **Recommended: new project** — run `gh optivem init` to scaffold a fresh project. This is a huge time saver.
-- **Alternative: existing project** — you still need to run `gh optivem init`, then manually transfer the relevant parts into your project.
+Run it with your project's values:
 
-Once complete, verify that your pipeline is green by checking the status badges in your new repository's README. All badges should be green.
+```bash
+gh optivem init --owner <username|organization> --repo <repo_name> --system-name "<system_name>" --arch multitier --repo-strategy <monorepo|multirepo> --backend-lang <java|dotnet|typescript> --frontend-lang typescript --test-lang <java|dotnet|typescript>
+```
 
-## Verify your toolchain
+For example:
 
-From your project's repo root, run one sample test per suite against a locally started system:
+```bash
+gh optivem init --owner valentinajemuovic --repo book-shop --system-name "Book Shop" --arch multitier --repo-strategy monorepo --backend-lang dotnet --frontend-lang typescript --test-lang java
+```
+
+## Verify your setup
+
+Once `init` completes, check the status badges in your new repository's README. All badges should be green.
+
+Then, from your project's repo root, run one sample test per suite against a locally started system:
 
 ```bash
 gh optivem system start
@@ -58,3 +53,15 @@ This confirms that your toolchain, Docker, and system startup are all working. I
 ## Everything else
 
 See the [full CLI reference](docs/cli-reference.md) — credentials, every `init` flag, `gh optivem implement` (the day-to-day verb that walks a ticket through the ATDD pipeline), the system and test runners, cross-repo ops, and cleanup.
+
+## Upgrade
+
+```bash
+gh extension upgrade optivem
+```
+
+## Uninstall
+
+```bash
+gh extension remove optivem
+```
