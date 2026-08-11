@@ -12,9 +12,15 @@
 >    scanner-specific hard-fail regex, or both. The *finding* is resolved; the
 >    *fix* is not chosen.
 > 2. **Q2** — attempt count, given each attempt costs 1–2 min, not milliseconds.
-> 3. **Bash-side scope** — whether scaffolded `run-sonar.sh` has the same gap
->    (see `## Note — pending discussion`); not yet investigated.
-> 4. **Latent risk elsewhere** — whether other `RetryWithPolicy` call sites with
+> 3. **Scope — Go-only, or the shared pattern?** *(investigated; likely the
+>    biggest decision)* The scaffolded CI wires retry correctly but hits the
+>    **same** false positive, so a Go-only fix leaves CI exposed. The defect is
+>    in the shared hard-fail pattern mirrored in `optivem/actions/shared/retry.sh`
+>    and `internal/kernel/shell/retry.go`. See `## Note — pending discussion`.
+> 4. **Go has no force-retry mechanism** — the SonarCloud JRE/CDN 403 fix
+>    protects CI but has never protected `gh optivem init`. Separate latent bug;
+>    fold in or split out?
+> 5. **Latent risk elsewhere** — whether other `RetryWithPolicy` call sites with
 >    large outputs are already silently no-op for the same reason.
 
 ## TL;DR
@@ -108,7 +114,41 @@ at org.sonar.scanner.http.DefaultScannerWsClient.failIfUnauthorized(DefaultScann
 
 Written up but deliberately **not executed**. The one-line version of this change is not merely risky — Q1 proves it is a **no-op** against the exact failure it targets, because `retryHardFail`'s `unauthorized` alternative matches the substring in the stack frame `failIfUnauthorized`. Q2 remains open: the canonical 4-attempt schedule may be a poor fit for a call site costing minutes per attempt rather than milliseconds. The remedy for Q1 and the answer to Q2 both need a decision before any code is touched.
 
-Also unresolved and worth raising: whether the same gap exists on the bash side. `retrycore.go:14` references a `sonar_retry` wrapper in `optivem/actions/shared/retry-core.sh` — if the scaffolded `run-sonar.sh` templates invoke the scanner without going through it, this same fix may be needed there too, and fixing only the Go side would leave CI-invoked scans exposed. Not investigated yet; scoping that belongs in this discussion.
+### Bash-side scope — INVESTIGATED. Wiring is fine; the same bug is present anyway.
+
+The original hypothesis (scaffolded `run-sonar.sh` bypasses the retry wrapper) is **wrong**. The scaffolded CI wires retry correctly — 9 call sites across `shop/.github/workflows/*-{acceptance,commit}-stage.yml` all invoke it through the shared composite:
+
+```yaml
+- name: Run Sonar Analysis
+  uses: optivem/actions/retry@v1
+  with:
+    working-directory: system-test/java
+    command: bash ./run-sonar.sh
+```
+
+**But that wrapper is equally a no-op for this failure.** `_RETRY_HARD_FAIL` in `.github/scripts/retry.sh` contains `[Uu]nauthorized`, which matches the same `failIfUnauthorized` stack frame. Classifying the same real captured output with the bash regexes:
+
+```
+force-retry match: no
+hard-fail  match: "Unauthorized"
+transient  match: "Endpoint request timed out", "Error 504 on https://"
+```
+
+`retry-core.sh:94-108` checks force-retry, then hard-fail, then transient — so this hard-fails immediately with zero attempts, exactly as the Go path does. **CI-invoked scans are exposed too**, not through a wiring gap but through the same false positive.
+
+**This relocates the root cause.** The defect is in the shared hard-fail pattern, which exists in two synchronized places:
+- `optivem/actions/shared/retry.sh` — upstream source of truth; gh-optivem's `.github/scripts/*.sh` are `GENERATED — DO NOT EDIT` copies of it, synced via `optivem/actions/scripts/sync-shared.sh`.
+- `internal/kernel/shell/retry.go` — the Go mirror.
+
+Fixing only `verify.go` therefore fixes neither the scaffolded CI nor the vendored bash copies. **The Q1 remedy should be decided for the shared pattern first, then applied consistently to both languages** — which materially changes this plan's scope, and is the single most important thing to settle in discussion.
+
+### Additional finding — the Go path has no force-retry mechanism at all
+
+`retrycore.go:12` claims to mirror `_RETRY_CORE_ATTEMPTS` / `_RETRY_CORE_DELAYS` from `retry-core.sh`, but the Go side implements **no equivalent of `_RETRY_FORCE_RETRY`** — `RetryWithPolicy` takes only `transient` and `hardFail` (verified: no `ForceRetry`/`jres`/`binaries.sonarsource` reference anywhere in `internal/kernel/shell/`).
+
+That override is what reclaims known-transient-but-hard-fail-shaped SonarCloud failures — the JRE-provisioning 403s (`/analysis/jres`, `scanner.sonarcloud.io/jres`) and the `binaries.sonarsource.com` CDN 403 that triggered the original retry work. The vendored bash copy **does** carry it (3 references in `.github/scripts/retry.sh`, so that sync is current).
+
+Consequence: **the SonarCloud 403 fix protects CI but has never protected `gh optivem init`'s local scan.** A JRE-provisioning or CDN 403 during local/smoke-test scanning still hard-fails with zero retries. This is a separate latent bug from Q1, discovered alongside it, and worth deciding whether to fold into this plan's scope or split into its own.
 
 ## Verification
 
