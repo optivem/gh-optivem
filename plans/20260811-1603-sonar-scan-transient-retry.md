@@ -150,7 +150,38 @@ That override is what reclaims known-transient-but-hard-fail-shaped SonarCloud f
 
 Consequence: **the SonarCloud 403 fix protects CI but has never protected `gh optivem init`'s local scan.** A JRE-provisioning or CDN 403 during local/smoke-test scanning still hard-fails with zero retries. This is a separate latent bug from Q1, discovered alongside it, and worth deciding whether to fold into this plan's scope or split into its own.
 
+## How to reproduce the Q1 verification (needed by Steps 3 and 5)
+
+The evidence above came from a throwaway probe that was deleted, and the sample lived in system temp. To regenerate it from scratch — the log is retained on the run, so this stays reproducible:
+
+1. Fetch the failing job log and strip the timestamp prefix, keeping the region `shell.Run` would have captured (the scanner output between the `Running local SonarCloud scans...` line and the following `FAIL Step failed:` line — was lines 15574–17781, 2,208 lines):
+
+   ```bash
+   gh api repos/optivem/gh-optivem/actions/jobs/93799958610/logs > /tmp/j.log
+   grep -n "Running local SonarCloud scans\|FAIL Step failed" /tmp/j.log   # find the bounds
+   sed -n '<start>,<end>p' /tmp/j.log | sed -E 's/^[0-9T:.-]+Z //' > /tmp/sonar_out.txt
+   ```
+
+2. **Go side** — add a temporary test in `internal/kernel/shell` (same package, so it can reach the unexported regexes via the exported `RetryTransient()` / `RetryHardFail()`), read the sample from an env var rather than a hardcoded path, and print `FindAllString` for both regexes. On Windows the Bash tool's `/tmp` is not visible to Go — translate with `cygpath -w`:
+
+   ```bash
+   GH_PROBE_FILE="$(cygpath -w /tmp/sonar_out.txt)" go test ./internal/kernel/shell/ -run <ProbeName> -v
+   ```
+
+   Delete the probe file afterwards. Expected *before* the fix: 4 transient matches, 2 hard-fail matches (`Unauthorized`), retry = false.
+
+3. **Bash side** — no Go needed:
+
+   ```bash
+   source .github/scripts/retry.sh
+   grep -Eqi "$_RETRY_FORCE_RETRY" /tmp/sonar_out.txt && echo force || echo no-force
+   grep -Eoi "$_RETRY_HARD_FAIL" /tmp/sonar_out.txt | sort -u
+   grep -Eoi "$_RETRY_RETRYABLE"  /tmp/sonar_out.txt | sort -u
+   ```
+
+Step 5 should promote this sample to a committed test fixture so the check stops depending on log retention.
+
 ## Verification
 
-- Re-run the three failed smoke jobs from run `31497679266` to confirm they were purely transient (independent of this plan — the fix is on SonarSource's side).
+- Re-run the smoke jobs from run `31497679266` — **still outstanding, not yet done.** Final state of that run: 3 jobs failed (`monolith/monorepo/java`, `monolith/multirepo/dotnet`, `multitier/monorepo/typescript`), the 4th (`multitier/multirepo/java`) and the downstream release/prerelease jobs cancelled, run conclusion `failure`. Preflight, Commit Stage and Check all passed, so the run was otherwise healthy. Re-running confirms the fault was purely transient; it is independent of this plan, since the fix was on SonarSource's side.
 - After the change ships, confirm on the next full acceptance run that a clean run logs no `[sonar-scan] attempt` lines, so the retry isn't quietly firing on every run and masking a real, persistent problem.
