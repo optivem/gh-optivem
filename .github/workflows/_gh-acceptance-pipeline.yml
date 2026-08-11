@@ -162,6 +162,11 @@ jobs:
 
       - name: Verify acceptance pipeline environment
         env:
+          # Runners have no claude installed and this pipeline never reaches
+          # `implement` — scaffolding is all it exercises. Skipping keeps the
+          # check unconditional for real users, where it is the one that
+          # matters.
+          GH_OPTIVEM_SKIP_CLAUDE_CHECK: "true"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

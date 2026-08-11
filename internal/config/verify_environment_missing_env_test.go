@@ -45,6 +45,7 @@ func plantHappyTools(t *testing.T) {
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
 }
 
 // TestVerifyEnvironment_MissingEnvVar exercises the env-var-presence gate:

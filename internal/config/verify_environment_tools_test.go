@@ -85,6 +85,7 @@ func TestVerifyEnvironment_GhAuthFails(t *testing.T) {
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -131,6 +132,7 @@ func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -147,6 +149,7 @@ func TestVerifyEnvironment_ActionlintMissing(t *testing.T) {
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -192,6 +195,7 @@ func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr strin
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
 	for _, c := range allCompilers {
 		if c == missingTool {
 			continue
@@ -224,6 +228,7 @@ func TestVerifyEnvironment_DockerMissing(t *testing.T) {
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -249,6 +254,7 @@ func TestVerifyEnvironment_BashMissing(t *testing.T) {
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -261,5 +267,106 @@ func TestVerifyEnvironment_BashMissing(t *testing.T) {
 	}
 	if !strings.Contains(msg, "git-scm.com/download/win") {
 		t.Errorf("error did not include the Git Bash install URL. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_ClaudeMissing pins the claude check as part of the
+// no-flags surface. Every ATDD agent runs as a `claude` subprocess, so a
+// missing binary would otherwise pass verification and then surface during
+// `implement` as an exec error naming the subprocess rather than the missing
+// install.
+func TestVerifyEnvironment_ClaudeMissing(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error when claude is missing, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "claude not found on PATH") {
+		t.Errorf("error did not mention claude-missing. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "claude.com/claude-code") {
+		t.Errorf("error did not include the Claude Code install URL. Got:\n%s", msg)
+	}
+	// Presence is all this check can prove — `claude --version` exits 0 when
+	// signed out — so the sign-in step rides along in the message instead of
+	// becoming a check that would have to guess.
+	if !strings.Contains(msg, "sign in") {
+		t.Errorf("error did not include the sign-in hint. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_ClaudeSkipped covers the CI opt-out: with
+// GH_OPTIVEM_SKIP_CLAUDE_CHECK set, an absent claude must NOT fail
+// verification. GitHub runners scaffold without ever reaching `implement`,
+// so failing them for a tool that path never invokes would be noise.
+func TestVerifyEnvironment_ClaudeSkipped(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
+	// claude deliberately NOT planted.
+	setAllEnvTokens(t)
+	t.Setenv(skipClaudeCheckEnv, "true")
+
+	if err := verifyEnvironmentWithClient(nil, happyAuthClient()); err != nil {
+		t.Fatalf("expected nil with the claude check skipped, got:\n%s", err)
+	}
+}
+
+// TestVerifyEnvironment_ClaudeSkipUnsetRunsCheck guards the default. An empty
+// or unset opt-out must leave the check enabled — a regression here would be
+// invisible, since verification would simply go green on machines that cannot
+// run a single ATDD agent.
+func TestVerifyEnvironment_ClaudeSkipUnsetRunsCheck(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
+	// claude deliberately NOT planted.
+	setAllEnvTokens(t)
+	t.Setenv(skipClaudeCheckEnv, "")
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error with an empty skip value, got nil")
+	}
+	if !strings.Contains(err.Error(), "claude not found on PATH") {
+		t.Errorf("empty skip value did not run the claude check. Got:\n%s", err)
+	}
+}
+
+// TestVerifyEnvironment_ClaudeSkipInvalid pins the fail-loud contract on the
+// opt-out itself. `SKIP=yes` reads as an opt-out to whoever wrote the
+// workflow; running the check anyway would fail the job with a message about
+// claude that says nothing about the typo that actually caused it.
+func TestVerifyEnvironment_ClaudeSkipInvalid(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
+	setAllEnvTokens(t)
+	t.Setenv(skipClaudeCheckEnv, "yes")
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error for a non-boolean skip value, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, skipClaudeCheckEnv) {
+		t.Errorf("error did not name the offending variable. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "not a valid boolean") {
+		t.Errorf("error did not explain the parse failure. Got:\n%s", msg)
 	}
 }

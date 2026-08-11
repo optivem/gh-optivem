@@ -463,6 +463,19 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 		// deploys to.
 		{"docker", verifyDocker},
 	}
+	// claude runs every ATDD agent as a subprocess, so `implement` needs it —
+	// but CI runners scaffold without ever implementing, and have no claude.
+	// Opt out there with GH_OPTIVEM_SKIP_CLAUDE_CHECK; the skip is logged so a
+	// green verify never hides a silently dropped check.
+	skipClaude, err := claudeCheckSkipped()
+	if err != nil {
+		return err
+	}
+	if skipClaude {
+		log.Info("Skipping claude check (" + skipClaudeCheckEnv + " set).")
+	} else {
+		checks = append(checks, check{"claude", verifyClaude})
+	}
 	// Per-language compiler presence, gated on the caller-supplied langs.
 	// Nil/empty langs => no compiler checks (the standalone
 	// `environment verify` surface with no --lang flag).

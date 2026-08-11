@@ -4,13 +4,25 @@
 
 # gh-optivem
 
-`gh-optivem` is a tool that helps you implement functionality with AI, using the ATDD process.
+`gh-optivem` is a command line tool that helps you implement software in a reliable way using ATDD & AI.
 
 # Setup
 
 ## Prerequisites
 
-Install the [GitHub CLI](https://cli.github.com/). Check with `gh --version`, then log in with `gh auth login` and confirm with `gh auth status`.
+- **[GitHub CLI](https://cli.github.com/)**
+
+  ```bash
+  gh --version
+  gh auth login
+  gh auth status
+  ```
+
+- **[Claude Code](https://claude.com/claude-code), installed and signed in** — the agents run as `claude` subprocesses, so you need an active Claude subscription.
+
+  ```bash
+  claude --version
+  ```
 
 ## Install
 
@@ -40,7 +52,6 @@ It reports every problem in one pass. If it flags a missing tool, install it fro
 - **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`. Check with `docker --version`.
 - **Your project's language toolchain** — whichever languages you scaffold with: [Java](https://adoptium.net/) (check with `java -version`), [.NET](https://dotnet.microsoft.com/download) (`dotnet --version`), or [Node.js](https://nodejs.org/) (`npm --version`). To have `verify` check them for you, name them: `gh optivem environment verify --lang java,dotnet,typescript`.
 
-
 ## Environment variables
 
 Before you can create your project, set these environment variables on your machine, then restart your IDE / terminal.
@@ -59,6 +70,16 @@ gh optivem environment show
 ```
 
 Then re-run `gh optivem environment verify` — it live-checks each token against its provider, so it will now pass.
+
+## Claude Code setup
+
+Wire Claude Code up for the ATDD workflow:
+
+```bash
+gh optivem claude setup
+```
+
+That copies the Optivem slash commands into `~/.claude/commands/` and merges the Optivem permissions and rules into your `~/.claude/` config — without them, unattended runs stall on approval prompts. Re-run it after each `gh extension upgrade optivem`; `gh optivem claude check` reports drift without writing anything.
 
 ## Generate your project
 
@@ -104,18 +125,6 @@ This confirms that your toolchain, Docker, and system startup are all working. I
 # ATDD AI Implementation
 
 Setup is a one-off. From here on, `gh optivem implement` is the day-to-day verb: it takes one GitHub issue — a User Story with Acceptance Criteria — and walks it through the ATDD pipeline, dispatching an AI agent at each step and running the real build, system, and test commands in between.
-
-## Prerequisites
-
-- **[Claude Code](https://claude.com/claude-code), installed and signed in** — the agents run as `claude` subprocesses, so you need an active Claude subscription. Nothing in Setup depends on it; only `implement` does.
-
-Then wire Claude Code up for the ATDD workflow:
-
-```bash
-gh optivem claude setup
-```
-
-That copies the Optivem slash commands into `~/.claude/commands/` and merges the Optivem permissions and rules into your `~/.claude/` config — without them, unattended runs stall on approval prompts. Re-run it after each `gh extension upgrade optivem`; `gh optivem claude check` reports drift without writing anything.
 
 ## Implement a ticket
 

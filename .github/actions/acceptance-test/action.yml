@@ -191,6 +191,11 @@ runs:
           exit 0
         fi
       env:
+        # These tests drive the scaffolder, which calls `environment verify`
+        # internally. Runners have no claude and never reach `implement`, so
+        # skip that one check rather than installing an agent runtime the
+        # scaffolding path does not use.
+        GH_OPTIVEM_SKIP_CLAUDE_CHECK: "true"
         TEST_VERIFY_LEVEL: ${{ inputs.verify-level }}
         TEST_NO_LEGACY: ${{ inputs.no-legacy }}
         TEST_NO_LOCAL_TESTS: ${{ inputs.no-local-tests }}

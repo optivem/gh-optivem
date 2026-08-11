@@ -18,7 +18,9 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"os/exec"
+	"strconv"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
@@ -102,6 +104,62 @@ func verifyBash() error {
 			"macOS and Linux ship it already — check your PATH.")
 	}
 	return nil
+}
+
+// verifyClaude checks that the claude binary is on PATH. The ATDD pipeline
+// dispatches every agent as a `claude` subprocess, so `implement` cannot run
+// a single node without it — and the failure surfaces as an exec error naming
+// the subprocess, not the missing install.
+//
+// Presence only, deliberately: `claude` exposes no non-interactive
+// auth-status command, and `claude --version` exits 0 whether or not the user
+// is signed in. Asserting sign-in would mean either launching interactively
+// or leaning on an undocumented internal, so a signed-out machine would be
+// indistinguishable from a working one. Rather than coerce that indeterminate
+// answer into a verdict, the check reports what it can prove and puts the
+// sign-in step in the failure message.
+//
+// Unconditional for local use, like bash and docker: `implement` is the
+// reason the extension exists, and a setup-only user is the edge case. CI is
+// the one real exception — see skipClaudeCheckEnv.
+func verifyClaude() error {
+	if _, err := exec.LookPath("claude"); err != nil {
+		return errors.New("claude not found on PATH.\n    " +
+			"Install: https://claude.com/claude-code\n    " +
+			"Then sign in by running: claude")
+	}
+	return nil
+}
+
+// skipClaudeCheckEnv opts out of the claude presence check. Set it on
+// GitHub-hosted runners: the scaffolding workflows run `environment verify`
+// to gate the rest of the job, but runners have no claude installed and never
+// reach `implement`, so the check would fail the job for a tool that job does
+// not use.
+//
+// Scoped to claude alone rather than a general "skip tool checks" switch —
+// every other tool in the list is genuinely needed in CI.
+const skipClaudeCheckEnv = "GH_OPTIVEM_SKIP_CLAUDE_CHECK"
+
+// claudeCheckSkipped reports whether skipClaudeCheckEnv opts out of the
+// claude presence check.
+//
+// An unparseable value is an error, not a silent false: `SKIP=yes` reads as
+// an opt-out to whoever wrote the workflow, and quietly running the check
+// anyway would fail the job with a message about claude that says nothing
+// about the typo that actually caused it.
+func claudeCheckSkipped() (bool, error) {
+	raw, ok := os.LookupEnv(skipClaudeCheckEnv)
+	if !ok || raw == "" {
+		return false, nil
+	}
+	skip, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s=%q is not a valid boolean.\n    "+
+			"Use 1/true to skip the claude check, 0/false to run it.",
+			skipClaudeCheckEnv, raw)
+	}
+	return skip, nil
 }
 
 // verifyNpm checks that the npm binary is on PATH. Required for the
