@@ -259,7 +259,7 @@ bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner
     --shop-ref main
 ```
 
-Skip slow steps with `--no-local-tests --no-local-sonar --no-legacy`. Keep the scaffold dir on success with `--no-cleanup` / `--keep-local`. See [README.md](README.md#usage) for the full flag set.
+Skip slow steps with `--no-local-tests --no-local-sonar --no-legacy`. Keep the scaffold dir on success with `--keep-local`. See [docs/cli-reference.md](docs/cli-reference.md#scaffolding-init) for the full flag set.
 
 ## Init flags for development and CI
 
@@ -311,7 +311,7 @@ bash scripts/test.sh --all ./...              # opt in to a repo-wide run (still
 
 While you're iterating in one package, run just that package: `go test ./internal/atdd/process/clauderun`. Save `./...` for pre-push and CI.
 
-A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`, `GHCR_TOKEN`, `WORKFLOW_TOKEN` in env). Export them in your shell, or — for the credential vars the scaffolder binary reads — drop them in the user-level `.env` (see [Environment Variables](README.md#environment-variables)); the built binary the harness runs loads that file at startup, so no terminal restart is needed when you rotate a token:
+A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`, `GHCR_TOKEN`, `WORKFLOW_TOKEN` in env). Export them in your shell, or — for the credential vars the scaffolder binary reads — drop them in the user-level `.env` (see [Environment Variables](docs/cli-reference.md#environment-variables)); the built binary the harness runs loads that file at startup, so no terminal restart is needed when you rotate a token:
 
 ```bash
 go test -tags=system ./internal/config/ -v -timeout 2h \
@@ -370,7 +370,7 @@ Useful flags:
 - `--auto` (root flag, before `implement`) + `--headless` — fully autonomous mode: auto-approve every approval tier below the `--confirm` floor (default floor `human`, i.e. everything but human-tier STOPs), run each subagent as `claude -p` instead of an interactive session. Supersedes the deprecated `--autonomous` alias (which still works but warns and rewrites itself to `--auto --headless`).
 - `--manual-agents` — v1 two-window dispatch (driver pauses, human launches the agent in a separate Claude Code session, presses Enter to advance). Right tool when bisecting "did v2 misroute?" vs. "did v1 see the commit?".
 
-Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `task_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [pipeline overrides](README.md#pipeline-overrides) section in the README.
+Per-node prompt shaping (`extra` text, full `replace`, alternate `process_flow`, or `task_prompts` swaps) is configured via fields in `gh-optivem.yaml`, not flags — see the [pipeline overrides](README.md#implement-a-ticket) section in the README.
 
 The two rehearsal flows below show how to actually invoke it.
 
@@ -384,7 +384,7 @@ Fast iteration on the driver. **Local working copy of gh-optivem** + **existing 
 
 ##### Quick path
 
-`scripts/atdd-rehearsal.sh` does **everything** end-to-end: runs `scripts/install.sh` (which `go build`s `gh-optivem.exe` from your working copy and re-installs the `gh optivem` extension), creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit. The script relies on the ambient shell environment for credentials; since the binary now loads the user-level `.env` at startup (see [Environment Variables](README.md#environment-variables)), the same portable file covers rehearsals too — no need to re-export tokens per shell. Docker state cleanup is no longer part of this script — if you want a fresh state (volumes + locally-built images dropped, per the current config's `systems.yaml`), run `bash ../gh-optivem/scripts/atdd-clean.sh [--config <yaml>]` first.
+`scripts/atdd-rehearsal.sh` does **everything** end-to-end: runs `scripts/install.sh` (which `go build`s `gh-optivem.exe` from your working copy and re-installs the `gh optivem` extension), creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit. The script relies on the ambient shell environment for credentials; since the binary now loads the user-level `.env` at startup (see [Environment Variables](docs/cli-reference.md#environment-variables)), the same portable file covers rehearsals too — no need to re-export tokens per shell. Docker state cleanup is no longer part of this script — if you want a fresh state (volumes + locally-built images dropped, per the current config's `systems.yaml`), run `bash ../gh-optivem/scripts/atdd-clean.sh [--config <yaml>]` first.
 
 ```bash
 # Step 1 — go to shop
@@ -577,10 +577,10 @@ For the ATDD pipeline orchestration view, see the rendered [process diagram](doc
 Every new yes/no confirmation must go through `internal/kernel/approval` with a category tag, not through `promptio.ConfirmYN` directly:
 
 ```go
-ok, err := approval.Confirm(cmdctx.Approval(cmd), approval.CategoryPrompt, os.Stdin, os.Stdout, "Proceed?")
+ok, err := approval.Confirm(cmdctx.Approval(cmd), approval.CategoryCommand, os.Stdin, os.Stdout, "Proceed?")
 ```
 
-This routes the prompt through the `--auto` / `--confirm` policy resolved once in `PersistentPreRunE` (see [Auto-approve](README.md#auto-approve) for the user-facing contract). Pick the category that matches what the prompt gates: `CategoryCommit`, `CategoryFix`, `CategoryRelease`, `CategoryHuman`, or `CategoryPrompt` (the low-stakes catch-all). New `promptio.ConfirmYN` / `ConfirmYNVia` call sites that bypass `approval.Confirm` are a review-block — they read like unattended-mode bugs the next time someone runs `--auto`.
+This routes the prompt through the `--auto` / `--confirm` policy resolved once in `PersistentPreRunE` (see [Auto-approve](docs/cli-reference.md#auto-approve) for the user-facing contract). Pick the tier that matches the stakes of what the prompt gates, from cheapest to most expensive: `CategoryCommand`, `CategoryProdAgent`, `CategoryTestAgent`, `CategoryProdCommit`, `CategoryTestCommit`, or `CategoryHuman` (always prompts, never auto-yes'd). The iota order is load-bearing — it *is* the threshold ranking, so a new tier cannot be slotted in arbitrarily. New `promptio.ConfirmYN` / `ConfirmYNVia` call sites that bypass `approval.Confirm` are a review-block — they read like unattended-mode bugs the next time someone runs `--auto`.
 
 ## Releasing
 
