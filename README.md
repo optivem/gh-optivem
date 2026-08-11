@@ -1,12 +1,12 @@
 [![gh Commit Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-commit-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-commit-stage.yml)
 [![gh Acceptance Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-acceptance-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-acceptance-stage.yml)
 [![gh Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-release-stage.yml)
-[![gh Post-Release Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-post-release-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-post-release-stage.yml)
-[![gh Local Stage](https://github.com/optivem/gh-optivem/actions/workflows/gh-local-stage.yml/badge.svg)](https://github.com/optivem/gh-optivem/actions/workflows/gh-local-stage.yml)
 
 # gh-optivem
 
-A GitHub CLI extension that scaffolds a full delivery pipeline and then drives tickets through it with AI agents.
+A GitHub CLI extension that scaffolds a ready-to-go system test project with a GitHub Actions pipeline — a complete, working project from the first run.
+
+You then use it to implement your GitHub tickets. Write a User Story with Acceptance Criteria as an issue, and `gh optivem` takes it from start to end: RED (acceptance tests, DSL and drivers) through GREEN (backend and frontend implementation).
 
 ## Install
 
@@ -65,3 +65,23 @@ gh extension upgrade optivem
 ```bash
 gh extension remove optivem
 ```
+
+## Support
+
+Something went wrong? [Open an issue](https://github.com/optivem/gh-optivem/issues).
+
+If `gh optivem init` itself fails, add `--report-bug` and it files the issue for you, with your scaffold config and log file attached:
+
+```bash
+gh optivem init --report-bug ...
+```
+
+Either way, a run always writes a plain-text log to `$TEMP/gh-optivem-<timestamp>.log` — attach it to the issue.
+
+## Maintainer
+
+Maintained by Valentina Jemuović at Optivem — [GitHub](https://github.com/valentinajemuovic) · [LinkedIn](https://www.linkedin.com/in/valentinajemuovic/).
+
+## License
+
+[MIT](LICENSE) © Optivem
