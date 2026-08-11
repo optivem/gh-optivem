@@ -4,9 +4,7 @@
 
 # gh-optivem
 
-A GitHub CLI extension that scaffolds a ready-to-go system test project with a GitHub Actions pipeline — a complete, working project from the first run.
-
-You then use it to implement your GitHub tickets. Write a User Story with Acceptance Criteria as an issue, and `gh optivem` takes it from start to end: RED (acceptance tests, DSL and drivers) through GREEN (backend and frontend implementation).
+`gh-optivem` is a tool that helps you implement functionality with AI, using the ATDD process.
 
 # Setup
 
