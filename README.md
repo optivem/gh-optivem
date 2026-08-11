@@ -8,14 +8,6 @@
 
 # Setup
 
-## Prerequisites
-
-- **Bash** — every command below is run from a Bash shell. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
-- **[GitHub CLI](https://cli.github.com/), authenticated** — `gh optivem` shells out to it to create repos, set secrets, and dispatch workflows. Check with `gh auth status`; log in with `gh auth login`.
-- **[actionlint](https://github.com/rhysd/actionlint)** on your `PATH` — `init` runs it over the scaffolded workflows before anything is pushed. Install with `go install github.com/rhysd/actionlint/cmd/actionlint@v1` (needs a [Go toolchain](https://go.dev/dl/)).
-- **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`.
-- **Your project's language toolchain** — `java`, `dotnet`, or `npm`, whichever you scaffold with.
-
 ## Install
 
 ```bash
@@ -27,6 +19,24 @@ Check that it worked:
 ```bash
 gh optivem --version
 ```
+
+
+## Prerequisites
+
+Run this first — it reports everything that is missing, both the tools below and the environment variables in the next section:
+
+```bash
+gh optivem environment verify
+```
+
+It reports every problem in one pass. If it flags a missing tool, install it from the list below; if it flags a missing credential, see [Environment variables](#environment-variables). Then re-run it until it passes.
+
+- **Bash** — every command below is run from a Bash shell. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
+- **[Go](https://go.dev/dl/)** — needed to install actionlint below.
+- **[actionlint](https://github.com/rhysd/actionlint)** on your `PATH` — `init` runs it over the scaffolded workflows before anything is pushed. Install with `go install github.com/rhysd/actionlint/cmd/actionlint@v1`.
+- **[GitHub CLI](https://cli.github.com/), authenticated** — `gh optivem` shells out to it to create repos, set secrets, and dispatch workflows. Log in with `gh auth login`.
+- **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`.
+
 
 ## Environment variables
 
@@ -45,13 +55,7 @@ To confirm what your shell is actually exporting (token values masked):
 gh optivem environment show
 ```
 
-To live-check each token is also accepted by its provider before scaffolding — and that the prerequisites above are in place:
-
-```bash
-gh optivem environment verify --lang dotnet,typescript --deploy docker
-```
-
-`--lang` (any of `java`, `dotnet`, `typescript`) adds the compiler checks for the languages you scaffold with; `--deploy docker` adds the Docker CLI check. Without them, `verify` covers the gh CLI, actionlint, and the five tokens.
+Then re-run `gh optivem environment verify` — it live-checks each token against its provider, so it will now pass.
 
 ## Generate your project
 

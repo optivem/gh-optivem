@@ -33,15 +33,17 @@ func setAllEnvTokens(t *testing.T) {
 	t.Setenv("REPO_TOKEN", "test-repo-token")
 }
 
-// plantHappyTools points PATH at a fresh dir containing stub `gh` and
-// `actionlint` binaries. The `gh` stub answers `auth status` with a "logged
-// in" line and exit 0; `actionlint` exits 0. This isolates env-var /
-// HTTP-rejection tests from the host's actual `gh` / `actionlint` install.
+// plantHappyTools points PATH at a fresh dir containing stub `gh`,
+// `actionlint` and `docker` binaries — the three always-run local-tool
+// checks. The `gh` stub answers `auth status` with a "logged in" line and
+// exit 0; the other two exit 0. This isolates env-var / HTTP-rejection tests
+// from the host's actual installs.
 func plantHappyTools(t *testing.T) {
 	t.Helper()
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
 }
 
 // TestVerifyEnvironment_MissingEnvVar exercises the env-var-presence gate:
@@ -66,7 +68,7 @@ func TestVerifyEnvironment_MissingEnvVar(t *testing.T) {
 			setAllEnvTokens(t)
 			t.Setenv(tc.envVar, "")
 
-			err := verifyEnvironmentWithClient(nil, "", neverFireClient(t))
+			err := verifyEnvironmentWithClient(nil, neverFireClient(t))
 			if err == nil {
 				t.Fatalf("expected error when %s is missing, got nil", tc.envVar)
 			}
@@ -96,7 +98,7 @@ func TestVerifyEnvironment_AllEnvVarsMissing(t *testing.T) {
 	t.Setenv("WORKFLOW_TOKEN", "")
 	t.Setenv("REPO_TOKEN", "")
 
-	err := verifyEnvironmentWithClient(nil, "", neverFireClient(t))
+	err := verifyEnvironmentWithClient(nil, neverFireClient(t))
 	if err == nil {
 		t.Fatal("expected error when every env var is missing, got nil")
 	}

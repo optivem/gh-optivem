@@ -61,7 +61,7 @@ func TestVerifyEnvironment_GhMissing(t *testing.T) {
 	mkPathDir(t) // empty — nothing planted
 	setAllEnvTokens(t)
 
-	err := verifyEnvironmentWithClient(nil, "", happyAuthClient())
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
 	if err == nil {
 		t.Fatal("expected error when gh is missing, got nil")
 	}
@@ -83,9 +83,10 @@ func TestVerifyEnvironment_GhAuthFails(t *testing.T) {
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo You are not logged into any GitHub hosts\nexit 1")
 	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
 	setAllEnvTokens(t)
 
-	err := verifyEnvironmentWithClient(nil, "", happyAuthClient())
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
 	if err == nil {
 		t.Fatal("expected error when gh auth fails, got nil")
 	}
@@ -127,23 +128,25 @@ func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
 	}
 	writeStub(t, dir, "gh", body)
 	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
 	setAllEnvTokens(t)
 
-	err := verifyEnvironmentWithClient(nil, "", happyAuthClient())
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
 	if err != nil {
 		t.Fatalf("expected nil after the retry recovered gh auth, got:\n%s", err)
 	}
 }
 
 // TestVerifyEnvironment_ActionlintMissing covers actionlint-not-on-PATH.
-// gh is planted as a happy stub so its check passes; only actionlint should
-// fail.
+// gh and docker are planted as happy stubs so their checks pass; only
+// actionlint should fail.
 func TestVerifyEnvironment_ActionlintMissing(t *testing.T) {
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "docker", "exit 0")
 	setAllEnvTokens(t)
 
-	err := verifyEnvironmentWithClient(nil, "", happyAuthClient())
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
 	if err == nil {
 		t.Fatal("expected error when actionlint is missing, got nil")
 	}
@@ -157,8 +160,8 @@ func TestVerifyEnvironment_ActionlintMissing(t *testing.T) {
 }
 
 // TestVerifyEnvironment_CompilerMissing fans out over the three compilers
-// gated on --lang. Each subtest plants happy gh + actionlint stubs and the
-// two non-target compilers so only the one under test is absent.
+// gated on --lang. Each subtest plants happy gh + actionlint + docker stubs
+// and the two non-target compilers so only the one under test is absent.
 func TestVerifyEnvironment_CompilerMissing(t *testing.T) {
 	cases := []struct {
 		lang        string
@@ -184,6 +187,7 @@ func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr strin
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
 	for _, c := range allCompilers {
 		if c == missingTool {
 			continue
@@ -192,7 +196,7 @@ func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr strin
 	}
 	setAllEnvTokens(t)
 
-	err := verifyEnvironmentWithClient([]string{lang}, "", happyAuthClient())
+	err := verifyEnvironmentWithClient([]string{lang}, happyAuthClient())
 	if err == nil {
 		t.Fatalf("expected error when %s is missing for --lang %s, got nil", missingTool, lang)
 	}
@@ -205,17 +209,21 @@ func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr strin
 	}
 }
 
-// TestVerifyEnvironment_DockerMissing covers the deploy-conditional check.
-// docker absent + --deploy docker → docker error.
+// TestVerifyEnvironment_DockerMissing pins the docker check as
+// unconditional: no --deploy flag exists and no lang is passed, yet docker
+// absent from PATH must still fail. The local system runs on
+// `docker compose` whatever the project deploys to, so gating this behind a
+// deploy target would let a cloud-run scaffold pass verification and then
+// fail at `gh optivem system start`.
 func TestVerifyEnvironment_DockerMissing(t *testing.T) {
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	setAllEnvTokens(t)
 
-	err := verifyEnvironmentWithClient(nil, projectconfig.DeployDocker, happyAuthClient())
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
 	if err == nil {
-		t.Fatal("expected error when docker is missing for --deploy docker, got nil")
+		t.Fatal("expected error when docker is missing, got nil")
 	}
 	msg := err.Error()
 	if !strings.Contains(msg, "docker not found on PATH") {

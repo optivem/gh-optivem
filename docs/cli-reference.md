@@ -108,10 +108,11 @@ To live-check each token is also accepted by its provider before scaffolding:
 ```bash
 gh optivem environment verify
 gh optivem environment verify --lang typescript,dotnet,java  # also check compilers for the listed languages
-gh optivem environment verify --deploy docker                # also check the docker CLI is on PATH
 ```
 
-`--lang` (comma-separated or repeated; values: `java`, `dotnet`, `typescript`) opts in to per-language compiler-presence checks. `--deploy` (value: `docker`) opts in to the deploy-target-conditional tool check. Both are opt-in so a CI preflight job can pin one matrix combo without coupling this command to the project-config schema.
+Always checked: the gh CLI (installed and authenticated), `actionlint`, `docker`, and the five tokens. `docker` is unconditional rather than gated on the deploy target — the local system runs on `docker compose` whatever the project deploys to.
+
+`--lang` (comma-separated or repeated; values: `java`, `dotnet`, `typescript`) opts in to per-language compiler-presence checks. It is opt-in so a CI preflight job can pin one matrix combo without coupling this command to the project-config schema.
 
 ## Scaffolding (`init`)
 

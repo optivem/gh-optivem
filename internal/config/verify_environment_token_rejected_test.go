@@ -89,7 +89,7 @@ func TestVerifyEnvironment_DockerHubRejected(t *testing.T) {
 		},
 	})
 
-	err := verifyEnvironmentWithClient(nil, "", client)
+	err := verifyEnvironmentWithClient(nil, client)
 	if err == nil {
 		t.Fatal("expected error when Docker Hub rejects credentials, got nil")
 	}
@@ -114,7 +114,7 @@ func TestVerifyEnvironment_SonarRejected(t *testing.T) {
 		},
 	})
 
-	err := verifyEnvironmentWithClient(nil, "", client)
+	err := verifyEnvironmentWithClient(nil, client)
 	if err == nil {
 		t.Fatal("expected error when Sonar reports valid:false, got nil")
 	}
@@ -169,7 +169,7 @@ func TestVerifyEnvironment_GitHubTokenRejected(t *testing.T) {
 				},
 			})
 
-			err := verifyEnvironmentWithClient(nil, "", client)
+			err := verifyEnvironmentWithClient(nil, client)
 			if err == nil {
 				t.Fatalf("expected error when GitHub rejects %s, got nil", tc.envVar)
 			}
@@ -222,7 +222,7 @@ func TestVerifyEnvironment_GitHubMissingScope(t *testing.T) {
 				},
 			})
 
-			err := verifyEnvironmentWithClient(nil, "", client)
+			err := verifyEnvironmentWithClient(nil, client)
 			if err == nil {
 				t.Fatalf("expected error when %s has insufficient scopes, got nil", tc.envVar)
 			}
@@ -251,7 +251,7 @@ func TestVerifyEnvironment_GHCROCIExchangeFails(t *testing.T) {
 		},
 	})
 
-	err := verifyEnvironmentWithClient(nil, "", client)
+	err := verifyEnvironmentWithClient(nil, client)
 	if err == nil {
 		t.Fatal("expected error when the ghcr.io token exchange returns no bearer, got nil")
 	}

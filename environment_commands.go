@@ -87,13 +87,13 @@ so editing it takes effect on the next run with no terminal restart.`,
 // command to the project-config schema or cwd state. Without --lang, only
 // the language-agnostic tools (gh, actionlint) and tokens are checked.
 //
-// The --deploy flag opts in to deploy-target-conditional tool checks (docker
-// today; gcloud/equivalent when --deploy cloud-run ships). Same opt-in
-// rationale as --lang: explicit-args-only so CI preflight jobs don't have
-// to know the project-config schema.
+// The docker check is NOT deploy-target-gated: every scaffold runs its system
+// locally through `docker compose`, whatever it deploys to, so docker sits in
+// the always-run set alongside gh and actionlint. There is no --deploy flag
+// here; when a target-specific tool lands (gcloud for cloud-run), it gets its
+// own opt-in flag then.
 func newEnvironmentVerifyCmd() *cobra.Command {
 	var langs []string
-	var deploy string
 	cmd := &cobra.Command{
 		Use:   "verify",
 		Short: "Verify the local environment is ready to run the gh-acceptance pipeline",
@@ -103,6 +103,8 @@ the CLI consumes is present and accepted by its provider.
 
   gh CLI auth         — gh CLI installed and ` + "`gh auth status`" + ` succeeds
   actionlint          — actionlint binary on PATH
+  docker              — docker binary on PATH (the local system runs on
+                        ` + "`docker compose`" + `, whatever you deploy to)
   DOCKERHUB_USERNAME  — read from env, used for the Docker Hub login call
   DOCKERHUB_TOKEN     — POST hub.docker.com/v2/users/login
   SONAR_TOKEN         — GET sonarcloud.io/api/authentication/validate
@@ -113,20 +115,16 @@ the CLI consumes is present and accepted by its provider.
   npm                 — required when --lang includes typescript
   dotnet              — required when --lang includes dotnet
   java                — required when --lang includes java
-  docker              — required when --deploy is docker
 
 All checks run in parallel; on any failure the command prints every broken
 check and exits non-zero, so the user fixes them in one pass instead of
 fix-one-retry-discover-next.
 
-The npm / dotnet / java compiler checks only run when --lang is passed; the
-docker check only runs when --deploy is passed. Omit both flags to check
-just the language-agnostic tools and tokens.`,
+The npm / dotnet / java compiler checks only run when --lang is passed. Omit
+it to check just the language-agnostic tools and tokens.`,
 		Example: `  gh optivem environment verify
   gh optivem environment verify --lang typescript
-  gh optivem environment verify --lang typescript,dotnet,java
-  gh optivem environment verify --deploy docker
-  gh optivem environment verify --lang typescript --deploy docker`,
+  gh optivem environment verify --lang typescript,dotnet,java`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			// Initialize logging with sane defaults so the auth-check helpers'
@@ -138,17 +136,16 @@ just the language-agnostic tools and tokens.`,
 			}
 			defer log.Close()
 
-			// Validate --lang and --deploy up front. Aggregated rejection
-			// (every bad value surfaced at once) lives in
-			// config.ValidateVerifyFlags so the rejection paths can be
-			// exercised by unit tests; this surface stays responsible only
-			// for printing + exit.
-			if err := config.ValidateVerifyFlags(langs, deploy); err != nil {
+			// Validate --lang up front. Aggregated rejection (every bad
+			// value surfaced at once) lives in config.ValidateVerifyFlags
+			// so the rejection paths can be exercised by unit tests; this
+			// surface stays responsible only for printing + exit.
+			if err := config.ValidateVerifyFlags(langs); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 
-			if err := config.VerifyEnvironment(langs, deploy); err != nil {
+			if err := config.VerifyEnvironment(langs); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
@@ -158,8 +155,5 @@ just the language-agnostic tools and tokens.`,
 	cmd.Flags().StringSliceVar(&langs, "lang", nil,
 		"Languages to check compilers for: java, dotnet, typescript "+
 			"(comma-separated or repeated). Omit to check only language-agnostic tools.")
-	cmd.Flags().StringVar(&deploy, "deploy", "",
-		"Deploy target to check tools for: docker. "+
-			"Omit to skip the deploy-conditional check.")
 	return cmd
 }

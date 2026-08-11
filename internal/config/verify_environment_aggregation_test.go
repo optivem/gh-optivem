@@ -31,6 +31,7 @@ func TestVerifyEnvironment_AggregatedFailures(t *testing.T) {
 	// + Docker Hub 401 produce two different non-env-var failures.
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "docker", "exit 0")
 	// actionlint deliberately NOT planted.
 	setAllEnvTokens(t)
 
@@ -41,7 +42,7 @@ func TestVerifyEnvironment_AggregatedFailures(t *testing.T) {
 		},
 	})
 
-	err := verifyEnvironmentWithClient(nil, "", client)
+	err := verifyEnvironmentWithClient(nil, client)
 	if err == nil {
 		t.Fatal("expected aggregated error, got nil")
 	}
@@ -68,12 +69,13 @@ func TestVerifyEnvironment_AggregatedFailures(t *testing.T) {
 func TestVerifyEnvironment_AggregatedFailures_MissingVarsAndTool(t *testing.T) {
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "docker", "exit 0")
 	// actionlint deliberately NOT planted.
 	setAllEnvTokens(t)
 	t.Setenv("SONAR_TOKEN", "")
 	t.Setenv("REPO_TOKEN", "")
 
-	err := verifyEnvironmentWithClient(nil, "", neverFireClient(t))
+	err := verifyEnvironmentWithClient(nil, neverFireClient(t))
 	if err == nil {
 		t.Fatal("expected aggregated error, got nil")
 	}

@@ -395,16 +395,14 @@ func warnIfExpiringSoon(resp *http.Response, name string) {
 // VerifyEnvironment runs every readiness check the gh-optivem CLI needs
 // before scaffolding can succeed:
 //
-//   - Local-tool presence (gh CLI auth, actionlint) — see tool_checks.go.
+//   - Local-tool presence (gh CLI auth, actionlint, docker) — see
+//     tool_checks.go. docker is unconditional: every scaffold runs its
+//     system locally through `docker compose`, whatever it deploys to.
 //   - Per-language compiler presence (npm / dotnet / java) — gated on
 //     `langs`; nil/empty `langs` skips this class entirely, which is the
 //     `gh optivem environment verify` (no --lang) behaviour. With `langs`
 //     populated, each unique entry adds one presence check that runs in
 //     the same parallel fan-out as the rest.
-//   - Deploy-conditional tool presence (docker) — gated on `deploy`;
-//     empty `deploy` skips this class entirely, mirroring the `langs`
-//     idiom. With `deploy="docker"`, the local-verify lifecycle's
-//     `docker compose` dependency is checked alongside the rest.
 //   - Required env-var presence: DOCKERHUB_TOKEN, SONAR_TOKEN, GHCR_TOKEN,
 //     WORKFLOW_TOKEN, REPO_TOKEN, plus DOCKERHUB_USERNAME (an account
 //     name, not a token).
@@ -427,8 +425,8 @@ func warnIfExpiringSoon(resp *http.Response, name string) {
 // Returns nil on full success, otherwise an aggregated error listing every
 // failure. On nil return, prints one success line per check via the log
 // package (caller is responsible for log.Init).
-func VerifyEnvironment(langs []string, deploy string) error {
-	return verifyEnvironmentWithClient(langs, deploy, &http.Client{Timeout: tokenAuthTimeout})
+func VerifyEnvironment(langs []string) error {
+	return verifyEnvironmentWithClient(langs, &http.Client{Timeout: tokenAuthTimeout})
 }
 
 // verifyEnvironmentWithClient is the testable form of VerifyEnvironment: the
@@ -437,7 +435,7 @@ func VerifyEnvironment(langs []string, deploy string) error {
 // aggregated-failure surface can be exercised without real network. The
 // public VerifyEnvironment is a one-line wrapper that injects the default
 // timeout-bounded client.
-func verifyEnvironmentWithClient(langs []string, deploy string, client *http.Client) error {
+func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	e := readEnvTokens()
 
 	// requiredEnvVars is the single source shared with the presence-only
@@ -458,15 +456,15 @@ func verifyEnvironmentWithClient(langs []string, deploy string, client *http.Cli
 	checks := []check{
 		{"gh CLI auth", verifyGhAuth},
 		{"actionlint", verifyActionlint},
+		// docker is unconditional, not deploy-target-gated: every scaffold
+		// runs its system locally through `docker compose`, whatever it
+		// deploys to.
+		{"docker", verifyDocker},
 	}
 	// Per-language compiler presence, gated on the caller-supplied langs.
 	// Nil/empty langs => no compiler checks (the standalone
 	// `environment verify` surface with no --lang flag).
 	checks = append(checks, compilerChecksFor(langs)...)
-	// Deploy-conditional tool presence, gated on the caller-supplied deploy
-	// target. Empty deploy => no deploy-conditional check (the standalone
-	// `environment verify` surface with no --deploy flag).
-	checks = append(checks, deployChecksFor(deploy)...)
 	// Live HTTP checks only run when every required env var is present —
 	// each one needs its token value. Missing-var errors are reported
 	// separately in the aggregated error below.
