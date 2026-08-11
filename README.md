@@ -28,6 +28,12 @@ If already installed, upgrade to the latest version:
 gh extension upgrade optivem
 ```
 
+To uninstall:
+
+```bash
+gh extension remove optivem
+```
+
 ## Generate your project
 
 Run `gh optivem init` — it will create your GitHub repository, apply the project template, set up CI/CD, and verify the pipeline.
