@@ -17,7 +17,9 @@ const userEnvFileOverride = "GH_OPTIVEM_ENV_FILE"
 // UserEnvFilePath returns the path gh-optivem loads a user-level .env from at
 // startup: the GH_OPTIVEM_ENV_FILE override if set, else
 // os.UserConfigDir()/gh-optivem/.env (Windows %AppData%\gh-optivem\.env,
-// Linux/mac ~/.config/gh-optivem/.env). The file need not exist — LoadEnvFile
+// macOS ~/Library/Application Support/gh-optivem/.env, Linux
+// $XDG_CONFIG_HOME/gh-optivem/.env falling back to ~/.config/gh-optivem/.env).
+// The file need not exist — LoadEnvFile
 // treats a missing path as a no-op. Returns an error only when the platform
 // config dir can't be resolved and no override was given.
 func UserEnvFilePath() (string, error) {

@@ -6,7 +6,7 @@ This document walks the **`init` scaffolding pipeline** specifically — the lon
 
 ## Startup
 
-1. **Load the user-level `.env`** — before Cobra runs, `main()` reads the user-level env file (`%AppData%\gh-optivem\.env`, `~/.config/gh-optivem/.env`, or `$GH_OPTIVEM_ENV_FILE`). A missing file is a silent no-op; a read error is a non-fatal stderr note. A real exported environment variable always wins — the file only fills variables that are currently unset.
+1. **Load the user-level `.env`** — before Cobra runs, `main()` reads the user-level env file (`%AppData%\gh-optivem\.env` on Windows, `~/Library/Application Support/gh-optivem/.env` on macOS, `~/.config/gh-optivem/.env` on Linux, or `$GH_OPTIVEM_ENV_FILE`). A missing file is a silent no-op; a read error is a non-fatal stderr note. A real exported environment variable always wins — the file only fills variables that are currently unset.
 2. **Resolve the approval policy** — the root `PersistentPreRunE` resolves `--auto` / `--confirm` (flag > env > default) into a policy snapshot stashed on the command context, and emits the `Auto: …` banner to stderr when auto is on.
 3. **Dispatch** — Cobra routes to the subcommand. `--version` prints the version and exits; note that `-v` is deliberately *not* a version shorthand, so `init -v` still means `--verbose`.
 

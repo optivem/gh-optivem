@@ -20,6 +20,33 @@ Check that it worked:
 gh optivem --version
 ```
 
+## Environment variables
+
+`gh optivem init` reads these credentials from your local environment and sets them as secrets and variables on the repos it creates, so the generated pipelines can pull base images, publish to GHCR, and scan with SonarCloud.
+
+Set them on your machine the usual way, then restart your IDE / terminal — the environment snapshot is taken when the process launches, so a shell opened before you set them won't see them.
+
+- `DOCKERHUB_USERNAME` — your Docker Hub username.
+- `DOCKERHUB_TOKEN` — Docker Hub Personal Access Token (read-only scope is enough). Create at https://app.docker.com/settings/personal-access-tokens.
+- `SONAR_TOKEN` — SonarCloud token. Create at https://sonarcloud.io/account/security.
+- `GHCR_TOKEN` — GitHub PAT (classic) with `write:packages` + `read:packages`. Create at https://github.com/settings/tokens, selecting **No expiration**.
+- `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens, selecting **No expiration**.
+- `REPO_TOKEN` — GitHub PAT with `repo` scope (classic) or `Contents: Read` on each component repo (fine-grained). Create at https://github.com/settings/tokens or https://github.com/settings/personal-access-tokens, selecting **No expiration** for the classic form.
+
+The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines that keep running indefinitely once scaffolded — a classic PAT with an expiration date will eventually lapse and start failing the schedule silently. "No expiration" avoids the rotation chore entirely for these specific tokens.
+
+To confirm what your shell is actually exporting (token values masked):
+
+```bash
+gh optivem environment show
+```
+
+To live-check each token is also accepted by its provider before scaffolding:
+
+```bash
+gh optivem environment verify
+```
+
 ## Generate your project
 
 `gh optivem init` creates your GitHub repository, applies the project template, sets up the pipeline and waits for the pipeline to wait.
