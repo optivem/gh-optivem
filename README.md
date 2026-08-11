@@ -38,19 +38,48 @@ gh optivem --version
 
 ## Local environment setup
 
-Run this to see what is still missing — both the tools below and the environment variables in the next section:
+Start here — it runs before any of the tools below are installed, and reports everything missing in one pass: both the tools below and the environment variables in the next section.
 
 ```bash
 gh optivem environment verify
 ```
 
-It reports every problem in one pass. If it flags a missing tool, install it from the list below; if it flags a missing credential, see [Environment variables](#environment-variables). Then re-run it until it passes.
+If it flags a missing tool, install it from the list below; if it flags a missing credential, see [Environment variables](#environment-variables). Then re-run it until it passes.
 
-- **Bash** — every command in this README is run from a Bash shell, and `gh optivem` shells out through it too. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there. Check with `bash --version`.
-- **[Go](https://go.dev/dl/)** — needed to install actionlint below. Check with `go version`.
-- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows before anything is pushed. Install with `go install github.com/rhysd/actionlint/cmd/actionlint@v1`, then check with `actionlint --version`. That drops the binary in `~/go/bin`, which Go does not add to your `PATH` — add it yourself if the check comes back "not found".
-- **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`. Check with `docker --version`.
-- **Your project's language toolchain** — whichever languages you scaffold with: [Java](https://adoptium.net/) (check with `java -version`), [.NET](https://dotnet.microsoft.com/download) (`dotnet --version`), or [Node.js](https://nodejs.org/) (`npm --version`). To have `verify` check them for you, name them: `gh optivem environment verify --lang java,dotnet,typescript`.
+- **Bash** — every command in this README is run from a Bash shell, and `gh optivem` shells out through it too. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
+
+  ```bash
+  bash --version
+  ```
+
+- **[Go](https://go.dev/dl/)** — needed to install actionlint below.
+
+  ```bash
+  go version
+  ```
+
+- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows before anything is pushed. The install drops the binary in `~/go/bin`, which Go does not add to your `PATH` — add it yourself if the check comes back "not found".
+
+  ```bash
+  go install github.com/rhysd/actionlint/cmd/actionlint@v1
+  actionlint --version
+  ```
+
+- **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`.
+
+  ```bash
+  docker --version
+  ```
+
+- **Your project's language toolchain** — whichever languages you scaffold with: [Java](https://adoptium.net/), [.NET](https://dotnet.microsoft.com/download), or [Node.js](https://nodejs.org/). Check only the ones you need.
+
+  ```bash
+  java -version     # Java
+  dotnet --version  # .NET
+  npm --version     # Node.js
+  ```
+
+  To have `verify` check them for you, name them: `gh optivem environment verify --lang java,dotnet,typescript`.
 
 ## Environment variables
 
