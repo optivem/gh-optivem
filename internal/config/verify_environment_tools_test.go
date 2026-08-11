@@ -84,6 +84,7 @@ func TestVerifyEnvironment_GhAuthFails(t *testing.T) {
 	writeStub(t, dir, "gh", "echo You are not logged into any GitHub hosts\nexit 1")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -129,6 +130,7 @@ func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
 	writeStub(t, dir, "gh", body)
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -144,6 +146,7 @@ func TestVerifyEnvironment_ActionlintMissing(t *testing.T) {
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -188,6 +191,7 @@ func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr strin
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
 	for _, c := range allCompilers {
 		if c == missingTool {
 			continue
@@ -219,6 +223,7 @@ func TestVerifyEnvironment_DockerMissing(t *testing.T) {
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
 	setAllEnvTokens(t)
 
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
@@ -231,5 +236,30 @@ func TestVerifyEnvironment_DockerMissing(t *testing.T) {
 	}
 	if !strings.Contains(msg, "docker.com") {
 		t.Errorf("error did not include a docker install URL. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_BashMissing pins the bash check as unconditional and
+// as part of the no-flags surface. VerifyLocalSonar shells out to
+// run-sonar.sh, so a Windows user with no Git Bash would otherwise pass
+// verification and then die partway through `init` — after the repos have
+// already been created.
+func TestVerifyEnvironment_BashMissing(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error when bash is missing, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "bash not found on PATH") {
+		t.Errorf("error did not mention bash-missing. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "git-scm.com/download/win") {
+		t.Errorf("error did not include the Git Bash install URL. Got:\n%s", msg)
 	}
 }

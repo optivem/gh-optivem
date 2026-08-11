@@ -110,7 +110,7 @@ gh optivem environment verify
 gh optivem environment verify --lang typescript,dotnet,java  # also check compilers for the listed languages
 ```
 
-Always checked: the gh CLI (installed and authenticated), `actionlint`, `docker`, and the five tokens. `docker` is unconditional rather than gated on the deploy target — the local system runs on `docker compose` whatever the project deploys to.
+Always checked: the gh CLI (installed and authenticated), `actionlint`, `bash`, `docker`, and the five tokens. `bash` and `docker` are unconditional rather than gated on the deploy target — every scaffold shells out through bash and runs its system on `docker compose`, whatever the project deploys to.
 
 `--lang` (comma-separated or repeated; values: `java`, `dotnet`, `typescript`) opts in to per-language compiler-presence checks. It is opt-in so a CI preflight job can pin one matrix combo without coupling this command to the project-config schema.
 

@@ -1,13 +1,14 @@
 // Package config — local-tool presence checks for `environment verify`.
 //
-// gh-optivem shells out to two binaries at scaffold time: `gh` (for repo
+// gh-optivem shells out to several binaries at scaffold time: `gh` (for repo
 // creation, secret/variable setting, label management, workflow dispatch,
-// run-watching — see internal/shell/github.go) and `actionlint` (for static
-// workflow validation before any push — see internal/steps/verify.go). Both
-// are local-environment preconditions; without them, scaffolding fails
-// partway through with errors that don't obviously point back at the missing
-// tool. `environment verify` calls these so the user learns about all
-// missing pieces in one pass.
+// run-watching — see internal/shell/github.go), `actionlint` (for static
+// workflow validation before any push — see internal/steps/verify.go),
+// `bash` (run-sonar.sh and the scaffolded shell scripts) and `docker` (the
+// local-verify lifecycle's `docker compose`). All are local-environment
+// preconditions; without them, scaffolding fails partway through with errors
+// that don't obviously point back at the missing tool. `environment verify`
+// calls these so the user learns about all missing pieces in one pass.
 //
 // Lives in config (not shell) because shell already imports config; the
 // reverse direction would create a cycle. Uses os/exec directly.
@@ -77,6 +78,28 @@ func verifyActionlint() error {
 	if _, err := exec.LookPath("actionlint"); err != nil {
 		return errors.New("actionlint not found on PATH.\n    " +
 			"Install: go install github.com/rhysd/actionlint/cmd/actionlint@v1")
+	}
+	return nil
+}
+
+// verifyBash checks that the bash binary is on PATH. Two direct, unconditional
+// uses:
+//
+//   - sonarComponent (internal/scaffolding/steps/verify.go) runs the literal
+//     command `bash ./run-sonar.sh` per component during init.
+//   - realShell.Run (internal/atdd/process/actions/runners.go) routes every
+//     shell command through $SHELL, defaulting to "bash" when unset — so
+//     `system start`, `system-test run` and the whole `implement` pipeline
+//     go through it, with no skip flag.
+//
+// verify.go does its own LookPath and Fatalfs, but only once init is already
+// mid-flight. Checking here means a Windows user with no Git Bash learns
+// before any repo is created rather than after.
+func verifyBash() error {
+	if _, err := exec.LookPath("bash"); err != nil {
+		return errors.New("bash not found on PATH.\n    " +
+			"Install Git Bash (Windows): https://git-scm.com/download/win\n    " +
+			"macOS and Linux ship it already — check your PATH.")
 	}
 	return nil
 }

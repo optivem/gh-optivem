@@ -32,6 +32,7 @@ func TestVerifyEnvironment_AggregatedFailures(t *testing.T) {
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
 	// actionlint deliberately NOT planted.
 	setAllEnvTokens(t)
 
@@ -70,6 +71,7 @@ func TestVerifyEnvironment_AggregatedFailures_MissingVarsAndTool(t *testing.T) {
 	dir := mkPathDir(t)
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
 	// actionlint deliberately NOT planted.
 	setAllEnvTokens(t)
 	t.Setenv("SONAR_TOKEN", "")

@@ -34,9 +34,9 @@ func setAllEnvTokens(t *testing.T) {
 }
 
 // plantHappyTools points PATH at a fresh dir containing stub `gh`,
-// `actionlint` and `docker` binaries — the three always-run local-tool
+// `actionlint`, `docker` and `bash` binaries — the four always-run local-tool
 // checks. The `gh` stub answers `auth status` with a "logged in" line and
-// exit 0; the other two exit 0. This isolates env-var / HTTP-rejection tests
+// exit 0; the others exit 0. This isolates env-var / HTTP-rejection tests
 // from the host's actual installs.
 func plantHappyTools(t *testing.T) {
 	t.Helper()
@@ -44,6 +44,7 @@ func plantHappyTools(t *testing.T) {
 	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
 }
 
 // TestVerifyEnvironment_MissingEnvVar exercises the env-var-presence gate:

@@ -87,11 +87,11 @@ so editing it takes effect on the next run with no terminal restart.`,
 // command to the project-config schema or cwd state. Without --lang, only
 // the language-agnostic tools (gh, actionlint) and tokens are checked.
 //
-// The docker check is NOT deploy-target-gated: every scaffold runs its system
-// locally through `docker compose`, whatever it deploys to, so docker sits in
-// the always-run set alongside gh and actionlint. There is no --deploy flag
-// here; when a target-specific tool lands (gcloud for cloud-run), it gets its
-// own opt-in flag then.
+// The bash and docker checks are NOT gated on anything: every scaffold shells
+// out through bash and runs its system locally through `docker compose`,
+// whatever it deploys to, so both sit in the always-run set alongside gh and
+// actionlint. There is no --deploy flag here; when a target-specific tool
+// lands (gcloud for cloud-run), it gets its own opt-in flag then.
 func newEnvironmentVerifyCmd() *cobra.Command {
 	var langs []string
 	cmd := &cobra.Command{
@@ -103,6 +103,8 @@ the CLI consumes is present and accepted by its provider.
 
   gh CLI auth         — gh CLI installed and ` + "`gh auth status`" + ` succeeds
   actionlint          — actionlint binary on PATH
+  bash                — bash binary on PATH (run-sonar.sh, and every shell
+                        command the system / test runners issue)
   docker              — docker binary on PATH (the local system runs on
                         ` + "`docker compose`" + `, whatever you deploy to)
   DOCKERHUB_USERNAME  — read from env, used for the Docker Hub login call

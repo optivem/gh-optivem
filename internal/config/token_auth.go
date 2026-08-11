@@ -395,9 +395,10 @@ func warnIfExpiringSoon(resp *http.Response, name string) {
 // VerifyEnvironment runs every readiness check the gh-optivem CLI needs
 // before scaffolding can succeed:
 //
-//   - Local-tool presence (gh CLI auth, actionlint, docker) — see
-//     tool_checks.go. docker is unconditional: every scaffold runs its
-//     system locally through `docker compose`, whatever it deploys to.
+//   - Local-tool presence (gh CLI auth, actionlint, bash, docker) — see
+//     tool_checks.go. bash and docker are unconditional: every scaffold
+//     shells out to run-sonar.sh and runs its system locally through
+//     `docker compose`, whatever it deploys to.
 //   - Per-language compiler presence (npm / dotnet / java) — gated on
 //     `langs`; nil/empty `langs` skips this class entirely, which is the
 //     `gh optivem environment verify` (no --lang) behaviour. With `langs`
@@ -456,6 +457,7 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	checks := []check{
 		{"gh CLI auth", verifyGhAuth},
 		{"actionlint", verifyActionlint},
+		{"bash", verifyBash},
 		// docker is unconditional, not deploy-target-gated: every scaffold
 		// runs its system locally through `docker compose`, whatever it
 		// deploys to.
