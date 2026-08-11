@@ -353,7 +353,7 @@ func runInit(cmd *cobra.Command, f *config.RawFlags) {
 
 	// Print update notice if a newer release is available. Notify-only — the
 	// user upgrades explicitly via `gh extension upgrade optivem`.
-	checkForUpdate(cfg)
+	checkForUpdate()
 
 	gh := shell.NewGitHub(cfg.FullRepo)
 	sc := shell.NewSonarCloud(cfg.SonarToken, pc.Sonar.Organization)
@@ -904,7 +904,7 @@ func createBugReport(cfg *config.Config, errorCount int) {
 // checkForUpdate queries the latest release and, when the running binary is
 // outdated, prints a notice telling the user to run `gh extension upgrade optivem`.
 // Notify-only — never auto-upgrades; users decide when to upgrade.
-func checkForUpdate(cfg *config.Config) {
+func checkForUpdate() {
 	if strings.HasPrefix(version.Version, "dev") {
 		return // skip check for development builds (e.g. "dev", "dev-44d9d27", "dev-44d9d27-dirty")
 	}
@@ -1004,7 +1004,7 @@ func printBanner(cfg *config.Config, pc *projectconfig.Config) {
 	fmt.Println()
 	log.Infof("Environments:    acceptance, qa, production")
 	log.Infof("Variables:       DOCKERHUB_USERNAME")
-	log.Infof("Secrets:         %s", strings.Join(willCreateSecrets(cfg), ", "))
+	log.Infof("Secrets:         %s", strings.Join(willCreateSecrets(), ", "))
 	if !cfg.NoProject {
 		switch {
 		case cfg.ProjectURL == "":
@@ -1033,7 +1033,7 @@ func printBanner(cfg *config.Config, pc *projectconfig.Config) {
 
 // willCreateSecrets lists the GitHub Actions secrets this scaffold will set,
 // in the order SetupVariablesAndSecrets writes them.
-func willCreateSecrets(cfg *config.Config) []string {
+func willCreateSecrets() []string {
 	return []string{"DOCKERHUB_TOKEN", "SONAR_TOKEN", "WORKFLOW_TOKEN", "GHCR_TOKEN"}
 }
 

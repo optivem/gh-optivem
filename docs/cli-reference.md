@@ -110,7 +110,7 @@ gh optivem environment verify
 gh optivem environment verify --lang typescript,dotnet,java  # also check compilers for the listed languages
 ```
 
-Always checked: the gh CLI (installed and authenticated), `actionlint`, `bash`, `docker`, and the five tokens. `bash` and `docker` are unconditional rather than gated on the deploy target — every scaffold shells out through bash and runs its system on `docker compose`, whatever the project deploys to.
+Always checked: the gh CLI (installed and authenticated), `actionlint`, `bash`, `docker`, `claude`, `DOCKERHUB_USERNAME`, and the five tokens. `bash` and `docker` are unconditional rather than gated on the deploy target — every scaffold shells out through bash and runs its system on `docker compose`, whatever the project deploys to. `claude` is presence-only (the CLI exposes no non-interactive sign-in probe) and is the one check with an opt-out: set `GH_OPTIVEM_SKIP_CLAUDE_CHECK=1` on GitHub-hosted runners, which scaffold but never reach `implement`. The skip is logged, so a green verify never hides a silently dropped check.
 
 `--lang` (comma-separated or repeated; values: `java`, `dotnet`, `typescript`) opts in to per-language compiler-presence checks. It is opt-in so a CI preflight job can pin one matrix combo without coupling this command to the project-config schema.
 
@@ -460,6 +460,7 @@ Columns: agent, model, effort, elapsed, in / out tokens, `$` cost. A step-execut
 ```bash
 gh optivem process show                            # print the process-flow Mermaid markdown to stdout
 gh optivem process show > docs/process-diagram.md  # regenerate the committed diagram
+gh optivem process show --expanded > docs/process-diagram-expanded.md  # call-activities inlined as subgraphs
 
 gh optivem architecture show                                   # print the architecture Mermaid markdown to stdout
 gh optivem architecture show > docs/architecture-diagram.md    # regenerate the committed diagram

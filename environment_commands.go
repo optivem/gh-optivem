@@ -107,6 +107,10 @@ the CLI consumes is present and accepted by its provider.
                         command the system / test runners issue)
   docker              — docker binary on PATH (the local system runs on
                         ` + "`docker compose`" + `, whatever you deploy to)
+  claude              — claude binary on PATH (every ATDD agent runs as a
+                        ` + "`claude`" + ` subprocess). Presence only — sign-in is
+                        not probeable. Set GH_OPTIVEM_SKIP_CLAUDE_CHECK=1 on
+                        CI runners that scaffold but never run ` + "`implement`" + `.
   DOCKERHUB_USERNAME  — read from env, used for the Docker Hub login call
   DOCKERHUB_TOKEN     — POST hub.docker.com/v2/users/login
   SONAR_TOKEN         — GET sonarcloud.io/api/authentication/validate

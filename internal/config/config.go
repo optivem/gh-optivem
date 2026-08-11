@@ -612,7 +612,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from local tests and acceptance stage")
 	fs.BoolVar(&f.NoLocalTests, "no-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
 	fs.BoolVar(&f.NoLocalSonar, "no-local-sonar", false, "Skip the 'Verify local SonarCloud scan' step (per-component run-sonar.sh against the SonarCloud project)")
-	fs.BoolVar(&f.NoAtdd, "no-atdd", false, "Skip installing ATDD agents/commands/prompts from shop into the scaffolded repo")
+	fs.BoolVar(&f.NoAtdd, "no-atdd", false, "No-op, retained for backward compatibility: ATDD assets ship embedded in the binary and are never installed per-repo")
 	fs.BoolVar(&f.NoProject, "no-project", false, "Skip the 'Ensure project board' step entirely (no auto-create, no status-ensure on a supplied --project-url). For CI smoke tests of the scaffolder, or to manage the board out-of-band.")
 	fs.BoolVar(&f.BugReport, "report-bug", false, "On failure, auto-create a GitHub issue in optivem/gh-optivem with scaffold config. Off by default — file one yourself if the failure is worth reporting.")
 	fs.StringVar(&f.WorkDir, "workdir", "", "Working directory for cloning (default: temp dir)")

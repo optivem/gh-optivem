@@ -35,13 +35,15 @@ gh optivem --version
 
 ## Local environment setup
 
-Start here — it runs before any of the tools below are installed, and reports everything missing in one pass: both the tools below and the environment variables in the next section.
+Start here — it runs before any of the tools below are installed, and reports everything missing in one pass: the gh CLI, Claude Code, Bash, actionlint, Docker, and the environment variables in the next section.
 
 ```bash
 gh optivem environment verify
 ```
 
 If it flags a missing tool, install it from the list below; if it flags a missing credential, see [Environment variables](#environment-variables). Then re-run it until it passes.
+
+Two things it does *not* check on its own: Go (it only matters for installing actionlint) and your language toolchains — name those with `--lang`, see below.
 
 - **Bash** — every command in this README is run from a Bash shell, and `gh optivem` shells out through it too. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
 
@@ -55,7 +57,7 @@ If it flags a missing tool, install it from the list below; if it flags a missin
   go version
   ```
 
-- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows before anything is pushed. The install drops the binary in `~/go/bin`, which Go does not add to your `PATH` — add it yourself if the check comes back "not found".
+- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows, right after pushing them and before any pipeline verification, so a broken scaffold is visible on the remote for troubleshooting. The install drops the binary in `~/go/bin`, which Go does not add to your `PATH` — add it yourself if the check comes back "not found".
 
   ```bash
   go install github.com/rhysd/actionlint/cmd/actionlint@v1
@@ -80,7 +82,12 @@ If it flags a missing tool, install it from the list below; if it flags a missin
 
 ## Environment variables
 
-Before you can create your project, set these environment variables on your machine, then restart your IDE / terminal.
+Before you can create your project, provide these credentials one of two ways:
+
+- **Set them as environment variables** on your machine, then restart your IDE / terminal.
+- **Put them in a `.env` file** at `%AppData%\gh-optivem\.env` (Windows), `~/Library/Application Support/gh-optivem/.env` (macOS), or `~/.config/gh-optivem/.env` (Linux) — no restart needed, and edits take effect on the next run. See the [full reference](docs/cli-reference.md#environment-variables) for the `.env` details.
+
+Either way:
 
 - `DOCKERHUB_USERNAME` — your Docker Hub username.
 - `DOCKERHUB_TOKEN` — a [Docker Hub Personal Access Token](https://app.docker.com/settings/personal-access-tokens) (read-only scope is enough).
@@ -96,6 +103,8 @@ gh optivem environment show
 ```
 
 Then re-run `gh optivem environment verify` — it live-checks each token against its provider, so it will now pass.
+
+The three GitHub PATs back pipelines that keep running on a schedule long after scaffolding, and a lapsed token makes them fail silently. Put a rotation reminder in your calendar; `verify` warns when a classic PAT expires within 7 days.
 
 ## Claude Code setup
 
@@ -148,9 +157,10 @@ cd book-shop
 
 Once `init` completes, check the status badges in your new repository's README. All badges should be green.
 
-Then, from your project's repo root, run one sample test per suite against a locally started system:
+Then, from your project's repo root, run one sample test per suite against a locally started system. `system-test setup` installs the test-harness dependencies — it only needs to run once per clone, but `system-test run` will not do it for you:
 
 ```bash
+gh optivem system-test setup
 gh optivem system start
 gh optivem system-test run --sample
 gh optivem system stop
@@ -164,7 +174,7 @@ Setup is a one-off. From here on, `gh optivem implement` is the day-to-day verb:
 
 ## Implement a ticket
 
-First, create a ticket in your repository. It needs a description and Acceptance Criteria written as Gherkin scenarios — copy [optivem/shop#72](https://github.com/optivem/shop/issues/72) as a worked example of the shape the agents expect.
+First, create a ticket in your repository and **add it to the GitHub Project board `init` created** — `implement` looks the issue up among the board's items, and fails with `issue #N not found on project` if it isn't there. The ticket needs a description and Acceptance Criteria written as Gherkin scenarios — copy [optivem/shop#72](https://github.com/optivem/shop/issues/72) as a worked example of the shape the agents expect.
 
 Then, from your project's repo root, run it against that ticket — `56` here is just an example, replace it with your actual issue number:
 
@@ -208,7 +218,7 @@ If `gh optivem init` itself fails, add `--report-bug` and it files the issue for
 gh optivem init --report-bug ...
 ```
 
-Either way, a run always writes a plain-text log to `$TEMP/gh-optivem-<timestamp>.log` — attach it to the issue.
+Every `init` run writes a plain-text log to `$TEMP/gh-optivem-<timestamp>.log` — attach it to the issue. `implement` only writes one when you ask for it: `gh optivem implement 56 --log-file run.log`.
 
 ## Maintainer
 
