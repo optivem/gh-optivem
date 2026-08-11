@@ -26,7 +26,7 @@ set -euo pipefail
 #
 # Usage:
 #   bash scripts/manual-test.sh --owner <user> --system-name "Page Turner" \
-#       --arch monolith --repo-strategy monorepo --monolith-lang java \
+#       --repo-strategy monorepo --arch monolith --monolith-lang java \
 #       --project-url https://github.com/orgs/<user>/projects/N
 #
 #   bash scripts/manual-test.sh --no-cleanup --owner <user> ...

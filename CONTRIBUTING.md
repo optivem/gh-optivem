@@ -12,7 +12,7 @@ End-to-end manual test (see [Quick smoke test](#quick-smoke-test-no-install) for
 
 ```bash
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
-    --arch multitier --repo-strategy multirepo \
+    --repo-strategy multirepo --arch multitier \
     --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
     --shop-ref main
 ```
@@ -246,13 +246,13 @@ End-to-end manual test (creates real GitHub repos + SonarCloud projects; cleaned
 ```bash
 # multitier + multirepo, .NET backend, TypeScript frontend + TypeScript system tests
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
-    --arch multitier --repo-strategy multirepo \
+    --repo-strategy multirepo --arch multitier \
     --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
     --shop-ref main
 
 # multitier + multirepo, Java backend, TypeScript frontend + TypeScript system tests
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
-    --arch multitier --repo-strategy multirepo \
+    --repo-strategy multirepo --arch multitier \
     --backend-lang java --frontend-lang typescript --test-lang typescript \
     --shop-ref main
 ```
@@ -469,7 +469,7 @@ gh optivem --version
 
 # Step 3 — generate gh-optivem.yaml for the project (interactive or via flags)
 gh optivem config init --owner valentinajemuovic --repo page-turner \
-    --system-name "Page Turner" --arch multitier --repo-strategy multirepo \
+    --system-name "Page Turner" --repo-strategy multirepo --arch multitier \
     --backend-lang dotnet --frontend-lang typescript --test-lang typescript \
     --project-url https://github.com/orgs/valentinajemuovic/projects/N \
     --backend-path backend --frontend-path frontend \

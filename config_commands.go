@@ -95,7 +95,7 @@ file is the single source of truth for the tool and may be hand-edited;
 silent overwrite would be a foot-gun.`,
 		Example: `  # Monolith, Java
   gh optivem config init --owner acme --repo page-turner \
-      --arch monolith --repo-strategy monorepo --monolith-lang java \
+      --repo-strategy monorepo --arch monolith --monolith-lang java \
       --project-url https://github.com/orgs/acme/projects/1
 
   # Write to a non-default filename (for repos with a multi-combination matrix)

@@ -127,8 +127,8 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 - `--owner` — GitHub owner (user or org) for the scaffolded repo(s).
 - `--repo` — repo name (or monorepo root name for multi-repo layouts).
 - `--system-name` — human-readable system name (e.g. `"Page Turner"`).
-- `--arch` — system architecture: `monolith` or `multitier`. (A third architecture, `microservices`, is YAML-authored only — declare it directly in `gh-optivem.yaml` under `system.backend-services:`, not via this flag.)
 - `--repo-strategy` — `monorepo` or `multirepo`.
+- `--arch` — system architecture: `monolith` or `multitier`. (A third architecture, `microservices`, is YAML-authored only — declare it directly in `gh-optivem.yaml` under `system.backend-services:`, not via this flag.)
 - Implementation language — which flag applies depends on `--arch`:
   - `--monolith-lang` — system language when `--arch monolith`: `java`, `dotnet`, or `typescript`.
   - `--backend-lang` — backend language when `--arch multitier`: `java`, `dotnet`, or `typescript`.
@@ -179,7 +179,7 @@ gh optivem config migrate    # idempotently back-fill required fields (project.p
 
 ```bash
 gh optivem config init --owner acme --repo page-turner \
-    --arch monolith --repo-strategy monorepo --monolith-lang java \
+    --repo-strategy monorepo --arch monolith --monolith-lang java \
     --test-lang java --project-url https://github.com/orgs/acme/projects/1
 gh optivem -c ./gh-optivem.myrepo.yaml config validate
 gh optivem config preflight --workspace /abs/path/to/workspace
