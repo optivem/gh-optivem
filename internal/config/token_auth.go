@@ -147,8 +147,8 @@ func verifySonarToken(client *http.Client, token string) error {
 	}
 	if !v.Valid {
 		return fmt.Errorf("SonarCloud token is not valid (expired or revoked).\n    " +
-			"Generate a new one at https://sonarcloud.io/account/security\n    " +
-			"Then: export SONAR_TOKEN=<your-token>")
+			"Generate a new one at https://sonarcloud.io/account/security " +
+			"and set it as SONAR_TOKEN")
 	}
 	return nil
 }
@@ -235,8 +235,9 @@ func verifyGitHubToken(client *http.Client, token, name string, requiredScopes [
 
 	if resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("GitHub rejected %s (HTTP 401 — token expired or revoked).\n    "+
-			"Create a new Personal Access Token (classic) at https://github.com/settings/tokens\n    "+
-			"Then: export %s=<your-token>", name, name)
+			"Create a new Personal Access Token (classic) with %s scopes\n    "+
+			"at https://github.com/settings/tokens and set it as %s",
+			name, strings.Join(requiredScopes, " + "), name)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected HTTP %d from GitHub", resp.StatusCode)
@@ -279,7 +280,7 @@ func verifyGHCRToken(client *http.Client, token string) error {
 	if resp.StatusCode == http.StatusUnauthorized {
 		return fmt.Errorf("GitHub rejected GHCR_TOKEN (HTTP 401 — token expired or revoked).\n    " +
 			"Create a new Personal Access Token (classic) with write:packages + read:packages scopes\n    " +
-			"at https://github.com/settings/tokens, then: export GHCR_TOKEN=<your-token>")
+			"at https://github.com/settings/tokens and set it as GHCR_TOKEN")
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected HTTP %d from GitHub", resp.StatusCode)
@@ -565,7 +566,7 @@ func truncate(s string, n int) string {
 
 const (
 	envRequiredSuffix  = " environment variable is required.\n"
-	patSettingsURLLine = "  https://github.com/settings/tokens\n"
+	patSettingsURLLine = "  https://github.com/settings/tokens"
 )
 
 // missingEnvHint returns a multi-line hint explaining what the named env var
@@ -578,22 +579,19 @@ func missingEnvHint(name string) string {
 		return name + envRequiredSuffix +
 			"  The scaffolded repo's acceptance/prod stages use it to tag images in GHCR.\n" +
 			"  Create a Personal Access Token (classic) with write:packages + read:packages scopes:\n" +
-			patSettingsURLLine +
-			"  Then: export GHCR_TOKEN=<your-token>"
+			patSettingsURLLine
 	case "WORKFLOW_TOKEN":
 		return name + envRequiredSuffix +
 			"  The scaffolded repo's acceptance/QA/prod stages use it to push release tags\n" +
 			"  (default GITHUB_TOKEN cannot push tags whose commit diffs workflow files).\n" +
 			"  Create a Personal Access Token (classic) with repo + workflow scopes:\n" +
-			patSettingsURLLine +
-			"  Then: export WORKFLOW_TOKEN=<your-token>"
+			patSettingsURLLine
 	case "REPO_TOKEN":
 		return name + envRequiredSuffix +
 			"  In multitier+multirepo scaffolds, the system-level prod-stage uses it to read\n" +
 			"  each component repo's VERSION file via the GitHub API (cross-repo Contents:read).\n" +
 			"  Create a Personal Access Token (classic) with repo scope:\n" +
-			patSettingsURLLine +
-			"  Then: export REPO_TOKEN=<your-token>"
+			patSettingsURLLine
 	default:
 		return fmt.Sprintf("%s environment variable is required", name)
 	}

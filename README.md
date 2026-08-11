@@ -26,13 +26,10 @@
 
 ## Install
 
+Install `gh-optivem`:
+
 ```bash
 gh extension install optivem/gh-optivem
-```
-
-Check that it worked:
-
-```bash
 gh optivem --version
 ```
 
@@ -92,7 +89,7 @@ Before you can create your project, set these environment variables on your mach
 - `WORKFLOW_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` + `workflow` scopes.
 - `REPO_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` scope.
 
-To confirm what your shell is actually exporting (token values masked):
+To confirm what `gh optivem` actually sees (token values masked):
 
 ```bash
 gh optivem environment show
