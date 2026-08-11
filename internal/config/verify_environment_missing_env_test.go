@@ -57,7 +57,7 @@ func TestVerifyEnvironment_MissingEnvVar(t *testing.T) {
 		{envVar: "SONAR_TOKEN"},
 		{envVar: "GHCR_TOKEN", hintSubstr: "write:packages + read:packages"},
 		{envVar: "WORKFLOW_TOKEN", hintSubstr: "repo + workflow scopes"},
-		{envVar: "REPO_TOKEN", hintSubstr: "Contents:Read on the component repos"},
+		{envVar: "REPO_TOKEN", hintSubstr: "classic) with repo scope"},
 	}
 
 	for _, tc := range cases {

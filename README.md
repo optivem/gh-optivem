@@ -8,6 +8,8 @@ A GitHub CLI extension that scaffolds a ready-to-go system test project with a G
 
 You then use it to implement your GitHub tickets. Write a User Story with Acceptance Criteria as an issue, and `gh optivem` takes it from start to end: RED (acceptance tests, DSL and drivers) through GREEN (backend and frontend implementation).
 
+# Setup
+
 ## Install
 
 ```bash
@@ -29,11 +31,9 @@ Set them on your machine the usual way, then restart your IDE / terminal — the
 - `DOCKERHUB_USERNAME` — your Docker Hub username.
 - `DOCKERHUB_TOKEN` — Docker Hub Personal Access Token (read-only scope is enough). Create at https://app.docker.com/settings/personal-access-tokens.
 - `SONAR_TOKEN` — SonarCloud token. Create at https://sonarcloud.io/account/security.
-- `GHCR_TOKEN` — GitHub PAT (classic) with `write:packages` + `read:packages`. Create at https://github.com/settings/tokens, selecting **No expiration**.
-- `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens, selecting **No expiration**.
-- `REPO_TOKEN` — GitHub PAT with `repo` scope (classic) or `Contents: Read` on each component repo (fine-grained). Create at https://github.com/settings/tokens or https://github.com/settings/personal-access-tokens, selecting **No expiration** for the classic form.
-
-The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines that keep running indefinitely once scaffolded — a classic PAT with an expiration date will eventually lapse and start failing the schedule silently. "No expiration" avoids the rotation chore entirely for these specific tokens.
+- `GHCR_TOKEN` — GitHub PAT (classic) with `write:packages` + `read:packages`. Create at https://github.com/settings/tokens.
+- `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens.
+- `REPO_TOKEN` — GitHub PAT (classic) with `repo` scope. Create at https://github.com/settings/tokens.
 
 To confirm what your shell is actually exporting (token values masked):
 
@@ -77,9 +77,31 @@ gh optivem system stop
 
 This confirms that your toolchain, Docker, and system startup are all working. It should work out of the box.
 
+# Implementation
+
+Setup is a one-off. From here on, `gh optivem implement` is the day-to-day verb: it takes one GitHub issue — a User Story with Acceptance Criteria — and walks it through the ATDD pipeline, dispatching an AI agent at each step and running the real build, system, and test commands in between.
+
+First, create a ticket in your repository. It needs a description and Acceptance Criteria written as Gherkin scenarios — copy [optivem/shop#72](https://github.com/optivem/shop/issues/72) as a worked example of the shape the agents expect.
+
+Then, from your project's repo root, run it against your new issue number:
+
+```bash
+gh optivem implement 56
+```
+
+That walks issue #56 from start to end: RED (acceptance tests, DSL and drivers) through GREEN (backend and frontend implementation), committing as it goes.
+
+Every confirmation prompts by default. For an unattended run:
+
+```bash
+gh optivem --auto implement 56 --headless
+```
+
+# Reference
+
 ## Everything else
 
-See the [full CLI reference](docs/cli-reference.md) — credentials, every `init` flag, `gh optivem implement` (the day-to-day verb that walks a ticket through the ATDD pipeline), the system and test runners, cross-repo ops, and cleanup.
+See the [full CLI reference](docs/cli-reference.md) — credentials, every `init` flag, the `implement` flags and team-handoff slices, the system and test runners, cross-repo ops, and cleanup.
 
 ## Upgrade
 

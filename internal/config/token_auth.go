@@ -578,8 +578,7 @@ func missingEnvHint(name string) string {
 		return name + envRequiredSuffix +
 			"  In multitier+multirepo scaffolds, the system-level prod-stage uses it to read\n" +
 			"  each component repo's VERSION file via the GitHub API (cross-repo Contents:read).\n" +
-			"  Create a Personal Access Token (classic) with repo scope, OR a fine-grained PAT\n" +
-			"  with Contents:Read on the component repos:\n" +
+			"  Create a Personal Access Token (classic) with repo scope:\n" +
 			patSettingsURLLine +
 			"  Then: export REPO_TOKEN=<your-token>"
 	default:

@@ -87,11 +87,11 @@ The credentials, either way:
 - `DOCKERHUB_USERNAME` — your Docker Hub username.
 - `DOCKERHUB_TOKEN` — Docker Hub Personal Access Token (read-only scope is enough). Create at https://app.docker.com/settings/personal-access-tokens.
 - `SONAR_TOKEN` — SonarCloud token. Create at https://sonarcloud.io/account/security.
-- `GHCR_TOKEN` — GitHub PAT (classic) with `write:packages` + `read:packages`. Create at https://github.com/settings/tokens, selecting **No expiration**.
-- `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens, selecting **No expiration**.
-- `REPO_TOKEN` — GitHub PAT with `repo` scope (classic) or `Contents: Read` on each component repo (fine-grained). Create at https://github.com/settings/tokens or https://github.com/settings/personal-access-tokens, selecting **No expiration** for the classic form.
+- `GHCR_TOKEN` — GitHub PAT (classic) with `write:packages` + `read:packages`. Create at https://github.com/settings/tokens.
+- `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens.
+- `REPO_TOKEN` — GitHub PAT (classic) with `repo` scope. Create at https://github.com/settings/tokens.
 
-The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines (e.g. `<arch>-<lang>-acceptance-stage-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — a classic PAT with an expiration date will eventually lapse and start failing the schedule silently, with no scaffold-time signal. `gh optivem environment verify` warns when a classic PAT's expiration is within 7 days, but "No expiration" avoids the rotation chore entirely for these specific tokens.
+The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines (e.g. `<arch>-<lang>-acceptance-stage-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — when one of these tokens expires, the schedule starts failing silently, with no scaffold-time signal. Put a reminder in your calendar to rotate them, and re-run `gh optivem environment verify` after each rotation; it warns when a classic PAT's expiration is within 7 days.
 
 These are read from your local environment at scaffold time and then propagated as variables and secrets onto the GitHub repos that `gh optivem init` creates, so the pipelines it generates can pull base images from Docker Hub under the authenticated rate limit (rather than the much lower anonymous one), publish and pull pipeline images to/from GHCR, send analysis to SonarCloud, and dispatch cross-repo workflows — all without you having to set each secret in the GitHub UI afterwards.
 
