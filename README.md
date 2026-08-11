@@ -8,9 +8,11 @@
 
 # Setup
 
-## Install
+## Prerequisites
 
-Install the [GitHub CLI](https://cli.github.com/) first. Check with `gh --version`, then log in with `gh auth login` and confirm with `gh auth status`.
+Install the [GitHub CLI](https://cli.github.com/). Check with `gh --version`, then log in with `gh auth login` and confirm with `gh auth status`.
+
+## Install
 
 ```bash
 gh extension install optivem/gh-optivem
@@ -22,10 +24,9 @@ Check that it worked:
 gh optivem --version
 ```
 
+## Local environment setup
 
-## Prerequisites
-
-Run this first — it reports everything that is missing, both the tools below and the environment variables in the next section:
+Run this to see what is still missing — both the tools below and the environment variables in the next section:
 
 ```bash
 gh optivem environment verify
@@ -33,7 +34,7 @@ gh optivem environment verify
 
 It reports every problem in one pass. If it flags a missing tool, install it from the list below; if it flags a missing credential, see [Environment variables](#environment-variables). Then re-run it until it passes.
 
-- **Bash** — every command below is run from a Bash shell, and `gh optivem` shells out through it too. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there. Check with `bash --version`.
+- **Bash** — every command in this README is run from a Bash shell, and `gh optivem` shells out through it too. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there. Check with `bash --version`.
 - **[Go](https://go.dev/dl/)** — needed to install actionlint below. Check with `go version`.
 - **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows before anything is pushed. Install with `go install github.com/rhysd/actionlint/cmd/actionlint@v1`, then check with `actionlint --version`. That drops the binary in `~/go/bin`, which Go does not add to your `PATH` — add it yourself if the check comes back "not found".
 - **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`. Check with `docker --version`.
