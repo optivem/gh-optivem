@@ -85,11 +85,11 @@ Provide these credentials one of two ways:
 The credentials, either way:
 
 - `DOCKERHUB_USERNAME` — your Docker Hub username.
-- `DOCKERHUB_TOKEN` — Docker Hub Personal Access Token (read-only scope is enough). Create at https://app.docker.com/settings/personal-access-tokens.
-- `SONAR_TOKEN` — SonarCloud token. Create at https://sonarcloud.io/account/security.
-- `GHCR_TOKEN` — GitHub PAT (classic) with `write:packages` + `read:packages`. Create at https://github.com/settings/tokens.
-- `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens.
-- `REPO_TOKEN` — GitHub PAT (classic) with `repo` scope. Create at https://github.com/settings/tokens.
+- `DOCKERHUB_TOKEN` — a [Docker Hub Personal Access Token](https://app.docker.com/settings/personal-access-tokens) (read-only scope is enough).
+- `SONAR_TOKEN` — a [SonarCloud token](https://sonarcloud.io/account/security).
+- `GHCR_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `write:packages` + `read:packages`.
+- `WORKFLOW_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` + `workflow` scopes.
+- `REPO_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` scope.
 
 The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines (e.g. `<arch>-<lang>-acceptance-stage-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — when one of these tokens expires, the schedule starts failing silently, with no scaffold-time signal. Put a reminder in your calendar to rotate them, and re-run `gh optivem environment verify` after each rotation; it warns when a classic PAT's expiration is within 7 days.
 

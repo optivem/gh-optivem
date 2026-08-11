@@ -29,11 +29,11 @@ gh optivem --version
 Set them on your machine the usual way, then restart your IDE / terminal — the environment snapshot is taken when the process launches, so a shell opened before you set them won't see them.
 
 - `DOCKERHUB_USERNAME` — your Docker Hub username.
-- `DOCKERHUB_TOKEN` — Docker Hub Personal Access Token (read-only scope is enough). Create at https://app.docker.com/settings/personal-access-tokens.
-- `SONAR_TOKEN` — SonarCloud token. Create at https://sonarcloud.io/account/security.
-- `GHCR_TOKEN` — GitHub PAT (classic) with `write:packages` + `read:packages`. Create at https://github.com/settings/tokens.
-- `WORKFLOW_TOKEN` — GitHub PAT (classic) with `repo` + `workflow` scopes. Create at https://github.com/settings/tokens.
-- `REPO_TOKEN` — GitHub PAT (classic) with `repo` scope. Create at https://github.com/settings/tokens.
+- `DOCKERHUB_TOKEN` — a [Docker Hub Personal Access Token](https://app.docker.com/settings/personal-access-tokens) (read-only scope is enough).
+- `SONAR_TOKEN` — a [SonarCloud token](https://sonarcloud.io/account/security).
+- `GHCR_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `write:packages` + `read:packages`.
+- `WORKFLOW_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` + `workflow` scopes.
+- `REPO_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` scope.
 
 To confirm what your shell is actually exporting (token values masked):
 
@@ -83,13 +83,13 @@ Setup is a one-off. From here on, `gh optivem implement` is the day-to-day verb:
 
 First, create a ticket in your repository. It needs a description and Acceptance Criteria written as Gherkin scenarios — copy [optivem/shop#72](https://github.com/optivem/shop/issues/72) as a worked example of the shape the agents expect.
 
-Then, from your project's repo root, run it against your new issue number:
+Then, from your project's repo root, run it against that ticket — `56` here is just an example, replace it with your actual issue number:
 
 ```bash
 gh optivem implement 56
 ```
 
-That walks issue #56 from start to end: RED (acceptance tests, DSL and drivers) through GREEN (backend and frontend implementation), committing as it goes.
+That walks the issue from start to end: RED (acceptance tests, DSL and drivers) through GREEN (backend and frontend implementation), committing as it goes.
 
 Every confirmation prompts by default. For an unattended run:
 
