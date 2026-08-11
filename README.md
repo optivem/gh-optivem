@@ -12,6 +12,7 @@ You then use it to implement your GitHub tickets. Write a User Story with Accept
 
 ## Prerequisites
 
+- **Bash** — every command below is run from a Bash shell. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
 - **[GitHub CLI](https://cli.github.com/), authenticated** — `gh optivem` shells out to it to create repos, set secrets, and dispatch workflows. Check with `gh auth status`; log in with `gh auth login`.
 - **[actionlint](https://github.com/rhysd/actionlint)** on your `PATH` — `init` runs it over the scaffolded workflows before anything is pushed. Install with `go install github.com/rhysd/actionlint/cmd/actionlint@v1` (needs a [Go toolchain](https://go.dev/dl/)).
 - **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`.
