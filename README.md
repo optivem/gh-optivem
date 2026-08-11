@@ -10,6 +10,13 @@ You then use it to implement your GitHub tickets. Write a User Story with Accept
 
 # Setup
 
+## Prerequisites
+
+- **[GitHub CLI](https://cli.github.com/), authenticated** — `gh optivem` shells out to it to create repos, set secrets, and dispatch workflows. Check with `gh auth status`; log in with `gh auth login`.
+- **[actionlint](https://github.com/rhysd/actionlint)** on your `PATH` — `init` runs it over the scaffolded workflows before anything is pushed. Install with `go install github.com/rhysd/actionlint/cmd/actionlint@v1` (needs a [Go toolchain](https://go.dev/dl/)).
+- **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`.
+- **Your project's language toolchain** — `java`, `dotnet`, or `npm`, whichever you scaffold with.
+
 ## Install
 
 ```bash
@@ -41,11 +48,13 @@ To confirm what your shell is actually exporting (token values masked):
 gh optivem environment show
 ```
 
-To live-check each token is also accepted by its provider before scaffolding:
+To live-check each token is also accepted by its provider before scaffolding — and that the prerequisites above are in place:
 
 ```bash
-gh optivem environment verify
+gh optivem environment verify --lang dotnet,typescript --deploy docker
 ```
+
+`--lang` (any of `java`, `dotnet`, `typescript`) adds the compiler checks for the languages you scaffold with; `--deploy docker` adds the Docker CLI check. Without them, `verify` covers the gh CLI, actionlint, and the five tokens.
 
 ## Generate your project
 
@@ -77,9 +86,15 @@ gh optivem system stop
 
 This confirms that your toolchain, Docker, and system startup are all working. It should work out of the box.
 
-# Implementation
+# ATDD AI Implementation
 
 Setup is a one-off. From here on, `gh optivem implement` is the day-to-day verb: it takes one GitHub issue — a User Story with Acceptance Criteria — and walks it through the ATDD pipeline, dispatching an AI agent at each step and running the real build, system, and test commands in between.
+
+## Prerequisites
+
+- **[Claude Code](https://claude.com/claude-code), installed and signed in** — the agents run as `claude` subprocesses, so you need an active Claude subscription. Nothing in Setup depends on it; only `implement` does.
+
+## Implement a ticket
 
 First, create a ticket in your repository. It needs a description and Acceptance Criteria written as Gherkin scenarios — copy [optivem/shop#72](https://github.com/optivem/shop/issues/72) as a worked example of the shape the agents expect.
 
