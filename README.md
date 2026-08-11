@@ -31,9 +31,7 @@ gh optivem --version
 
 ## Environment variables
 
-`gh optivem init` reads these credentials from your local environment and sets them as secrets and variables on the repos it creates, so the generated pipelines can pull base images, publish to GHCR, and scan with SonarCloud.
-
-Set them on your machine the usual way, then restart your IDE / terminal — the environment snapshot is taken when the process launches, so a shell opened before you set them won't see them.
+Before you can create your project, set these environment variables on your machine, then restart your IDE / terminal.
 
 - `DOCKERHUB_USERNAME` — your Docker Hub username.
 - `DOCKERHUB_TOKEN` — a [Docker Hub Personal Access Token](https://app.docker.com/settings/personal-access-tokens) (read-only scope is enough).
