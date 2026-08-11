@@ -72,7 +72,18 @@ For example:
 gh optivem init --owner valentinajemuovic --repo book-shop --system-name "Book Shop" --arch multitier --repo-strategy monorepo --backend-lang dotnet --frontend-lang typescript --test-lang java
 ```
 
-## Verify your setup
+## Clone project repository
+
+Clone your new repository to work on it locally:
+
+```bash
+gh repo clone valentinajemuovic/book-shop
+cd book-shop
+```
+
+*With `--repo-strategy multirepo`, `init` creates several repositories — clone them all side by side in the same parent directory, so the cross-repo commands can find them.*
+
+## Verify your project
 
 Once `init` completes, check the status badges in your new repository's README. All badges should be green.
 
@@ -93,6 +104,14 @@ Setup is a one-off. From here on, `gh optivem implement` is the day-to-day verb:
 ## Prerequisites
 
 - **[Claude Code](https://claude.com/claude-code), installed and signed in** — the agents run as `claude` subprocesses, so you need an active Claude subscription. Nothing in Setup depends on it; only `implement` does.
+
+Then wire Claude Code up for the ATDD workflow:
+
+```bash
+gh optivem claude setup
+```
+
+That copies the Optivem slash commands into `~/.claude/commands/` and merges the Optivem permissions and rules into your `~/.claude/` config — without them, unattended runs stall on approval prompts. Re-run it after each `gh extension upgrade optivem`; `gh optivem claude check` reports drift without writing anything.
 
 ## Implement a ticket
 
