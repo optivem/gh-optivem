@@ -258,11 +258,29 @@ func TestGhTokenScopes(t *testing.T) {
 			reported: false,
 		},
 		{
-			// Several accounts authenticated: only the first block's scopes
-			// are read. Merging across distinct tokens would assert a union
-			// that no single token actually holds.
-			name: "first block wins",
-			output: "  - Token scopes: 'repo'\n" +
+			// Several accounts authenticated and the active one is printed
+			// second. gh-optivem's own `gh` calls use the active account, so
+			// its scopes are the ones that must be asserted — reading the
+			// first block here would fail a perfectly good token.
+			name: "active account is not first",
+			output: "github.com\n" +
+				"  ✓ Logged in to github.com account other-user (keyring)\n" +
+				"  - Active account: false\n" +
+				"  - Token scopes: 'gist', 'read:org'\n" +
+				"\n" +
+				"  ✓ Logged in to github.com account test-user (keyring)\n" +
+				"  - Active account: true\n" +
+				"  - Token scopes: 'project', 'repo', 'workflow'\n",
+			want:     []string{"project", "repo", "workflow"},
+			reported: true,
+		},
+		{
+			// No block marked active: fall back to the first rather than
+			// merging, which would assert a union no single token holds.
+			name: "no active marker falls back to first",
+			output: "  ✓ Logged in to github.com account a (keyring)\n" +
+				"  - Token scopes: 'repo'\n" +
+				"  ✓ Logged in to github.com account b (keyring)\n" +
 				"  - Token scopes: 'project', 'workflow'\n",
 			want:     []string{"repo"},
 			reported: true,

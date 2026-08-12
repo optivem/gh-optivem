@@ -16,25 +16,29 @@
   winget install --id GitHub.cli -e --source winget   # Windows
   ```
 
-  `winget` writes `PATH` into the registry, and the shell you ran it in keeps the copy it started with — so from a **fresh** shell:
+  Then, from a **fresh** shell:
 
   ```bash
   gh --version
-  gh auth login -s project,workflow
   gh auth status
   ```
 
-  Ask for those two scopes up front. A bare `gh auth login` requests neither, and both are needed later: `project` for the board `init` creates and for the board tracker `implement` drives, `workflow` for pushing the scaffolded `.github/workflows/`. `gh optivem` checks for them before it creates anything, so a token without them stops at `Verifying environment...`.
+  `gh auth status` tells you which command you need next, and prints a `Token scopes:` line — `project` and `workflow` both have to appear in it.
 
-- **[Claude Code](https://claude.com/claude-code), installed and signed in** — the agents run as `claude` subprocesses, so you need an active Claude subscription. The free Claude.ai plan does not include Claude Code.
+  ```bash
+  gh auth login -s project,workflow     # not logged in yet
+  gh auth refresh -s project,workflow   # logged in, scopes missing
+  ```
 
-  On Windows, install it from PowerShell. `claude.ai/install.sh` is the macOS / Linux / WSL installer and is **not** the one to use here:
+- **[Claude Code](https://claude.com/claude-code), installed and signed in** — you need an active Claude subscription; the free Claude.ai plan does not include Claude Code.
+
+  On Windows, install it from PowerShell — `claude.ai/install.sh` is the macOS / Linux / WSL installer:
 
   ```powershell
   irm https://claude.ai/install.ps1 | iex
   ```
 
-  It puts `claude.exe` in `%USERPROFILE%\.local\bin` and never edits your `PATH` — it prints a warning saying so and leaves it at that. Add that directory to `PATH` yourself if the check below comes back "not found".
+  It puts `claude.exe` in `%USERPROFILE%\.local\bin` without editing your `PATH` — add that directory yourself if the check below comes back "not found".
 
   On macOS and Linux:
 
@@ -42,7 +46,7 @@
   curl -fsSL https://claude.ai/install.sh | bash
   ```
 
-  Then, from a **fresh** shell — that installer does write `PATH`, and the shell you ran it in keeps the copy it started with:
+  Then, from a **fresh** shell:
 
   ```bash
   claude --version
@@ -65,7 +69,7 @@ gh optivem --version
 
 ## Local environment setup
 
-Start here — it runs before any of the tools below are installed, and reports everything missing in one pass: the gh CLI, Claude Code, Bash, actionlint, Docker, and the environment variables in the next section.
+Start here — it reports every missing tool and credential in one pass:
 
 ```bash
 gh optivem environment verify
@@ -73,13 +77,13 @@ gh optivem environment verify
 
 If it flags a missing tool, install it from the list below; if it flags a missing credential, see [Environment variables](#environment-variables). Then re-run it until it passes.
 
-Two things it does *not* check on its own: Go (it only matters for installing actionlint) and your language toolchains — name those with `--lang`, see below.
+Two things it does *not* check on its own: Go, and your language toolchains — name those with `--lang`, see below.
 
 The install commands below are the Windows ones, via `winget`. On macOS and Linux, follow each bullet's download link. Either way `PATH` is written for *new* shells, so open a fresh one before the version check.
 
-- **Bash** — every command in this README is run from a Bash shell, and `gh optivem` shells out through it too. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
+- **Bash** — on Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
 
-  Install it from PowerShell — Git Bash is the shell every other command here runs *in*, so it cannot install itself:
+  Install it from PowerShell:
 
   ```powershell
   winget install --id Git.Git -e --source winget
@@ -91,27 +95,27 @@ The install commands below are the Windows ones, via `winget`. On macOS and Linu
   bash --version
   ```
 
-- **[Go](https://go.dev/dl/)** — needed to install actionlint below. The Go installer puts only the toolchain itself on your `PATH`, never `$(go env GOPATH)/bin` (usually `~/go/bin`) — which is where `go install` drops the binaries it builds. Add that directory to `PATH` yourself, or the actionlint check below comes back "not found".
+- **[Go](https://go.dev/dl/)** — add `$(go env GOPATH)/bin` (usually `~/go/bin`) to your `PATH` yourself; the Go installer does not, and the actionlint check below comes back "not found" without it.
 
   ```bash
   winget install --id GoLang.Go -e --source winget   # Windows
   go version
   ```
 
-- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows, right after pushing them and before any pipeline verification, so a broken scaffold is visible on the remote for troubleshooting.
+- **[actionlint](https://github.com/rhysd/actionlint)**
 
   ```bash
   go install github.com/rhysd/actionlint/cmd/actionlint@v1
   actionlint --version
   ```
 
-- **[Docker](https://docs.docker.com/get-started/get-docker/)** — the local system runs on `docker compose`.
+- **[Docker](https://docs.docker.com/get-started/get-docker/)**
 
   ```bash
   docker --version
   ```
 
-- **Your project's language toolchain** — whichever languages you scaffold with: [Java](https://adoptium.net/), [.NET](https://dotnet.microsoft.com/download), or [Node.js](https://nodejs.org/). Install and check only the ones you need. The versions below are the ones the scaffolded pipeline builds with, so matching them keeps "works in CI" and "works locally" the same statement:
+- **Your project's language toolchain** — [Java](https://adoptium.net/), [.NET](https://dotnet.microsoft.com/download), or [Node.js](https://nodejs.org/). Install and check only the ones you scaffold with; these are the versions the pipeline builds with:
 
   ```bash
   winget install --id EclipseAdoptium.Temurin.21.JDK -e --source winget   # Java 21, Windows
@@ -138,15 +142,15 @@ Before you can create your project, set these credentials as environment variabl
 - `WORKFLOW_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` + `workflow` scopes.
 - `REPO_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` scope.
 
-To confirm what `gh optivem` actually sees (token values masked):
+To confirm what `gh optivem` sees (values masked):
 
 ```bash
 gh optivem environment show
 ```
 
-Then re-run `gh optivem environment verify` — it live-checks each token against its provider, so it will now pass.
+Then re-run `gh optivem environment verify`.
 
-The three GitHub PATs back pipelines that keep running on a schedule long after scaffolding, and a lapsed token makes them fail silently. Put a rotation reminder in your calendar; `verify` warns when a classic PAT expires within 7 days.
+Put a rotation reminder for the three GitHub PATs in your calendar — `verify` warns when a classic PAT expires within 7 days.
 
 ## Claude Code setup
 
@@ -156,7 +160,7 @@ Wire Claude Code up for the ATDD workflow:
 gh optivem claude setup
 ```
 
-That copies the Optivem slash commands into `~/.claude/commands/` and merges the Optivem permissions and rules into your `~/.claude/` config — without them, unattended runs stall on approval prompts. Re-run it after each `gh extension upgrade optivem`; `gh optivem claude check` reports drift without writing anything.
+Re-run it after each `gh extension upgrade optivem`. `gh optivem claude check` reports drift without writing anything.
 
 ## Generate your project
 
@@ -184,7 +188,7 @@ For example:
 gh optivem init --owner valentinajemuovic --repo book-shop --system-name "Book Shop" --repo-strategy monorepo --arch multitier --backend-lang dotnet --frontend-lang typescript --test-lang java
 ```
 
-**Expect this to run for a long time.** Creating the repository and pushing the template is quick; after that, `init` sits and watches the generated pipelines on GitHub Actions until they go green, which takes tens of minutes. It prints a heartbeat every 5 minutes so you can see it is still alive. Leave it running until it reports success — interrupting it stops the watching, not the pipeline.
+**Expect this to run for a long time** — `init` watches the generated pipelines on GitHub Actions until they go green, which takes tens of minutes, printing a heartbeat every 5 minutes. Leave it running until it reports success; interrupting it stops the watching, not the pipeline.
 
 ## Clone project repository
 
@@ -201,7 +205,7 @@ cd book-shop
 
 Once `init` completes, check the status badges in your new repository's README. All badges should be green.
 
-Then, from your project's repo root, run one sample test per suite against a locally started system. `system-test setup` installs the test-harness dependencies — it only needs to run once per clone, but `system-test run` will not do it for you:
+Then, from your project's repo root, run one sample test per suite against a locally started system. `system-test setup` runs once per clone, and `system-test run` will not do it for you:
 
 ```bash
 gh optivem system-test setup
@@ -209,8 +213,6 @@ gh optivem system start
 gh optivem system-test run --sample
 gh optivem system stop
 ```
-
-This confirms that your toolchain, Docker, and system startup are all working. It should work out of the box.
 
 # ATDD AI Implementation
 
@@ -220,27 +222,25 @@ Setup is a one-off. From here on, `gh optivem implement` is the day-to-day verb:
 
 First, create a ticket in your repository. It needs a description and Acceptance Criteria written as Gherkin scenarios — copy [optivem/shop#72](https://github.com/optivem/shop/issues/72) as a worked example of the shape the agents expect.
 
-Then **add it to the GitHub Project board `init` created** — `implement` looks the issue up among the board's items, and fails with `issue #N not found on project` if it isn't there. `init` wrote that board's URL into your repo's `gh-optivem.yaml`, under the top-level `project:` key — read it from there rather than matching a title in `gh project list`, because two boards can share a title and only one of them is the one `init` used. The URL is shaped `https://github.com/users/<login>/projects/<number>`, or `/orgs/<org>/projects/<number>` for an organization.
+Then **add it to the GitHub Project board `init` created**, or `implement` fails with `issue #N not found on project`. That board's URL is in your repo's `gh-optivem.yaml` under the top-level `project:` key, shaped `https://github.com/users/<login>/projects/<number>`, or `/orgs/<org>/projects/<number>` for an organization.
 
-Add the issue to it with plain `gh` — there is no `gh optivem` wrapper for this:
+Add the issue to it:
 
 ```bash
 gh project item-add <number> --owner <login|org> --url https://github.com/<owner>/<repo>/issues/<issue_number>
 ```
 
-If that comes back *missing required scopes*, you logged in without the `project` scope the [Prerequisites](#prerequisites) asked for. Add it to the token you already have:
+If that comes back *missing required scopes*:
 
 ```bash
 gh auth refresh -s project
 ```
 
-Then, from your project's repo root, run it against that ticket — `56` here is just an example, replace it with your actual issue number:
+Then, from your project's repo root — `56` is an example, use your actual issue number:
 
 ```bash
 gh optivem implement 56
 ```
-
-That walks the issue from start to end: RED (acceptance tests, DSL and drivers) through GREEN (backend and frontend implementation), committing as it goes.
 
 Every confirmation prompts by default. For an unattended run:
 

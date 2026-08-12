@@ -62,6 +62,57 @@ var ghAuthRetrySleep = time.Sleep
 // token.
 var requiredGhScopes = []string{"repo", "workflow", "project"}
 
+// activeAccountScopeLine returns the text following `Token scopes:` for the
+// account gh marks active, falling back to the first account when gh marks
+// none. The bool reports whether any scope line was found at all.
+//
+// `gh auth status` groups its output per account, one block per `Logged in
+// to` line, carrying `Active account: true` and `Token scopes:` inside the
+// block in either order — so a block can only be judged once it has ended.
+func activeAccountScopeLine(output string) (string, bool) {
+	var first string
+	var haveFirst bool
+	var active string
+	var haveActive bool
+
+	var blockLine string
+	var blockHasLine, blockActive bool
+
+	// endBlock resolves the block that just ended: the first active block
+	// wins outright, and the earliest block of any kind is the fallback.
+	endBlock := func() {
+		if !blockHasLine {
+			return
+		}
+		if !haveFirst {
+			first, haveFirst = blockLine, true
+		}
+		if blockActive && !haveActive {
+			active, haveActive = blockLine, true
+		}
+	}
+
+	for line := range strings.SplitSeq(output, "\n") {
+		switch {
+		case strings.Contains(line, "Logged in to"):
+			endBlock()
+			blockLine, blockHasLine, blockActive = "", false, false
+		case strings.Contains(line, "Active account: true"):
+			blockActive = true
+		default:
+			if _, rest, ok := strings.Cut(line, "Token scopes:"); ok {
+				blockLine, blockHasLine = rest, true
+			}
+		}
+	}
+	endBlock()
+
+	if haveActive {
+		return active, true
+	}
+	return first, haveFirst
+}
+
 // ghTokenScopes extracts the scope names from `gh auth status` output, which
 // reports them on a line shaped:
 //
@@ -69,14 +120,19 @@ var requiredGhScopes = []string{"repo", "workflow", "project"}
 //
 // The bool reports whether that line was present at all — distinguishing "the
 // token has no scopes" from "gh did not say", which verifyGhAuth treats
-// differently. Only the first such line is read: with several accounts or
-// hosts authenticated, gh prints one block each, and merging scopes across
-// distinct tokens would assert a union no single token holds.
+// differently.
+//
+// With several accounts or hosts authenticated gh prints one block each, and
+// only one token is actually in play — the one gh marks `Active account:
+// true`, which is what every `gh` call gh-optivem makes will use. So the
+// active block wins, falling back to the first when gh marks none. Scopes are
+// never merged across blocks: that would assert a union no single token
+// holds.
 //
 // A `Token scopes: none` line (gh's rendering for a token that carries no
 // classic scopes, e.g. a fine-grained PAT) parses as present-but-empty.
 func ghTokenScopes(output string) ([]string, bool) {
-	_, rest, ok := strings.Cut(output, "Token scopes:")
+	rest, ok := activeAccountScopeLine(output)
 	if !ok {
 		return nil, false
 	}
