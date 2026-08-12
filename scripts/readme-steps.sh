@@ -169,6 +169,32 @@ require_tty() {
     fi
 }
 
+# Run one of the two interactive steps on the real console and hand back its
+# exit status. Both sign-ins go through here, so the reasoning below is written
+# once rather than twice.
+#
+# >&3 2>&4 because this script's own stdout and stderr are a pipe into tee - see
+# "Logging" above - and a TUI handed a pipe will not draw. That also keeps these
+# steps off the log, which is deliberate: a browser sign-in is not worth
+# capturing, and gh puts its prompts on stderr, so neither stream can be
+# diverted without breaking them. The exit status is the only part of an
+# interactive step that can be written down, which is why it is returned rather
+# than acted on here - the caller logs it first.
+#
+# winpty because Git Bash usually runs under mintty, which is a Cygwin pty and
+# not a Windows console. A native Windows binary asked to prompt there has no
+# console handle to draw on: the Claude TUI needs raw mode, and gh's own
+# selection prompts want the same. Git for Windows ships winpty. require_tty
+# above does not catch this - `-t 0` is true under mintty, because the missing
+# thing is the Windows console handle, not a tty.
+run_interactive() {
+    if command -v winpty >/dev/null 2>&1; then
+        winpty "$@" >&3 2>&4
+    else
+        "$@" >&3 2>&4
+    fi
+}
+
 # Is this tool here, and does it run? Asked before every install, and again
 # after, and the answer is written down either way - "not installed" is as much
 # a result as "installed", and on a guest that is supposed to be clean it is the
@@ -292,23 +318,51 @@ add_go_bin_to_path() {
 
 # Inventory ===================================================================
 #
-# Read-only, and first: one line per tool this file deals with, before anything
-# is installed. On a guest that is meant to be clean every line should read NOT
-# installed, which makes that block the proof the checkpoint was restored; on a
-# guest that is not clean it is the explanation for whatever happens further
-# down, in the one place nobody has to scroll to find.
+# Read-only: one line per tool this file deals with. Run TWICE, and the pair is
+# the point - a single opening block ends a run on a list of NOT installed lines
+# that nothing ever answers.
+#
+#   before - first thing in the run, ahead of every install. On a guest that is
+#            meant to be clean every line should read NOT installed, which makes
+#            that block the proof the checkpoint was restored; on a guest that
+#            is not clean it is the explanation for whatever happens further
+#            down, in the one place nobody has to scroll to find.
+#   after  - straight after readme_local_environment_setup, the last function in
+#            the file that installs anything, and before the README's own
+#            verification steps. Every NOT installed line above it should now
+#            have a version next to it, and the two blocks read side by side say
+#            what this run actually changed about the guest.
+#
+# A run that stops inside readme_local_environment_setup never reaches the
+# closing pass - require_tool exits on a missing Go, Docker, Java, .NET or Node.
+# That is accepted rather than worked around: the exit message already names the
+# tool and the page to get it from, and probing all eleven from the EXIT trap
+# would put a slow sweep in front of every failure verdict.
 #
 # Nothing here exits. Enforcement stays with the ensure_*/require_* functions
 # below, which run in README order and stop where the README's reader would -
-# this pass only reports, so the whole picture is in the log even when the run
+# these passes only report, so the whole picture is in the log even when the run
 # is about to stop on the first missing tool.
 #
 # probe_tool is reused rather than reimplemented: one probe in the file means
 # the inventory cannot disagree with the check that gates an install.
-
+#
+# $1 'before' or 'after'
 inventory() {
-    step 'inventory'
-    echo "readme-steps: what this guest already has, before anything is installed:"
+    case "$1" in
+        before)
+            step 'inventory: before'
+            echo "readme-steps: what this guest already has, before anything is installed:"
+            ;;
+        after)
+            step 'inventory: after'
+            echo "readme-steps: what this guest has now, after everything this script installs:"
+            ;;
+        *)
+            echo "readme-steps: inventory called with '$1'; expected 'before' or 'after'." >&2
+            exit 1
+            ;;
+    esac
     probe_tool 'Git'         git --version        || true
     probe_tool 'winget'      winget --version     || true
     probe_tool 'GitHub CLI'  gh --version         || true
@@ -325,9 +379,9 @@ inventory() {
 
 # Machine setup ===============================================================
 #
-# Not a README heading. The README's Prerequisites bullets link out to each
-# tool's own install page rather than naming commands, so these are the commands
-# for the Windows clean-room guest, in the order they have to happen.
+# Not a README heading. The README names an install command for Claude Code only
+# and links out to a download page for the rest, so these are the commands for
+# the Windows clean-room guest, in the order they have to happen.
 #
 # These run. Steps marked [interactive] need you at the keyboard — answering
 # prompts or signing in through a browser — so start this script from a console,
@@ -384,18 +438,16 @@ ensure_gh_signed_in() {
         return
     fi
     require_tty "gh auth login"
-    # Real console, not the log - see "Logging" above. gh draws its prompts on
-    # stderr, so neither stream can be diverted here without breaking them; the
-    # exit code is the only part of this step that can be written down, so it is.
     local login_rc=0
-    gh auth login >&3 2>&4 || login_rc=$?
+    run_interactive gh auth login || login_rc=$?
     echo "machine setup: gh auth login exited $login_rc"
     if [ "$login_rc" -ne 0 ]; then exit "$login_rc"; fi
 }
 
 # The native-Windows installer, run through a PowerShell shim because this file
 # is Git Bash. claude.ai/install.sh is the macOS/Linux/WSL installer and is NOT
-# the right one here.
+# the right one here - the README's Prerequisites bullet says the same, and this
+# is the command it names.
 ensure_claude_installed() {
     step 'machine setup: Claude Code install'
     if probe_tool 'Claude Code' claude --version; then
@@ -424,16 +476,8 @@ ensure_claude_signed_in() {
     fi
     require_tty "the Claude Code sign-in"
     echo "machine setup: starting Claude Code — sign in, then type /exit to come back here."
-    # Git Bash usually runs under mintty, which is not a Windows console; the
-    # raw-mode TUI needs winpty in front of it. Git for Windows ships winpty.
-    # >&3 2>&4 for the same reason: a TUI with a pipe for stdout will not draw.
-    # As with the sign-in above, the exit code is all this step can log.
     local claude_rc=0
-    if command -v winpty >/dev/null 2>&1; then
-        winpty claude >&3 2>&4 || claude_rc=$?
-    else
-        claude >&3 2>&4 || claude_rc=$?
-    fi
+    run_interactive claude || claude_rc=$?
     echo "machine setup: Claude Code exited $claude_rc"
     if [ "$claude_rc" -ne 0 ]; then exit "$claude_rc"; fi
 }
@@ -669,8 +713,9 @@ add_ticket_to_project_board() {
 
 # Run =========================================================================
 #
-# README.md's table of contents, in its order, plus the one line that has no
-# README counterpart. If these two lists stop matching, this file is wrong.
+# README.md's table of contents, in its order, plus the three lines that have no
+# README counterpart - the two inventory passes and machine_setup. If the rest of
+# these two lists stop matching, this file is wrong.
 
 # Before the first probe, not just after an install. This shell was handed a
 # PATH snapshot taken when its parent window opened, which can predate anything
@@ -680,12 +725,13 @@ add_ticket_to_project_board() {
 echo "readme-steps: reading PATH back from the registry before the first probe"
 refresh_path
 
-inventory                         # no README counterpart - read-only, reports only
+inventory before                  # no README counterpart - read-only, reports only
 machine_setup                     # no README counterpart - see the section above
 
 readme_prerequisites
 readme_install
 readme_local_environment_setup
+inventory after                   # no README counterpart - the closing half of the pair
 readme_environment_variables
 readme_claude_code_setup
 readme_generate_your_project

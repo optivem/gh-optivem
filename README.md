@@ -18,10 +18,30 @@
   gh auth status
   ```
 
-- **[Claude Code](https://claude.com/claude-code), installed and signed in** — the agents run as `claude` subprocesses, so you need an active Claude subscription.
+- **[Claude Code](https://claude.com/claude-code), installed and signed in** — the agents run as `claude` subprocesses, so you need an active Claude subscription. The free Claude.ai plan does not include Claude Code.
+
+  On Windows, install it from PowerShell. `claude.ai/install.sh` is the macOS / Linux / WSL installer and is **not** the one to use here:
+
+  ```powershell
+  irm https://claude.ai/install.ps1 | iex
+  ```
+
+  On macOS and Linux:
+
+  ```bash
+  curl -fsSL https://claude.ai/install.sh | bash
+  ```
+
+  Then, from a **fresh** shell — the installer writes `PATH` and the shell you ran it in keeps the copy it started with:
 
   ```bash
   claude --version
+  ```
+
+  Sign in by starting it once. It opens a browser; type `/exit` when you are back:
+
+  ```bash
+  claude
   ```
 
 ## Install
@@ -174,7 +194,21 @@ Setup is a one-off. From here on, `gh optivem implement` is the day-to-day verb:
 
 ## Implement a ticket
 
-First, create a ticket in your repository and **add it to the GitHub Project board `init` created** — `implement` looks the issue up among the board's items, and fails with `issue #N not found on project` if it isn't there. The ticket needs a description and Acceptance Criteria written as Gherkin scenarios — copy [optivem/shop#72](https://github.com/optivem/shop/issues/72) as a worked example of the shape the agents expect.
+First, create a ticket in your repository. It needs a description and Acceptance Criteria written as Gherkin scenarios — copy [optivem/shop#72](https://github.com/optivem/shop/issues/72) as a worked example of the shape the agents expect.
+
+Then **add it to the GitHub Project board `init` created** — `implement` looks the issue up among the board's items, and fails with `issue #N not found on project` if it isn't there. `init` wrote that board's URL into your repo's `gh-optivem.yaml`, under the top-level `project:` key — read it from there rather than matching a title in `gh project list`, because two boards can share a title and only one of them is the one `init` used. The URL is shaped `https://github.com/users/<login>/projects/<number>`, or `/orgs/<org>/projects/<number>` for an organization.
+
+Add the issue to it with plain `gh` — there is no `gh optivem` wrapper for this:
+
+```bash
+gh project item-add <number> --owner <login|org> --url https://github.com/<owner>/<repo>/issues/<issue_number>
+```
+
+`gh auth login` does not ask for the `project` scope, so the first run of that command can come back *missing required scopes*. Grant it once:
+
+```bash
+gh auth refresh -s project
+```
 
 Then, from your project's repo root, run it against that ticket — `56` here is just an example, replace it with your actual issue number:
 
