@@ -9,7 +9,11 @@ import (
 // "no such owner" verdict: both the users/ and orgs/ probes answer HTTP 404.
 func TestRealCheckOwnerExists_NotFound(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo gh: Not Found (HTTP 404) >&2\nexit 1")
+	// The message is quoted because a stub body must parse as both /bin/sh and
+	// cmd.exe: unquoted `(` is a POSIX-shell syntax error. cmd.exe echoes the
+	// quotes literally, which is harmless — every assertion below is a
+	// substring check on `(HTTP 404)` / `HTTP 401`.
+	writeStub(t, dir, "gh", "echo \"gh: Not Found (HTTP 404)\" >&2\nexit 1")
 
 	err := realCheckOwnerExists("ghost-owner")
 	if err == nil {
@@ -27,7 +31,7 @@ func TestRealCheckOwnerExists_NotFound(t *testing.T) {
 // stderr, and point at `gh auth status`.
 func TestRealCheckOwnerExists_AuthFailureIsNotAVerdict(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo gh: Requires authentication (HTTP 401) >&2\nexit 1")
+	writeStub(t, dir, "gh", "echo \"gh: Requires authentication (HTTP 401)\" >&2\nexit 1")
 
 	err := realCheckOwnerExists("real-owner")
 	if err == nil {

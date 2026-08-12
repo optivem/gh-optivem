@@ -128,7 +128,7 @@ func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
 			"echo transient auth blip\n" +
 			"exit 1"
 	}
-	writeStub(t, dir, "gh", body)
+	writeStubOSSpecific(t, dir, "gh", body) // body is built per-OS just above
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
