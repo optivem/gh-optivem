@@ -84,7 +84,7 @@ Provide these credentials one of two ways:
 
 The credentials, either way:
 
-- `DOCKERHUB_USERNAME` — your Docker Hub username.
+- `DOCKERHUB_USERNAME` — your [Docker Hub](https://hub.docker.com) username.
 - `DOCKERHUB_TOKEN` — a [Docker Hub Personal Access Token](https://app.docker.com/settings/personal-access-tokens) (read-only scope is enough).
 - `SONAR_TOKEN` — a [SonarCloud token](https://sonarcloud.io/account/security).
 - `GHCR_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `write:packages` + `read:packages`.

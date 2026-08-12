@@ -127,14 +127,9 @@ The install commands below are the Windows ones, via `winget`. On macOS and Linu
 
 ## Environment variables
 
-Before you can create your project, provide these credentials one of two ways:
+Before you can create your project, set these credentials as environment variables on your machine, then restart your IDE / terminal:
 
-- **Set them as environment variables** on your machine, then restart your IDE / terminal.
-- **Put them in a `.env` file** at `%AppData%\gh-optivem\.env` (Windows), `~/Library/Application Support/gh-optivem/.env` (macOS), or `~/.config/gh-optivem/.env` (Linux) — no restart needed, and edits take effect on the next run. See the [full reference](docs/cli-reference.md#environment-variables) for the `.env` details.
-
-Either way:
-
-- `DOCKERHUB_USERNAME` — your Docker Hub username.
+- `DOCKERHUB_USERNAME` — your [Docker Hub](https://hub.docker.com) username.
 - `DOCKERHUB_TOKEN` — a [Docker Hub Personal Access Token](https://app.docker.com/settings/personal-access-tokens) (read-only scope is enough).
 - `SONAR_TOKEN` — a [SonarCloud token](https://sonarcloud.io/account/security).
 - `GHCR_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `write:packages` + `read:packages`.
