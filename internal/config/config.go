@@ -972,20 +972,65 @@ func CheckProjectExists(url string) error {
 
 // realCheckOwnerExists is the production CheckOwnerExistsFn. Hits
 // `gh api users/<owner>` first (the more common case), falls back to
-// `gh api orgs/<owner>` on 404. Stderr is suppressed so the first 404
-// doesn't leak when we fall back.
+// `gh api orgs/<owner>` on 404.
+//
+// Only an HTTP 404 from *both* probes is a definitive "no such owner".
+// Anything else — gh not on PATH, an unauthenticated or expired token
+// (401/403), a GitHub 5xx, a proxy/DNS failure — means we could not tell,
+// and reporting it as "no GitHub user or organization named X" sends the
+// operator hunting for a typo in a name that exists. Those cases fail hard
+// with gh's own stderr and the likely fix instead. Stderr is captured
+// rather than discarded so it can be surfaced; the first probe's 404 is
+// still swallowed on the fallback path.
 func realCheckOwnerExists(owner string) error {
-	userCmd := exec.Command("gh", "api", "users/"+owner, ghAPISilent)
-	userCmd.Stderr = nil
-	if err := userCmd.Run(); err == nil {
+	userStderr, userErr := runGhOwnerProbe("users/" + owner)
+	if userErr == nil {
 		return nil
 	}
-	orgCmd := exec.Command("gh", "api", "orgs/"+owner, ghAPISilent)
-	orgCmd.Stderr = nil
-	if err := orgCmd.Run(); err == nil {
+	if !isGhNotFound(userStderr) {
+		return ghOwnerProbeUndecided(owner, "users/"+owner, userStderr, userErr)
+	}
+	orgStderr, orgErr := runGhOwnerProbe("orgs/" + owner)
+	if orgErr == nil {
 		return nil
+	}
+	if !isGhNotFound(orgStderr) {
+		return ghOwnerProbeUndecided(owner, "orgs/"+owner, orgStderr, orgErr)
 	}
 	return fmt.Errorf("no GitHub user or organization named %q", owner)
+}
+
+// runGhOwnerProbe runs `gh api <path> --silent` and returns the captured
+// stderr alongside the run error. A nil error means the endpoint answered 200.
+func runGhOwnerProbe(path string) (string, error) {
+	var stderr strings.Builder
+	cmd := exec.Command("gh", "api", path, ghAPISilent)
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	return stderr.String(), err
+}
+
+// isGhNotFound reports whether gh's stderr is a plain 404 — the only answer
+// that lets us conclude the owner does not exist. gh writes
+// `gh: Not Found (HTTP 404)` for a missing user/org.
+func isGhNotFound(stderr string) bool {
+	return strings.Contains(stderr, "(HTTP 404)")
+}
+
+// ghOwnerProbeUndecided builds the fail-hard error for a probe that neither
+// confirmed nor denied the owner. Names the command, echoes gh's stderr, and
+// points at the check that resolves the overwhelmingly common cause (a gh CLI
+// that is not authenticated, or a GH_TOKEN/GITHUB_TOKEN that is set but stale
+// — an env token silently overrides `gh auth login`).
+func ghOwnerProbeUndecided(owner, path, stderr string, runErr error) error {
+	detail := strings.TrimSpace(stderr)
+	if detail == "" {
+		detail = runErr.Error()
+	}
+	return fmt.Errorf("could not verify whether %q exists on GitHub — `gh api %s` failed:\n    %s\n    "+
+		"This is not a \"no such owner\" answer; %q may well exist.\n    "+
+		"Check: gh auth status   (and unset a stale GH_TOKEN / GITHUB_TOKEN — an env token overrides `gh auth login`)",
+		owner, path, detail, owner)
 }
 
 // projectExistsQuery is the minimal GraphQL query for project existence.

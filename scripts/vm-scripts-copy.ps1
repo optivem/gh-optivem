@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Copy the guest-side scripts (readme-setup.ps1 and readme-steps.sh) from the
-  host into the running test VM.
+  Copy the guest-side files (readme-setup.ps1, readme-enable.txt and
+  readme-steps.sh) from the host into the running test VM.
 
 .DESCRIPTION
   Step 4 of the install-test loop:
@@ -26,9 +26,14 @@
   turn its three unhelpful failure modes - VM off, integration service not
   answering, destination already there - into messages that say what to do.
 
-  Both files go, because neither is enough alone: readme-steps.sh is a bash
+  Both scripts go, because neither is enough alone: readme-steps.sh is a bash
   script and a clean Windows guest has no bash, so readme-setup.ps1 installs Git
   for Windows first from the shell Windows does ship with.
+
+  readme-enable.txt rides along for the step before even that one: a clean guest
+  refuses to run unsigned .ps1 files at all, and the way past it is a command
+  you cannot discover from inside the error. Reading it back out with type needs
+  no execution policy, which is exactly why the answer is in a .txt.
 
   Re-run it after every host-side edit: the copy always overwrites, because a
   stale copy in the guest is the one thing this script exists to prevent. The
@@ -43,8 +48,8 @@
   VM to copy into. Defaults to gh-optivem-install-test.
 
 .PARAMETER SourcePath
-  Files on the host to copy. Defaults to readme-setup.ps1 and readme-steps.sh
-  next to this script.
+  Files on the host to copy. Defaults to readme-setup.ps1, readme-enable.txt
+  and readme-steps.sh next to this script.
 
 .PARAMETER DestinationDir
   Directory inside the guest to copy them into, keeping their names. Defaults to
@@ -92,6 +97,7 @@ if (-not $SourcePath -or $SourcePath.Count -eq 0) {
     # makes the other runnable.
     $SourcePath = @(
         (Join-Path $PSScriptRoot 'readme-setup.ps1'),
+        (Join-Path $PSScriptRoot 'readme-enable.txt'),
         (Join-Path $PSScriptRoot 'readme-steps.sh')
     )
 }
@@ -222,6 +228,10 @@ Write-Host @"
 
      That installs Git for Windows and prints the command that runs the
      walkthrough. Add -Run to chain straight into it.
+
+     -ExecutionPolicy Bypass is not optional: a clean guest refuses unsigned
+     .ps1 files. If you would rather unblock the window once and call the
+     script by name, the alternative is in $DestinationDir\readme-enable.txt.
 
      Both guest-side scripts log to $DestinationDir\logs.
 

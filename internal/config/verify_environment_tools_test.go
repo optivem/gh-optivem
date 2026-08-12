@@ -128,7 +128,7 @@ func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
 			"echo transient auth blip\n" +
 			"exit 1"
 	}
-	writeStub(t, dir, "gh", body)
+	writeStubOSSpecific(t, dir, "gh", body) // body is built per-OS just above
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
@@ -138,6 +138,194 @@ func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
 	err := verifyEnvironmentWithClient(nil, happyAuthClient())
 	if err != nil {
 		t.Fatalf("expected nil after the retry recovered gh auth, got:\n%s", err)
+	}
+}
+
+// ghAuthStubBody builds a `gh auth status` stub that exits 0 and prints
+// scopeLine verbatim (pass "" for a token gh reports no scopes for). The
+// per-OS split exists because the real scope line is single-quoted: `sh`
+// would strip those quotes as its own, while `cmd` keeps them, so only the
+// POSIX form needs the outer double quotes to survive echo intact.
+func ghAuthStubBody(scopeLine string) string {
+	lines := []string{"echo Logged in to github.com account test-user"}
+	if scopeLine != "" {
+		if runtime.GOOS == "windows" {
+			lines = append(lines, "echo "+scopeLine)
+		} else {
+			lines = append(lines, "echo \""+scopeLine+"\"")
+		}
+	}
+	return strings.Join(append(lines, "exit 0"), "\n")
+}
+
+// plantHappyToolStubs plants passing stubs for every non-gh tool check, so a
+// scope-focused test's only variable is what `gh auth status` prints.
+func plantHappyToolStubs(t *testing.T, dir string) {
+	t.Helper()
+	for _, tool := range []string{"actionlint", "docker", "bash", "claude"} {
+		writeStub(t, dir, tool, "exit 0")
+	}
+}
+
+// TestVerifyEnvironment_GhScopesPresent pins the happy path: a token whose
+// scope line covers everything in requiredGhScopes passes verification.
+func TestVerifyEnvironment_GhScopesPresent(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", ghAuthStubBody(
+		"  - Token scopes: 'gist', 'project', 'read:org', 'repo', 'workflow'"))
+	plantHappyToolStubs(t, dir)
+	setAllEnvTokens(t)
+
+	if err := verifyEnvironmentWithClient(nil, happyAuthClient()); err != nil {
+		t.Fatalf("expected nil for a token carrying every required scope, got:\n%s", err)
+	}
+}
+
+// TestVerifyEnvironment_GhScopeMissing is the regression this check exists
+// for (issue #58): `gh auth status` exits 0 for a token without `project`, so
+// exit-code-only verification passed and `init` went on to create the repo,
+// then died one step later at Ensure project board. Verification must now
+// fail here — before any GitHub side effect — naming the scope and the
+// command that grants it.
+func TestVerifyEnvironment_GhScopeMissing(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", ghAuthStubBody(
+		"  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'"))
+	plantHappyToolStubs(t, dir)
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error when the gh token lacks the project scope, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "project") {
+		t.Errorf("error did not name the missing scope. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "gh auth refresh -s project") {
+		t.Errorf("error did not include the refresh command. Got:\n%s", msg)
+	}
+	// The scopes the token DOES carry must not be reported as missing.
+	if strings.Contains(msg, "repo, project") || strings.Contains(msg, "workflow") {
+		t.Errorf("error named a scope the token already has. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_GhScopesUnreported pins the indeterminate case as a
+// pass, not a block. A fine-grained PAT or a GH_TOKEN/GITHUB_TOKEN env token
+// has no classic OAuth scopes for gh to report; rejecting one would be a
+// false negative against a perfectly valid token.
+func TestVerifyEnvironment_GhScopesUnreported(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "gh", ghAuthStubBody("")) // authenticated, no scope line
+	plantHappyToolStubs(t, dir)
+	setAllEnvTokens(t)
+
+	if err := verifyEnvironmentWithClient(nil, happyAuthClient()); err != nil {
+		t.Fatalf("expected nil when gh reports no token scopes, got:\n%s", err)
+	}
+}
+
+// TestGhTokenScopes covers the parser directly against the shapes `gh auth
+// status` actually emits, including the two the wiring above treats as
+// indeterminate (line absent, and `none`).
+func TestGhTokenScopes(t *testing.T) {
+	cases := []struct {
+		name     string
+		output   string
+		want     []string
+		reported bool
+	}{
+		{
+			name: "real gh line",
+			output: "github.com\n" +
+				"  ✓ Logged in to github.com account test-user (keyring)\n" +
+				"  - Active account: true\n" +
+				"  - Token scopes: 'admin:org', 'delete_repo', 'gist', 'project', 'read:org', 'repo', 'workflow'\n",
+			want:     []string{"admin:org", "delete_repo", "gist", "project", "read:org", "repo", "workflow"},
+			reported: true,
+		},
+		{
+			name:     "none",
+			output:   "  - Token scopes: none\n",
+			want:     nil,
+			reported: true,
+		},
+		{
+			name:     "line absent",
+			output:   "  ✓ Logged in to github.com account test-user (keyring)\n",
+			want:     nil,
+			reported: false,
+		},
+		{
+			// Several accounts authenticated and the active one is printed
+			// second. gh-optivem's own `gh` calls use the active account, so
+			// its scopes are the ones that must be asserted — reading the
+			// first block here would fail a perfectly good token.
+			name: "active account is not first",
+			output: "github.com\n" +
+				"  ✓ Logged in to github.com account other-user (keyring)\n" +
+				"  - Active account: false\n" +
+				"  - Token scopes: 'gist', 'read:org'\n" +
+				"\n" +
+				"  ✓ Logged in to github.com account test-user (keyring)\n" +
+				"  - Active account: true\n" +
+				"  - Token scopes: 'project', 'repo', 'workflow'\n",
+			want:     []string{"project", "repo", "workflow"},
+			reported: true,
+		},
+		{
+			// No block marked active: fall back to the first rather than
+			// merging, which would assert a union no single token holds.
+			name: "no active marker falls back to first",
+			output: "  ✓ Logged in to github.com account a (keyring)\n" +
+				"  - Token scopes: 'repo'\n" +
+				"  ✓ Logged in to github.com account b (keyring)\n" +
+				"  - Token scopes: 'project', 'workflow'\n",
+			want:     []string{"repo"},
+			reported: true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, reported := ghTokenScopes(tc.output)
+			if reported != tc.reported {
+				t.Errorf("reported = %v, want %v", reported, tc.reported)
+			}
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("scopes = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestMissingGhScopes pins the comparison: exact names, required-set order,
+// and no modelling of scope containment.
+func TestMissingGhScopes(t *testing.T) {
+	cases := []struct {
+		name string
+		have []string
+		want []string
+	}{
+		{name: "all present", have: []string{"repo", "workflow", "project", "gist"}, want: nil},
+		{name: "project absent", have: []string{"repo", "workflow"}, want: []string{"project"}},
+		{name: "none present", have: []string{"gist"}, want: []string{"repo", "workflow", "project"}},
+		{
+			// read:org is in gh's documented login minimum and is deliberately
+			// not asserted — a token carrying only the required three passes.
+			name: "read:org not required",
+			have: []string{"repo", "workflow", "project"},
+			want: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := missingGhScopes(tc.have); strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("missingGhScopes(%v) = %v, want %v", tc.have, got, tc.want)
+			}
+		})
 	}
 }
 

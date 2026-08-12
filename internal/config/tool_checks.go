@@ -21,8 +21,10 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
@@ -41,10 +43,139 @@ type check struct {
 // the real 2-5s jittered wait. See verifyGhAuth.
 var ghAuthRetrySleep = time.Sleep
 
-// verifyGhAuth checks that the gh CLI is installed and authenticated. Uses
-// plain `gh auth status` (no -h flag) for symmetry with internal/shell/github.go,
-// which never locks host either — both use whichever default host `gh` is
-// configured for.
+// requiredGhScopes are the OAuth scopes gh-optivem's own commands need on the
+// `gh` token, asserted by verifyGhAuth before `init` creates anything:
+//
+//   - project — `gh project list/create/link` and updateProjectV2Field during
+//     init's Ensure-project-board step, and `implement`'s GitHub board tracker
+//     (internal/atdd/runtime/tracker/github). Not requested by a bare
+//     `gh auth login`, which is the bug this set exists to catch.
+//   - workflow — pushing .github/workflows/* during init's Push scaffold;
+//     GitHub rejects a push touching workflow files without it.
+//   - repo — repo creation, environments, secrets, variables, labels.
+//
+// read:org is deliberately absent: `gh auth login --help` documents repo,
+// read:org and gist as the minimum a login token always carries, so asserting
+// read:org could never fail and would only add noise. repo is in that minimum
+// too but is kept — it is the one scope whose absence breaks nearly every
+// step, and it costs nothing to assert against a hand-built or downgraded
+// token.
+var requiredGhScopes = []string{"repo", "workflow", "project"}
+
+// activeAccountScopeLine returns the text following `Token scopes:` for the
+// account gh marks active, falling back to the first account when gh marks
+// none. The bool reports whether any scope line was found at all.
+//
+// `gh auth status` groups its output per account, one block per `Logged in
+// to` line, carrying `Active account: true` and `Token scopes:` inside the
+// block in either order — so a block can only be judged once it has ended.
+func activeAccountScopeLine(output string) (string, bool) {
+	var first string
+	var haveFirst bool
+	var active string
+	var haveActive bool
+
+	var blockLine string
+	var blockHasLine, blockActive bool
+
+	// endBlock resolves the block that just ended: the first active block
+	// wins outright, and the earliest block of any kind is the fallback.
+	endBlock := func() {
+		if !blockHasLine {
+			return
+		}
+		if !haveFirst {
+			first, haveFirst = blockLine, true
+		}
+		if blockActive && !haveActive {
+			active, haveActive = blockLine, true
+		}
+	}
+
+	for line := range strings.SplitSeq(output, "\n") {
+		switch {
+		case strings.Contains(line, "Logged in to"):
+			endBlock()
+			blockLine, blockHasLine, blockActive = "", false, false
+		case strings.Contains(line, "Active account: true"):
+			blockActive = true
+		default:
+			if _, rest, ok := strings.Cut(line, "Token scopes:"); ok {
+				blockLine, blockHasLine = rest, true
+			}
+		}
+	}
+	endBlock()
+
+	if haveActive {
+		return active, true
+	}
+	return first, haveFirst
+}
+
+// ghTokenScopes extracts the scope names from `gh auth status` output, which
+// reports them on a line shaped:
+//
+//	  - Token scopes: 'gist', 'project', 'read:org', 'repo', 'workflow'
+//
+// The bool reports whether that line was present at all — distinguishing "the
+// token has no scopes" from "gh did not say", which verifyGhAuth treats
+// differently.
+//
+// With several accounts or hosts authenticated gh prints one block each, and
+// only one token is actually in play — the one gh marks `Active account:
+// true`, which is what every `gh` call gh-optivem makes will use. So the
+// active block wins, falling back to the first when gh marks none. Scopes are
+// never merged across blocks: that would assert a union no single token
+// holds.
+//
+// A `Token scopes: none` line (gh's rendering for a token that carries no
+// classic scopes, e.g. a fine-grained PAT) parses as present-but-empty.
+func ghTokenScopes(output string) ([]string, bool) {
+	rest, ok := activeAccountScopeLine(output)
+	if !ok {
+		return nil, false
+	}
+	if nl := strings.IndexAny(rest, "\r\n"); nl >= 0 {
+		rest = rest[:nl]
+	}
+	if strings.TrimSpace(rest) == "none" {
+		return nil, true
+	}
+	var scopes []string
+	for raw := range strings.SplitSeq(rest, ",") {
+		s := strings.Trim(strings.TrimSpace(raw), "'\"")
+		if s != "" {
+			scopes = append(scopes, s)
+		}
+	}
+	return scopes, true
+}
+
+// missingGhScopes returns the members of requiredGhScopes absent from have,
+// preserving requiredGhScopes' order so the message and the repair command
+// read the same way every time. Comparison is by exact name: gh reports the
+// granted names verbatim, and no required scope is implied by another, so
+// modelling scope containment (repo ⊃ repo:status …) would add a guess
+// without covering a real case.
+func missingGhScopes(have []string) []string {
+	granted := make(map[string]bool, len(have))
+	for _, s := range have {
+		granted[s] = true
+	}
+	var missing []string
+	for _, want := range requiredGhScopes {
+		if !granted[want] {
+			missing = append(missing, want)
+		}
+	}
+	return missing
+}
+
+// verifyGhAuth checks that the gh CLI is installed, authenticated, and that
+// its token carries the scopes gh-optivem needs. Uses plain `gh auth status`
+// (no -h flag) for symmetry with internal/shell/github.go, which never locks
+// host either — both use whichever default host `gh` is configured for.
 //
 // The `gh auth status` call is retried once on failure: when concurrent
 // acceptance-matrix jobs run against the same VERIFY_TOKEN, GitHub's
@@ -52,6 +183,21 @@ var ghAuthRetrySleep = time.Sleep
 // token is valid. One jittered retry makes that vanishingly rare, mirroring
 // the HTTP sibling githubUserAuthCheck (token_auth.go). A genuinely
 // unauthenticated token still fails both attempts and surfaces the error.
+//
+// Exit code alone is not enough: it is 0 for any authenticated token whatever
+// its scopes, which is how a token without `project` used to reach init and
+// die at the Ensure-project-board step — one step after Create repositories,
+// leaving a half-scaffolded repo on GitHub. The scope line is already in the
+// output captured above, so asserting it here costs no extra call and moves
+// the failure to before the first side effect.
+//
+// When gh reports no scope line, or reports none, the check warns and passes
+// rather than blocking — same reasoning as verifyClaude above: a fine-grained
+// PAT or a GH_TOKEN/GITHUB_TOKEN env token has no classic OAuth scopes to
+// report, so a verdict here would be a guess, and rejecting one would be a
+// false negative against a perfectly valid token. The check reports what it
+// can prove and puts the requirement in the message; if the permission really
+// is absent, the project step downstream still fails loudly.
 func verifyGhAuth() error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return errors.New("gh CLI not found on PATH.\n    " +
@@ -67,6 +213,18 @@ func verifyGhAuth() error {
 		return fmt.Errorf("gh CLI is not authenticated.\n    "+
 			"Run: gh auth login\n    "+
 			"Output:\n%s", string(out))
+	}
+	scopes, reported := ghTokenScopes(string(out))
+	if !reported || len(scopes) == 0 {
+		log.Warnf("gh did not report token scopes (fine-grained PAT or GH_TOKEN/GITHUB_TOKEN env token?) — "+
+			"could not verify that it grants: %s. If a later step fails on permissions, that is why.",
+			strings.Join(requiredGhScopes, ", "))
+		return nil
+	}
+	if missing := missingGhScopes(scopes); len(missing) > 0 {
+		return fmt.Errorf("gh token is missing required scope(s): %s.\n    "+
+			"Grant them: gh auth refresh -s %s",
+			strings.Join(missing, ", "), strings.Join(missing, ","))
 	}
 	return nil
 }
