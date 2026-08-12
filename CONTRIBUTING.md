@@ -343,7 +343,8 @@ pwsh -File scripts/vm-hyperv-enable.ps1      # one-time host setup
 pwsh -File scripts/vm-machine-create.ps1 -IsoPath D:\iso\Win11.iso
 #   ... install Windows, nothing else
 pwsh -File scripts/vm-checkpoint-create.ps1  # freeze that clean state as 'clean-baseline'
-#   ... Copy-VMFile readme-steps.sh into the guest and run it under Git Bash
+pwsh -File scripts/vm-steps-copy.ps1 -Start  # push readme-steps.sh into the running guest
+#   ... in the guest: follow README.md by hand, or run it under Git Bash
 pwsh -File scripts/vm-checkpoint-restore.ps1 # revert for the next run: seconds, not an hour
 pwsh -File scripts/vm-machine-delete.ps1     # tear it down
 pwsh -File scripts/vm-hyperv-disable.ps1     # turn Hyper-V back off

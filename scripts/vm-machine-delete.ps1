@@ -10,6 +10,7 @@
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
+    scripts/vm-steps-copy.ps1          # copy readme-steps.sh into the guest
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
     scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
     scripts/vm-machine-delete.ps1      # this script

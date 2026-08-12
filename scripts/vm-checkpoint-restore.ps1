@@ -11,6 +11,7 @@
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
+    scripts/vm-steps-copy.ps1          # copy readme-steps.sh into the guest
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
     scripts/vm-checkpoint-restore.ps1  # this script
     scripts/vm-machine-delete.ps1      # tear the VM down
@@ -114,7 +115,7 @@ Write-Host ''
 Write-Host ("'{0}' is back at '{1}' (state: {2})." -f $Name, $SnapshotName, $vm.State) -ForegroundColor Green
 
 # --- Next steps --------------------------------------------------------------
-$stepsPath = Join-Path $PSScriptRoot 'readme-steps.sh'
+$copyScript = Join-Path $PSScriptRoot 'vm-steps-copy.ps1'
 
 if ($Start) {
     if ($vm.State -eq 'Off') {
@@ -124,6 +125,9 @@ if ($Start) {
     Write-Host ''
     Write-Host 'Open the console with:' -ForegroundColor Cyan
     Write-Host ("  vmconnect.exe localhost '{0}'" -f $Name)
+    Write-Host ''
+    Write-Host 'Then copy the README walkthrough back in - the revert discarded it:' -ForegroundColor Cyan
+    Write-Host ("  pwsh -File {0} -Name '{1}'" -f $copyScript, $Name)
 } else {
     Write-Host ''
     Write-Host 'Next' -ForegroundColor Cyan
@@ -133,9 +137,9 @@ if ($Start) {
        Start-VM -Name '$Name'
        vmconnect.exe localhost '$Name'
 
-  2. Copy the README walkthrough in and run the test again:
+  2. Copy the README walkthrough back in - the revert discarded it - and run the
+     test again:
 
-       Copy-VMFile -Name '$Name' -SourcePath '$stepsPath' ``
-         -DestinationPath 'C:\Users\Public\readme-steps.sh' -CreateFullPath -FileSource Host
+       pwsh -File $copyScript -Name '$Name' -Start
 "@
 }
