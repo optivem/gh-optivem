@@ -10,9 +10,9 @@
 # clean-room guest rather than your workstation. Two steps wait on the keyboard,
 # so run it from a console, not a pipe.
 #
-# scripts/vm-machine-create.ps1 builds the clean-room Hyper-V guest this is meant for,
-# and scripts/vm-steps-copy.ps1 gets this file into it. The guest is Windows, so
-# this runs under Git Bash there.
+# scripts/vm-machine-create.ps1 builds the clean-room Hyper-V guest this is meant
+# for, scripts/vm-scripts-copy.ps1 gets this file into it, and
+# scripts/readme-setup.ps1 installs the Git Bash it runs under once inside.
 #
 # The section headers below are the README's own headings, in its own order, so
 # the two can be read side by side. If you add a command to the README, add it
@@ -89,10 +89,10 @@ winget_install() {
 }
 
 # 1. Git for Windows supplies the Git Bash this script runs under, so it cannot
-#    install itself from in here. If you are reading this it is already present;
-#    the check is for anyone who started the file under some other shell.
+#    install itself from in here. scripts/readme-setup.ps1 does it from
+#    PowerShell, which is why that is the first thing you run in the guest.
 if ! command -v git >/dev/null 2>&1; then
-    echo "machine setup: no git. From PowerShell or CMD: winget install --id Git.Git -e --source winget" >&2
+    echo "machine setup: no git. From PowerShell: powershell -ExecutionPolicy Bypass -File C:\\Users\\Public\\readme-setup.ps1" >&2
     exit 1
 fi
 git --version

@@ -339,7 +339,7 @@ It assumes a **brand-new system**: no extension, no leftover state. That assumpt
 
 #### The clean-room VM
 
-The `vm-*.ps1` scripts build the guest this is meant for — a Hyper-V VM from a retail Windows ISO, with nothing preinstalled:
+The `vm-*.ps1` scripts run on the **host** and build the guest this is meant for — a Hyper-V VM from a retail Windows ISO, with nothing preinstalled:
 
 ```powershell
 pwsh -File scripts/vm-host-status.ps1        # read-only: where does the host stand
@@ -347,14 +347,22 @@ pwsh -File scripts/vm-hyperv-enable.ps1      # one-time host setup
 pwsh -File scripts/vm-machine-create.ps1 -IsoPath D:\iso\Win11.iso
 #   ... install Windows, nothing else
 pwsh -File scripts/vm-checkpoint-create.ps1  # freeze that clean state as 'clean-baseline'
-pwsh -File scripts/vm-steps-copy.ps1 -Start  # push readme-steps.sh into the running guest
-#   ... in the guest: follow README.md by hand, or run it under Git Bash
+pwsh -File scripts/vm-scripts-copy.ps1 -Start  # push the guest-side pair into the running guest
+#   ... in the guest, see below
 pwsh -File scripts/vm-checkpoint-restore.ps1 # revert for the next run: seconds, not an hour
 pwsh -File scripts/vm-machine-delete.ps1     # tear it down
 pwsh -File scripts/vm-hyperv-disable.ps1     # turn Hyper-V back off
 ```
 
-They need an elevated shell, and a **plain** Windows ISO — not Hyper-V Quick Create's "Windows 11 dev environment" image, which ships with developer tooling preinstalled and would silently satisfy the very prerequisites the exercise exists to test. `vm-machine-create.ps1` prints the checkpoint, copy, and restore commands for the loop; reverting to the baseline takes seconds against rebuilding from the ISO.
+They need an elevated shell, and a **plain** Windows ISO — not Hyper-V Quick Create's "Windows 11 dev environment" image, which ships with developer tooling preinstalled and would silently satisfy the very prerequisites the exercise exists to test. `vm-machine-create.ps1` prints the checkpoint, copy, and restore commands for the loop; reverting to the baseline takes seconds against rebuilding from the ISO. `vm-scripts-copy.ps1` always overwrites what is already in the guest, so re-running it after a host-side edit is the normal way to work.
+
+The other two scripts run **inside** the guest, and `readme-setup.ps1` is the first thing you touch there:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\Users\Public\readme-setup.ps1
+```
+
+`-ExecutionPolicy Bypass` because the guest refuses unsigned scripts, and `powershell` rather than `pwsh` because a clean Windows guest has only 5.1. It exists for one reason: `readme-steps.sh` is a bash script and a clean guest has no bash, so something has to install Git for Windows from the shell Windows does ship with. Two things it handles that otherwise cost a VM cycle each — Git puts `bash.exe` in `Git\bin` but only adds `Git\cmd` to `PATH`, so it resolves the absolute path rather than trusting `PATH`; and it re-reads `PATH` from the registry after the install, since the running process holds a stale copy. It then prints the command to run the walkthrough, or chains straight into it with `-Run`.
 
 The guest being Windows is load-bearing: `readme-steps.sh` runs there under Git Bash, where `go env GOPATH` answers in native form (`C:\Users\you\go`) and must be passed through `cygpath -u` before it can go on a colon-separated `PATH`.
 

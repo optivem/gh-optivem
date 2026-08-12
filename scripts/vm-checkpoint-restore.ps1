@@ -11,7 +11,8 @@
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
-    scripts/vm-steps-copy.ps1          # copy readme-steps.sh into the guest
+    scripts/vm-scripts-copy.ps1        # copy the walkthrough into the guest
+    scripts/readme-setup.ps1           # run INSIDE the VM: install Git Bash
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
     scripts/vm-checkpoint-restore.ps1  # this script
     scripts/vm-machine-delete.ps1      # tear the VM down
@@ -115,7 +116,7 @@ Write-Host ''
 Write-Host ("'{0}' is back at '{1}' (state: {2})." -f $Name, $SnapshotName, $vm.State) -ForegroundColor Green
 
 # --- Next steps --------------------------------------------------------------
-$copyScript = Join-Path $PSScriptRoot 'vm-steps-copy.ps1'
+$copyScript = Join-Path $PSScriptRoot 'vm-scripts-copy.ps1'
 
 if ($Start) {
     if ($vm.State -eq 'Off') {

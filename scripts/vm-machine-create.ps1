@@ -11,7 +11,8 @@
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # this script
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
-    scripts/vm-steps-copy.ps1          # copy readme-steps.sh into the guest
+    scripts/vm-scripts-copy.ps1        # copy the walkthrough into the guest
+    scripts/readme-setup.ps1           # run INSIDE the VM: install Git Bash
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
     scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
     scripts/vm-machine-delete.ps1      # tear the VM down
@@ -242,7 +243,7 @@ Write-Host @"
 
   4. Copy the README walkthrough in and run it:
 
-       pwsh -File $(Join-Path $PSScriptRoot 'vm-steps-copy.ps1') -Name '$Name' -Start
+       pwsh -File $(Join-Path $PSScriptRoot 'vm-scripts-copy.ps1') -Name '$Name' -Start
 
      Then in the guest, follow README.md by hand (the honest test), or run
      ``bash /c/Users/Public/readme-steps.sh`` once Git Bash is installed.

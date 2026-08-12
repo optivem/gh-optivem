@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Copy the README walkthrough (scripts/readme-steps.sh) from the host into the
-  running test VM, so you can run it inside the guest.
+  Copy the guest-side scripts (readme-setup.ps1 and readme-steps.sh) from the
+  host into the running test VM.
 
 .DESCRIPTION
   Step 4 of the install-test loop:
@@ -11,22 +11,28 @@
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
-    scripts/vm-steps-copy.ps1          # this script
+    scripts/vm-scripts-copy.ps1        # this script
+    scripts/readme-setup.ps1           # run INSIDE the VM: install Git Bash
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
     scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
     scripts/vm-machine-delete.ps1      # tear the VM down
     scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
 
   The guest has no network share, no clipboard you can trust for a 300-line
-  script, and (by design) no clone of this repo. Copy-VMFile pushes the file over
+  script, and (by design) no clone of this repo. Copy-VMFile pushes files over
   the VMBus instead, which is why vm-machine-create.ps1 turns the Guest Service
-  Interface on. This script is that one command plus the checks that turn its
-  three unhelpful failure modes - VM off, integration service not answering,
-  destination already there - into messages that say what to do.
+  Interface on. This script is that one command per file, plus the checks that
+  turn its three unhelpful failure modes - VM off, integration service not
+  answering, destination already there - into messages that say what to do.
 
-  Re-run it after every host-side edit to readme-steps.sh. The copy is a
-  snapshot, not a mount: the guest keeps whatever bytes it received until you
-  overwrite them with -Force.
+  Both files go, because neither is enough alone: readme-steps.sh is a bash
+  script and a clean Windows guest has no bash, so readme-setup.ps1 installs Git
+  for Windows first from the shell Windows does ship with.
+
+  Re-run it after every host-side edit: the copy always overwrites, because a
+  stale copy in the guest is the one thing this script exists to prevent. The
+  copy is a snapshot, not a mount, so the guest keeps whatever bytes it last
+  received until the next run.
 
   What lands in the guest is only half the test. readme-steps.sh is the
   mechanical version of README.md; following the README by hand in the guest is
@@ -36,18 +42,12 @@
   VM to copy into. Defaults to gh-optivem-install-test.
 
 .PARAMETER SourcePath
-  File on the host to copy. Defaults to scripts/readme-steps.sh next to this
-  script.
+  Files on the host to copy. Defaults to readme-setup.ps1 and readme-steps.sh
+  next to this script.
 
-.PARAMETER DestinationPath
-  Absolute path inside the guest. Defaults to C:\Users\Public\readme-steps.sh,
-  which every guest account can read.
-
-.PARAMETER Force
-  Ask Hyper-V to overwrite a file already sitting at the destination. Without it,
-  a second run fails rather than silently replacing what the guest has. Hyper-V's
-  copy service may refuse to overwrite even with this; the error then says to
-  delete the file inside the guest, which always works.
+.PARAMETER DestinationDir
+  Directory inside the guest to copy them into, keeping their names. Defaults to
+  C:\Users\Public, which every guest account can read.
 
 .PARAMETER Start
   Start the VM first if it is off, and wait for its guest services to answer.
@@ -56,22 +56,21 @@
   How long to wait for the Guest Service Interface to report OK before giving up.
 
 .EXAMPLE
-  pwsh -File scripts/vm-steps-copy.ps1
+  pwsh -File scripts/vm-scripts-copy.ps1
 
 .EXAMPLE
-  pwsh -File scripts/vm-steps-copy.ps1 -Force
+  pwsh -File scripts/vm-scripts-copy.ps1 -Start
 
 .EXAMPLE
-  pwsh -File scripts/vm-steps-copy.ps1 -SourcePath .\README.md -DestinationPath 'C:\Users\Public\README.md'
+  pwsh -File scripts/vm-scripts-copy.ps1 -SourcePath .\README.md
 #>
 [CmdletBinding()]
 param(
-    [string]$Name               = 'gh-optivem-install-test',
-    [string]$SourcePath         = '',
-    [string]$DestinationPath    = 'C:\Users\Public\readme-steps.sh',
-    [switch]$Force,
-    [switch]$Start,
-    [int]   $WaitTimeoutSeconds = 180
+    [string]  $Name               = 'gh-optivem-install-test',
+    [string[]]$SourcePath         = @(),
+    [string]  $DestinationDir     = 'C:\Users\Public',
+    [switch]  $Start,
+    [int]     $WaitTimeoutSeconds = 180
 )
 
 $ErrorActionPreference = 'Stop'
@@ -87,16 +86,25 @@ if (-not (Test-Elevated)) {
     Write-Error "The Hyper-V cmdlets require an elevated shell. Open PowerShell as Administrator and re-run: pwsh -File `"$PSCommandPath`" -Name `"$Name`""
 }
 
-if (-not $SourcePath) {
-    $SourcePath = Join-Path $PSScriptRoot 'readme-steps.sh'
+if (-not $SourcePath -or $SourcePath.Count -eq 0) {
+    # readme-setup.ps1 first: it is the one the operator runs, and the one that
+    # makes the other runnable.
+    $SourcePath = @(
+        (Join-Path $PSScriptRoot 'readme-setup.ps1'),
+        (Join-Path $PSScriptRoot 'readme-steps.sh')
+    )
 }
-if (-not (Test-Path -LiteralPath $SourcePath -PathType Leaf)) {
-    Write-Error "No file at '$SourcePath'. Pass -SourcePath with the file you want in the guest."
-}
-$source = (Resolve-Path -LiteralPath $SourcePath).Path
 
-if (-not [System.IO.Path]::IsPathRooted($DestinationPath)) {
-    Write-Error "-DestinationPath must be an absolute path inside the guest (for example C:\Users\Public\readme-steps.sh); got '$DestinationPath'."
+$sources = @()
+foreach ($p in $SourcePath) {
+    if (-not (Test-Path -LiteralPath $p -PathType Leaf)) {
+        Write-Error "No file at '$p'. Pass -SourcePath with the files you want in the guest."
+    }
+    $sources += (Resolve-Path -LiteralPath $p).Path
+}
+
+if (-not [System.IO.Path]::IsPathRooted($DestinationDir)) {
+    Write-Error "-DestinationDir must be an absolute path inside the guest (for example C:\Users\Public); got '$DestinationDir'."
 }
 
 $vm = Get-VM -Name $Name -ErrorAction SilentlyContinue
@@ -107,11 +115,12 @@ if (-not $vm) {
 # A shell script that reaches the guest with CRLF endings dies on its first line
 # with a message about '\r', which costs an hour to diagnose from inside a VM.
 # .gitattributes pins *.sh to LF, so this only fires on a mangled checkout.
-if ($source -like '*.sh') {
-    $bytes = [System.IO.File]::ReadAllBytes($source)
+foreach ($s in $sources) {
+    if ($s -notlike '*.sh') { continue }
+    $bytes = [System.IO.File]::ReadAllBytes($s)
     for ($i = 0; $i -lt $bytes.Length - 1; $i++) {
         if ($bytes[$i] -eq 13 -and $bytes[$i + 1] -eq 10) {
-            Write-Error "'$source' has CRLF line endings; bash in the guest will fail on them. Re-checkout the file with LF endings (git config core.autocrlf false, then git checkout -- '$source') and re-run."
+            Write-Error "'$s' has CRLF line endings; bash in the guest will fail on them. Re-checkout the file with LF endings (git config core.autocrlf false, then git checkout -- '$s') and re-run."
         }
     }
 }
@@ -152,64 +161,70 @@ if ($svc.PrimaryStatusDescription -ne 'OK') {
 
 # --- Copy ----------------------------------------------------------------------
 Write-Host ''
-Write-Host ("Copying into '{0}':" -f $Name) -ForegroundColor Cyan
-Write-Host ("  host  : {0}" -f $source)
-Write-Host ("  guest : {0}" -f $DestinationPath)
+Write-Host ("Copying into '{0}' at {1}:" -f $Name, $DestinationDir) -ForegroundColor Cyan
 
-$copyArgs = @{
-    Name            = $Name
-    SourcePath      = $source
-    DestinationPath = $DestinationPath
-    CreateFullPath  = $true
-    FileSource      = 'Host'
-}
-if ($Force) { $copyArgs['Force'] = $true }
+$setupDest = ''
+foreach ($s in $sources) {
+    $leaf = Split-Path -Leaf $s
+    $dest = Join-Path $DestinationDir $leaf
+    if ($leaf -eq 'readme-setup.ps1') { $setupDest = $dest }
 
-try {
-    Copy-VMFile @copyArgs
-} catch {
-    $msg = $_.Exception.Message
-    # Hyper-V reports the occupied destination as the raw Win32 error - 'The file
-    # exists. (0x80070050)' - not as anything containing 'already exists'. Match
-    # the code, which is the part that cannot be reworded.
-    if ($msg -match '0x80070050' -or $msg -match 'file exists') {
-        if ($Force) {
-            # Copy-VMFile is documented as taking -Force, but the guest service
-            # is the thing refusing here and it does so regardless. Deleting in
-            # the guest is the reliable way through.
-            Write-Error "'$DestinationPath' already exists in the guest and -Force did not displace it - Hyper-V's file-copy service will not overwrite. Delete it from inside the guest (del $DestinationPath) and re-run, or pass -DestinationPath with a name that is free."
+    Write-Host ("  {0}" -f $leaf) -ForegroundColor DarkGray
+
+    # -Force unconditionally: re-running after a host-side edit is the normal
+    # case, and a copy that refuses to replace the stale file would defeat the
+    # point. There is nothing in the guest worth preserving - it is a clean room.
+    try {
+        Copy-VMFile -Name $Name -SourcePath $s -DestinationPath $dest `
+            -CreateFullPath -FileSource Host -Force
+    } catch {
+        $msg = $_.Exception.Message
+        # Hyper-V reports the occupied destination as the raw Win32 error - 'The
+        # file exists. (0x80070050)' - not as anything containing 'already
+        # exists'. Match the code, which is the part that cannot be reworded.
+        if ($msg -match '0x80070050' -or $msg -match 'file exists') {
+            # Copy-VMFile takes -Force, but the guest-side copy service is what
+            # refuses here and it can refuse regardless. Deleting in the guest is
+            # then the only way through: the host has no way to remove a guest
+            # file over the VMBus.
+            Write-Error "'$dest' already exists in the guest and -Force did not displace it - Hyper-V's file-copy service declined to overwrite. Delete it from inside the guest (del $dest) and re-run, or pass -DestinationDir with a directory that is free."
         }
-        Write-Error "'$DestinationPath' already exists in the guest. Re-run with -Force: pwsh -File `"$PSCommandPath`" -Name `"$Name`" -Force"
+        Write-Error "Copy-VMFile failed for '$leaf': $msg"
     }
-    Write-Error "Copy-VMFile failed: $msg"
 }
 
 Write-Host ''
-Write-Host 'Copied.' -ForegroundColor Green
+Write-Host ("Copied {0} file(s)." -f $sources.Count) -ForegroundColor Green
 
 # --- Next steps ----------------------------------------------------------------
-# Git Bash sees the guest's C:\ as /c/, so hand over a path that can be pasted
-# into the shell the script actually runs under.
-$bashPath = $DestinationPath -replace '^([A-Za-z]):', '/$1' -replace '\\', '/'
-$bashPath = $bashPath.Substring(0, 2).ToLower() + $bashPath.Substring(2)
-
 Write-Host ''
 Write-Host 'Next' -ForegroundColor Cyan
+
+if (-not $setupDest) {
+    # A custom -SourcePath run; there is no bootstrap to point at.
+    Write-Host @"
+  Open the guest console and take it from there:
+
+       vmconnect.exe localhost '$Name'
+"@
+    return
+}
+
 Write-Host @"
   1. Open the guest console:
 
        vmconnect.exe localhost '$Name'
 
-  2. Inside the guest, either follow README.md by hand - the honest test, because
-     it exercises the prose too - or, once Git Bash is installed, run the
-     mechanical version:
+  2. Inside the guest, in PowerShell - not bash, which does not exist there yet:
 
-       bash $bashPath
+       powershell -ExecutionPolicy Bypass -File $setupDest
 
-  3. After a fix on the host, re-run this script with -Force to push the new
-     copy in:
+     That installs Git for Windows and prints the command that runs the
+     walkthrough. Add -Run to chain straight into it.
 
-       pwsh -File $PSCommandPath -Name '$Name' -Force
+  3. After a fix on the host, push the new copies in - re-running overwrites:
+
+       pwsh -File $PSCommandPath -Name '$Name'
 
   4. Reset the guest to the clean baseline before the next attempt:
 
