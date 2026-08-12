@@ -20,9 +20,11 @@
 
   ```bash
   gh --version
-  gh auth login
+  gh auth login -s project,workflow
   gh auth status
   ```
+
+  Ask for those two scopes up front. A bare `gh auth login` requests neither, and both are needed later: `project` for the board `init` creates and for the board tracker `implement` drives, `workflow` for pushing the scaffolded `.github/workflows/`. `gh optivem` checks for them before it creates anything, so a token without them stops at `Verifying environment...`.
 
 - **[Claude Code](https://claude.com/claude-code), installed and signed in** — the agents run as `claude` subprocesses, so you need an active Claude subscription. The free Claude.ai plan does not include Claude Code.
 
@@ -226,7 +228,7 @@ Add the issue to it with plain `gh` — there is no `gh optivem` wrapper for thi
 gh project item-add <number> --owner <login|org> --url https://github.com/<owner>/<repo>/issues/<issue_number>
 ```
 
-`gh auth login` does not ask for the `project` scope, so the first run of that command can come back *missing required scopes*. Grant it once:
+If that comes back *missing required scopes*, you logged in without the `project` scope the [Prerequisites](#prerequisites) asked for. Add it to the token you already have:
 
 ```bash
 gh auth refresh -s project

@@ -76,12 +76,10 @@ var requiredGhScopes = []string{"repo", "workflow", "project"}
 // A `Token scopes: none` line (gh's rendering for a token that carries no
 // classic scopes, e.g. a fine-grained PAT) parses as present-but-empty.
 func ghTokenScopes(output string) ([]string, bool) {
-	const marker = "Token scopes:"
-	idx := strings.Index(output, marker)
-	if idx < 0 {
+	_, rest, ok := strings.Cut(output, "Token scopes:")
+	if !ok {
 		return nil, false
 	}
-	rest := output[idx+len(marker):]
 	if nl := strings.IndexAny(rest, "\r\n"); nl >= 0 {
 		rest = rest[:nl]
 	}
@@ -89,7 +87,7 @@ func ghTokenScopes(output string) ([]string, bool) {
 		return nil, true
 	}
 	var scopes []string
-	for _, raw := range strings.Split(rest, ",") {
+	for raw := range strings.SplitSeq(rest, ",") {
 		s := strings.Trim(strings.TrimSpace(raw), "'\"")
 		if s != "" {
 			scopes = append(scopes, s)
