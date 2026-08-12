@@ -14,6 +14,7 @@
     scripts/vm-scripts-copy.ps1        # copy the walkthrough into the guest
     scripts/readme-setup.ps1           # run INSIDE the VM: this script
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-logs-copy.ps1           # pull the guest run logs back to the host
     scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
     scripts/vm-machine-delete.ps1      # tear the VM down
     scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
@@ -48,6 +49,12 @@
   The walkthrough to hand over to. Defaults to readme-steps.sh next to this
   script, which is where vm-scripts-copy.ps1 puts the pair.
 
+.PARAMETER LogDir
+  Where to write the run log. Defaults to $env:GH_OPTIVEM_LOG_DIR, or a logs
+  directory next to this script. Both guest-side scripts log there, under
+  <YYYYMMDD-HHMMSS>-<script name>.log, so a failed run can be read afterwards
+  rather than scrolled back to in a VM console.
+
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File C:\Users\Public\readme-setup.ps1
 
@@ -57,10 +64,53 @@
 [CmdletBinding()]
 param(
     [switch]$Run,
-    [string]$StepsPath = ''
+    [string]$StepsPath = '',
+    [string]$LogDir    = ''
 )
 
 $ErrorActionPreference = 'Stop'
+
+# --- Logging -------------------------------------------------------------------
+# Start-Transcript rather than hand-rolled redirection. One caveat drives the
+# `| ForEach-Object { Write-Host $_ }` on the native calls below: a 5.1
+# transcript only records what passes through PowerShell's own streams, so an
+# exe writing straight to the console (winget, bash) leaves no trace in the log
+# unless its output is piped back through PowerShell first. Verified, not
+# assumed - the first version of this script logged everything except the two
+# things worth reading.
+if (-not $LogDir) {
+    $LogDir = $env:GH_OPTIVEM_LOG_DIR
+}
+if (-not $LogDir) {
+    $LogDir = Join-Path $PSScriptRoot 'logs'
+}
+if (-not (Test-Path -LiteralPath $LogDir)) {
+    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+}
+$logFile = Join-Path $LogDir ((Get-Date -Format 'yyyyMMdd-HHmmss') + '-readme-setup.log')
+
+$transcribing = $false
+try {
+    Start-Transcript -Path $logFile | Out-Null
+    $transcribing = $true
+    Write-Host "readme-setup: logging to $logFile" -ForegroundColor DarkGray
+} catch {
+    # A transcript already running in this session is the usual cause. Losing the
+    # log is not a reason to refuse to install Git.
+    Write-Warning "Could not start a transcript ($($_.Exception.Message)). Continuing without a log."
+}
+
+function Stop-Log {
+    if ($script:transcribing) {
+        $script:transcribing = $false
+        try { Stop-Transcript | Out-Null } catch { }
+    }
+}
+
+# Every Write-Error below is terminating ($ErrorActionPreference), and a
+# -File run would flush the transcript on process exit anyway - but this script
+# is also worth running from an open session, where it would not.
+trap { Stop-Log; break }
 
 # --- Preconditions -------------------------------------------------------------
 if (-not $StepsPath) {
@@ -104,7 +154,8 @@ if ($bash) {
     # Without the --accept-* flags winget stops on a licence prompt the first
     # time it sees a source or package, which on a fresh guest is always.
     winget.exe install --id Git.Git -e --source winget `
-        --accept-source-agreements --accept-package-agreements
+        --accept-source-agreements --accept-package-agreements 2>&1 |
+        ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) {
         # $ErrorActionPreference does not catch native exit codes, so this check
         # is the only thing standing between a failed install and a confusing
@@ -125,7 +176,7 @@ if ($bash) {
     Write-Host "readme-setup: Git Bash installed ($bash)" -ForegroundColor Green
 }
 
-& $bash --version
+& $bash --version 2>&1 | ForEach-Object { Write-Host $_ }
 
 # --- Hand over -----------------------------------------------------------------
 if ($Run) {
@@ -133,8 +184,15 @@ if ($Run) {
     Write-Host 'readme-setup: starting the README walkthrough ...' -ForegroundColor Cyan
     Write-Host '  It waits on the keyboard twice: the GitHub sign-in and the Claude sign-in.' -ForegroundColor DarkGray
     Write-Host ''
+    # Deliberately NOT piped through PowerShell: the walkthrough stops twice for
+    # a sign-in, and a TUI whose stdout is a pipe will not draw. It keeps its own
+    # log in the same directory, so nothing is lost by leaving it on the console.
     & $bash $StepsPath
-    exit $LASTEXITCODE
+    $rc = $LASTEXITCODE
+    Write-Host ''
+    Write-Host "readme-setup: log written to $logFile" -ForegroundColor DarkGray
+    Stop-Log
+    exit $rc
 }
 
 Write-Host ''
@@ -149,5 +207,10 @@ Write-Host @"
      into it next time.
 
   2. It stops at the first failure. That is the one worth reading: it means
-     README.md and a brand-new machine disagree.
+     README.md and a brand-new machine disagree. It writes its own log beside
+     this one, in $LogDir.
 "@
+
+Write-Host ''
+Write-Host "readme-setup: log written to $logFile" -ForegroundColor DarkGray
+Stop-Log

@@ -3,7 +3,7 @@
   Delete an install-test VM and every file it left behind.
 
 .DESCRIPTION
-  Step 6 of the install-test loop:
+  Step 8 of the install-test loop:
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
     scripts/vm-host-status.ps1         # read-only report - where does the host stand
@@ -13,6 +13,7 @@
     scripts/vm-scripts-copy.ps1        # copy the walkthrough into the guest
     scripts/readme-setup.ps1           # run INSIDE the VM: install Git Bash
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-logs-copy.ps1           # pull the guest run logs back to the host
     scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
     scripts/vm-machine-delete.ps1      # this script
     scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off

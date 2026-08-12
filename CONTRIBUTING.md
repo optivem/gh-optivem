@@ -349,6 +349,7 @@ pwsh -File scripts/vm-machine-create.ps1 -IsoPath D:\iso\Win11.iso
 pwsh -File scripts/vm-checkpoint-create.ps1  # freeze that clean state as 'clean-baseline'
 pwsh -File scripts/vm-scripts-copy.ps1 -Start  # push the guest-side pair into the running guest
 #   ... in the guest, see below
+pwsh -File scripts/vm-logs-copy.ps1          # pull the run logs back out
 pwsh -File scripts/vm-checkpoint-restore.ps1 # revert for the next run: seconds, not an hour
 pwsh -File scripts/vm-machine-delete.ps1     # tear it down
 pwsh -File scripts/vm-hyperv-disable.ps1     # turn Hyper-V back off
@@ -365,6 +366,21 @@ powershell -ExecutionPolicy Bypass -File C:\Users\Public\readme-setup.ps1
 `-ExecutionPolicy Bypass` because the guest refuses unsigned scripts, and `powershell` rather than `pwsh` because a clean Windows guest has only 5.1. It exists for one reason: `readme-steps.sh` is a bash script and a clean guest has no bash, so something has to install Git for Windows from the shell Windows does ship with. Two things it handles that otherwise cost a VM cycle each — Git puts `bash.exe` in `Git\bin` but only adds `Git\cmd` to `PATH`, so it resolves the absolute path rather than trusting `PATH`; and it re-reads `PATH` from the registry after the install, since the running process holds a stale copy. It then prints the command to run the walkthrough, or chains straight into it with `-Run`.
 
 The guest being Windows is load-bearing: `readme-steps.sh` runs there under Git Bash, where `go env GOPATH` answers in native form (`C:\Users\you\go`) and must be passed through `cygpath -u` before it can go on a colon-separated `PATH`.
+
+#### Reading a failed run
+
+Both guest-side scripts write a timestamped log to `C:\Users\Public\logs\<YYYYMMDD-HHMMSS>-<script>.log`, because scrollback in a VM console is a bad place to diagnose anything and you cannot copy out of it. Two deliberate holes in the capture, each for the same reason — a program whose stdout is a pipe is not a program on a terminal:
+
+- The bash side tees everything **except** the two sign-ins, which are handed the real console through fds 3 and 4. A raw-mode TUI will not draw into a pipe.
+- The PowerShell side uses `Start-Transcript`, which in 5.1 records only what passes through PowerShell's own streams — so `winget` and `bash --version` are piped back through `Write-Host` to make them visible. The `-Run` handoff is deliberately *not* piped, since `readme-steps.sh` keeps its own log anyway.
+
+`Copy-VMFile` has no guest-to-host direction, so getting those files out uses PowerShell Direct — a remoting session over the VMBus, no network. That needs **guest credentials** (the local account from Windows setup), which is the one thing the rest of the loop never asks for:
+
+```powershell
+pwsh -File scripts/vm-logs-copy.ps1     # prompts, then copies into .vm-logs/
+```
+
+Run it **before** `vm-checkpoint-restore.ps1`. The revert discards the guest's copies and there is no undo; the restore script now says so in its confirmation prompt.
 
 The one command allowed to fail is the first `environment verify`, because the README runs it *before* the tools it checks are installed, precisely so it reports everything missing in one pass. The re-run under "Environment variables" is the one that must pass.
 

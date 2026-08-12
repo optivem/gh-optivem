@@ -4,7 +4,7 @@
   run did to it.
 
 .DESCRIPTION
-  Step 5 of the install-test loop:
+  Step 7 of the install-test loop:
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
     scripts/vm-host-status.ps1         # read-only report - where does the host stand
@@ -14,6 +14,7 @@
     scripts/vm-scripts-copy.ps1        # copy the walkthrough into the guest
     scripts/readme-setup.ps1           # run INSIDE the VM: install Git Bash
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-logs-copy.ps1           # pull the guest run logs back to the host
     scripts/vm-checkpoint-restore.ps1  # this script
     scripts/vm-machine-delete.ps1      # tear the VM down
     scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
@@ -89,6 +90,8 @@ Write-Host ("  Current state    : {0}" -f $vm.State)
 Write-Host ''
 Write-Host 'Everything the guest has done since that checkpoint will be discarded:' -ForegroundColor Yellow
 Write-Host '  installed tools, cloned repos, and any files written inside the VM.' -ForegroundColor Yellow
+Write-Host '  THE RUN LOGS TOO - pull them out first if you have not already:' -ForegroundColor Yellow
+Write-Host ("    pwsh -File {0} -Name '{1}'" -f (Join-Path $PSScriptRoot 'vm-logs-copy.ps1'), $Name) -ForegroundColor Yellow
 Write-Host ("The checkpoint itself is kept - you can revert to it again later.") -ForegroundColor DarkGray
 Write-Host ''
 

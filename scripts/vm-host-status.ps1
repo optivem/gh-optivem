@@ -15,6 +15,7 @@
     scripts/vm-scripts-copy.ps1        # copy the walkthrough into the guest
     scripts/readme-setup.ps1           # run INSIDE the VM: install Git Bash
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-logs-copy.ps1           # pull the guest run logs back to the host
     scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
     scripts/vm-machine-delete.ps1      # tear the VM down
     scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off

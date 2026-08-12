@@ -14,6 +14,7 @@
     scripts/vm-scripts-copy.ps1        # this script
     scripts/readme-setup.ps1           # run INSIDE the VM: install Git Bash
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-logs-copy.ps1           # pull the guest run logs back to the host
     scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
     scripts/vm-machine-delete.ps1      # tear the VM down
     scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
@@ -222,11 +223,17 @@ Write-Host @"
      That installs Git for Windows and prints the command that runs the
      walkthrough. Add -Run to chain straight into it.
 
+     Both guest-side scripts log to $DestinationDir\logs.
+
   3. After a fix on the host, push the new copies in - re-running overwrites:
 
        pwsh -File $PSCommandPath -Name '$Name'
 
-  4. Reset the guest to the clean baseline before the next attempt:
+  4. Pull the logs out before resetting - the revert discards them:
+
+       pwsh -File scripts/vm-logs-copy.ps1 -Name '$Name'
+
+  5. Reset the guest to the clean baseline before the next attempt:
 
        pwsh -File scripts/vm-checkpoint-restore.ps1 -Name '$Name'
 "@

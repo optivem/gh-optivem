@@ -21,6 +21,11 @@ Thumbs.db
 # Scratch
 .tmp/
 
+# Clean-room VM run logs: written by the guest-side scripts, pulled back by
+# scripts/vm-logs-copy.ps1
+.vm-logs/
+scripts/logs/
+
 # Zig local build cache (created by mlugg/setup-zig in CI; would trip
 # goreleaser's dirty-tree check otherwise)
 .zig-cache/
