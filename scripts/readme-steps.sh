@@ -121,8 +121,8 @@ REPO="readme-steps-$(date +%Y%m%d-%H%M%S)"
 #
 # These run. Steps marked [interactive] need you at the keyboard — answering
 # prompts or signing in through a browser — so start this script from a console,
-# not a pipe. Each step is skipped when the tool is already there, so re-running
-# after a fix costs nothing.
+# not a pipe. Each step first asks the tool for its version and is skipped when
+# it answers, so re-running after a fix costs nothing.
 #
 # Still NOT covered here: Go, Docker Desktop, Java, .NET, and Node. The
 # "Local environment setup" section below verifies them but nothing installs
@@ -157,20 +157,53 @@ require_tty() {
     fi
 }
 
-# $1 probe command, $2 winget id, $3 label
+# Is this tool here, and does it run? Asked before every install, and again
+# after, and the answer is written down either way - "not installed" is as much
+# a result as "installed", and on a guest that is supposed to be clean it is the
+# one that confirms the checkpoint was restored.
+#
+# The question is put to the tool itself rather than to `command -v`, which only
+# reports that a file of that name sits on PATH - true of a half-finished
+# install and of a shim whose target has gone, and it prints no version. Running
+# the tool's own version command answers the stronger question and leaves the
+# version in the log, which is where the next step's failure gets diagnosed.
+#
+# $1 label, $2.. the version command
+probe_tool() {
+    local label="$1"
+    shift
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "machine setup: $label NOT installed"
+        return 1
+    fi
+    local out
+    if ! out=$("$@" 2>&1); then
+        # On PATH but not runnable. Treated as absent so the caller reinstalls,
+        # which is the likely fix - but said out loud, because "not installed"
+        # would be a lie and the reinstall is then unexplained.
+        echo "machine setup: $label is on PATH ($(command -v "$1")) but '$*' failed:" >&2
+        printf '%s\n' "$out" >&2
+        return 1
+    fi
+    echo "machine setup: $label installed - $(printf '%s\n' "$out" | head -n 1)"
+    return 0
+}
+
+# $1 winget id, $2 label, $3.. version command
 winget_install() {
-    if command -v "$1" >/dev/null 2>&1; then
-        echo "machine setup: $3 already installed"
+    local id="$1" label="$2"
+    shift 2
+    if probe_tool "$label" "$@"; then
         return
     fi
-    echo "machine setup: installing $3 ..."
+    echo "machine setup: installing $label ..."
     # Without the --accept-* flags winget stops on a licence prompt the first
     # time it sees a source or package - which on a fresh guest is always.
-    winget install --id "$2" -e --source winget \
+    winget install --id "$id" -e --source winget \
         --accept-source-agreements --accept-package-agreements
     refresh_path
-    if ! command -v "$1" >/dev/null 2>&1; then
-        echo "machine setup: $3 installed but '$1' is still not on PATH." >&2
+    if ! probe_tool "$label" "$@"; then
+        echo "machine setup: $label was installed but '$*' still does not run." >&2
         exit 1
     fi
 }
@@ -179,22 +212,22 @@ winget_install() {
 #    install itself from in here. scripts/readme-setup.ps1 does it from
 #    PowerShell, which is why that is the first thing you run in the guest.
 step 'machine setup: git'
-if ! command -v git >/dev/null 2>&1; then
+if ! probe_tool 'Git' git --version; then
     echo "machine setup: no git. From PowerShell: powershell -ExecutionPolicy Bypass -File C:\\Users\\Public\\readme-setup.ps1" >&2
     exit 1
 fi
-git --version
 
 # Windows 11 ships winget as App Installer, but a guest straight off the ISO
-# sometimes has a version too old to run until the Store updates it.
-if ! command -v winget >/dev/null 2>&1; then
-    echo "machine setup: no winget. Open Microsoft Store, update 'App Installer', then re-run." >&2
+# sometimes has a version too old to run until the Store updates it - which is
+# why this asks winget for its version rather than just for its presence.
+if ! probe_tool 'winget' winget --version; then
+    echo "machine setup: no usable winget. Open Microsoft Store, update 'App Installer', then re-run." >&2
     exit 1
 fi
 
 # 2. GitHub CLI
 step 'machine setup: GitHub CLI install'
-winget_install gh GitHub.cli "GitHub CLI"
+winget_install GitHub.cli "GitHub CLI" gh --version
 
 # 3. [interactive] GitHub CLI sign-in — prompts, then a browser.
 step 'machine setup: GitHub CLI sign-in [interactive, off-log]'
@@ -215,14 +248,12 @@ fi
 #    because this file is Git Bash. claude.ai/install.sh is the macOS/Linux/WSL
 #    installer and is NOT the right one here.
 step 'machine setup: Claude Code install'
-if command -v claude >/dev/null 2>&1; then
-    echo "machine setup: Claude Code already installed"
-else
+if ! probe_tool 'Claude Code' claude --version; then
     echo "machine setup: installing Claude Code ..."
     powershell.exe -NoProfile -Command "irm https://claude.ai/install.ps1 | iex"
     refresh_path
-    if ! command -v claude >/dev/null 2>&1; then
-        echo "machine setup: Claude Code installed but 'claude' is still not on PATH." >&2
+    if ! probe_tool 'Claude Code' claude --version; then
+        echo "machine setup: Claude Code was installed but 'claude --version' still does not run." >&2
         exit 1
     fi
 fi

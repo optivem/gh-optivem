@@ -120,6 +120,18 @@ if (-not (Test-Path -LiteralPath $StepsPath -PathType Leaf)) {
     Write-Error "No walkthrough at '$StepsPath'. Copy it in from the host first: pwsh -File scripts/vm-scripts-copy.ps1. Or pass -StepsPath."
 }
 
+# --- GitHub CLI ----------------------------------------------------------------
+# Reported, not installed: readme-steps.sh installs gh, next to the command that
+# verifies it. Worth reading first all the same - on a VM that was meant to be
+# clean, a gh that is already there means the checkpoint was never restored and
+# the run is not testing what it claims to.
+$gh = Get-Command gh.exe -ErrorAction SilentlyContinue
+if ($gh) {
+    Write-Host "readme-setup: GitHub CLI already installed ($($gh.Source))" -ForegroundColor Yellow
+} else {
+    Write-Host 'readme-setup: GitHub CLI not installed - readme-steps.sh installs it' -ForegroundColor Green
+}
+
 # --- Git for Windows -----------------------------------------------------------
 # bash.exe, not git.exe, is the thing that has to exist: git alone would leave
 # readme-steps.sh unrunnable, which is the whole point of this script.
