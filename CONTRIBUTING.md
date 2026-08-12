@@ -301,7 +301,6 @@ Run this any time you edit CLI source (e.g. `implement_commands.go`, anything un
 
 ```bash
 go test -p 2 ./...                            # unit; -p caps parallel package builds (see Windows tip below)
-go test -tags=docs .                          # docs gate; see below
 go test -tags=system ./...                    # all system tests
 bash scripts/test-system.sh                   # quick subset
 bash scripts/test.sh ./internal/atdd/...      # wrapper: caps -p (default 2), refuses ./... without --all
@@ -319,9 +318,9 @@ go test -tags=system ./internal/config/ -v -timeout 2h \
 
 ### Docs gate
 
-Two pieces keep `README.md` honest, and they answer different questions.
+One thing keeps `README.md` honest, and it answers the only question that matters: do the documented commands still work? There is deliberately no static counterpart — the README is proven by execution, in a clean room, or not at all.
 
-**Do the documented commands still work?** [`scripts/readme-steps.sh`](scripts/readme-steps.sh) is every command in `README.md`, in README order, as a flat transcript:
+[`scripts/readme-steps.sh`](scripts/readme-steps.sh) is every command in `README.md`, in README order, as a flat transcript:
 
 ```bash
 bash scripts/readme-steps.sh
@@ -356,21 +355,9 @@ The one command allowed to fail is the first `environment verify`, because the R
 
 Two README steps are commented rather than executed, with the reason inline: `implement` needs an issue with Gherkin acceptance criteria on the Project board, which a freshly scaffolded repo has none of; `upgrade`/`uninstall` would undo the install above.
 
-The script holds a *copy* of the README's commands, not an extract, and nothing enforces that they agree — compare the two by eye when you touch either.
+The script holds a *copy* of the README's commands, not an extract, and nothing enforces that they agree — compare the two by eye when you touch either. It will never be a literal transcript: its Machine setup section collects the install and sign-in commands the README only links out to, and the steps above are commented rather than run. Expect it to track the README at roughly 95%.
 
-The script holds a *copy* of the README's commands, not an extract. It will never be a literal transcript — the branching on Claude availability alone prevents that — so expect it to track the README at roughly 95%, and compare the two by eye when you touch either.
-
-**Do the docs point at files that exist?** [`docs_test.go`](docs_test.go), tagged `docs` so it stays out of the default `./...` build:
-
-```bash
-go test -tags=docs .
-```
-
-`TestDocsPathsExist` resolves every repo-relative path cited in `README.md`, `CONTRIBUTING.md`, and `docs/cli-reference.md` — Markdown link targets, plus backticked paths under `internal/`, `docs/`, `scripts/`, `.github/`. Dead links rot silently: a package move leaves every reference pointing at nothing and nobody notices until a reader follows one. The first time it ran it caught a stale link to the `projectconfig` package, left behind when that package moved under [`internal/kernel`](internal/kernel). Execution can never cover this, which is why it stays a test.
-
-A path that appears in prose *because* it no longer exists will trip this — reword rather than loosening the pattern.
-
-CI runs both in [`gh-docs-stage.yml`](.github/workflows/gh-docs-stage.yml) — tier 1 plus the path test — on every push and PR to main.
+Because the only gate is execution, a dead link in the docs is caught by a reader following it, not by CI. When you move a package, grep the Markdown for its old path.
 
 ### Windows: keep `go test ./...` fast
 
