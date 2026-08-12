@@ -23,11 +23,18 @@
   gh auth status
   ```
 
-  `gh auth status` tells you which command you need next, and prints a `Token scopes:` line — `project` and `workflow` both have to appear in it.
+  `gh auth status` tells you which of the next two you need. It prints a `Token scopes:` line — `project` and `workflow` both have to appear in it.
+
+  Not logged in yet:
 
   ```bash
-  gh auth login -s project,workflow     # not logged in yet
-  gh auth refresh -s project,workflow   # logged in, scopes missing
+  gh auth login -s project,workflow
+  ```
+
+  Logged in, but missing scopes:
+
+  ```bash
+  gh auth refresh -s project,workflow
   ```
 
 - **[Claude Code](https://claude.com/claude-code), installed and signed in** — you need an active Claude subscription; the free Claude.ai plan does not include Claude Code.
