@@ -4,16 +4,18 @@
   stop working when you do.
 
 .DESCRIPTION
-  The counterpart to scripts/vm-enable-hyperv.ps1, for when you are done with
+  The counterpart to scripts/vm-hyperv-enable.ps1, for when you are done with
   install testing and want the host back the way it was.
 
-    scripts/vm-download-iso.ps1      # obtain a Windows 11 ISO
-    scripts/vm-status.ps1            # read-only report — where does the host stand
-    scripts/vm-enable-hyperv.ps1     # one-time host setup
-    scripts/vm-create.ps1            # build a clean VM from a Windows ISO
-    scripts/readme-steps.sh          # run INSIDE the VM: every README command
-    scripts/vm-delete.ps1            # tear the VM down
-    scripts/vm-disable-hyperv.ps1    # this script
+    scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
+    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-hyperv-enable.ps1       # one-time host setup
+    scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
+    scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
+    scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
+    scripts/vm-machine-delete.ps1      # tear the VM down
+    scripts/vm-hyperv-disable.ps1      # this script
 
   Read this before running it. Hyper-V is not only a VM host: it is the
   hypervisor that WSL 2, Docker Desktop, Windows Sandbox, Windows Subsystem for
@@ -24,7 +26,7 @@
   Two levers, and the difference matters:
 
     Feature removal (default)   Uninstalls Microsoft-Hyper-V-All. Reversible only
-                                by re-running vm-enable-hyperv.ps1 and rebooting
+                                by re-running vm-hyperv-enable.ps1 and rebooting
                                 again.
 
     -BootOnly                   Leaves the features installed but stops the
@@ -51,11 +53,11 @@
   Skip the confirmation prompt.
 
 .EXAMPLE
-  pwsh -File scripts/vm-disable-hyperv.ps1 -Check
+  pwsh -File scripts/vm-hyperv-disable.ps1 -Check
 
 .EXAMPLE
   # In an elevated PowerShell — reversible route:
-  pwsh -File scripts/vm-disable-hyperv.ps1 -BootOnly
+  pwsh -File scripts/vm-hyperv-disable.ps1 -BootOnly
 #>
 [CmdletBinding()]
 param(
@@ -154,7 +156,7 @@ if ($blockers) {
     Write-Host 'Blocking' -ForegroundColor Red
     foreach ($b in $blockers) { Write-Host "  - $b" -ForegroundColor Red }
     Write-Host ''
-    Write-Host 'Delete them first (scripts/vm-delete.ps1), or pass -Yes to leave them stranded until Hyper-V is re-enabled.' -ForegroundColor DarkGray
+    Write-Host 'Delete them first (scripts/vm-machine-delete.ps1), or pass -Yes to leave them stranded until Hyper-V is re-enabled.' -ForegroundColor DarkGray
 }
 
 if (-not $warnings -and -not $blockers) {
@@ -169,7 +171,7 @@ if ($Check) {
 }
 
 if ($blockers -and -not $Yes) {
-    Write-Error 'Refusing to proceed while VMs are still defined. Delete them with scripts/vm-delete.ps1, or re-run with -Yes to override.'
+    Write-Error 'Refusing to proceed while VMs are still defined. Delete them with scripts/vm-machine-delete.ps1, or re-run with -Yes to override.'
 }
 
 if (-not (Test-Elevated)) {
@@ -188,7 +190,7 @@ $plan = if ($BootOnly) {
 Write-Host ''
 Write-Host "Plan: $plan" -ForegroundColor Cyan
 if (-not $BootOnly) {
-    Write-Host 'Reversible with: pwsh -File scripts/vm-enable-hyperv.ps1 (plus a reboot)' -ForegroundColor DarkGray
+    Write-Host 'Reversible with: pwsh -File scripts/vm-hyperv-enable.ps1 (plus a reboot)' -ForegroundColor DarkGray
 }
 
 if (-not $Yes) {
@@ -231,4 +233,4 @@ if ($rebootNeeded) {
 } else {
     Write-Host 'Disabled.' -ForegroundColor Green
 }
-Write-Host 'Re-enable with: pwsh -File scripts/vm-enable-hyperv.ps1'
+Write-Host 'Re-enable with: pwsh -File scripts/vm-hyperv-enable.ps1'

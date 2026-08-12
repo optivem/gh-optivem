@@ -6,7 +6,7 @@
 #
 #   bash scripts/readme-steps.sh
 #
-# scripts/vm-create.ps1 builds the clean-room Hyper-V guest this is meant for,
+# scripts/vm-machine-create.ps1 builds the clean-room Hyper-V guest this is meant for,
 # and prints the Copy-VMFile command that gets this file into it. The guest is
 # Windows, so this runs under Git Bash there.
 #

@@ -1,18 +1,20 @@
 <#
 .SYNOPSIS
-  Get a Windows 11 ISO for scripts/vm-create.ps1 — automatically if Microsoft
+  Get a Windows 11 ISO for scripts/vm-machine-create.ps1 — automatically if Microsoft
   allows it, by guiding the manual download if not.
 
 .DESCRIPTION
   Step 0 of the install-test loop:
 
-    scripts/vm-download-iso.ps1      # this script — obtain a Windows 11 ISO
-    scripts/vm-status.ps1            # read-only report — where does the host stand
-    scripts/vm-enable-hyperv.ps1     # one-time host setup
-    scripts/vm-create.ps1            # build a clean VM from a Windows ISO
-    scripts/readme-steps.sh          # run INSIDE the VM: every README command
-    scripts/vm-delete.ps1            # tear the VM down
-    scripts/vm-disable-hyperv.ps1    # turn Hyper-V back off
+    scripts/vm-iso-download.ps1        # this script — obtain a Windows 11 ISO
+    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-hyperv-enable.ps1       # one-time host setup
+    scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
+    scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
+    scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
+    scripts/vm-machine-delete.ps1      # tear the VM down
+    scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
 
   A caveat you should know before trusting this: Microsoft's ISO download is
   session-gated and actively hostile to automation. Three calls are involved —
@@ -27,7 +29,7 @@
 
   So the script tries, and when the gate says no it does not pretend otherwise:
   it opens the download page, watches your Downloads folder for the ISO to
-  finish arriving, verifies what showed up, and prints the vm-create.ps1 command
+  finish arriving, verifies what showed up, and prints the vm-machine-create.ps1 command
   with the real path filled in. Either way you end up in the same place.
 
 .PARAMETER OutDir
@@ -41,7 +43,7 @@
   Skip the automated attempt and go straight to the browser.
 
 .PARAMETER Verify
-  Verify an ISO you already have and print the vm-create.ps1 command for it.
+  Verify an ISO you already have and print the vm-machine-create.ps1 command for it.
   Does nothing else.
 
 .PARAMETER NoWait
@@ -51,10 +53,10 @@
   How long to watch for the ISO to appear. Default 60.
 
 .EXAMPLE
-  pwsh -File scripts/vm-download-iso.ps1
+  pwsh -File scripts/vm-iso-download.ps1
 
 .EXAMPLE
-  pwsh -File scripts/vm-download-iso.ps1 -Verify "$HOME\Downloads\Win11.iso"
+  pwsh -File scripts/vm-iso-download.ps1 -Verify "$HOME\Downloads\Win11.iso"
 #>
 [CmdletBinding()]
 param(
@@ -147,7 +149,7 @@ function Show-IsoResult($iso) {
         Write-Host ("  Volume ID : {0}" -f $iso.VolumeId)
         Write-Host ''
         Write-Host 'Create the test VM with (elevated PowerShell):' -ForegroundColor Cyan
-        Write-Host ("  pwsh -File scripts/vm-create.ps1 -IsoPath `"{0}`"" -f $iso.Path)
+        Write-Host ("  pwsh -File scripts/vm-machine-create.ps1 -IsoPath `"{0}`"" -f $iso.Path)
         return $true
     }
 
@@ -299,7 +301,7 @@ Start-Process $DownloadPage
 if ($NoWait) {
     Write-Host ''
     Write-Host 'Once it has downloaded, verify it with:' -ForegroundColor Cyan
-    Write-Host ("  pwsh -File scripts/vm-download-iso.ps1 -Verify `"{0}\<filename>.iso`"" -f $OutDir)
+    Write-Host ("  pwsh -File scripts/vm-iso-download.ps1 -Verify `"{0}\<filename>.iso`"" -f $OutDir)
     exit 0
 }
 
@@ -347,5 +349,5 @@ while ((Get-Date) -lt $deadline) {
 Write-Host ''
 Write-Host ("Gave up watching after {0} minutes." -f $TimeoutMinutes) -ForegroundColor Yellow
 Write-Host 'When the download finishes, verify it with:' -ForegroundColor Cyan
-Write-Host ("  pwsh -File scripts/vm-download-iso.ps1 -Verify `"{0}\<filename>.iso`"" -f $OutDir)
+Write-Host ("  pwsh -File scripts/vm-iso-download.ps1 -Verify `"{0}\<filename>.iso`"" -f $OutDir)
 exit 1

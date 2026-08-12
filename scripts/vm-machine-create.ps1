@@ -6,13 +6,15 @@
 .DESCRIPTION
   Step 2 of the install-test loop:
 
-    scripts/vm-download-iso.ps1      # obtain a Windows 11 ISO
-    scripts/vm-status.ps1            # read-only report — where does the host stand
-    scripts/vm-enable-hyperv.ps1     # one-time host setup
-    scripts/vm-create.ps1            # this script
-    scripts/readme-steps.sh          # run INSIDE the VM: every README command
-    scripts/vm-delete.ps1            # tear the VM down
-    scripts/vm-disable-hyperv.ps1    # turn Hyper-V back off
+    scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
+    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-hyperv-enable.ps1       # one-time host setup
+    scripts/vm-machine-create.ps1      # this script
+    scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
+    scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
+    scripts/vm-machine-delete.ps1      # tear the VM down
+    scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
 
   Use a plain Windows ISO from https://www.microsoft.com/software-download/windows11
   — NOT Hyper-V Quick Create's "Windows 11 dev environment" image, which ships
@@ -59,10 +61,10 @@
   Replace an existing VM of the same name (deletes it first, disks and all).
 
 .EXAMPLE
-  pwsh -File scripts/vm-create.ps1 -IsoPath D:\iso\Win11_24H2_English_x64.iso
+  pwsh -File scripts/vm-machine-create.ps1 -IsoPath D:\iso\Win11_24H2_English_x64.iso
 
 .EXAMPLE
-  pwsh -File scripts/vm-create.ps1 -IsoPath D:\iso\Win11.iso -MemoryGB 12 -CpuCount 6
+  pwsh -File scripts/vm-machine-create.ps1 -IsoPath D:\iso\Win11.iso -MemoryGB 12 -CpuCount 6
 #>
 [CmdletBinding()]
 param(
@@ -92,7 +94,7 @@ if (-not (Test-Elevated)) {
 }
 
 if (-not (Get-Module -ListAvailable -Name Hyper-V)) {
-    Write-Error 'The Hyper-V PowerShell module is not present. Run scripts/vm-enable-hyperv.ps1 first (and reboot if it asks you to).'
+    Write-Error 'The Hyper-V PowerShell module is not present. Run scripts/vm-hyperv-enable.ps1 first (and reboot if it asks you to).'
 }
 
 if (-not (Test-Path -LiteralPath $IsoPath -PathType Leaf)) {
@@ -116,10 +118,10 @@ if (-not (Get-VMSwitch -Name $SwitchName -ErrorAction SilentlyContinue)) {
 $existing = Get-VM -Name $Name -ErrorAction SilentlyContinue
 if ($existing) {
     if (-not $Force) {
-        Write-Error "A VM named '$Name' already exists. Delete it with scripts/vm-delete.ps1 -Name '$Name', pass -Name to use a different name, or re-run with -Force to replace it."
+        Write-Error "A VM named '$Name' already exists. Delete it with scripts/vm-machine-delete.ps1 -Name '$Name', pass -Name to use a different name, or re-run with -Force to replace it."
     }
     Write-Host "Removing existing VM '$Name' (-Force) ..." -ForegroundColor Yellow
-    & (Join-Path $PSScriptRoot 'vm-delete.ps1') -Name $Name -Yes
+    & (Join-Path $PSScriptRoot 'vm-machine-delete.ps1') -Name $Name -Yes
 }
 
 # --- Paths -------------------------------------------------------------------
@@ -209,9 +211,11 @@ Write-Host @"
      account can sync settings and apps from your real machine, which is exactly
      the contamination you are trying to avoid. Install nothing else.
 
-  3. Snapshot that clean state — this is what makes the loop repeatable:
+  3. Snapshot that clean state — this is what makes the loop repeatable. Decide
+     about Windows Update BEFORE this point; whatever you freeze is where every
+     later run starts:
 
-       Checkpoint-VM -Name '$Name' -SnapshotName 'clean-baseline'
+       pwsh -File scripts/vm-checkpoint-create.ps1 -Name '$Name'
 
   4. Copy the README walkthrough in and run it:
 
@@ -221,11 +225,12 @@ Write-Host @"
      Then in the guest, follow README.md by hand (the honest test), or run
      ``bash readme-steps.sh`` once Git Bash is installed.
 
-  5. Reset for the next attempt — seconds, versus rebuilding from the ISO:
+  5. Reset for the next attempt — seconds, versus rebuilding from the ISO. The
+     checkpoint is not consumed, so this is repeatable indefinitely:
 
-       Restore-VMCheckpoint -VMName '$Name' -Name 'clean-baseline' -Confirm:`$false
+       pwsh -File scripts/vm-checkpoint-restore.ps1 -Name '$Name'
 
   6. When you are done with the VM entirely:
 
-       pwsh -File scripts/vm-delete.ps1 -Name '$Name'
+       pwsh -File scripts/vm-machine-delete.ps1 -Name '$Name'
 "@

@@ -6,13 +6,15 @@
 .DESCRIPTION
   Step 1 of the install-test loop:
 
-    scripts/vm-download-iso.ps1      # obtain a Windows 11 ISO
-    scripts/vm-status.ps1            # read-only report — where does the host stand
-    scripts/vm-enable-hyperv.ps1     # this script — one-time host setup
-    scripts/vm-create.ps1            # build a clean VM from a Windows ISO
-    scripts/readme-steps.sh          # run INSIDE the VM: every README command
-    scripts/vm-delete.ps1            # tear the VM down
-    scripts/vm-disable-hyperv.ps1    # turn Hyper-V back off
+    scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
+    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-hyperv-enable.ps1       # this script — one-time host setup
+    scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
+    scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
+    scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
+    scripts/vm-machine-delete.ps1      # tear the VM down
+    scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
 
   Reporting is unprivileged; enabling is not. Run with -Check from any shell to
   see where you stand, then re-run elevated (no -Check) to turn anything missing
@@ -22,11 +24,11 @@
   Report only — never change anything. Does not require an elevated shell.
 
 .EXAMPLE
-  pwsh -File scripts/vm-enable-hyperv.ps1 -Check
+  pwsh -File scripts/vm-hyperv-enable.ps1 -Check
 
 .EXAMPLE
   # In an elevated PowerShell:
-  pwsh -File scripts/vm-enable-hyperv.ps1
+  pwsh -File scripts/vm-hyperv-enable.ps1
 #>
 [CmdletBinding()]
 param(
@@ -100,7 +102,7 @@ foreach ($f in $features) {
 Write-Host ''
 
 if ($missing.Count -eq 0) {
-    Write-Host 'All required features are enabled — next: scripts/vm-create.ps1' -ForegroundColor Green
+    Write-Host 'All required features are enabled — next: scripts/vm-machine-create.ps1' -ForegroundColor Green
     exit 0
 }
 
@@ -134,7 +136,7 @@ foreach ($name in $missing) {
 Write-Host ''
 if ($rebootNeeded) {
     Write-Host 'Enabled. A reboot is required before the Hyper-V cmdlets will work.' -ForegroundColor Yellow
-    Write-Host 'Reboot, then run: pwsh -File scripts/vm-create.ps1 -IsoPath <path-to-win11.iso>'
+    Write-Host 'Reboot, then run: pwsh -File scripts/vm-machine-create.ps1 -IsoPath <path-to-win11.iso>'
 } else {
-    Write-Host 'Enabled — next: scripts/vm-create.ps1' -ForegroundColor Green
+    Write-Host 'Enabled — next: scripts/vm-machine-create.ps1' -ForegroundColor Green
 }

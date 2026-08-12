@@ -338,16 +338,18 @@ It assumes a **brand-new system**: nothing installed, no extension, no leftover 
 The `vm-*.ps1` scripts build the guest this is meant for — a Hyper-V VM from a retail Windows ISO, with nothing preinstalled:
 
 ```powershell
-pwsh -File scripts/vm-status.ps1          # read-only: where does the host stand
-pwsh -File scripts/vm-enable-hyperv.ps1   # one-time host setup
-pwsh -File scripts/vm-create.ps1 -IsoPath D:\iso\Win11.iso
-#   ... install Windows, then Checkpoint-VM -SnapshotName 'clean-baseline'
+pwsh -File scripts/vm-host-status.ps1        # read-only: where does the host stand
+pwsh -File scripts/vm-hyperv-enable.ps1      # one-time host setup
+pwsh -File scripts/vm-machine-create.ps1 -IsoPath D:\iso\Win11.iso
+#   ... install Windows, nothing else
+pwsh -File scripts/vm-checkpoint-create.ps1  # freeze that clean state as 'clean-baseline'
 #   ... Copy-VMFile readme-steps.sh into the guest and run it under Git Bash
-pwsh -File scripts/vm-delete.ps1          # tear it down
-pwsh -File scripts/vm-disable-hyperv.ps1  # turn Hyper-V back off
+pwsh -File scripts/vm-checkpoint-restore.ps1 # revert for the next run: seconds, not an hour
+pwsh -File scripts/vm-machine-delete.ps1     # tear it down
+pwsh -File scripts/vm-hyperv-disable.ps1     # turn Hyper-V back off
 ```
 
-They need an elevated shell, and a **plain** Windows ISO — not Hyper-V Quick Create's "Windows 11 dev environment" image, which ships with developer tooling preinstalled and would silently satisfy the very prerequisites the exercise exists to test. `vm-create.ps1` prints the checkpoint, copy, and restore commands for the loop; reverting to the baseline takes seconds against rebuilding from the ISO.
+They need an elevated shell, and a **plain** Windows ISO — not Hyper-V Quick Create's "Windows 11 dev environment" image, which ships with developer tooling preinstalled and would silently satisfy the very prerequisites the exercise exists to test. `vm-machine-create.ps1` prints the checkpoint, copy, and restore commands for the loop; reverting to the baseline takes seconds against rebuilding from the ISO.
 
 The guest being Windows is load-bearing: `readme-steps.sh` runs there under Git Bash, where `go env GOPATH` answers in native form (`C:\Users\you\go`) and must be passed through `cygpath -u` before it can go on a colon-separated `PATH`.
 

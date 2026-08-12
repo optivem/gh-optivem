@@ -7,13 +7,15 @@
   know where the host stands before reaching for one of the scripts that does
   change something:
 
-    scripts/vm-download-iso.ps1      # obtain a Windows 11 ISO
-    scripts/vm-status.ps1            # this script — read-only report
-    scripts/vm-enable-hyperv.ps1     # one-time host setup
-    scripts/vm-create.ps1            # build a clean VM from a Windows ISO
-    scripts/readme-steps.sh          # run INSIDE the VM: every README command
-    scripts/vm-delete.ps1            # tear the VM down
-    scripts/vm-disable-hyperv.ps1    # turn Hyper-V back off
+    scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
+    scripts/vm-host-status.ps1         # this script — read-only report
+    scripts/vm-hyperv-enable.ps1       # one-time host setup
+    scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
+    scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
+    scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
+    scripts/vm-machine-delete.ps1      # tear the VM down
+    scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
 
   "Enabled" is two separate questions and this reports both, because they can
   disagree: the Windows feature can be installed while the hypervisor is
@@ -29,10 +31,10 @@
   so this can gate other scripts.
 
 .EXAMPLE
-  pwsh -File scripts/vm-status.ps1
+  pwsh -File scripts/vm-host-status.ps1
 
 .EXAMPLE
-  pwsh -File scripts/vm-status.ps1 -Quiet; if ($LASTEXITCODE -eq 0) { 'ready' }
+  pwsh -File scripts/vm-host-status.ps1 -Quiet; if ($LASTEXITCODE -eq 0) { 'ready' }
 #>
 [CmdletBinding()]
 param(
@@ -166,15 +168,15 @@ $ready = ($hyperV -eq 'Enabled') -and $hypervisorRunning
 Write-Line ''
 if ($ready) {
     Write-Line 'Hyper-V is ENABLED and the hypervisor is running.' 'Green'
-    Write-Line '  Create a test VM : pwsh -File scripts/vm-create.ps1 -IsoPath <win11.iso>   (elevated)'
-    Write-Line '  Turn it back off : pwsh -File scripts/vm-disable-hyperv.ps1 -Check'
+    Write-Line '  Create a test VM : pwsh -File scripts/vm-machine-create.ps1 -IsoPath <win11.iso>   (elevated)'
+    Write-Line '  Turn it back off : pwsh -File scripts/vm-hyperv-disable.ps1 -Check'
 } elseif ($hyperV -eq 'Enabled' -and -not $hypervisorRunning) {
     Write-Line 'Hyper-V is INSTALLED but the hypervisor is not running.' 'Yellow'
     Write-Line '  Usually a pending reboot, or hypervisorlaunchtype set to off above.'
     Write-Line '  Fix: bcdedit /set hypervisorlaunchtype auto   (elevated, then reboot)'
 } else {
     Write-Line 'Hyper-V is DISABLED.' 'Yellow'
-    Write-Line '  Enable it: pwsh -File scripts/vm-enable-hyperv.ps1   (elevated)'
+    Write-Line '  Enable it: pwsh -File scripts/vm-hyperv-enable.ps1   (elevated)'
 }
 
 exit $(if ($ready) { 0 } else { 1 })

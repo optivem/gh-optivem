@@ -3,15 +3,17 @@
   Delete an install-test VM and every file it left behind.
 
 .DESCRIPTION
-  Step 4 of the install-test loop:
+  Step 6 of the install-test loop:
 
-    scripts/vm-download-iso.ps1      # obtain a Windows 11 ISO
-    scripts/vm-status.ps1            # read-only report — where does the host stand
-    scripts/vm-enable-hyperv.ps1     # one-time host setup
-    scripts/vm-create.ps1            # build a clean VM from a Windows ISO
-    scripts/readme-steps.sh          # run INSIDE the VM: every README command
-    scripts/vm-delete.ps1            # this script
-    scripts/vm-disable-hyperv.ps1    # turn Hyper-V back off
+    scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
+    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-hyperv-enable.ps1       # one-time host setup
+    scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
+    scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
+    scripts/readme-steps.sh            # run INSIDE the VM: every README command
+    scripts/vm-checkpoint-restore.ps1  # revert to the baseline for the next run
+    scripts/vm-machine-delete.ps1      # this script
+    scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
 
   This is destructive and irreversible: the VM, its checkpoints and its virtual
   disks are all removed. It prompts before doing anything unless you pass -Yes.
@@ -19,7 +21,7 @@
   If you only want a fresh Windows to test against again, you almost certainly
   want a revert instead — seconds rather than a full reinstall:
 
-    Restore-VMCheckpoint -VMName <name> -Name 'clean-baseline' -Confirm:$false
+    pwsh -File scripts/vm-checkpoint-restore.ps1 -Name <name>
 
   Remove-VM on its own leaves the VHDX and any differencing disks on disk, so
   this script collects the disk paths first, merges checkpoints, and then cleans
@@ -35,10 +37,10 @@
   Remove the VM but leave its virtual disks on disk.
 
 .EXAMPLE
-  pwsh -File scripts/vm-delete.ps1
+  pwsh -File scripts/vm-machine-delete.ps1
 
 .EXAMPLE
-  pwsh -File scripts/vm-delete.ps1 -Name my-other-vm -Yes
+  pwsh -File scripts/vm-machine-delete.ps1 -Name my-other-vm -Yes
 #>
 [CmdletBinding()]
 param(
@@ -96,7 +98,7 @@ Write-Host ''
 
 if (-not $Yes) {
     Write-Host "To keep the VM and just reset it to a clean state instead, cancel and run:" -ForegroundColor DarkGray
-    Write-Host "  Restore-VMCheckpoint -VMName '$Name' -Name 'clean-baseline' -Confirm:`$false" -ForegroundColor DarkGray
+    Write-Host "  pwsh -File scripts/vm-checkpoint-restore.ps1 -Name '$Name'" -ForegroundColor DarkGray
     Write-Host ''
     $answer = Read-Host "Type the VM name ('$Name') to confirm deletion"
     if ($answer -ne $Name) {
@@ -161,4 +163,4 @@ if ($vmRoot -and (Test-Path -LiteralPath $vmRoot)) {
 
 Write-Host ''
 Write-Host "'$Name' deleted." -ForegroundColor Green
-Write-Host "Rebuild with: pwsh -File scripts/vm-create.ps1 -IsoPath <path-to-win11.iso>"
+Write-Host "Rebuild with: pwsh -File scripts/vm-machine-create.ps1 -IsoPath <path-to-win11.iso>"
