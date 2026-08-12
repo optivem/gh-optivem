@@ -42,6 +42,38 @@ log_file="$log_dir/$(date +%Y%m%d-%H%M%S)-readme-steps.log"
 exec 3>&1 4>&2                          # the real console, kept for the TUIs
 exec > >(tee -a "$log_file") 2>&1
 
+# Success is ASSERTED, never inferred. A trap on EXIT alone cannot tell "the
+# script finished" from "the shell was killed": bash runs the EXIT trap on a
+# fatal signal too, and $? is then the status of the last command that DID
+# complete - 0, when that was a successful install. A run on 2026-08-12 died
+# seconds after the GitHub CLI install and the log it left behind said "done."
+#
+# So `completed` is set on the last line of the script and nowhere else, and
+# anything reaching the trap without it is a failure whatever $? claims.
+completed=0
+signal=''
+current_step='startup'
+
+# What is running right now, for the log and for the verdict. Without it the two
+# interactive steps are invisible: they draw on the real console and never reach
+# the log by design, so a run that dies in one leaves no trace of where it got to.
+step() {
+    current_step="$1"
+    echo "readme-steps: [$1]"
+}
+
+# Untrapped, SIGINT would kill the shell with status 0 and the EXIT trap would
+# call that a clean run - so an operator's Ctrl+C reported success. Naming the
+# signal here also turns "it stopped" into "it was interrupted", which is the
+# distinction worth having at 2am in a VM console.
+on_signal() {
+    signal="$1"
+    exit "$2"   # into the EXIT trap below, with a status that says which
+}
+trap 'on_signal INT 130'  INT
+trap 'on_signal TERM 143' TERM
+trap 'on_signal HUP 129'  HUP
+
 # The verdict goes through tee FIRST, while it is still the destination, so it
 # lands in order at the end of the log; only then are the fds restored, which
 # closes tee's input and lets it flush and exit. Appending to the file directly
@@ -52,16 +84,24 @@ exec > >(tee -a "$log_file") 2>&1
 # loses a trailing line.
 finish() {
     rc=$?
-    if [ "$rc" -eq 0 ]; then
-        echo "readme-steps: done."
+    ok=0
+    if [ -n "$signal" ]; then
+        verdict="readme-steps: INTERRUPTED by SIG$signal during [$current_step]. Nothing after that step ran."
+    elif [ "$completed" -eq 1 ] && [ "$rc" -eq 0 ]; then
+        ok=1
+        verdict="readme-steps: done."
     else
-        echo "readme-steps: FAILED (exit $rc)."
+        # A killed shell arrives here carrying the status of the last command
+        # that succeeded. Never let that 0 pass for a verdict.
+        if [ "$rc" -eq 0 ]; then rc=1; fi
+        verdict="readme-steps: FAILED (exit $rc) during [$current_step]."
     fi
+    echo "$verdict"
     exec 1>&3 2>&4
-    if [ "$rc" -eq 0 ]; then
+    if [ "$ok" -eq 1 ]; then
         echo "readme-steps: log written to $log_file"
     else
-        echo "readme-steps: FAILED (exit $rc). Log: $log_file" >&2
+        echo "$verdict Log: $log_file" >&2
     fi
 }
 trap finish EXIT
@@ -138,6 +178,7 @@ winget_install() {
 # 1. Git for Windows supplies the Git Bash this script runs under, so it cannot
 #    install itself from in here. scripts/readme-setup.ps1 does it from
 #    PowerShell, which is why that is the first thing you run in the guest.
+step 'machine setup: git'
 if ! command -v git >/dev/null 2>&1; then
     echo "machine setup: no git. From PowerShell: powershell -ExecutionPolicy Bypass -File C:\\Users\\Public\\readme-setup.ps1" >&2
     exit 1
@@ -152,19 +193,28 @@ if ! command -v winget >/dev/null 2>&1; then
 fi
 
 # 2. GitHub CLI
+step 'machine setup: GitHub CLI install'
 winget_install gh GitHub.cli "GitHub CLI"
 
 # 3. [interactive] GitHub CLI sign-in — prompts, then a browser.
+step 'machine setup: GitHub CLI sign-in [interactive, off-log]'
 if gh auth status >/dev/null 2>&1; then
     echo "machine setup: gh already signed in"
 else
     require_tty "gh auth login"
-    gh auth login >&3 2>&4   # real console, not the log - see "Logging" above
+    # Real console, not the log - see "Logging" above. gh draws its prompts on
+    # stderr, so neither stream can be diverted here without breaking them; the
+    # exit code is the only part of this step that can be written down, so it is.
+    login_rc=0
+    gh auth login >&3 2>&4 || login_rc=$?
+    echo "machine setup: gh auth login exited $login_rc"
+    if [ "$login_rc" -ne 0 ]; then exit "$login_rc"; fi
 fi
 
 # 4. Claude Code — the native-Windows installer, run through a PowerShell shim
 #    because this file is Git Bash. claude.ai/install.sh is the macOS/Linux/WSL
 #    installer and is NOT the right one here.
+step 'machine setup: Claude Code install'
 if command -v claude >/dev/null 2>&1; then
     echo "machine setup: Claude Code already installed"
 else
@@ -183,6 +233,7 @@ fi
 #    ~/.claude.json gains an "oauthAccount" entry once sign-in completes, which
 #    answers "is this machine signed in" without spending a request. On a clean
 #    guest it is always absent.
+step 'machine setup: Claude Code sign-in [interactive, off-log]'
 if grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null; then
     echo "machine setup: Claude Code already signed in"
 else
@@ -191,17 +242,23 @@ else
     # Git Bash usually runs under mintty, which is not a Windows console; the
     # raw-mode TUI needs winpty in front of it. Git for Windows ships winpty.
     # >&3 2>&4 for the same reason: a TUI with a pipe for stdout will not draw.
+    # As with the sign-in above, the exit code is all this step can log.
+    claude_rc=0
     if command -v winpty >/dev/null 2>&1; then
-        winpty claude >&3 2>&4
+        winpty claude >&3 2>&4 || claude_rc=$?
     else
-        claude >&3 2>&4
+        claude >&3 2>&4 || claude_rc=$?
     fi
+    echo "machine setup: Claude Code exited $claude_rc"
+    if [ "$claude_rc" -ne 0 ]; then exit "$claude_rc"; fi
 fi
 
 
 # Prerequisites ===============================================================
 #
 # Verification only — "Machine setup" above is what installs these.
+
+step 'Prerequisites'
 
 # GitHub CLI
 gh --version
@@ -213,6 +270,7 @@ claude --version
 
 # Install =====================================================================
 
+step 'Install'
 gh extension install optivem/gh-optivem
 gh optivem --version
 
@@ -223,6 +281,7 @@ gh optivem --version
 # so it reports everything missing in one pass. On a brand-new system it is
 # therefore EXPECTED to fail here — hence `|| true`. The re-run at the end of
 # "Environment variables" is the one that must pass.
+step 'Local environment setup'
 gh optivem environment verify || true
 
 # Bash
@@ -261,6 +320,7 @@ npm --version
 
 # Environment variables =======================================================
 
+step 'Environment variables'
 gh optivem environment show
 
 # "Then re-run gh optivem environment verify — it live-checks each token
@@ -270,22 +330,26 @@ gh optivem environment verify
 
 # Claude Code setup ===========================================================
 
+step 'Claude Code setup'
 gh optivem claude setup
 
 
 # Generate your project =======================================================
 
+step 'Generate your project'
 gh optivem init --owner "$OWNER" --repo "$REPO" --system-name "Book Shop" --repo-strategy monorepo --arch multitier --backend-lang dotnet --frontend-lang typescript --test-lang java
 
 
 # Clone project repository ====================================================
 
+step 'Clone project repository'
 gh repo clone "$OWNER/$REPO"
 cd "$REPO"
 
 
 # Verify your project =========================================================
 
+step 'Verify your project'
 gh optivem system-test setup
 gh optivem system start
 gh optivem system-test run --sample
@@ -311,3 +375,9 @@ gh optivem system stop
 
 # The trap prints the verdict and the log path; this is the part it cannot know.
 echo "readme-steps: remember to delete $OWNER/$REPO"
+
+# The only assignment of `completed` in the file, and it has to stay last: it is
+# what tells the EXIT trap this run reached the end under its own power rather
+# than being killed on the way. Adding a step below this line hides it from the
+# verdict - add it above.
+completed=1

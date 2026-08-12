@@ -177,6 +177,12 @@ if ($bash) {
 }
 
 & $bash --version 2>&1 | ForEach-Object { Write-Host $_ }
+if ($LASTEXITCODE -ne 0) {
+    # Finding bash.exe on disk is not the same as it running. Without this, a
+    # broken install marches on to the handover and fails as a confusing bash
+    # error inside the walkthrough instead of a clear one out here.
+    Write-Error "'$bash --version' exited $LASTEXITCODE. The Git for Windows install is not usable. Reinstall it from https://git-scm.com/download/win and re-run."
+}
 
 # --- Hand over -----------------------------------------------------------------
 if ($Run) {
@@ -190,6 +196,14 @@ if ($Run) {
     & $bash $StepsPath
     $rc = $LASTEXITCODE
     Write-Host ''
+    # The walkthrough prints its own verdict, but it is by then buried under the
+    # output of everything it ran. Repeat it here, last and in red, so the state
+    # of the run is the thing left on screen.
+    if ($rc -ne 0) {
+        Write-Host "readme-setup: the walkthrough FAILED (exit $rc). Read its log in $LogDir." -ForegroundColor Red
+    } else {
+        Write-Host 'readme-setup: the walkthrough completed.' -ForegroundColor Green
+    }
     Write-Host "readme-setup: log written to $logFile" -ForegroundColor DarkGray
     Stop-Log
     exit $rc
