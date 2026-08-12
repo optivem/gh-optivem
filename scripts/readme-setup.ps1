@@ -120,6 +120,19 @@ if (-not (Test-Path -LiteralPath $StepsPath -PathType Leaf)) {
     Write-Error "No walkthrough at '$StepsPath'. Copy it in from the host first: pwsh -File scripts/vm-scripts-copy.ps1. Or pass -StepsPath."
 }
 
+# --- PATH ----------------------------------------------------------------------
+# This process holds the PATH snapshot it was handed when its window opened,
+# which can predate anything installed on this guest since. Ask the registry
+# once, here, before the first probe below: a window opened before an earlier
+# run installed the GitHub CLI reports it missing, and then hands that same
+# stale PATH straight to bash, where readme-steps.sh repeats the mistake. Both
+# halves of the 2026-08-12 failure started here.
+#
+# The Git-install branch further down refreshes again, and still has to: that
+# one picks up what the install itself just wrote.
+$env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
+            [Environment]::GetEnvironmentVariable('Path', 'User')
+
 # --- GitHub CLI ----------------------------------------------------------------
 # Reported, not installed: readme-steps.sh installs gh, next to the command that
 # verifies it. Worth reading first all the same - on a VM that was meant to be
@@ -168,12 +181,16 @@ if ($bash) {
     winget.exe install --id Git.Git -e --source winget `
         --accept-source-agreements --accept-package-agreements 2>&1 |
         ForEach-Object { Write-Host $_ }
-    if ($LASTEXITCODE -ne 0) {
-        # $ErrorActionPreference does not catch native exit codes, so this check
-        # is the only thing standing between a failed install and a confusing
-        # "no bash" error three lines down.
-        Write-Error "winget install Git.Git exited $LASTEXITCODE. Install Git for Windows by hand from https://git-scm.com/download/win and re-run."
-    }
+    $wingetRc = $LASTEXITCODE
+    Write-Host "readme-setup: winget install Git.Git exited $wingetRc" -ForegroundColor DarkGray
+
+    # That status is written down, not acted on. Several of winget's non-zero
+    # codes leave the package installed - "already installed, no upgrade
+    # applicable" among them - so treating any of them as fatal fails a guest
+    # that is in fact fine. The Find-Bash re-probe below is the verdict, and it
+    # answers the question that actually matters: is there a bash to hand over
+    # to. The status is kept for the error text, so a genuine failure still
+    # names its cause.
 
     # The installer wrote PATH into the registry; this process still holds the
     # copy it started with.
@@ -182,7 +199,7 @@ if ($bash) {
 
     $bash = Find-Bash
     if (-not $bash) {
-        Write-Error "Git installed but no bash.exe was found under Program Files\Git\bin or %LOCALAPPDATA%\Programs\Git\bin. Open a new PowerShell window and re-run; if it still cannot be found, the install did not include Git Bash."
+        Write-Error "winget install Git.Git exited $wingetRc and no bash.exe was found under Program Files\Git\bin or %LOCALAPPDATA%\Programs\Git\bin. Open a new PowerShell window and re-run; if it still cannot be found, install Git for Windows by hand from https://git-scm.com/download/win."
     }
     Write-Host ''
     Write-Host "readme-setup: Git Bash installed ($bash)" -ForegroundColor Green
