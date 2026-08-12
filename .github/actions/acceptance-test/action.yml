@@ -96,7 +96,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        # Commit hash for tag v1.7.12 — pin to a commit, not a mutable tag (SonarCloud go:S8545).
+        # Commit hash for tag v1.7.12 — pin to a commit, not a mutable tag (SonarCloud githubactions:S8545).
         go install github.com/rhysd/actionlint/cmd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
         actionlint --version
 

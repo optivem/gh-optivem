@@ -109,7 +109,11 @@ func VerifyScaffoldWorkflows(cfg *config.Config) {
 		if os.Getenv("GITHUB_ACTIONS") == "true" {
 			log.Fatalf("actionlint not found on PATH but GITHUB_ACTIONS=true — install step missing from the runner")
 		}
-		log.Warnf("actionlint not found on PATH — skipping workflow lint. Install: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12")
+		// @v1, not a patch tag: this is a human install hint, so it should track
+		// the major line and pick up patches. CI pins a commit instead — see the
+		// Install actionlint steps in .github — because there the three install
+		// sites must stay in lockstep.
+		log.Warnf("actionlint not found on PATH — skipping workflow lint. Install: go install github.com/rhysd/actionlint/cmd/actionlint@v1")
 		return
 	}
 

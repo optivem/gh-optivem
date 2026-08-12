@@ -157,7 +157,7 @@ jobs:
       # the same command path a real user runs, not a CI-only shortcut.
       - name: Install actionlint
         # Pinned to match shop's lint-workflows.yml — see acceptance-test/action.yml.
-        # Commit hash for tag v1.7.12 — pin to a commit, not a mutable tag (SonarCloud go:S8545).
+        # Commit hash for tag v1.7.12 — pin to a commit, not a mutable tag (SonarCloud githubactions:S8545).
         run: go install github.com/rhysd/actionlint/cmd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca
 
       - name: Verify acceptance pipeline environment
