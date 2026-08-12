@@ -6,7 +6,7 @@
   Step 6 of the install-test loop:
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
-    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-host-status.ps1         # read-only report - where does the host stand
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
@@ -19,7 +19,7 @@
   disks are all removed. It prompts before doing anything unless you pass -Yes.
 
   If you only want a fresh Windows to test against again, you almost certainly
-  want a revert instead — seconds rather than a full reinstall:
+  want a revert instead - seconds rather than a full reinstall:
 
     pwsh -File scripts/vm-checkpoint-restore.ps1 -Name <name>
 
@@ -63,7 +63,7 @@ if (-not (Test-Elevated)) {
 
 $vm = Get-VM -Name $Name -ErrorAction SilentlyContinue
 if (-not $vm) {
-    Write-Host "No VM named '$Name' — nothing to do." -ForegroundColor Yellow
+    Write-Host "No VM named '$Name' - nothing to do." -ForegroundColor Yellow
     exit 0
 }
 
@@ -102,7 +102,7 @@ if (-not $Yes) {
     Write-Host ''
     $answer = Read-Host "Type the VM name ('$Name') to confirm deletion"
     if ($answer -ne $Name) {
-        Write-Host 'Cancelled — nothing was deleted.' -ForegroundColor Green
+        Write-Host 'Cancelled - nothing was deleted.' -ForegroundColor Green
         exit 0
     }
 }
@@ -131,7 +131,7 @@ if ($checkpoints) {
         Start-Sleep -Seconds 5
     }
     if ((Get-VM -Name $Name).Status -match 'merg') {
-        Write-Warning 'Disk merge is still running after 15 minutes. Leaving the VM in place — re-run this script once Hyper-V Manager shows it idle.'
+        Write-Warning 'Disk merge is still running after 15 minutes. Leaving the VM in place - re-run this script once Hyper-V Manager shows it idle.'
         exit 1
     }
 }
@@ -150,14 +150,14 @@ if (-not $KeepDisks) {
 }
 
 # Hyper-V leaves the VM's config directory behind. Remove it only if this VM was
-# its sole occupant — shared VM roots hold other machines' configuration.
+# its sole occupant - shared VM roots hold other machines' configuration.
 if ($vmRoot -and (Test-Path -LiteralPath $vmRoot)) {
     $leftovers = @(Get-ChildItem -LiteralPath $vmRoot -Recurse -File -ErrorAction SilentlyContinue)
     if ($leftovers.Count -eq 0) {
         Remove-Item -LiteralPath $vmRoot -Recurse -Force -ErrorAction SilentlyContinue
         Write-Host ("Removed empty config directory {0}" -f $vmRoot) -ForegroundColor DarkGray
     } else {
-        Write-Host ("Left {0} in place — it still contains {1} file(s)." -f $vmRoot, $leftovers.Count) -ForegroundColor DarkGray
+        Write-Host ("Left {0} in place - it still contains {1} file(s)." -f $vmRoot, $leftovers.Count) -ForegroundColor DarkGray
     }
 }
 

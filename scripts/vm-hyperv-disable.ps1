@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Turn Hyper-V back off — with a report of everything on this machine that will
+  Turn Hyper-V back off - with a report of everything on this machine that will
   stop working when you do.
 
 .DESCRIPTION
@@ -8,7 +8,7 @@
   install testing and want the host back the way it was.
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
-    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-host-status.ps1         # read-only report - where does the host stand
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
@@ -56,7 +56,7 @@
   pwsh -File scripts/vm-hyperv-disable.ps1 -Check
 
 .EXAMPLE
-  # In an elevated PowerShell — reversible route:
+  # In an elevated PowerShell - reversible route:
   pwsh -File scripts/vm-hyperv-disable.ps1 -BootOnly
 #>
 [CmdletBinding()]
@@ -105,7 +105,7 @@ try {
         }
     }
 } catch {
-    # Module absent or unelevated — nothing useful to say, and not a blocker.
+    # Module absent or unelevated - nothing useful to say, and not a blocker.
 }
 
 # WSL 2 rides on VirtualMachinePlatform + the hypervisor. wsl.exe writes UTF-16LE,
@@ -141,7 +141,7 @@ if ((Get-FeatureState 'Containers-DisposableClientVM') -eq 'Enabled') {
 try {
     $dg = Get-CimInstance -Namespace 'root\Microsoft\Windows\DeviceGuard' -ClassName Win32_DeviceGuard -ErrorAction Stop
     if ($dg.SecurityServicesRunning -and $dg.SecurityServicesRunning.Count -gt 0) {
-        $warnings += 'Virtualization-Based Security (Core Isolation / Memory Integrity) is active — it keeps the hypervisor loaded even after Hyper-V is removed, so this will not free the virtualization overhead unless you also turn Memory Integrity off in Windows Security'
+        $warnings += 'Virtualization-Based Security (Core Isolation / Memory Integrity) is active - it keeps the hypervisor loaded even after Hyper-V is removed, so this will not free the virtualization overhead unless you also turn Memory Integrity off in Windows Security'
     }
 } catch { }
 
@@ -166,7 +166,7 @@ if (-not $warnings -and -not $blockers) {
 
 if ($Check) {
     Write-Host ''
-    Write-Host 'Report only (-Check) — nothing was changed.'
+    Write-Host 'Report only (-Check) - nothing was changed.'
     exit 0
 }
 
@@ -197,7 +197,7 @@ if (-not $Yes) {
     Write-Host ''
     $answer = Read-Host "Type 'disable' to confirm"
     if ($answer -ne 'disable') {
-        Write-Host 'Cancelled — nothing was changed.' -ForegroundColor Green
+        Write-Host 'Cancelled - nothing was changed.' -ForegroundColor Green
         exit 0
     }
 }
@@ -219,7 +219,7 @@ if ($IncludeVirtualMachinePlatform) { $targets += 'VirtualMachinePlatform' }
 $rebootNeeded = $false
 foreach ($name in $targets) {
     if ((Get-FeatureState $name) -ne 'Enabled') {
-        Write-Host "$name is already disabled — skipping." -ForegroundColor DarkGray
+        Write-Host "$name is already disabled - skipping." -ForegroundColor DarkGray
         continue
     }
     Write-Host "Disabling $name ..." -ForegroundColor Cyan

@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-  Freeze the VM's current state as a named checkpoint — the baseline every later
+  Freeze the VM's current state as a named checkpoint - the baseline every later
   test run reverts to.
 
 .DESCRIPTION
   Step 3 of the install-test loop:
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
-    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-host-status.ps1         # read-only report - where does the host stand
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # this script
@@ -22,7 +22,7 @@
 
   The guest is shut down first, on purpose. A checkpoint of a running VM captures
   RAM as well as disk, so restoring it drops you back into a mid-session machine
-  rather than a cold boot — fine for pausing work, wrong for a baseline that is
+  rather than a cold boot - fine for pausing work, wrong for a baseline that is
   supposed to be identical every time. Pass -AllowRunning if you really want the
   running-state variant.
 
@@ -130,7 +130,7 @@ if ($vm.State -ne 'Off') {
             Start-Sleep -Seconds 3
         }
         if ((Get-VM -Name $Name).State -ne 'Off') {
-            Write-Error "'$Name' did not shut down within $ShutdownTimeoutSeconds seconds — the guest may be holding a dialog open. Shut it down from inside Windows and re-run, raise -ShutdownTimeoutSeconds, or pass -AllowRunning."
+            Write-Error "'$Name' did not shut down within $ShutdownTimeoutSeconds seconds - the guest may be holding a dialog open. Shut it down from inside Windows and re-run, raise -ShutdownTimeoutSeconds, or pass -AllowRunning."
         }
     }
 }
@@ -168,7 +168,7 @@ Write-Host @"
      Then in the guest, follow README.md by hand (the honest test), or run
      ``bash readme-steps.sh`` once Git Bash is installed.
 
-  2. Reset for the next attempt — seconds, versus rebuilding from the ISO:
+  2. Reset for the next attempt - seconds, versus rebuilding from the ISO:
 
        pwsh -File scripts/vm-checkpoint-restore.ps1 -Name '$Name'
 

@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-  Check — and optionally enable — the Hyper-V host features needed to run the
+  Check - and optionally enable - the Hyper-V host features needed to run the
   install-test VM.
 
 .DESCRIPTION
   Step 1 of the install-test loop:
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
-    scripts/vm-host-status.ps1         # read-only report — where does the host stand
-    scripts/vm-hyperv-enable.ps1       # this script — one-time host setup
+    scripts/vm-host-status.ps1         # read-only report - where does the host stand
+    scripts/vm-hyperv-enable.ps1       # this script - one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
     scripts/readme-steps.sh            # run INSIDE the VM: every README command
@@ -21,7 +21,7 @@
   on.
 
 .PARAMETER Check
-  Report only — never change anything. Does not require an elevated shell.
+  Report only - never change anything. Does not require an elevated shell.
 
 .EXAMPLE
   pwsh -File scripts/vm-hyperv-enable.ps1 -Check
@@ -81,7 +81,7 @@ if (-not $cs.HypervisorPresent) {
     Write-Host ("  CPU virtualization   : {0}" -f $cpu.VirtualizationFirmwareEnabled)
     Write-Host ("  SLAT (required)      : {0}" -f $cpu.SecondLevelAddressTranslationExtensions)
     if ($cpu.VirtualizationFirmwareEnabled -eq $false) {
-        Write-Warning 'Virtualization is disabled in firmware. Enable VT-x / AMD-V (often "SVM Mode" or "Intel Virtualization Technology") in the BIOS/UEFI first — no amount of Windows configuration substitutes for it.'
+        Write-Warning 'Virtualization is disabled in firmware. Enable VT-x / AMD-V (often "SVM Mode" or "Intel Virtualization Technology") in the BIOS/UEFI first - no amount of Windows configuration substitutes for it.'
     }
 }
 
@@ -102,7 +102,7 @@ foreach ($f in $features) {
 Write-Host ''
 
 if ($missing.Count -eq 0) {
-    Write-Host 'All required features are enabled — next: scripts/vm-machine-create.ps1' -ForegroundColor Green
+    Write-Host 'All required features are enabled - next: scripts/vm-machine-create.ps1' -ForegroundColor Green
     exit 0
 }
 
@@ -138,5 +138,5 @@ if ($rebootNeeded) {
     Write-Host 'Enabled. A reboot is required before the Hyper-V cmdlets will work.' -ForegroundColor Yellow
     Write-Host 'Reboot, then run: pwsh -File scripts/vm-machine-create.ps1 -IsoPath <path-to-win11.iso>'
 } else {
-    Write-Host 'Enabled — next: scripts/vm-machine-create.ps1' -ForegroundColor Green
+    Write-Host 'Enabled - next: scripts/vm-machine-create.ps1' -ForegroundColor Green
 }

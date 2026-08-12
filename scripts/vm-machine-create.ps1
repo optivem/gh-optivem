@@ -7,7 +7,7 @@
   Step 2 of the install-test loop:
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
-    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-host-status.ps1         # read-only report - where does the host stand
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # this script
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
@@ -17,7 +17,7 @@
     scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
 
   Use a plain Windows ISO from https://www.microsoft.com/software-download/windows11
-  — NOT Hyper-V Quick Create's "Windows 11 dev environment" image, which ships
+  - NOT Hyper-V Quick Create's "Windows 11 dev environment" image, which ships
   with developer tooling preinstalled and would silently satisfy the very
   prerequisites this exercise exists to test.
 
@@ -29,7 +29,7 @@
       byte-for-byte rather than replaying a VSS-consistent snapshot
     - automatic checkpoints off, so your clean baseline is the only one
 
-  Nothing is installed into the guest — that is the point. Once Windows setup
+  Nothing is installed into the guest - that is the point. Once Windows setup
   finishes, take the baseline checkpoint (command printed at the end) and only
   then start following the README.
 
@@ -104,7 +104,7 @@ ISO not found: $IsoPath
 Download a plain Windows 11 ISO from:
   https://www.microsoft.com/software-download/windows11
 
-Do not substitute the Quick Create "Windows 11 dev environment" image — it has
+Do not substitute the Quick Create "Windows 11 dev environment" image - it has
 developer tools preinstalled, which defeats the purpose of a clean install test.
 "@
 }
@@ -204,14 +204,36 @@ Write-Host @"
        Start-VM -Name '$Name'
        vmconnect.exe localhost '$Name'
 
-     Watch for "Press any key to boot from CD or DVD" — it waits only a few
-     seconds, and missing it drops you to a boot failure. Just reset and retry.
+     Watch for "Press any key to boot from CD or DVD" - it waits about five
+     seconds, and missing it drops you to:
+
+       "The boot loader failed ... boot image was not found"
+
+     That is the firmware falling through to the empty disk, not a broken VM.
+     Click inside the console window so it has keyboard focus, then reset and
+     tap Enter repeatedly starting before the prompt appears - overshooting is
+     harmless, missing it is not:
+
+       Restart-VM -Name '$Name' -Force
+
+     A second failure is configuration rather than timing. From an elevated
+     shell:
+
+       Get-VMDvdDrive -VMName '$Name' | Format-List ControllerNumber,ControllerLocation,Path
+       `$fw = Get-VMFirmware -VMName '$Name'
+       "SecureBoot: `$(`$fw.SecureBoot)  Template: `$(`$fw.SecureBootTemplate)"
+       `$fw.BootOrder | ForEach-Object { "`$(`$_.BootType) -> `$(`$_.Device)" }
+
+     An empty DVD Path means the ISO never attached; a BootOrder not led by the
+     DVD means it is not first; a SecureBootTemplate other than MicrosoftWindows
+     makes Secure Boot reject the ISO's bootloader. All three land on the same
+     screen.
 
   2. Install Windows. Take the offline/local-account path if offered: a Microsoft
      account can sync settings and apps from your real machine, which is exactly
      the contamination you are trying to avoid. Install nothing else.
 
-  3. Snapshot that clean state — this is what makes the loop repeatable. Decide
+  3. Snapshot that clean state - this is what makes the loop repeatable. Decide
      about Windows Update BEFORE this point; whatever you freeze is where every
      later run starts:
 
@@ -225,7 +247,7 @@ Write-Host @"
      Then in the guest, follow README.md by hand (the honest test), or run
      ``bash readme-steps.sh`` once Git Bash is installed.
 
-  5. Reset for the next attempt — seconds, versus rebuilding from the ISO. The
+  5. Reset for the next attempt - seconds, versus rebuilding from the ISO. The
      checkpoint is not consumed, so this is repeatable indefinitely:
 
        pwsh -File scripts/vm-checkpoint-restore.ps1 -Name '$Name'

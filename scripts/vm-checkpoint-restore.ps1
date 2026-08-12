@@ -7,7 +7,7 @@
   Step 5 of the install-test loop:
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
-    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-host-status.ps1         # read-only report - where does the host stand
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
@@ -20,7 +20,7 @@
   costs seconds, so a README test is something you can afford to run again after
   every fix rather than once.
 
-  Everything the guest did since the checkpoint is discarded — installed tools,
+  Everything the guest did since the checkpoint is discarded - installed tools,
   cloned repos, files you wrote inside the VM. Anything worth keeping has to come
   out to the host first. The checkpoint itself is NOT consumed: revert to it as
   often as you like.
@@ -87,13 +87,13 @@ Write-Host ("  Current state    : {0}" -f $vm.State)
 Write-Host ''
 Write-Host 'Everything the guest has done since that checkpoint will be discarded:' -ForegroundColor Yellow
 Write-Host '  installed tools, cloned repos, and any files written inside the VM.' -ForegroundColor Yellow
-Write-Host ("The checkpoint itself is kept — you can revert to it again later.") -ForegroundColor DarkGray
+Write-Host ("The checkpoint itself is kept - you can revert to it again later.") -ForegroundColor DarkGray
 Write-Host ''
 
 if (-not $Yes) {
     $answer = Read-Host "Revert now? [y/N]"
     if ($answer -notmatch '^(y|yes)$') {
-        Write-Host 'Cancelled — the VM was left as it is.' -ForegroundColor Green
+        Write-Host 'Cancelled - the VM was left as it is.' -ForegroundColor Green
         exit 0
     }
 }

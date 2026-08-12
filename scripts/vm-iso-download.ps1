@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-  Get a Windows 11 ISO for scripts/vm-machine-create.ps1 — automatically if Microsoft
+  Get a Windows 11 ISO for scripts/vm-machine-create.ps1 - automatically if Microsoft
   allows it, by guiding the manual download if not.
 
 .DESCRIPTION
   Step 0 of the install-test loop:
 
-    scripts/vm-iso-download.ps1        # this script — obtain a Windows 11 ISO
-    scripts/vm-host-status.ps1         # read-only report — where does the host stand
+    scripts/vm-iso-download.ps1        # this script - obtain a Windows 11 ISO
+    scripts/vm-host-status.ps1         # read-only report - where does the host stand
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
@@ -17,8 +17,8 @@
     scripts/vm-hyperv-disable.ps1      # turn Hyper-V back off
 
   A caveat you should know before trusting this: Microsoft's ISO download is
-  session-gated and actively hostile to automation. Three calls are involved —
-  discover the product, list the languages, then issue a download link — and the
+  session-gated and actively hostile to automation. Three calls are involved -
+  discover the product, list the languages, then issue a download link - and the
   third is screened by a bot filter that answers
 
       {"Errors":[{"Key":"ErrorSettings.SentinelReject", ...}]}
@@ -78,8 +78,8 @@ $Profile       = '606624d44113'
 $UserAgent     = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
 
 if (-not $OutDir) {
-    # Downloads is not guaranteed to be under $HOME — it can be redirected to
-    # OneDrive or another drive — so ask the shell where it actually is.
+    # Downloads is not guaranteed to be under $HOME - it can be redirected to
+    # OneDrive or another drive - so ask the shell where it actually is.
     try {
         $OutDir = (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path
     } catch {
@@ -103,7 +103,7 @@ function Test-WindowsIso([string]$path) {
     $result.SizeGB = [math]::Round($file.Length / 1GB, 2)
 
     if ($file.Length -lt 3GB) {
-        $result.Reason = "only $($result.SizeGB) GB — a Windows 11 ISO is roughly 5-7 GB, so this looks truncated or is not an installation image"
+        $result.Reason = "only $($result.SizeGB) GB - a Windows 11 ISO is roughly 5-7 GB, so this looks truncated or is not an installation image"
         return [pscustomobject]$result
     }
 
@@ -132,7 +132,7 @@ function Test-WindowsIso([string]$path) {
     # Retail Windows media labels look like CCCOMA_X64FRE_EN-US_DV9; evaluation
     # and MSDN images vary, so treat an unfamiliar label as a warning only.
     if ($result.VolumeId -notmatch 'X64|X86|ARM64|WIN|CCCOMA|CES_') {
-        $result.Reason = "volume label '$($result.VolumeId)' does not look like Windows installation media — check you downloaded the ISO and not something else"
+        $result.Reason = "volume label '$($result.VolumeId)' does not look like Windows installation media - check you downloaded the ISO and not something else"
         return [pscustomobject]$result
     }
 
@@ -162,7 +162,9 @@ function Show-IsoResult($iso) {
 
 # --- -Verify: check an existing file and stop --------------------------------
 if ($Verify) {
-    $iso = Test-WindowsIso ((Resolve-Path -LiteralPath $Verify -ErrorAction SilentlyContinue).Path ?? $Verify)
+    $resolved = (Resolve-Path -LiteralPath $Verify -ErrorAction SilentlyContinue).Path
+    if (-not $resolved) { $resolved = $Verify }
+    $iso = Test-WindowsIso $resolved
     exit $(if (Show-IsoResult $iso) { 0 } else { 1 })
 }
 
@@ -183,7 +185,7 @@ if ($existing.Count -gt 0) {
     $iso = Test-WindowsIso $existing[0].FullName
     if ($iso.Valid) {
         Write-Host ''
-        Write-Host 'Using the newest one — no download needed.' -ForegroundColor Green
+        Write-Host 'Using the newest one - no download needed.' -ForegroundColor Green
         [void](Show-IsoResult $iso)
         Write-Host ''
         Write-Host 'Re-run with -Open if you want a different or fresher build.' -ForegroundColor DarkGray
@@ -249,7 +251,7 @@ if (-not $Open) {
     } catch {
         Write-Host ''
         Write-Host ("Automated download unavailable: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
-        Write-Host 'Falling back to the browser — same ISO, one extra click.' -ForegroundColor Yellow
+        Write-Host 'Falling back to the browser - same ISO, one extra click.' -ForegroundColor Yellow
     }
 }
 
@@ -263,14 +265,14 @@ if ($autoLink) {
 
     Write-Host ''
     Write-Host ("Downloading to {0}" -f $target) -ForegroundColor Cyan
-    Write-Host '  ~6 GB — this takes a while.' -ForegroundColor DarkGray
+    Write-Host '  ~6 GB - this takes a while.' -ForegroundColor DarkGray
 
     # BITS where available: it shows real progress and survives interruptions.
     # Invoke-WebRequest buffers aggressively and reports nothing useful.
     try {
         Start-BitsTransfer -Source $autoLink -Destination $target -Description 'Windows 11 ISO' -ErrorAction Stop
     } catch {
-        Write-Host ("  BITS unavailable ({0}) — falling back to a direct download." -f $_.Exception.Message) -ForegroundColor DarkGray
+        Write-Host ("  BITS unavailable ({0}) - falling back to a direct download." -f $_.Exception.Message) -ForegroundColor DarkGray
         Invoke-WebRequest -Uri $autoLink -OutFile $target -UseBasicParsing
     }
 
@@ -293,7 +295,7 @@ Save it to:
   $OutDir
 
 You do not need a product key. During Windows setup choose "I don't have a
-product key" — an unactivated Windows runs fine for install testing.
+product key" - an unactivated Windows runs fine for install testing.
 "@
 
 Start-Process $DownloadPage

@@ -8,7 +8,7 @@
   change something:
 
     scripts/vm-iso-download.ps1        # obtain a Windows 11 ISO
-    scripts/vm-host-status.ps1         # this script — read-only report
+    scripts/vm-host-status.ps1         # this script - read-only report
     scripts/vm-hyperv-enable.ps1       # one-time host setup
     scripts/vm-machine-create.ps1      # build a clean VM from a Windows ISO
     scripts/vm-checkpoint-create.ps1   # freeze the clean install as 'clean-baseline'
@@ -27,7 +27,7 @@
   Print nothing; just set the exit code.
 
 .OUTPUTS
-  Exit code 0 if Hyper-V is enabled and the hypervisor is running, 1 otherwise —
+  Exit code 0 if Hyper-V is enabled and the hypervisor is running, 1 otherwise -
   so this can gate other scripts.
 
 .EXAMPLE
@@ -101,14 +101,14 @@ Write-Line 'Hypervisor' 'Cyan'
 Write-Line ("  Running now          : {0}" -f $hypervisorRunning) $(if ($hypervisorRunning) { 'Green' } else { 'Yellow' })
 
 # Boot policy. The feature being installed does not guarantee the hypervisor
-# launches — hypervisorlaunchtype is the switch that decides.
+# launches - hypervisorlaunchtype is the switch that decides.
 try {
     $bcd = & bcdedit.exe /enum '{current}' 2>$null
     $launch = ($bcd | Select-String -Pattern 'hypervisorlaunchtype').ToString()
     if ($launch) {
         Write-Line ("  Boot policy          : {0}" -f ($launch -replace '\s+', ' ').Trim())
     } else {
-        Write-Line '  Boot policy          : auto (default — not explicitly set)'
+        Write-Line '  Boot policy          : auto (default - not explicitly set)'
     }
 } catch {
     Write-Line '  Boot policy          : unreadable (bcdedit needs elevation)' 'DarkGray'
@@ -120,7 +120,7 @@ if (-not $hypervisorRunning) {
     Write-Line ("  CPU virtualization   : {0}" -f $cpu.VirtualizationFirmwareEnabled)
     Write-Line ("  SLAT (required)      : {0}" -f $cpu.SecondLevelAddressTranslationExtensions)
     if ($cpu.VirtualizationFirmwareEnabled -eq $false) {
-        Write-Line '  Virtualization is off in firmware — enable VT-x / AMD-V ("SVM Mode") in BIOS/UEFI first.' 'Yellow'
+        Write-Line '  Virtualization is off in firmware - enable VT-x / AMD-V ("SVM Mode") in BIOS/UEFI first.' 'Yellow'
     }
 }
 
@@ -129,7 +129,7 @@ if (-not $hypervisorRunning) {
 try {
     $dg = Get-CimInstance -Namespace 'root\Microsoft\Windows\DeviceGuard' -ClassName Win32_DeviceGuard -ErrorAction Stop
     if ($dg.SecurityServicesRunning -and $dg.SecurityServicesRunning.Count -gt 0) {
-        Write-Line '  VBS / Memory Integrity is active — it loads the hypervisor regardless of the Hyper-V feature.' 'DarkGray'
+        Write-Line '  VBS / Memory Integrity is active - it loads the hypervisor regardless of the Hyper-V feature.' 'DarkGray'
     }
 } catch { }
 
