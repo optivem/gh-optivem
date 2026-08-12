@@ -89,14 +89,14 @@ The install commands below are the Windows ones, via `winget`. On macOS and Linu
   bash --version
   ```
 
-- **[Go](https://go.dev/dl/)** — needed to install actionlint below.
+- **[Go](https://go.dev/dl/)** — needed to install actionlint below. The Go installer puts only the toolchain itself on your `PATH`, never `$(go env GOPATH)/bin` (usually `~/go/bin`) — which is where `go install` drops the binaries it builds. Add that directory to `PATH` yourself, or the actionlint check below comes back "not found".
 
   ```bash
   winget install --id GoLang.Go -e --source winget   # Windows
   go version
   ```
 
-- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows, right after pushing them and before any pipeline verification, so a broken scaffold is visible on the remote for troubleshooting. `go install` drops the binary in `$(go env GOPATH)/bin` (usually `~/go/bin`) and never edits your `PATH` — the Go installer only puts the toolchain itself there. Add that directory to `PATH` yourself if the check comes back "not found".
+- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows, right after pushing them and before any pipeline verification, so a broken scaffold is visible on the remote for troubleshooting.
 
   ```bash
   go install github.com/rhysd/actionlint/cmd/actionlint@v1
