@@ -49,6 +49,11 @@ go version
 
 # actionlint
 go install github.com/rhysd/actionlint/cmd/actionlint@v1
+# `go install` drops the binary in $(go env GOPATH)/bin and never edits PATH —
+# the Go installer only puts the toolchain itself there. On a brand-new system
+# the next line fails with "command not found" without this. The README says
+# the same under its actionlint bullet: "Add that directory to PATH yourself."
+export PATH="$PATH:$(go env GOPATH)/bin"
 actionlint --version
 
 # Docker
