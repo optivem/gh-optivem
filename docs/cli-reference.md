@@ -47,7 +47,7 @@ gh extension upgrade optivem                # upgrade
 gh extension remove optivem                 # uninstall
 ```
 
-`actionlint` must also be on `PATH` before you run `init` — the `Verify scaffolded workflows` step shells out to it:
+`actionlint` must also be on `PATH` before you run `init` — the `Verify scaffolded workflows` step shells out to it. `go install` writes it to `$(go env GOPATH)/bin` (usually `~/go/bin`) without touching `PATH`, so add that directory yourself:
 
 ```bash
 go install github.com/rhysd/actionlint/cmd/actionlint@v1

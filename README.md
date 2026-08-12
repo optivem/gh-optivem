@@ -57,7 +57,7 @@ Two things it does *not* check on its own: Go (it only matters for installing ac
   go version
   ```
 
-- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows, right after pushing them and before any pipeline verification, so a broken scaffold is visible on the remote for troubleshooting. The install drops the binary in `~/go/bin`, which Go does not add to your `PATH` — add it yourself if the check comes back "not found".
+- **[actionlint](https://github.com/rhysd/actionlint)** — `init` runs it over the scaffolded workflows, right after pushing them and before any pipeline verification, so a broken scaffold is visible on the remote for troubleshooting. `go install` drops the binary in `$(go env GOPATH)/bin` (usually `~/go/bin`) and never edits your `PATH` — the Go installer only puts the toolchain itself there. Add that directory to `PATH` yourself if the check comes back "not found".
 
   ```bash
   go install github.com/rhysd/actionlint/cmd/actionlint@v1
