@@ -6,10 +6,12 @@
 .DESCRIPTION
   Step 1 of the install-test loop:
 
+    scripts/vm-status.ps1            # read-only report — where does the host stand
     scripts/vm-enable-hyperv.ps1     # this script — one-time host setup
     scripts/vm-create.ps1            # build a clean VM from a Windows ISO
     scripts/readme-steps.sh          # run INSIDE the VM: every README command
     scripts/vm-delete.ps1            # tear the VM down
+    scripts/vm-disable-hyperv.ps1    # turn Hyper-V back off
 
   Reporting is unprivileged; enabling is not. Run with -Check from any shell to
   see where you stand, then re-run elevated (no -Check) to turn anything missing
