@@ -439,24 +439,15 @@ func VerifyEnvironment(langs []string) error {
 // public VerifyEnvironment is a one-line wrapper that injects the default
 // timeout-bounded client.
 func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
-	e := readEnvTokens()
-
-	// requiredEnvVars is the single source shared with the presence-only
-	// preflight check (MissingRequiredEnvVars), so both surfaces agree on
-	// which credentials count as required.
-	var missing []string
-	for _, r := range requiredEnvVars() {
-		if r.val == "" {
-			missing = append(missing, r.name)
-		}
-	}
-
 	log.Info("Verifying environment...")
 
-	// Local-tool checks always run; they have no dependency on env-var values.
+	// Phase 1: local tool / compiler presence. These have no dependency on
+	// env-var values, and run — and are reported — before anything
+	// credential-related: a user fixes their toolchain first, then worries
+	// about secrets, so the check order matches that.
 	// `check` is package-level (see tool_checks.go) so compilerChecksFor can
 	// return []check directly.
-	checks := []check{
+	toolChecks := []check{
 		{"gh CLI auth", verifyGhAuth},
 		{"actionlint", verifyActionlint},
 		{"bash", verifyBash},
@@ -476,29 +467,65 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	if skipClaude {
 		log.Info("Skipping claude check (" + skipClaudeCheckEnv + " set).")
 	} else {
-		checks = append(checks, check{"claude", verifyClaude})
+		toolChecks = append(toolChecks, check{"claude", verifyClaude})
 	}
 	// Per-language compiler presence, gated on the caller-supplied langs.
 	// Nil/empty langs => no compiler checks (the standalone
 	// `environment verify` surface with no --lang flag).
-	checks = append(checks, compilerChecksFor(langs)...)
+	toolChecks = append(toolChecks, compilerChecksFor(langs)...)
+
+	toolFailures := runChecks(toolChecks)
+
+	// Phase 2: environment variables — presence first, then live provider
+	// auth for whichever tokens are required. Runs only after every tool
+	// check has completed, so both the check order and the reported failure
+	// order are "tools, then environment variables".
+	e := readEnvTokens()
+
+	// requiredEnvVars is the single source shared with the presence-only
+	// preflight check (MissingRequiredEnvVars), so both surfaces agree on
+	// which credentials count as required.
+	var missing []string
+	for _, r := range requiredEnvVars() {
+		if r.val == "" {
+			missing = append(missing, r.name)
+		}
+	}
+
 	// Live HTTP checks only run when every required env var is present —
 	// each one needs its token value. Missing-var errors are reported
 	// separately in the aggregated error below.
+	var envChecks []check
 	if len(missing) == 0 {
-		checks = append(checks,
-			check{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
-			check{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
-			check{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.ghcrToken) }},
-			check{"WORKFLOW_TOKEN", func() error {
+		envChecks = []check{
+			{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
+			{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
+			{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.ghcrToken) }},
+			{"WORKFLOW_TOKEN", func() error {
 				return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN", []string{"repo", "workflow"})
 			}},
-			check{"REPO_TOKEN", func() error {
+			{"REPO_TOKEN", func() error {
 				return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN", []string{"repo"})
 			}},
-		)
+		}
 	}
 
+	envFailures := runChecks(envChecks)
+
+	failures := append(toolFailures, envFailures...)
+	if len(missing) == 0 && len(failures) == 0 {
+		return nil
+	}
+	return buildEnvVerifyError(missing, failures)
+}
+
+// runChecks runs the given checks concurrently among themselves, logs one
+// success line per passing check (in the order given), and returns the
+// failures in that same order. Splitting the tool and environment-variable
+// phases into two separate runChecks calls (rather than one combined batch)
+// is what makes tool checks complete — and report — before any
+// environment-variable check starts.
+func runChecks(checks []check) []checkResult {
 	results := make([]checkResult, len(checks))
 	var wg sync.WaitGroup
 	for i, c := range checks {
@@ -518,32 +545,28 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 		}
 		failures = append(failures, r)
 	}
-
-	if len(missing) == 0 && len(failures) == 0 {
-		return nil
-	}
-	return buildEnvVerifyError(missing, failures)
+	return failures
 }
 
 func buildEnvVerifyError(missing []string, failures []checkResult) error {
 	var b strings.Builder
-	if len(missing) > 0 {
-		fmt.Fprintf(&b, "Missing required environment variable(s): %s\n", strings.Join(missing, ", "))
-		for _, name := range missing {
-			b.WriteString("\n")
-			b.WriteString(missingEnvHint(name))
-		}
-	}
 	if len(failures) > 0 {
-		if len(missing) > 0 {
-			b.WriteString("\n\n")
-		}
 		fmt.Fprintf(&b, "Verification failed for %d check(s):\n", len(failures))
 		for _, f := range failures {
 			b.WriteString("\n  ")
 			b.WriteString(f.name)
 			b.WriteString(": ")
 			b.WriteString(f.err.Error())
+		}
+	}
+	if len(missing) > 0 {
+		if len(failures) > 0 {
+			b.WriteString("\n\n")
+		}
+		fmt.Fprintf(&b, "Missing required environment variable(s): %s\n", strings.Join(missing, ", "))
+		for _, name := range missing {
+			b.WriteString("\n")
+			b.WriteString(missingEnvHint(name))
 		}
 	}
 	return errors.New(b.String())
