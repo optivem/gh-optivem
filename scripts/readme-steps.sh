@@ -315,6 +315,24 @@ add_go_bin_to_path() {
     hash -r
 }
 
+# claude.ai/install.ps1 drops claude.exe in %USERPROFILE%\.local\bin and never
+# writes the registry PATH - it prints a warning telling you to add it yourself.
+# So refresh_path alone can never find it, no matter how many times it re-reads
+# the registry, and that is the exact failure this prevents. The README says the
+# same under its Claude Code bullet.
+#
+# Built from USERPROFILE rather than $HOME because the installer installs
+# relative to the Windows user profile, and $HOME in Git Bash is a separate
+# setting that can point somewhere else entirely.
+add_claude_bin_to_path() {
+    local profile="$USERPROFILE"
+    if command -v cygpath >/dev/null 2>&1; then
+        profile="$(cygpath -u "$profile")"
+    fi
+    export PATH="$PATH:$profile/.local/bin"
+    hash -r
+}
+
 
 # Inventory ===================================================================
 #
@@ -456,8 +474,9 @@ ensure_claude_installed() {
     echo "machine setup: installing Claude Code ..."
     powershell.exe -NoProfile -Command "irm https://claude.ai/install.ps1 | iex"
     refresh_path
+    add_claude_bin_to_path
     if ! probe_tool 'Claude Code' claude --version; then
-        echo "machine setup: Claude Code was installed but 'claude --version' still does not run." >&2
+        echo "machine setup: Claude Code was installed but is not on PATH. Looked in $USERPROFILE/.local/bin - if it is not there, find claude.exe and add its directory to PATH, then re-run." >&2
         exit 1
     fi
 }

@@ -26,13 +26,15 @@
   irm https://claude.ai/install.ps1 | iex
   ```
 
+  It puts `claude.exe` in `%USERPROFILE%\.local\bin` and never edits your `PATH` — it prints a warning saying so and leaves it at that. Add that directory to `PATH` yourself if the check below comes back "not found".
+
   On macOS and Linux:
 
   ```bash
   curl -fsSL https://claude.ai/install.sh | bash
   ```
 
-  Then, from a **fresh** shell — the installer writes `PATH` and the shell you ran it in keeps the copy it started with:
+  Then, from a **fresh** shell — that installer does write `PATH`, and the shell you ran it in keeps the copy it started with:
 
   ```bash
   claude --version
