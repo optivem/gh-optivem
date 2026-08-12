@@ -8,15 +8,19 @@
 > **⚠ Written against HEAD `0101ad82`; the tree has moved since.** A parallel session
 > landed eight commits on `main` in the same territory — notably `ec38c75f` ("Install
 > Go, Java, .NET and Node instead of stopping on them") and `d6f67750` ("Move the
-> GOPATH/bin PATH note to the Go prerequisite") — and was still editing
-> `internal/config/tool_checks.go` when this note was added. Before discussing, re-check
-> **Context** (the check table, and the claim that Go is not verified at all), **Step 1**
-> (which builds on `tool_checks.go`) and **Step 5** (which cites `README.md:29-31` and
-> `:79-83`, line numbers that have likely shifted).
+> GOPATH/bin PATH note to the Go prerequisite") — and then a further three
+> (`c723be83`, `6768e74f`, `3fae236c`) that added scope assertion to `verifyGhAuth`
+> and trimmed the README's rationale prose. **All line-number citations below were
+> re-resolved against `3fae236c` and are current as of that commit.** Two premises
+> did shift and are flagged inline where they appear: the README no longer explains
+> *why* Go is a prerequisite, and the two PATH notes are now one line each rather
+> than short paragraphs. Still worth re-checking before discussing: **Context** (the
+> check table, and the claim that Go is not verified at all) and **Step 1** (which
+> builds on `tool_checks.go`, now ~160 lines longer).
 
 ## TL;DR
 
-**Why:** README.md carries ~50 lines of "install this, then check it ran, then fix your PATH yourself" prose (`README.md:11-104`) for tools that `gh optivem` already knows how to detect. Every one of those checks exists in `internal/config/tool_checks.go`, each already carrying the exact install command in its failure string — but the tool only ever tells you what is missing, never fixes it. Meanwhile `scripts/readme-steps.sh` (774 lines) re-encodes the same setup as executable steps for the clean-room VM loop, so the same knowledge lives in three places: prose, check functions, and a test script.
+**Why:** README.md carries ~50 lines of "install this, then check it ran, then fix your PATH yourself" prose (`README.md:11-140`) for tools that `gh optivem` already knows how to detect. Every one of those checks exists in `internal/config/tool_checks.go`, each already carrying the exact install command in its failure string — but the tool only ever tells you what is missing, never fixes it. Meanwhile `scripts/readme-steps.sh` (774 lines) re-encodes the same setup as executable steps for the clean-room VM loop, so the same knowledge lives in three places: prose, check functions, and a test script.
 
 **End result:** One command — `gh optivem environment setup` — installs everything installable, edits PATH where the upstream installers refuse to, and then prints the short list of things only a human can do (Docker Desktop, Claude sign-in, six credentials). The README's setup section collapses to: install `gh`, install the extension, run setup, do the three human steps. `readme-steps.sh` becomes a test *of that command* rather than a parallel reimplementation of the prose.
 
@@ -38,15 +42,17 @@ What we get out of this — the goals and deliverables:
 
 | Check | Source | Installable? |
 |---|---|---|
-| gh CLI auth | `verifyGhAuth`, `tool_checks.go:55` | Install yes, `gh auth login` no |
-| actionlint | `verifyActionlint`, `tool_checks.go:79` | Yes — `go install …@v1` |
-| bash | `verifyBash`, `tool_checks.go:100` | Yes — Git for Windows |
-| docker | `verifyDocker`, `tool_checks.go:231` | **No** — GUI licence accept, WSL2, reboot |
-| claude | `verifyClaude`, `tool_checks.go:125` | Install yes, sign-in no |
+| gh CLI auth | `verifyGhAuth`, `tool_checks.go:201` | Install yes, `gh auth login` no |
+| actionlint | `verifyActionlint`, `tool_checks.go:237` | Yes — `go install …@v1` |
+| bash | `verifyBash`, `tool_checks.go:258` | Yes — Git for Windows |
+| docker | `verifyDocker`, `tool_checks.go:389` | **No** — GUI licence accept, WSL2, reboot |
+| claude | `verifyClaude`, `tool_checks.go:283` | Install yes, sign-in no |
 | java / dotnet / npm | `compilerChecksFor`, gated on `--lang` | Yes |
 | 5 token checks | `token_auth.go:490-497` | **No** — human at a browser |
 
-Two gaps worth noting up front. **Go is not checked at all** — `README.md:76` lists it as a prerequisite purely because actionlint needs it, but nothing verifies it. And `verifyClaude` deliberately checks presence only (`tool_checks.go:125-136`): `claude` exposes no non-interactive auth-status command, so a signed-out machine is indistinguishable from a working one. That constraint carries straight into setup — it can install Claude Code, it cannot confirm sign-in.
+`verifyGhAuth` also now asserts the `gh` token's OAuth scopes (`requiredGhScopes`, `tool_checks.go:63`) — neither installable nor fixable by setup, but its repair hint (`gh auth refresh -s …`) is the same shape as the install hints below.
+
+Two gaps worth noting up front. **Go is not checked at all** — `README.md:105` lists it as a prerequisite, but nothing verifies it. *(Premise shifted: the README no longer states that it is there purely for actionlint's sake; the bullet now only notes that the actionlint check fails without `$(go env GOPATH)/bin` on PATH.)* And `verifyClaude` deliberately checks presence only (`tool_checks.go:283-290`): `claude` exposes no non-interactive auth-status command, so a signed-out machine is indistinguishable from a working one. That constraint carries straight into setup — it can install Claude Code, it cannot confirm sign-in.
 
 ### Every check already knows its own fix
 
@@ -108,7 +114,7 @@ Each has a recommendation; none are settled.
 
 - [ ] **Step 1 — Promote the install hints to a structured table.**
   New file: `internal/config/tool_install.go`, alongside `tool_checks.go`.
-  One entry per tier-1 and tier-2 tool: probe command, human label, per-platform install spec (winget id for Windows; a documentation URL elsewhere), and an optional post-install PATH directory. Populate the install strings from the existing failure messages in `tool_checks.go:55-240` so the two agree by construction. Add Go, which `verify` does not currently check at all — setup needs it as actionlint's prerequisite, and it should be installed before actionlint is attempted.
+  One entry per tier-1 and tier-2 tool: probe command, human label, per-platform install spec (winget id for Windows; a documentation URL elsewhere), and an optional post-install PATH directory. Populate the install strings from the existing failure messages in `tool_checks.go:201-396` so the two agree by construction. Add Go, which `verify` does not currently check at all — setup needs it as actionlint's prerequisite, and it should be installed before actionlint is attempted.
 
 - [ ] **Step 2 — Port the winget backend from `readme-steps.sh`.**
   Same file. Reproduce the three behaviours the script's comments document as load-bearing: the PATH-free `winget list --id <id> -e` presence probe (`readme-steps.sh:237`), treating winget's exit code as advisory and letting a re-probe decide the outcome (`:279-282`), and refreshing the process environment's PATH after an install before re-probing (`:265`). Each of those comments records a real guest-run failure; carry the *reasoning* across, not just the code.
@@ -121,8 +127,8 @@ Each has a recommendation; none are settled.
   Takes `--lang`, parsed by the same helper `verify` uses (`internal/config/verify_flags.go`). Order: install tier 1, then tier 2, then run the existing `VerifyEnvironment` to report the true remaining state. Finish with a "what's left for you" block covering only what is genuinely outstanding — Docker if absent, `gh auth login` if unauthenticated, `claude` sign-in (always, since it is unprovable — say so), and any missing credentials from `requiredEnvVars()`.
 
 - [ ] **Step 5 — Cut the README down.**
-  File: `README.md:58-104` ("Local environment setup"), with knock-on edits to `:11-47` ("Prerequisites").
-  Prerequisites keeps `gh` only — it is the one thing needed before the extension exists. The setup section becomes: run `gh optivem environment setup --lang …`, then the tier-3 human steps. Delete the per-tool install blocks and both PATH apologies (`:29-31`, `:79-83`). Keep `environment verify` documented as the re-check.
+  File: `README.md:77-140` ("Local environment setup"), with knock-on edits to `:11-67` ("Prerequisites").
+  Prerequisites keeps `gh` only — it is the one thing needed before the extension exists. The setup section becomes: run `gh optivem environment setup --lang …`, then the tier-3 human steps. Delete the per-tool install blocks and both PATH apologies — now one line each rather than paragraphs: Claude Code's at `:48`, Go's at `:105`. Keep `environment verify` documented as the re-check. Note that Prerequisites now also carries the `gh auth login` / `gh auth refresh` scope fork (`:21-40`), which is human-only and survives any cut.
 
 - [ ] **Step 6 — Update the help text.**
   Files: `environment_commands.go` `Short`/`Long`/`Example` strings.
