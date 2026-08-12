@@ -44,8 +44,10 @@
   which every guest account can read.
 
 .PARAMETER Force
-  Overwrite the file if it is already at the destination. Without this, a second
-  run fails rather than silently replacing what the guest has.
+  Ask Hyper-V to overwrite a file already sitting at the destination. Without it,
+  a second run fails rather than silently replacing what the guest has. Hyper-V's
+  copy service may refuse to overwrite even with this; the error then says to
+  delete the file inside the guest, which always works.
 
 .PARAMETER Start
   Start the VM first if it is off, and wait for its guest services to answer.
@@ -167,8 +169,17 @@ try {
     Copy-VMFile @copyArgs
 } catch {
     $msg = $_.Exception.Message
-    if ($msg -match 'already exists') {
-        Write-Error "'$DestinationPath' already exists in the guest. Re-run with -Force to overwrite it with the host copy."
+    # Hyper-V reports the occupied destination as the raw Win32 error - 'The file
+    # exists. (0x80070050)' - not as anything containing 'already exists'. Match
+    # the code, which is the part that cannot be reworded.
+    if ($msg -match '0x80070050' -or $msg -match 'file exists') {
+        if ($Force) {
+            # Copy-VMFile is documented as taking -Force, but the guest service
+            # is the thing refusing here and it does so regardless. Deleting in
+            # the guest is the reliable way through.
+            Write-Error "'$DestinationPath' already exists in the guest and -Force did not displace it - Hyper-V's file-copy service will not overwrite. Delete it from inside the guest (del $DestinationPath) and re-run, or pass -DestinationPath with a name that is free."
+        }
+        Write-Error "'$DestinationPath' already exists in the guest. Re-run with -Force: pwsh -File `"$PSCommandPath`" -Name `"$Name`" -Force"
     }
     Write-Error "Copy-VMFile failed: $msg"
 }
