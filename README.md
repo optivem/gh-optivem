@@ -182,6 +182,8 @@ For example:
 gh optivem init --owner valentinajemuovic --repo book-shop --system-name "Book Shop" --repo-strategy monorepo --arch multitier --backend-lang dotnet --frontend-lang typescript --test-lang java
 ```
 
+**Expect this to run for a long time.** Creating the repository and pushing the template is quick; after that, `init` sits and watches the generated pipelines on GitHub Actions until they go green, which takes tens of minutes. It prints a heartbeat every 5 minutes so you can see it is still alive. Leave it running until it reports success — interrupting it stops the watching, not the pipeline.
+
 ## Clone project repository
 
 Clone your new repository to work on it locally:
