@@ -13,6 +13,12 @@
 - **[GitHub CLI](https://cli.github.com/)**
 
   ```bash
+  winget install --id GitHub.cli -e --source winget   # Windows
+  ```
+
+  `winget` writes `PATH` into the registry, and the shell you ran it in keeps the copy it started with — so from a **fresh** shell:
+
+  ```bash
   gh --version
   gh auth login
   gh auth status
@@ -67,7 +73,17 @@ If it flags a missing tool, install it from the list below; if it flags a missin
 
 Two things it does *not* check on its own: Go (it only matters for installing actionlint) and your language toolchains — name those with `--lang`, see below.
 
+The install commands below are the Windows ones, via `winget`. On macOS and Linux, follow each bullet's download link. Either way `PATH` is written for *new* shells, so open a fresh one before the version check.
+
 - **Bash** — every command in this README is run from a Bash shell, and `gh optivem` shells out through it too. On Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
+
+  Install it from PowerShell — Git Bash is the shell every other command here runs *in*, so it cannot install itself:
+
+  ```powershell
+  winget install --id Git.Git -e --source winget
+  ```
+
+  Then, from Git Bash:
 
   ```bash
   bash --version
@@ -76,6 +92,7 @@ Two things it does *not* check on its own: Go (it only matters for installing ac
 - **[Go](https://go.dev/dl/)** — needed to install actionlint below.
 
   ```bash
+  winget install --id GoLang.Go -e --source winget   # Windows
   go version
   ```
 
@@ -92,7 +109,13 @@ Two things it does *not* check on its own: Go (it only matters for installing ac
   docker --version
   ```
 
-- **Your project's language toolchain** — whichever languages you scaffold with: [Java](https://adoptium.net/), [.NET](https://dotnet.microsoft.com/download), or [Node.js](https://nodejs.org/). Check only the ones you need.
+- **Your project's language toolchain** — whichever languages you scaffold with: [Java](https://adoptium.net/), [.NET](https://dotnet.microsoft.com/download), or [Node.js](https://nodejs.org/). Install and check only the ones you need. The versions below are the ones the scaffolded pipeline builds with, so matching them keeps "works in CI" and "works locally" the same statement:
+
+  ```bash
+  winget install --id EclipseAdoptium.Temurin.21.JDK -e --source winget   # Java 21, Windows
+  winget install --id Microsoft.DotNet.SDK.8 -e --source winget           # .NET 8, Windows
+  winget install --id OpenJS.NodeJS.22 -e --source winget                 # Node.js 22, Windows
+  ```
 
   ```bash
   java -version     # Java

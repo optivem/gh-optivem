@@ -255,8 +255,19 @@ winget_install() {
     # Only for the not-on-PATH case: a tool that IS on PATH and does not run
     # still falls through to the install, which is the likely fix for it.
     if ! command -v "$1" >/dev/null 2>&1 && package_installed "$id"; then
-        echo "machine setup: $label is installed ($id is in the winget package database) but not on this shell's PATH - skipping the install."
-        return
+        # Installed, but invisible from here. The usual cause is a stale shell
+        # PATH, which refresh_path repairs - so ask again before conceding. The
+        # concession is not free: a toolchain whose installer skipped the PATH
+        # feature would otherwise sail past this section and detonate later
+        # inside a Gradle, dotnet or npm invocation, a long way from the cause.
+        # Success is ASSERTED, never inferred - so this returns on a tool that
+        # runs, not on a row in a package database.
+        echo "machine setup: $label is in the winget package database ($id) but not on this shell's PATH - refreshing PATH and asking again."
+        refresh_path
+        if probe_tool "$label" "$@"; then
+            return
+        fi
+        echo "machine setup: $label ($id) still does not run after the PATH refresh - installing over it."
     fi
     echo "machine setup: installing $label ..."
     # Without the --accept-* flags winget stops on a licence prompt the first
@@ -272,16 +283,16 @@ winget_install() {
     # genuine failure names its cause.
     refresh_path
     if ! probe_tool "$label" "$@"; then
-        echo "machine setup: $label is still not runnable after the install ('$*' does not run; winget exited $rc)." >&2
+        echo "machine setup: $label ($id) is still not runnable after the install ('$*' does not run; winget exited $rc)." >&2
         exit 1
     fi
 }
 
-# For the README bullets that link to a download page instead of naming an
-# install command: Bash, Go, Docker, and the language toolchains. This script
-# does not invent a command the README does not have, so a guest without them
-# stops here - but it stops naming the tool and the same link the README would
-# have sent you to, rather than as a bare "go: command not found".
+# For the two tools this script deliberately does not install: Bash, which
+# supplies the shell it is running in, and Docker Desktop, which needs a reboot
+# and an interactive first launch (see ensure_docker_installed). A guest without
+# them stops here - but it stops naming the tool and the same link the README
+# would have sent you to, rather than as a bare "docker: command not found".
 #
 # $1 label, $2 download URL, $3.. version command
 require_tool() {
@@ -352,10 +363,10 @@ add_claude_bin_to_path() {
 #            what this run actually changed about the guest.
 #
 # A run that stops inside readme_local_environment_setup never reaches the
-# closing pass - require_tool exits on a missing Go, Docker, Java, .NET or Node.
-# That is accepted rather than worked around: the exit message already names the
-# tool and the page to get it from, and probing all eleven from the EXIT trap
-# would put a slow sweep in front of every failure verdict.
+# closing pass - require_tool exits on a missing Docker. That is accepted rather
+# than worked around: the exit message already names the tool and the page to get
+# it from, and probing all eleven from the EXIT trap would put a slow sweep in
+# front of every failure verdict.
 #
 # Nothing here exits. Enforcement stays with the ensure_*/require_* functions
 # below, which run in README order and stop where the README's reader would -
@@ -406,9 +417,11 @@ inventory() {
 # not a pipe. Each step first asks the tool for its version and is skipped when
 # it answers, so re-running after a fix costs nothing.
 #
-# Still NOT covered here: Go, Docker Desktop, Java, .NET, and Node. The
-# "Local environment setup" section below verifies them but nothing installs
-# them, so a clean guest stops at `go version`. Install those by hand first.
+# Still NOT covered anywhere in this file: Docker Desktop. The "Local
+# environment setup" section below verifies it but nothing installs it, so a
+# clean guest stops there — see ensure_docker_installed for why that one is
+# different. Install it by hand first. Go, Java, .NET and Node are installed by
+# that same section and need nothing from you.
 
 machine_setup() {
     ensure_git_installed
@@ -550,9 +563,10 @@ ensure_bash_installed() {
 }
 
 # The README's own note: Go only matters because actionlint below is installed
-# with it.
+# with it — which is also why the version is deliberately left unpinned. Nothing
+# in this repo builds with Go; it is here to carry `go install`.
 ensure_go_installed() {
-    require_tool 'Go' 'https://go.dev/dl/' go version
+    winget_install GoLang.Go 'Go' go version
 }
 
 # The one README bullet that names an install command rather than a download
@@ -570,16 +584,30 @@ ensure_actionlint_installed() {
     fi
 }
 
+# The one tool down here still left to the operator, and deliberately so — the
+# others around it are installed. Docker Desktop wants WSL2, a reboot, and an
+# interactive first launch before its daemon answers, none of which a winget
+# install gets you. Installing it here would turn a clear "install Docker" stop
+# into a "cannot connect to the Docker daemon" failure several steps later, in a
+# section that has nothing to do with Docker.
 ensure_docker_installed() {
     require_tool 'Docker' 'https://docs.docker.com/get-started/get-docker/' docker --version
 }
 
-# The README says to check only the languages you need. All three are checked
+# The README says to check only the languages you need. All three are installed
 # because readme_generate_your_project scaffolds with all three.
+#
+# The versions are the ones CI pins in .github/actions/acceptance-test/action.yml
+# — Temurin 21, .NET 8.0.x, Node 22.x — so a scaffolded project that builds on
+# the runner builds in the guest, with no "works on CI" version drift.
+#
+# OpenJS.NodeJS.22 and not OpenJS.NodeJS.LTS on purpose: LTS is a moving target
+# (24.19.0 as this was written) and would silently drift off that pin the moment
+# upstream promotes a new LTS.
 ensure_language_toolchains() {
-    require_tool 'Java'    'https://adoptium.net/'                 java -version
-    require_tool '.NET'    'https://dotnet.microsoft.com/download' dotnet --version
-    require_tool 'Node.js' 'https://nodejs.org/'                   npm --version
+    winget_install EclipseAdoptium.Temurin.21.JDK 'Java'    java   -version
+    winget_install Microsoft.DotNet.SDK.8         '.NET'    dotnet --version
+    winget_install OpenJS.NodeJS.22               'Node.js' npm    --version
 }
 
 
