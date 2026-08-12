@@ -7,6 +7,7 @@
   The counterpart to scripts/vm-enable-hyperv.ps1, for when you are done with
   install testing and want the host back the way it was.
 
+    scripts/vm-download-iso.ps1      # obtain a Windows 11 ISO
     scripts/vm-status.ps1            # read-only report — where does the host stand
     scripts/vm-enable-hyperv.ps1     # one-time host setup
     scripts/vm-create.ps1            # build a clean VM from a Windows ISO

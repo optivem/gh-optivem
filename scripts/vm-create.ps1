@@ -6,6 +6,7 @@
 .DESCRIPTION
   Step 2 of the install-test loop:
 
+    scripts/vm-download-iso.ps1      # obtain a Windows 11 ISO
     scripts/vm-status.ps1            # read-only report — where does the host stand
     scripts/vm-enable-hyperv.ps1     # one-time host setup
     scripts/vm-create.ps1            # this script

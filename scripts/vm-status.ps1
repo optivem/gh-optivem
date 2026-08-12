@@ -7,6 +7,7 @@
   know where the host stands before reaching for one of the scripts that does
   change something:
 
+    scripts/vm-download-iso.ps1      # obtain a Windows 11 ISO
     scripts/vm-status.ps1            # this script — read-only report
     scripts/vm-enable-hyperv.ps1     # one-time host setup
     scripts/vm-create.ps1            # build a clean VM from a Windows ISO
