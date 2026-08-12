@@ -326,9 +326,13 @@ One thing keeps `README.md` honest, and it answers the only question that matter
 bash scripts/readme-steps.sh
 ```
 
-Its section banners are the README's own headings, in the README's own order, so the two can be read side by side — that transparency is the point, and it is why the file has no flags, no capability probes, and no control flow beyond `set -euo pipefail`. If you add a command to the README, add it here under the same heading.
+Its section banners are the README's own headings, in the README's own order, so the two can be read side by side — that transparency is the point, and it is why the README-derived sections have no flags, no capability probes, and no control flow beyond `set -euo pipefail`. If you add a command to the README, add it here under the same heading.
 
-It assumes a **brand-new system**: nothing installed, no extension, no leftover state. That assumption is what keeps it flat — a missing tool is a real failure rather than a case to branch on. Two consequences:
+The one section with no README counterpart is **Machine setup**, which runs ahead of them and does have branches: it installs the GitHub CLI and Claude Code and signs you in to both, skipping whatever is already there so a re-run after a fix costs nothing. Installers edit PATH in the registry rather than in the running process, so it re-reads PATH after each install. Go, Docker Desktop, Java, .NET, and Node are still yours to install by hand — the sections below verify them but nothing installs them.
+
+Two of those steps wait on the keyboard, so run the script from a console, not a pipe.
+
+It assumes a **brand-new system**: no extension, no leftover state. That assumption is what keeps the rest flat — a missing tool is a real failure rather than a case to branch on. Two consequences:
 
 - **It will not run on your own machine.** A linked dev build makes `gh extension install` fail. Use a throwaway VM.
 - **It will not run on CI.** It needs Claude Code, a full language toolchain, and the six credentials, and it creates a real repository. It is a human-run script, deliberately.

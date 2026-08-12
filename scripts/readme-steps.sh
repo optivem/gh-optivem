@@ -6,6 +6,10 @@
 #
 #   bash scripts/readme-steps.sh
 #
+# It installs tools, signs you in, and creates a GitHub repo, so point it at a
+# clean-room guest rather than your workstation. Two steps wait on the keyboard,
+# so run it from a console, not a pipe.
+#
 # scripts/vm-machine-create.ps1 builds the clean-room Hyper-V guest this is meant for,
 # and scripts/vm-steps-copy.ps1 gets this file into it. The guest is Windows, so
 # this runs under Git Bash there.
@@ -28,37 +32,123 @@ REPO="readme-steps-$(date +%Y%m%d-%H%M%S)"
 # tool's own install page rather than naming commands, so these are the commands
 # for the Windows clean-room guest, in the order they have to happen.
 #
-# Nothing here is executed — do these by hand in the fresh guest; the
-# Prerequisites checks below confirm they took. Steps marked [interactive] need
-# you at the keyboard, answering prompts or signing in through a browser. The
-# rest run unattended once started.
+# These run. Steps marked [interactive] need you at the keyboard — answering
+# prompts or signing in through a browser — so start this script from a console,
+# not a pipe. Each step is skipped when the tool is already there, so re-running
+# after a fix costs nothing.
 #
-#   1. Git for Windows — supplies the Git Bash this script runs under, so run
-#      this one from PowerShell or CMD:
+# Still NOT covered here: Go, Docker Desktop, Java, .NET, and Node. The
+# "Local environment setup" section below verifies them but nothing installs
+# them, so a clean guest stops at `go version`. Install those by hand first.
+
+# Installers write PATH into the registry; this process keeps the copy it was
+# started with, so a freshly installed tool stays "command not found" for the
+# rest of the run. That is what the old "open a fresh shell afterwards" note was
+# working around. Re-read the registry instead.
+refresh_path() {
+    local win
+    win=$(powershell.exe -NoProfile -Command \
+        '[Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")' \
+        | tr -d '\r')
+    if [ -z "$win" ]; then
+        # Appending an empty list would put "" on PATH, which bash reads as the
+        # current directory. Fail instead.
+        echo "readme-steps: could not read PATH back from the registry." >&2
+        exit 1
+    fi
+    # cygpath -up turns the semicolon-separated Windows list into the
+    # colon-separated one bash needs, drive letters and all.
+    PATH="$PATH:$(cygpath -up "$win")"
+    export PATH
+    hash -r   # bash caches lookups; without this the earlier miss sticks
+}
+
+require_tty() {
+    if [ ! -t 0 ]; then
+        echo "readme-steps: $1 needs the keyboard. Run this script from a console, not a pipe." >&2
+        exit 1
+    fi
+}
+
+# $1 probe command, $2 winget id, $3 label
+winget_install() {
+    if command -v "$1" >/dev/null 2>&1; then
+        echo "machine setup: $3 already installed"
+        return
+    fi
+    echo "machine setup: installing $3 ..."
+    # Without the --accept-* flags winget stops on a licence prompt the first
+    # time it sees a source or package - which on a fresh guest is always.
+    winget install --id "$2" -e --source winget \
+        --accept-source-agreements --accept-package-agreements
+    refresh_path
+    if ! command -v "$1" >/dev/null 2>&1; then
+        echo "machine setup: $3 installed but '$1' is still not on PATH." >&2
+        exit 1
+    fi
+}
+
+# 1. Git for Windows supplies the Git Bash this script runs under, so it cannot
+#    install itself from in here. If you are reading this it is already present;
+#    the check is for anyone who started the file under some other shell.
+if ! command -v git >/dev/null 2>&1; then
+    echo "machine setup: no git. From PowerShell or CMD: winget install --id Git.Git -e --source winget" >&2
+    exit 1
+fi
+git --version
+
+# Windows 11 ships winget as App Installer, but a guest straight off the ISO
+# sometimes has a version too old to run until the Store updates it.
+if ! command -v winget >/dev/null 2>&1; then
+    echo "machine setup: no winget. Open Microsoft Store, update 'App Installer', then re-run." >&2
+    exit 1
+fi
+
+# 2. GitHub CLI
+winget_install gh GitHub.cli "GitHub CLI"
+
+# 3. [interactive] GitHub CLI sign-in — prompts, then a browser.
+if gh auth status >/dev/null 2>&1; then
+    echo "machine setup: gh already signed in"
+else
+    require_tty "gh auth login"
+    gh auth login
+fi
+
+# 4. Claude Code — the native-Windows installer, run through a PowerShell shim
+#    because this file is Git Bash. claude.ai/install.sh is the macOS/Linux/WSL
+#    installer and is NOT the right one here.
+if command -v claude >/dev/null 2>&1; then
+    echo "machine setup: Claude Code already installed"
+else
+    echo "machine setup: installing Claude Code ..."
+    powershell.exe -NoProfile -Command "irm https://claude.ai/install.ps1 | iex"
+    refresh_path
+    if ! command -v claude >/dev/null 2>&1; then
+        echo "machine setup: Claude Code installed but 'claude' is still not on PATH." >&2
+        exit 1
+    fi
+fi
+
+# 5. [interactive] Claude Code sign-in — opens a browser. Needs a Pro, Max,
+#    Team, or Enterprise plan; the free Claude.ai plan has no Claude Code.
 #
-#        winget install --id Git.Git -e --source winget
-#
-#   2. GitHub CLI:
-#
-#        winget install --id GitHub.cli --source winget
-#
-#   3. [interactive] GitHub CLI sign-in — prompts, then a browser:
-#
-#        gh auth login
-#
-#   4. Claude Code — the native-Windows installer, run through a PowerShell
-#      shim because this file is Git Bash. claude.ai/install.sh is the
-#      macOS/Linux/WSL installer and is NOT the right one here:
-#
-#        powershell -NoProfile -Command "irm https://claude.ai/install.ps1 | iex"
-#
-#   5. [interactive] Claude Code sign-in — opens a browser. Needs a Pro, Max,
-#      Team, or Enterprise plan; the free Claude.ai plan has no Claude Code:
-#
-#        claude
-#
-# Open a fresh shell afterwards so the installers' PATH edits are visible, then
-# run this script.
+#    ~/.claude.json gains an "oauthAccount" entry once sign-in completes, which
+#    answers "is this machine signed in" without spending a request. On a clean
+#    guest it is always absent.
+if grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null; then
+    echo "machine setup: Claude Code already signed in"
+else
+    require_tty "the Claude Code sign-in"
+    echo "machine setup: starting Claude Code — sign in, then type /exit to come back here."
+    # Git Bash usually runs under mintty, which is not a Windows console; the
+    # raw-mode TUI needs winpty in front of it. Git for Windows ships winpty.
+    if command -v winpty >/dev/null 2>&1; then
+        winpty claude
+    else
+        claude
+    fi
+fi
 
 
 # Prerequisites ===============================================================
