@@ -334,6 +334,24 @@ It assumes a **brand-new system**: nothing installed, no extension, no leftover 
 - **It will not run on your own machine.** A linked dev build makes `gh extension install` fail. Use a throwaway VM.
 - **It will not run on CI.** It needs Claude Code, a full language toolchain, and the six credentials, and it creates a real repository. It is a human-run script, deliberately.
 
+#### The clean-room VM
+
+The `vm-*.ps1` scripts build the guest this is meant for — a Hyper-V VM from a retail Windows ISO, with nothing preinstalled:
+
+```powershell
+pwsh -File scripts/vm-status.ps1          # read-only: where does the host stand
+pwsh -File scripts/vm-enable-hyperv.ps1   # one-time host setup
+pwsh -File scripts/vm-create.ps1 -IsoPath D:\iso\Win11.iso
+#   ... install Windows, then Checkpoint-VM -SnapshotName 'clean-baseline'
+#   ... Copy-VMFile readme-steps.sh into the guest and run it under Git Bash
+pwsh -File scripts/vm-delete.ps1          # tear it down
+pwsh -File scripts/vm-disable-hyperv.ps1  # turn Hyper-V back off
+```
+
+They need an elevated shell, and a **plain** Windows ISO — not Hyper-V Quick Create's "Windows 11 dev environment" image, which ships with developer tooling preinstalled and would silently satisfy the very prerequisites the exercise exists to test. `vm-create.ps1` prints the checkpoint, copy, and restore commands for the loop; reverting to the baseline takes seconds against rebuilding from the ISO.
+
+The guest being Windows is load-bearing: `readme-steps.sh` runs there under Git Bash, where `go env GOPATH` answers in native form (`C:\Users\you\go`) and must be passed through `cygpath -u` before it can go on a colon-separated `PATH`.
+
 The one command allowed to fail is the first `environment verify`, because the README runs it *before* the tools it checks are installed, precisely so it reports everything missing in one pass. The re-run under "Environment variables" is the one that must pass.
 
 Two README steps are commented rather than executed, with the reason inline: `implement` needs an issue with Gherkin acceptance criteria on the Project board, which a freshly scaffolded repo has none of; `upgrade`/`uninstall` would undo the install above.
