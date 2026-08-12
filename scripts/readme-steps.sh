@@ -12,7 +12,9 @@
 #
 # The section headers below are the README's own headings, in its own order, so
 # the two can be read side by side. If you add a command to the README, add it
-# here under the same heading; if the two drift, this file is wrong.
+# here under the same heading; if the two drift, this file is wrong. The one
+# exception is "Machine setup", which has no README counterpart — see the note
+# there.
 
 set -euo pipefail
 
@@ -20,24 +22,54 @@ OWNER="valentinajemuovic"
 REPO="readme-steps-$(date +%Y%m%d-%H%M%S)"
 
 
+# Machine setup ===============================================================
+#
+# Not a README heading. The README's Prerequisites bullets link out to each
+# tool's own install page rather than naming commands, so these are the commands
+# for the Windows clean-room guest, in the order they have to happen.
+#
+# Nothing here is executed — do these by hand in the fresh guest; the
+# Prerequisites checks below confirm they took. Steps marked [interactive] need
+# you at the keyboard, answering prompts or signing in through a browser. The
+# rest run unattended once started.
+#
+#   1. Git for Windows — supplies the Git Bash this script runs under, so run
+#      this one from PowerShell or CMD:
+#
+#        winget install --id Git.Git -e --source winget
+#
+#   2. GitHub CLI:
+#
+#        winget install --id GitHub.cli --source winget
+#
+#   3. [interactive] GitHub CLI sign-in — prompts, then a browser:
+#
+#        gh auth login
+#
+#   4. Claude Code — the native-Windows installer, run through a PowerShell
+#      shim because this file is Git Bash. claude.ai/install.sh is the
+#      macOS/Linux/WSL installer and is NOT the right one here:
+#
+#        powershell -NoProfile -Command "irm https://claude.ai/install.ps1 | iex"
+#
+#   5. [interactive] Claude Code sign-in — opens a browser. Needs a Pro, Max,
+#      Team, or Enterprise plan; the free Claude.ai plan has no Claude Code:
+#
+#        claude
+#
+# Open a fresh shell afterwards so the installers' PATH edits are visible, then
+# run this script.
+
+
 # Prerequisites ===============================================================
+#
+# Verification only — "Machine setup" above is what installs these.
 
 # GitHub CLI
 gh --version
-# gh auth login   # interactive — run once by hand, then re-run this script
 gh auth status
 
 # Claude Code
-# Not present on a clean Windows install. Both lines are commented out for the
-# same reason as `gh auth login` above: sign-in opens a browser, so it is a
-# one-time manual step. Run them once by hand, then re-run this script.
-#
-#   powershell -NoProfile -Command "irm https://claude.ai/install.ps1 | iex"
-#   claude   # signs in; needs a Pro/Max/Team/Enterprise plan — free has no Claude Code
-#
-# That is the native-Windows installer invoked through a PowerShell shim, since
-# this script runs under Git Bash. claude.ai/install.sh is the macOS/Linux/WSL
-# installer and is NOT the right one here.
 claude --version
 
 
