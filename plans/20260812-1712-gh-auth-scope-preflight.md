@@ -1,5 +1,7 @@
 # 2026-08-12 17:12:00 CEST — Assert `gh` token scopes in preflight, and grant them at login
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-08-12T18:43:13Z`
+
 ## TL;DR
 
 **Why:** [Issue #58](https://github.com/optivem/gh-optivem/issues/58) — `gh optivem init` created `jcupac/book-shop` on GitHub, then died one step later with `project board: list projects: … missing required scopes [read:project]`, leaving a half-scaffolded repo behind. The preflight that exists precisely to catch this (`VerifyEnvironment`, called at `internal/config/config.go:1232` "before any mutation") missed it, because `verifyGhAuth` reads only the *exit code* of `gh auth status` — which is 0 for any authenticated token, whatever its scopes. The README compounds it: Prerequisites tells the user to run bare `gh auth login`, which never requests `project`, and the `gh auth refresh -s project` fix is buried 200 lines later in "Implement a ticket".
