@@ -1,0 +1,46 @@
+name: gh-docs-stage
+
+# Checks that paths cited in the docs still exist. Dead links rot silently: a
+# package move leaves every reference pointing at nothing, and nobody notices
+# until a reader follows one.
+#
+# Standalone rather than a step in gh-commit-stage.yml because this is not a
+# unit test, and a self-describing red check ("gh-docs-stage x") names the
+# failure without opening a job log.
+#
+# Deliberately no `paths:` filter: the job is short, and a filtered workflow
+# that is also a required check would leave PRs touching neither docs nor Go
+# waiting forever on a run that never starts.
+#
+# Whether the documented *commands* still work is answered by running
+# scripts/readme-steps.sh in a throwaway VM. That cannot run here: it needs
+# Claude Code, a full language toolchain, and the six credentials, and it
+# creates a real repository. It is a human-run script, deliberately.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+jobs:
+  docs-stage:
+    name: Docs Stage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # Root package only: docs_test.go lives in package main. The `docs`
+      # build tag keeps it out of every other build.
+      - name: Cited paths exist
+        run: go test -tags=docs -v .

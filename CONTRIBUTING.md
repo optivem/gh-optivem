@@ -301,6 +301,7 @@ Run this any time you edit CLI source (e.g. `implement_commands.go`, anything un
 
 ```bash
 go test -p 2 ./...                            # unit; -p caps parallel package builds (see Windows tip below)
+go test -tags=docs .                          # docs gate; see below
 go test -tags=system ./...                    # all system tests
 bash scripts/test-system.sh                   # quick subset
 bash scripts/test.sh ./internal/atdd/...      # wrapper: caps -p (default 2), refuses ./... without --all
@@ -315,6 +316,43 @@ A single system test (requires `TEST_OWNER`, `DOCKERHUB_USERNAME`, `DOCKERHUB_TO
 go test -tags=system ./internal/config/ -v -timeout 2h \
     -run "TestValidMonolithConfigurations/monolith_monorepo_java_dotnet"
 ```
+
+### Docs gate
+
+Two pieces keep `README.md` honest, and they answer different questions.
+
+**Do the documented commands still work?** [`scripts/readme-steps.sh`](scripts/readme-steps.sh) is every command in `README.md`, in README order, as a flat transcript:
+
+```bash
+bash scripts/readme-steps.sh
+```
+
+Its section banners are the README's own headings, in the README's own order, so the two can be read side by side — that transparency is the point, and it is why the file has no flags, no capability probes, and no control flow beyond `set -euo pipefail`. If you add a command to the README, add it here under the same heading.
+
+It assumes a **brand-new system**: nothing installed, no extension, no leftover state. That assumption is what keeps it flat — a missing tool is a real failure rather than a case to branch on. Two consequences:
+
+- **It will not run on your own machine.** A linked dev build makes `gh extension install` fail. Use a throwaway VM.
+- **It will not run on CI.** It needs Claude Code, a full language toolchain, and the six credentials, and it creates a real repository. It is a human-run script, deliberately.
+
+The one command allowed to fail is the first `environment verify`, because the README runs it *before* the tools it checks are installed, precisely so it reports everything missing in one pass. The re-run under "Environment variables" is the one that must pass.
+
+Two README steps are commented rather than executed, with the reason inline: `implement` needs an issue with Gherkin acceptance criteria on the Project board, which a freshly scaffolded repo has none of; `upgrade`/`uninstall` would undo the install above.
+
+The script holds a *copy* of the README's commands, not an extract, and nothing enforces that they agree — compare the two by eye when you touch either.
+
+The script holds a *copy* of the README's commands, not an extract. It will never be a literal transcript — the branching on Claude availability alone prevents that — so expect it to track the README at roughly 95%, and compare the two by eye when you touch either.
+
+**Do the docs point at files that exist?** [`docs_test.go`](docs_test.go), tagged `docs` so it stays out of the default `./...` build:
+
+```bash
+go test -tags=docs .
+```
+
+`TestDocsPathsExist` resolves every repo-relative path cited in `README.md`, `CONTRIBUTING.md`, and `docs/cli-reference.md` — Markdown link targets, plus backticked paths under `internal/`, `docs/`, `scripts/`, `.github/`. Dead links rot silently: a package move leaves every reference pointing at nothing and nobody notices until a reader follows one. The first time it ran it caught a stale link to the `projectconfig` package, left behind when that package moved under [`internal/kernel`](internal/kernel). Execution can never cover this, which is why it stays a test.
+
+A path that appears in prose *because* it no longer exists will trip this — reword rather than loosening the pattern.
+
+CI runs both in [`gh-docs-stage.yml`](.github/workflows/gh-docs-stage.yml) — tier 1 plus the path test — on every push and PR to main.
 
 ### Windows: keep `go test ./...` fast
 
@@ -515,7 +553,7 @@ Every scaffolded repo gets a `gh-optivem.yaml` at its root. The file declares fi
 
 Every populated tier carries the same `path:` (repo-relative) and `repo:` (slug from the participating repos) pair; system-tier blocks additionally carry `lang:`. The runtime preflight on `gh optivem implement` validates that every declared path exists on disk before any agent runs, so a config / layout mismatch fails fast with a readable error rather than mid-pipeline.
 
-For the canonical schema, see [`internal/projectconfig/config.go`](internal/projectconfig/config.go) — every YAML field is declared on the `Config` struct with its `yaml:` tag, and the `Validate` method spells out the cross-field rules (architecture exclusivity, repo-strategy consistency, per-tier completeness, SonarCloud presence).
+For the canonical schema, see [`internal/kernel/projectconfig/config.go`](internal/kernel/projectconfig/config.go) — every YAML field is declared on the `Config` struct with its `yaml:` tag, and the `Validate` method spells out the cross-field rules (architecture exclusivity, repo-strategy consistency, per-tier completeness, SonarCloud presence).
 
 ### Pointing at non-default configs
 
