@@ -4,6 +4,15 @@
 > This plan is a proposal, not an approved work item. The `## Open questions` section
 > below has five unresolved decisions, each with a recommendation. Discuss and resolve
 > them first; only then does `## Steps` become executable.
+>
+> **⚠ Written against HEAD `0101ad82`; the tree has moved since.** A parallel session
+> landed eight commits on `main` in the same territory — notably `ec38c75f` ("Install
+> Go, Java, .NET and Node instead of stopping on them") and `d6f67750` ("Move the
+> GOPATH/bin PATH note to the Go prerequisite") — and was still editing
+> `internal/config/tool_checks.go` when this note was added. Before discussing, re-check
+> **Context** (the check table, and the claim that Go is not verified at all), **Step 1**
+> (which builds on `tool_checks.go`) and **Step 5** (which cites `README.md:29-31` and
+> `:79-83`, line numbers that have likely shifted).
 
 ## TL;DR
 
