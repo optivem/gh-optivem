@@ -27,7 +27,7 @@ Run it with your project's values. Which language flags you pass depends on `--a
 **Multitier** — separate `backend/` and `frontend/` trees, each with its own language:
 
 ```bash
-gh optivem init --owner <owner> --repo <repo> --system-name "<system-name>" --repo-strategy <repo-strategy> --arch multitier --backend-lang <backend-lang> --frontend-lang typescript --test-lang <test-lang>
+gh optivem init --owner <owner> --repo <repo> --system-name "<system-name>" --repo-strategy <repo-strategy> --arch multitier --backend-lang <backend-lang> --frontend-lang <frontend-lang> --test-lang <test-lang>
 ```
 
 **Monolith** — a single `system/` tree in one language, so there is no separate frontend flag:
@@ -75,7 +75,7 @@ flowchart TD
     B{"DSL Interface Changed?"}
     C["<b>Implement DSL</b>"]
     D{"External System Driver Interface Changed?"}
-    E["<b>Implement External-System Drivers</b><br/><i>(subprocess loop with contract tests)</i>"]
+    E["<b>Implement External-System Drivers</b><br/><i> (using Contract Tests)</i>"]
     F{"System Driver Interface Changed?"}
     G["<b>Implement System Drivers</b>"]
     Z(("RED DONE"))
@@ -103,25 +103,25 @@ flowchart TD
     B["<b>Build the System</b><br/><small>Docker</small>"]
     C["<b>Start the System</b><br/><small>Docker</small>"]
     D["<b>Verify Tests Pass</b>"]
-    E["<b>Commit System Changes</b>"]
     Z(("GREEN DONE"))
 
-    A --> B --> C --> D --> E --> Z
+    A --> B --> C --> D --> Z
 
     classDef step fill:#A9E8C7,stroke:#1a1a1a,stroke-width:2px,color:#1a1a1a
-    class A,B,C,D,E,Z step
+    class A,B,C,D,Z step
 ```
 
 **REFACTOR** — refactor system and tests, then verify and commit:
 
+AI and human decide together whether refactoring is needed; if so, AI refactors and human reviews.
+
 ```mermaid
 flowchart TD
-    A["<b>Refactor System / Tests</b><br/><small>AI / Human decide · AI refactors · Human reviews</small>"]
+    A["<b>Refactor System / Tests</b>"]
     B["<b>Verify Tests Pass</b>"]
     Z(("REFACTOR DONE"))
 
-    A --> B
-    B -->|Commit| Z
+    A --> B --> Z
 
     classDef step fill:#AED9F7,stroke:#1a1a1a,stroke-width:2px,color:#1a1a1a
     class A,B,Z step
