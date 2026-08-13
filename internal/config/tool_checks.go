@@ -222,7 +222,15 @@ type scopeStatus struct {
 // section, instead of interleaved mid-check. Left nil when gh never reached
 // the point of reporting scopes (not found, not authenticated, no scope
 // line at all).
-func verifyGhAuth(scopes *[]scopeStatus) error {
+//
+// scopeErr is set to the missing-scope error (naming the scopes and the
+// refresh command) when applicable, and left untouched (nil) otherwise.
+// verifyGhAuth's own return value covers only "is gh usable at all" (found
+// on PATH, authenticated) — a missing scope is not folded into it, because
+// the caller's Scopes: section already names each missing scope on its own
+// line; returning the same fact again here would print it a second time as
+// the generic per-check FAIL line.
+func verifyGhAuth(scopes *[]scopeStatus, scopeErr *error) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return errors.New("gh CLI not found on PATH.\n    " +
 			"Install: https://cli.github.com/")
@@ -262,7 +270,7 @@ func verifyGhAuth(scopes *[]scopeStatus) error {
 		}
 	}
 	if len(missing) > 0 {
-		return fmt.Errorf("gh token is missing required scope(s): %s.\n    "+
+		*scopeErr = fmt.Errorf("gh token is missing required scope(s): %s.\n    "+
 			"Grant them: gh auth refresh -s %s",
 			strings.Join(missing, ", "), strings.Join(missing, ","))
 	}

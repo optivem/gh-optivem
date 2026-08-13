@@ -58,9 +58,11 @@ func TestGhcrOCITokenExchange_Succeeds(t *testing.T) {
 	}
 }
 
-// TestExpiryWarning covers the three states of the classic-PAT expiration
-// header: absent (fine-grained tokens / OAuth apps), present with plenty of
-// runway, and present within the 7-day escalation window.
+// TestExpiryWarning covers the four states of the classic-PAT expiration
+// header: absent (fine-grained tokens / OAuth apps), present but further out
+// than the 30-day threshold (silent — nothing actionable yet), present
+// within the 30-day threshold but outside the 7-day escalation window, and
+// present within the 7-day escalation window.
 func TestExpiryWarning(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -68,7 +70,8 @@ func TestExpiryWarning(t *testing.T) {
 		want   bool // whether a non-empty warning is expected
 	}{
 		{name: "absent", header: "", want: false},
-		{name: "far in the future", header: time.Now().Add(365 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout), want: true},
+		{name: "far in the future", header: time.Now().Add(365 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout), want: false},
+		{name: "within 30 days, outside escalation", header: time.Now().Add(20 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout), want: true},
 		{name: "within 7 days", header: time.Now().Add(3 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout), want: true},
 		{name: "unparseable", header: "not-a-date", want: false},
 	}

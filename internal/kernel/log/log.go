@@ -166,6 +166,25 @@ func StepDone(pos, total int, duration string) {
 	fmt.Fprintf(color.Output, prefixedLineFmt, prefixSuccess("OK"), colored)
 }
 
+// Section prints a lightweight subsection label — e.g. grouping the "Tools:"
+// / "Scopes:" / "Environment variables:" checks under `environment verify`
+// — without PhaseHeader's full banner (blank lines + rule), which is sized
+// for a scaffold's handful of major phases, not several short groups within
+// one pass. No timestamp, unlike Info: a section label isn't a point-in-time
+// status update, it's a heading over the lines that follow it. Rendered bold
+// + uppercased so it reads as a heading rather than another log line;
+// suppressed by --quiet like Info, since it has no meaning without the check
+// lines it groups. The log file mirror stays plain (no ANSI) but keeps the
+// uppercasing so a grepped log file visually matches the terminal.
+func Section(title string) {
+	heading := strings.ToUpper(title)
+	writeFile(plainInfo, heading)
+	if quiet {
+		return
+	}
+	color.New(color.Bold, color.FgCyan).Println(heading)
+}
+
 // PhaseHeader prints a phase banner like:
 //
 //	Phase 1/5 · Setup repository

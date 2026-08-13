@@ -378,12 +378,23 @@ const githubTokenExpirationHeader = "github-authentication-token-expiration"
 // "2026-07-08 00:00:00 UTC".
 const githubTokenExpirationLayout = "2006-01-02 15:04:05 MST"
 
+// expiryWarnThreshold bounds how far out an expiry date is even worth
+// surfacing. Below this, a token 2+ months from expiring would log a WARN
+// line on every single run — noise the user has to re-dismiss every time,
+// for a date with nothing actionable about it yet.
+const expiryWarnThreshold = 30 * 24 * time.Hour
+
+// expiryWarnEscalateThreshold is the point inside expiryWarnThreshold where
+// the message escalates from a plain heads-up to "rotate it soon", since
+// these PATs back cron-scheduled pipelines that will start failing silently
+// once they lapse.
+const expiryWarnEscalateThreshold = 7 * 24 * time.Hour
+
 // expiryWarning reads the classic-PAT expiration header, if present, and
-// returns a warning message with the expiration date — escalated when the
-// token expires within 7 days, since these PATs back cron-scheduled
-// pipelines that will start failing silently once they lapse. Returns "" for
-// a fine-grained token/OAuth app (no header) or an unparseable header, same
-// as the silent-skip this replaced.
+// returns a warning message once the token is within expiryWarnThreshold of
+// expiring — escalated inside expiryWarnEscalateThreshold. Returns "" when
+// there's nothing to report: no header (fine-grained token/OAuth app), an
+// unparseable header, or an expiry still further out than the threshold.
 //
 // Returns rather than logs directly so the caller can hold every check's
 // warning until its whole category (e.g. "Environment variables:") has
@@ -400,7 +411,10 @@ func expiryWarning(resp *http.Response, name string) string {
 		return ""
 	}
 	until := time.Until(expiresAt)
-	if until <= 7*24*time.Hour {
+	if until > expiryWarnThreshold {
+		return ""
+	}
+	if until <= expiryWarnEscalateThreshold {
 		return fmt.Sprintf("%s expires %s (in %s) — rotate it soon; this backs a cron-scheduled pipeline "+
 			"that will start failing silently once it lapses.", name, expiresAt.Format("2006-01-02"), until.Round(time.Hour))
 	}
@@ -466,9 +480,18 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// has settled — not interleaved mid-check the way it used to be, and not
 	// nested under "gh CLI auth" either, since a gh scope is conceptually
 	// its own kind of thing (an auth grant, not a tool).
+	//
+	// scopeErr holds the missing-scope error, if any, separately from the
+	// "gh CLI auth" check's own return value: the Scopes: section already
+	// names each missing scope on its own line, so folding the same fact
+	// into "gh CLI auth"'s pass/fail would print it a second time as that
+	// check's generic FAIL line. It's still added to toolFailures below
+	// (without going through that generic line) so the aggregated summary
+	// keeps the "Grant them: gh auth refresh -s ..." instruction.
 	var scopeResults []scopeStatus
+	var scopeErr error
 	toolChecks := []check{
-		{"gh CLI auth", func() error { return verifyGhAuth(&scopeResults) }, "authenticated"},
+		{"gh CLI auth", func() error { return verifyGhAuth(&scopeResults, &scopeErr) }, "authenticated"},
 		// Sibling of "gh CLI auth" rather than folded into it, so a too-old
 		// gh (issue #59: gh 2.42.0 predates `gh project link`, and the
 		// failure was silently swallowed) is distinguishable from an auth
@@ -501,14 +524,14 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// `environment verify` surface with no --lang flag).
 	toolChecks = append(toolChecks, compilerChecksFor(langs)...)
 
-	log.Info("Tools:")
+	log.Section("Tools:")
 	toolFailures := runChecks(toolChecks)
 
 	// scopeResults is empty when gh never got far enough to report scopes
 	// (not found, not authenticated, or a token type that carries none) —
 	// nothing to show as its own section in that case.
 	if len(scopeResults) > 0 {
-		log.Info("Scopes:")
+		log.Section("Scopes:")
 		for _, s := range scopeResults {
 			if s.granted {
 				log.Successf("  %s: granted", s.name)
@@ -516,6 +539,9 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 				log.Errorf("  %s: missing", s.name)
 			}
 		}
+	}
+	if scopeErr != nil {
+		toolFailures = append(toolFailures, checkResult{name: "gh CLI auth", err: scopeErr})
 	}
 
 	// Phase 2: environment variables — presence first, then live provider
@@ -559,7 +585,7 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	}
 
 	if len(envChecks) > 0 {
-		log.Info("Environment variables:")
+		log.Section("Environment variables:")
 	}
 
 	envFailures := runChecks(envChecks)
