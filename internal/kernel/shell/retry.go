@@ -165,7 +165,9 @@ func classifyPostCreatePush(out string, err error) bool {
 // and fails fast.
 //
 // Use ONLY for the initial template push to a freshly-created repo
-// (commitAndPushRepo with preExisted=false in internal/steps/finalize.go).
+// (commitAndPushRepo in internal/scaffolding/steps/finalize.go — every repo
+// reaching it is freshly created, since confirmReposExist in
+// internal/config/config.go fails the run before this point otherwise).
 // Subsequent fast-forward pushes against settled repos must use plain
 // shell.Run; the lag class does not apply there.
 //

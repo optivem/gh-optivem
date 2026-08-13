@@ -114,19 +114,19 @@ func CommitAndPush(cfg *config.Config, failureNote string) {
 		log.Warnf("Committing partial scaffold for troubleshooting (failed at %s)", failureNote)
 	}
 
-	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo, commitMsg, cfg.PreExistingRepos[cfg.FullRepo])
+	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo, commitMsg)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
-			commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, commitMsg, cfg.PreExistingRepos[cfg.BackendFullRepo])
-			commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, commitMsg, cfg.PreExistingRepos[cfg.FrontendFullRepo])
+			commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, commitMsg)
+			commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, commitMsg)
 		} else {
-			commitAndPushRepo(cfg.SystemRepoDir, cfg.SystemFullRepo, commitMsg, cfg.PreExistingRepos[cfg.SystemFullRepo])
+			commitAndPushRepo(cfg.SystemRepoDir, cfg.SystemFullRepo, commitMsg)
 		}
 	}
 }
 
-func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
+func commitAndPushRepo(repoDir, fullRepo, commitMsg string) {
 	// Skip cleanly when the local clone never landed (earlier scaffold step
 	// failed before clone). Without this guard, `git add -A` cd's into a
 	// non-existent dir and surfaces a misleading "chdir ... no such file or
@@ -150,42 +150,24 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string, preExisted bool) {
 	}
 	cleanTree := strings.TrimSpace(status) == ""
 	if cleanTree {
-		// A clean tree at commit time only makes sense for a re-scaffold of an
-		// already-existing repo whose contents already match the template. On a
-		// freshly created repo it means the template apply produced nothing,
-		// which is a real bug — fail loudly.
-		if !preExisted {
-			log.Fatalf("git tree is clean in freshly created repo %s -- template apply produced no changes (bug)", fullRepo)
-		}
-		log.Infof("No changes to commit in %s -- skipping commit (repo already existed with matching content)", fullRepo)
-	} else {
-		if _, err := shell.Run(fmt.Sprintf(`git commit -m %q`, commitMsg), true, repoDir); err != nil {
-			log.Fatalf("git commit failed in %s: %v", fullRepo, err)
-		}
+		// Every repo reaching finalize() was freshly created — confirmReposExist
+		// (internal/config/config.go) fails the run before this point if any
+		// target repo already exists. A clean tree here means the template apply
+		// produced nothing, which is a real bug — fail loudly.
+		log.Fatalf("git tree is clean in freshly created repo %s -- template apply produced no changes (bug)", fullRepo)
 	}
-	// `-u origin main` works for both fresh repos (ref-creation push, since
-	// CreateRepo no longer pre-pushes a placeholder commit) and existing repos
-	// (the upstream is already set; -u just re-applies it).
-	//
-	// Fresh repos (!preExisted) go through shell.MustRunPostCreatePush, which
-	// retries narrowly on the two GitHub ref-store replica-lag messages
-	// ("cannot lock ref" / "reference already exists") observed in acceptance
-	// run 26456900412 job 77901798586. The earlier assumption that Phase 5's
-	// clone + gh api calls had warmed every replica was falsified by that run.
-	// The retry is bounded (4 attempts, 5s→15s→45s) and classifier-pinned
-	// (TestMustRunPostCreatePush_Classifier in shell/retry_test.go); auth,
-	// permission, non-fast-forward, and branch-protection failures still fail
-	// fast on the first attempt.
-	//
-	// Pre-existing repos do fast-forward against a settled main, so the
-	// ref-creation lag class cannot apply — they keep plain shell.Run so a
-	// genuine non-fast-forward / permission / branch-protection failure
-	// surfaces immediately.
-	if !preExisted {
-		shell.MustRunPostCreatePush("git push -u origin main", repoDir)
-	} else if out, err := shell.Run("git push -u origin main", true, repoDir); err != nil {
-		log.Fatalf("git push failed in %s: %v\n%s", fullRepo, err, out)
+	if _, err := shell.Run(fmt.Sprintf(`git commit -m %q`, commitMsg), true, repoDir); err != nil {
+		log.Fatalf("git commit failed in %s: %v", fullRepo, err)
 	}
+	// shell.MustRunPostCreatePush retries narrowly on the two GitHub ref-store
+	// replica-lag messages ("cannot lock ref" / "reference already exists")
+	// observed in acceptance run 26456900412 job 77901798586. The earlier
+	// assumption that Phase 5's clone + gh api calls had warmed every replica
+	// was falsified by that run. The retry is bounded (4 attempts, 5s→15s→45s)
+	// and classifier-pinned (TestMustRunPostCreatePush_Classifier in
+	// shell/retry_test.go); auth, permission, non-fast-forward, and
+	// branch-protection failures still fail fast on the first attempt.
+	shell.MustRunPostCreatePush("git push -u origin main", repoDir)
 	log.Successf("Pushed template to %s", fullRepo)
 }
 
@@ -210,4 +192,3 @@ func fixExecBits(repoDir, fullRepo string) {
 		}
 	}
 }
-

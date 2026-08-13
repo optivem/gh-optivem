@@ -112,7 +112,7 @@ type Config struct {
 	Verbose      bool   // enable debug output
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
-	AssumeYes    bool   // skip all interactive confirmations (existing-repo, --report-bug)
+	AssumeYes    bool   // skip all interactive confirmations (--report-bug, project-board status-ensure)
 
 	// Approval is the global auto-approve policy resolved from --auto /
 	// --confirm at root command startup. Init reads it in runInit and the
@@ -186,13 +186,6 @@ type Config struct {
 	FrontendRepoDir string
 	BackendRepoDir  string
 	SystemRepoDir   string
-
-	// PreExistingRepos is the set of "owner/name" repos that already existed on
-	// GitHub when scaffold started. Used by finalize: a clean working tree at
-	// commit time is acceptable for these (re-scaffold of identical content is
-	// a no-op), but is treated as a hard error for freshly created repos
-	// (signals the template apply produced nothing).
-	PreExistingRepos map[string]bool
 }
 
 // BackendService is one microservices backend service: its identity (the
@@ -620,7 +613,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVarP(&f.Verbose, "verbose", "v", false, "Enable debug output (retry/wait chatter, diagnostics)")
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
 	fs.StringVar(&f.LogFile, "log-file", "", "Override path for the plain-text log mirror (default: $TEMP/gh-optivem-<timestamp>.log; always written so failures can be attached to bug reports)")
-	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (existing-repo prompt, --report-bug confirmation, project-board status-ensure on supplied --project-url). Expected pattern for CI/unattended runs.")
+	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (--report-bug confirmation, project-board status-ensure on supplied --project-url). Expected pattern for CI/unattended runs.")
 }
 
 // BindConfigInitFlags binds the YAML-affecting flag subset for `gh optivem
@@ -1100,21 +1093,37 @@ func parseProjectURL(s string) (ownerKind, owner string, number int, err error) 
 	return kind, parts[1], n, nil
 }
 
-// confirmReposExist probes every repo in fullRepos ("<owner>/<name>") and, if
-// any already exist on GitHub, asks the user once whether to proceed scaffolding
-// into them. Aborts via FatalExit if the user declines or stdin is not available.
-// When assumeYes is true (--yes/-y), the prompt is skipped and the run proceeds
-// after a warning — the expected pattern for CI/unattended use.
+// confirmReposExist probes every repo in fullRepos ("<owner>/<name>") and
+// fails the run immediately (FatalExit) if any already exist on GitHub,
+// naming the repo(s). CreateRepo() (internal/kernel/shell/github.go) fatals
+// unconditionally on an existing repo with no --force override, so a repo
+// that trips this check can never succeed later in the run — failing here
+// avoids burning time on shop-ref resolution and cloning first.
 //
-// Batched (vs one prompt per repo) so multirepo runs with all three repos
-// already present don't ask the user the same question three times in a row.
-//
-// Returns the subset of fullRepos that already existed, so callers can record
-// which repos were pre-existing — finalize uses this to allow a clean working
-// tree at commit time (legitimate "re-scaffold same content" case) only for
-// pre-existing repos, while still treating a clean tree on a freshly created
-// repo as a hard error (something went wrong with the template apply).
-func confirmReposExist(fullRepos []string, assumeYes bool, resolved approval.Resolved) []string {
+// Batched (vs one check per repo) so multirepo runs report every pre-existing
+// repo in one message instead of failing on the first and leaving the rest
+// undiagnosed.
+func confirmReposExist(fullRepos []string) {
+	existing := reposThatExist(fullRepos)
+	if len(existing) == 0 {
+		return
+	}
+
+	if len(existing) == 1 {
+		log.FatalExit(fmt.Sprintf("Repository %s already exists on GitHub -- gh optivem init does not support scaffolding into an existing repository", existing[0]))
+	}
+	log.Errorf("The following repositories already exist on GitHub:")
+	for _, r := range existing {
+		log.Errorf("  - %s", r)
+	}
+	log.FatalExit("gh optivem init does not support scaffolding into an existing repository")
+}
+
+// reposThatExist probes every repo in fullRepos ("<owner>/<name>") via
+// `gh api repos/<fullRepo>` and returns the subset that already exist on
+// GitHub. Split out from confirmReposExist so the probing logic is testable
+// without triggering confirmReposExist's FatalExit.
+func reposThatExist(fullRepos []string) []string {
 	var existing []string
 	for _, fullRepo := range fullRepos {
 		if fullRepo == "" {
@@ -1128,50 +1137,7 @@ func confirmReposExist(fullRepos []string, assumeYes bool, resolved approval.Res
 		// On error, repo doesn't exist (or API is unreachable). Continue —
 		// if it's really unreachable, later steps will fail with a clearer error.
 	}
-
-	if len(existing) == 0 {
-		return nil
-	}
-
-	if len(existing) == 1 {
-		log.Warnf("Repository %s already exists on GitHub.", existing[0])
-		log.Warnf("Proceeding will scaffold into the existing repository and may overwrite its contents.")
-	} else {
-		log.Warnf("The following repositories already exist on GitHub:")
-		for _, r := range existing {
-			log.Warnf("  - %s", r)
-		}
-		log.Warnf("Proceeding will scaffold into the existing repositories and may overwrite their contents.")
-	}
-
-	if assumeYes {
-		log.Infof("Proceeding without confirmation (--yes).")
-		return existing
-	}
-
-	// Overwriting an existing GitHub repo is destructive — gate at the
-	// always-prompt human tier so the operator must either pass --yes or
-	// answer the prompt.
-	// TODO(non-implement-tiering): placeholder; proper tier assignment
-	// deferred to the follow-up plan. See plan
-	// 20260528-0930-approval-tier-ladder.md §D5.
-	ok, err := approval.Confirm(resolved, approval.CategoryHuman, os.Stdin, os.Stderr, "Proceed?")
-	if err != nil {
-		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist and no confirmation was provided (pass --yes to proceed unattended)",
-			len(existing), pluralY(len(existing))))
-	}
-	if !ok {
-		log.FatalExit(fmt.Sprintf("Aborted: %d repositor%s already exist", len(existing), pluralY(len(existing))))
-	}
 	return existing
-}
-
-// pluralY returns the suffix for "repositor{y,ies}" given a count.
-func pluralY(n int) string {
-	if n == 1 {
-		return "y"
-	}
-	return "ies"
 }
 
 // resolveLogFilePath returns the log-file destination for this run. Always
@@ -1238,16 +1204,12 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	if err := CheckProjectExists(f.ProjectURL); err != nil {
 		log.FatalExit("--project-url: " + err.Error())
 	}
-	preExisting := confirmReposExist([]string{
+	confirmReposExist([]string{
 		f.Owner + "/" + repoName,
 		mr.backendFullRepo,
 		mr.frontendFullRepo,
 		mr.systemFullRepo,
-	}, f.AssumeYes, resolved)
-	preExistingSet := make(map[string]bool, len(preExisting))
-	for _, r := range preExisting {
-		preExistingSet[r] = true
-	}
+	})
 
 	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
 	resolvedShopRef := resolveShopRef(f.ShopRef)
@@ -1360,8 +1322,6 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 
 		SystemRepo:     mr.systemRepo,
 		SystemFullRepo: mr.systemFullRepo,
-
-		PreExistingRepos: preExistingSet,
 	}
 }
 
