@@ -407,10 +407,17 @@ func buildSetStatusOptionsRequest(fieldID string, names []string) (string, error
 
 // linkRepoToProject runs `gh project link` and tolerates "already linked"
 // responses gracefully — re-runs against an existing project should be no-ops,
-// not failures.
+// not failures. check=true is required here: with check=false, Run's shared
+// commandFailure policy (internal/kernel/shell/github.go) logs a warning and
+// returns a nil error on ANY failure, so `err != nil` below never fired and
+// linkRepoToProject fell straight through to log.Successf even when the link
+// never happened (issue #59 — a `gh` older than the version floor rejected
+// the call with "unknown flag: --owner", and that got reported as "OK
+// Linked"). check=true makes a real failure surface as err, which is what
+// the isAlreadyLinkedOutput / log.Fatalf branch below actually needs to run.
 func linkRepoToProject(pr *ghProject, fullRepo string) {
 	cmd := fmt.Sprintf("gh project link %d --owner %s --repo %s", pr.Number, pr.Owner, fullRepo)
-	out, err := projectRun(cmd, false, "")
+	out, err := projectRun(cmd, true, "")
 	if err != nil {
 		if isAlreadyLinkedOutput(out) {
 			log.Infof("Repo %s already linked to project %s — skipping", fullRepo, pr.URL)

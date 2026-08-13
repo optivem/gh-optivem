@@ -15,11 +15,14 @@
 package config
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/rand/v2"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -229,6 +232,82 @@ func verifyGhAuth() error {
 	return nil
 }
 
+// ghVersionFloor is the minimum gh CLI version gh-optivem depends on:
+// `gh project link` — called by linkRepoToProject
+// (internal/scaffolding/steps/project.go) to attach a scaffolded repo to its
+// GitHub project board — shipped in gh v2.45.0 (cli/cli PR #8595, merged
+// 2024-02-29, released 2024-03-04). Older gh rejects the call with "unknown
+// flag: --owner", which project.go's `check=false` used to swallow entirely
+// (issue #59) so the failure never even reached this check. Every other `gh
+// project` subcommand gh-optivem calls (list/create/field-list) predates
+// this floor, so v2.45.0 is the binding requirement — bump it here, with the
+// same provenance format, if a future gh call needs something newer.
+var ghVersionFloor = [3]int{2, 45, 0}
+
+// ghVersionPattern matches the version line `gh --version` prints, e.g.
+// "gh version 2.45.0 (2024-03-04)".
+var ghVersionPattern = regexp.MustCompile(`gh version (\d+)\.(\d+)\.(\d+)`)
+
+// parseGhVersion extracts the (major, minor, patch) triple from `gh
+// --version` output. The bool reports whether a version line was found and
+// fully parsed.
+func parseGhVersion(output string) ([3]int, bool) {
+	m := ghVersionPattern.FindStringSubmatch(output)
+	if m == nil {
+		return [3]int{}, false
+	}
+	var v [3]int
+	for i := range v {
+		n, err := strconv.Atoi(m[i+1])
+		if err != nil {
+			return [3]int{}, false
+		}
+		v[i] = n
+	}
+	return v, true
+}
+
+// compareVersions returns <0, 0, >0 as a is less than, equal to, or greater
+// than b, comparing major, then minor, then patch.
+func compareVersions(a, b [3]int) int {
+	for i := range a {
+		if a[i] != b[i] {
+			return a[i] - b[i]
+		}
+	}
+	return 0
+}
+
+func formatVersion(v [3]int) string {
+	return fmt.Sprintf("%d.%d.%d", v[0], v[1], v[2])
+}
+
+// verifyGhVersion checks that the gh CLI on PATH meets ghVersionFloor.
+// Registered as a sibling of verifyGhAuth (rather than folded into it) so a
+// too-old gh and an auth failure are distinguishable in the aggregated
+// `environment verify` output.
+func verifyGhVersion() error {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return errors.New("gh CLI not found on PATH.\n    " +
+			"Install: https://cli.github.com/")
+	}
+	out, err := exec.Command("gh", "--version").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh --version failed.\n    Output:\n%s", strings.TrimSpace(string(out)))
+	}
+	version, ok := parseGhVersion(string(out))
+	if !ok {
+		return fmt.Errorf("could not parse gh version from output:\n%s", strings.TrimSpace(string(out)))
+	}
+	if compareVersions(version, ghVersionFloor) < 0 {
+		return fmt.Errorf("gh CLI %s is older than the required v%s.\n    "+
+			"Upgrade: https://cli.github.com/ (or your package manager's gh upgrade command)\n    "+
+			"Required for: gh project link (used to attach a scaffolded repo to its GitHub project board).",
+			formatVersion(version), formatVersion(ghVersionFloor))
+	}
+	return nil
+}
+
 // verifyActionlint checks that the actionlint binary is on PATH. gh-optivem
 // invokes actionlint during scaffolding (internal/steps/verify.go) to catch
 // broken workflow references and syntax errors before any push — issues that
@@ -379,18 +458,93 @@ func compilerChecksFor(langs []string) []check {
 	return out
 }
 
-// verifyDocker checks that the docker binary is on PATH. Required
-// unconditionally, independent of the deploy target: the local-verify
-// lifecycle (Build / Up / Run tests / Down / Clean in internal/runner)
-// shells out to `docker compose` for every scaffold, so a cloud-run project
-// still needs Docker to run its system locally. Compose v2 is a docker
-// sub-command, so the `docker` binary alone is sufficient; legacy Compose v1
-// (`docker-compose`) installs are not checked separately.
+// dockerProbeTimeout bounds the `docker info` / `docker compose version`
+// probes below. A healthy daemon answers in under 2s; 20s gives a Docker
+// Desktop that is still booting a real chance without leaving a genuinely
+// stuck daemon looking like a hang forever. Named so both probes share one
+// tunable.
+const dockerProbeTimeout = 20 * time.Second
+
+// verifyDocker checks that Docker is actually usable: the binary is on
+// PATH, the daemon answers, and the Compose v2 plugin is installed.
+// Required unconditionally, independent of the deploy target: the
+// local-verify lifecycle (Build / Up / Run tests / Down / Clean in
+// internal/runner) shells out to `docker compose` for every scaffold, so a
+// cloud-run project still needs Docker to run its system locally.
+//
+// Binary presence alone used to be treated as sufficient — issue #59: a
+// `book-shop` scaffold with Docker Desktop installed but not running passed
+// this check, then died at `docker compose build` six phases and several
+// GitHub/SonarCloud side effects later. `docker info` is the discriminator:
+// reproduced locally against a nonexistent npipe, `command -v docker` still
+// exits 0 while `docker info` exits 1 with "check if the path is correct
+// and if the daemon is running". `docker compose version` also exits 0
+// whether or not the plugin is installed if run against a dead daemon, so it
+// only proves plugin presence once the daemon probe above has already
+// passed — it cannot substitute for it.
 func verifyDocker() error {
 	if _, err := exec.LookPath("docker"); err != nil {
 		return errors.New("docker not found on PATH.\n    " +
 			"Install Docker Desktop (macOS/Windows): https://www.docker.com/products/docker-desktop\n    " +
 			"Install Docker Engine (Linux): https://docs.docker.com/engine/install/")
+	}
+	if err := probeDockerDaemon(); err != nil {
+		return err
+	}
+	return probeDockerCompose()
+}
+
+// probeDockerDaemon runs `docker info` under a bounded timeout to prove the
+// daemon is actually reachable, not just that the `docker` binary exists. A
+// non-zero exit or a timed-out context are both definitive "not usable
+// right now" verdicts per the repo's fail-loud rule — neither is coerced
+// into a pass.
+func probeDockerDaemon() error {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerProbeTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "docker", "info")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("docker did not respond within %s — the daemon may still be starting.\n    "+
+			"Start Docker Desktop (macOS/Windows) or run: sudo systemctl start docker (Linux)\n    "+
+			"Then retry once it reports the engine running.", dockerProbeTimeout)
+	}
+	if err != nil {
+		tail := strings.TrimSpace(stderr.String())
+		if tail == "" {
+			tail = err.Error()
+		}
+		return fmt.Errorf("docker daemon is not reachable.\n    "+
+			"Start Docker Desktop (macOS/Windows) or run: sudo systemctl start docker (Linux)\n    "+
+			"Output:\n%s", tail)
+	}
+	return nil
+}
+
+// probeDockerCompose runs `docker compose version` to prove the Compose v2
+// plugin is actually installed, rather than assuming it rides along with
+// the `docker` binary. Only meaningful once probeDockerDaemon has already
+// passed — against an unreachable daemon this would fail for the wrong
+// reason.
+func probeDockerCompose() error {
+	ctx, cancel := context.WithTimeout(context.Background(), dockerProbeTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "docker", "compose", "version")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		tail := strings.TrimSpace(stderr.String())
+		if tail == "" {
+			tail = err.Error()
+		}
+		return fmt.Errorf("docker Compose v2 plugin not found.\n    "+
+			"Install: https://docs.docker.com/compose/install/\n    "+
+			"Output:\n%s", tail)
 	}
 	return nil
 }

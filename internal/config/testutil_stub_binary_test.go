@@ -67,6 +67,36 @@ func checkShSyntax(t *testing.T, body string) {
 	}
 }
 
+// ghVersionLine is what every `gh` stub in this package must answer for
+// `gh --version` — otherwise verifyGhVersion (the gh CLI version-floor
+// check) fails to parse a version out of an unrelated stub's output and
+// every existing gh-stub test breaks on a check it isn't testing. No
+// parens: cmd.exe treats an unescaped `)` inside an `if (...)` block as
+// closing the block early, truncating anything after it.
+const ghVersionLine = "gh version 2.45.0 2024-03-04"
+
+// ghVersionGuard returns the OS-appropriate stub prefix that intercepts
+// `gh --version` and answers ghVersionLine, falling through to whatever
+// follows it in the stub body for every other invocation.
+func ghVersionGuard() string {
+	if runtime.GOOS == "windows" {
+		return "if \"%1\"==\"--version\" (\necho " + ghVersionLine + "\nexit /b 0\n)\n"
+	}
+	return "if [ \"$1\" = \"--version\" ]; then echo \"" + ghVersionLine + "\"; exit 0; fi\n"
+}
+
+// writeGhStub writes a `gh` stub that answers `gh --version` with
+// ghVersionLine and runs authBody for every other invocation — the `gh`
+// equivalent of writeStub, for tests that exercise verifyGhAuth /
+// verifyGhVersion together via verifyEnvironmentWithClient. authBody must be
+// portable POSIX-sh (same contract as writeStub); the OS-specific version
+// guard is spliced in ahead of it.
+func writeGhStub(t *testing.T, dir, authBody string) {
+	t.Helper()
+	checkShSyntax(t, authBody)
+	writeStubOSSpecific(t, dir, "gh", ghVersionGuard()+authBody)
+}
+
 // mkPathDir creates an empty temp directory and points PATH at it for the
 // duration of the test. On Windows it also sets PATHEXT to ".BAT" so the
 // stubs created by writeStub are resolvable by exec.LookPath without an

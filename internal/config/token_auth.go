@@ -449,6 +449,11 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// return []check directly.
 	toolChecks := []check{
 		{"gh CLI auth", verifyGhAuth},
+		// Sibling of "gh CLI auth" rather than folded into it, so a too-old
+		// gh (issue #59: gh 2.42.0 predates `gh project link`, and the
+		// failure was silently swallowed) is distinguishable from an auth
+		// failure in the aggregated output.
+		{"gh CLI version", verifyGhVersion},
 		{"actionlint", verifyActionlint},
 		{"bash", verifyBash},
 		// docker is unconditional, not deploy-target-gated: every scaffold

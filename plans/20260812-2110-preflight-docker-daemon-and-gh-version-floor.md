@@ -1,5 +1,7 @@
 # 2026-08-12 21:10:00 CEST — Preflight must prove Docker is reachable and `gh` is new enough
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-08-13T06:36:32Z`
+
 ## TL;DR
 
 **Why:** Issue [#59](https://github.com/optivem/gh-optivem/issues/59) — a scaffold of `jcupac/book-shop` passed `environment verify` green, then died six phases later at `docker compose build` because Docker Desktop was installed but **not running**. By then `init` had already created a GitHub repo, a project board, 3 environments, subtype labels, 6 secrets/variables and 3 SonarCloud projects. The same run also ran `gh` 2.42.0, too old to have `gh project link` at all — and that failure was swallowed and printed as `OK Linked`.

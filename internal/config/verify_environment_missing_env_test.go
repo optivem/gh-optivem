@@ -41,7 +41,7 @@ func setAllEnvTokens(t *testing.T) {
 func plantHappyTools(t *testing.T) {
 	t.Helper()
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")

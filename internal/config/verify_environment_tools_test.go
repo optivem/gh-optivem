@@ -81,7 +81,7 @@ func TestVerifyEnvironment_GhMissing(t *testing.T) {
 func TestVerifyEnvironment_GhAuthFails(t *testing.T) {
 	stubGhAuthRetrySleep(t) // always-fail path retries once; skip the real backoff
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo You are not logged into any GitHub hosts\nexit 1")
+	writeGhStub(t, dir, "echo You are not logged into any GitHub hosts\nexit 1")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
@@ -128,7 +128,7 @@ func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
 			"echo transient auth blip\n" +
 			"exit 1"
 	}
-	writeStubOSSpecific(t, dir, "gh", body) // body is built per-OS just above
+	writeStubOSSpecific(t, dir, "gh", ghVersionGuard()+body) // body is built per-OS just above
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
@@ -171,7 +171,7 @@ func plantHappyToolStubs(t *testing.T, dir string) {
 // scope line covers everything in requiredGhScopes passes verification.
 func TestVerifyEnvironment_GhScopesPresent(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", ghAuthStubBody(
+	writeGhStub(t, dir, ghAuthStubBody(
 		"  - Token scopes: 'gist', 'project', 'read:org', 'repo', 'workflow'"))
 	plantHappyToolStubs(t, dir)
 	setAllEnvTokens(t)
@@ -189,7 +189,7 @@ func TestVerifyEnvironment_GhScopesPresent(t *testing.T) {
 // command that grants it.
 func TestVerifyEnvironment_GhScopeMissing(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", ghAuthStubBody(
+	writeGhStub(t, dir, ghAuthStubBody(
 		"  - Token scopes: 'gist', 'read:org', 'repo', 'workflow'"))
 	plantHappyToolStubs(t, dir)
 	setAllEnvTokens(t)
@@ -217,7 +217,7 @@ func TestVerifyEnvironment_GhScopeMissing(t *testing.T) {
 // false negative against a perfectly valid token.
 func TestVerifyEnvironment_GhScopesUnreported(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", ghAuthStubBody("")) // authenticated, no scope line
+	writeGhStub(t, dir, ghAuthStubBody("")) // authenticated, no scope line
 	plantHappyToolStubs(t, dir)
 	setAllEnvTokens(t)
 
@@ -334,7 +334,7 @@ func TestMissingGhScopes(t *testing.T) {
 // actionlint should fail.
 func TestVerifyEnvironment_ActionlintMissing(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
 	writeStub(t, dir, "claude", "exit 0")
@@ -379,7 +379,7 @@ func TestVerifyEnvironment_CompilerMissing(t *testing.T) {
 func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr string, allCompilers []string) {
 	t.Helper()
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
@@ -413,7 +413,7 @@ func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr strin
 // fail at `gh optivem system start`.
 func TestVerifyEnvironment_DockerMissing(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
 	writeStub(t, dir, "claude", "exit 0")
@@ -439,7 +439,7 @@ func TestVerifyEnvironment_DockerMissing(t *testing.T) {
 // already been created.
 func TestVerifyEnvironment_BashMissing(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "claude", "exit 0")
@@ -465,7 +465,7 @@ func TestVerifyEnvironment_BashMissing(t *testing.T) {
 // install.
 func TestVerifyEnvironment_ClaudeMissing(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
@@ -496,7 +496,7 @@ func TestVerifyEnvironment_ClaudeMissing(t *testing.T) {
 // so failing them for a tool that path never invokes would be noise.
 func TestVerifyEnvironment_ClaudeSkipped(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
@@ -515,7 +515,7 @@ func TestVerifyEnvironment_ClaudeSkipped(t *testing.T) {
 // run a single ATDD agent.
 func TestVerifyEnvironment_ClaudeSkipUnsetRunsCheck(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
@@ -538,7 +538,7 @@ func TestVerifyEnvironment_ClaudeSkipUnsetRunsCheck(t *testing.T) {
 // claude that says nothing about the typo that actually caused it.
 func TestVerifyEnvironment_ClaudeSkipInvalid(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")

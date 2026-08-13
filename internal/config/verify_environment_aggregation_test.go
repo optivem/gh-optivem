@@ -30,7 +30,7 @@ func TestVerifyEnvironment_AggregatedFailures(t *testing.T) {
 	// All 6 tokens set so the HTTP layer fires; then actionlint missing
 	// + Docker Hub 401 produce two different non-env-var failures.
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
 	writeStub(t, dir, "claude", "exit 0")
@@ -70,7 +70,7 @@ func TestVerifyEnvironment_AggregatedFailures(t *testing.T) {
 // configured" path — the report still lists both classes together.
 func TestVerifyEnvironment_AggregatedFailures_MissingVarsAndTool(t *testing.T) {
 	dir := mkPathDir(t)
-	writeStub(t, dir, "gh", "echo Logged in to github.com\nexit 0")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
 	writeStub(t, dir, "claude", "exit 0")
