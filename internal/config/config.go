@@ -1121,8 +1121,10 @@ func confirmReposExist(fullRepos []string) {
 
 // reposThatExist probes every repo in fullRepos ("<owner>/<name>") via
 // `gh api repos/<fullRepo>` and returns the subset that already exist on
-// GitHub. Split out from confirmReposExist so the probing logic is testable
-// without triggering confirmReposExist's FatalExit.
+// GitHub. Prints a "Repo: <owner/name> — available"/"already exists" row as
+// each is probed — same visible-progress convention as the Owner/Project
+// checks above. Split out from confirmReposExist so the probing logic is
+// testable without triggering confirmReposExist's FatalExit.
 func reposThatExist(fullRepos []string) []string {
 	var existing []string
 	for _, fullRepo := range fullRepos {
@@ -1133,9 +1135,13 @@ func reposThatExist(fullRepos []string) []string {
 		cmd.Stderr = nil // 404 is the expected case — suppress the noise
 		if err := cmd.Run(); err == nil {
 			existing = append(existing, fullRepo)
+			log.Errorf("  Repo: %s — already exists", fullRepo)
+			continue
 		}
-		// On error, repo doesn't exist (or API is unreachable). Continue —
-		// if it's really unreachable, later steps will fail with a clearer error.
+		// On error, repo doesn't exist (or API is unreachable). Report it as
+		// available — if it's really unreachable, later steps will fail with
+		// a clearer error.
+		log.Successf("  Repo: %s — available", fullRepo)
 	}
 	return existing
 }
@@ -1198,11 +1204,24 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	if err := VerifyEnvironment(collectLangs(lc)); err != nil {
 		log.FatalExit(err.Error())
 	}
-	if err := CheckOwnerExists(f.Owner); err != nil {
-		log.FatalExit("--owner: " + err.Error())
+
+	// Each of these runs through the single-check runChecks (rather than a
+	// bare if err := ...) so it prints a visible "Owner: <value> — exists"
+	// row on success instead of running silently — same OK/FAIL-line
+	// convention as VerifyEnvironment above, just one check per call so a
+	// failing owner check still stops before the project check runs.
+	log.Info("Checking GitHub prerequisites...")
+	if failures := runChecks([]check{
+		{"Owner", func() error { return CheckOwnerExists(f.Owner) }, f.Owner + " — exists"},
+	}); len(failures) > 0 {
+		log.FatalExit("--owner: " + failures[0].err.Error())
 	}
-	if err := CheckProjectExists(f.ProjectURL); err != nil {
-		log.FatalExit("--project-url: " + err.Error())
+	if f.ProjectURL != "" {
+		if failures := runChecks([]check{
+			{"Project", func() error { return CheckProjectExists(f.ProjectURL) }, f.ProjectURL + " — exists"},
+		}); len(failures) > 0 {
+			log.FatalExit("--project-url: " + failures[0].err.Error())
+		}
 	}
 	confirmReposExist([]string{
 		f.Owner + "/" + repoName,

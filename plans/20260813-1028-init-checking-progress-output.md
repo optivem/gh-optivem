@@ -1,5 +1,7 @@
 # 2026-08-13 10:28:00 UTC — Print visible "checking..." progress lines for gh optivem init's Phase 2 GitHub-prerequisite checks
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-08-13T11:33:46Z`
+
 ## TL;DR
 
 **Why:** `gh optivem init`'s Phase 2 (`internal/config/config.go` `ParseAndValidate`, ~lines 1193-1212) runs `CheckOwnerExists`, `CheckProjectExists`, and `confirmReposExist` entirely silently — nothing is printed unless a check fails. This is inconsistent with the immediately-preceding `VerifyEnvironment` call, which prints one `log.Successf`/`log.Errorf` line per tool/compiler check (`  gh CLI: installed`, `  java: installed`, etc.) under a "Verifying environment..." header (`internal/config/token_auth.go` `verifyEnvironmentWithClient` + `runChecks`). A user watching `init` run sees a burst of environment-check lines, then a long silent gap before either Phase 3 starts or a FatalExit appears — no feedback on which owner/project/repo check is in flight.
@@ -22,12 +24,8 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 1: In `internal/config/config.go`'s `ParseAndValidate` Phase 2 block (~lines 1193-1212), add the `log.Info("Checking GitHub prerequisites...")` header and wrap `CheckOwnerExists`/`CheckProjectExists` as `check{}` entries run through `runChecks` (skipping the project-exists entry when `f.ProjectURL == ""`), using the `Owner: <value> — exists` / `Project: <value> — exists` row format.
+Step 5: Manually verify: run `gh optivem init` and visually confirm the new progress lines appear in the right place, in the right order, with the right wording — including the existing-repo FATAL case still working as before. This needs a real run against GitHub, so it's for the user to trigger (or hand back a throwaway repo target).
 
 ## Steps
 
-- [ ] Step 1: Add the "Checking GitHub prerequisites..." section header and wrap `CheckOwnerExists`/`CheckProjectExists` as `check{}` entries through `runChecks`, in `internal/config/config.go`'s `ParseAndValidate` Phase 2 block. Skip the project-exists entry when `--project-url` is empty. Row format: `Owner: <value> — exists`, `Project: <value> — exists`.
-- [ ] Step 2: Update `confirmReposExist` (`internal/config/config.go`) to print one `Repo: <owner/name> — available` row per non-empty candidate repo (via `log.Successf`) as each is probed, and `Repo: <owner/name> — already exists` (via `log.Errorf`) for any that already exist — printed alongside the existing aggregate `log.FatalExit` call, which keeps firing unchanged.
-- [ ] Step 3: Update/add Go tests covering the new progress-line output — what gets printed on success vs. failure for `CheckOwnerExists`/`CheckProjectExists` (via `runChecks`) and for `confirmReposExist`'s per-repo rows (extend `internal/config/confirm_repos_exist_test.go` or add a sibling test file).
-- [ ] Step 4: Run the full Go test suite to confirm no regressions.
 - [ ] Step 5: Manually verify: run `gh optivem init` and visually confirm the new progress lines appear in the right place, in the right order, with the right wording — including the existing-repo FATAL case still working as before.
