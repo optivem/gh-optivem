@@ -100,8 +100,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["<b>Implement System Changes</b>"]
-    B["<b>Build the System</b><br/><small>Docker</small>"]
-    C["<b>Start the System</b><br/><small>Docker</small>"]
+    B["<b>Build the System</b>"]
+    C["<b>Start the System</b>"]
     D["<b>Verify Tests Pass</b>"]
     Z(("GREEN DONE"))
 
@@ -126,6 +126,8 @@ flowchart TD
     classDef step fill:#AED9F7,stroke:#1a1a1a,stroke-width:2px,color:#1a1a1a
     class A,B,Z step
 ```
+
+The above is the short BPMN. The full BPMN is here: [docs/process-diagram.md](https://github.com/optivem/gh-optivem/blob/main/docs/process-diagram.md).
 
 ## Implement a ticket
 
