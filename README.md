@@ -261,11 +261,27 @@ Then, from your project's repo root — `56` is an example, use your actual issu
 gh optivem implement 56
 ```
 
-Every confirmation prompts by default. For an unattended run:
+Every confirmation prompts by default. For an unattended run, opt into `--auto` and pick how much human approval to keep:
 
 ```bash
-gh optivem --auto implement 56 --headless
+gh optivem --auto implement 56 --headless                         # truly autonomous: prompt only on human-tier sites (STOPs, fix-agents, release)
+gh optivem --auto --confirm=prod-commit implement 56 --headless   # narrower: still confirm every commit
+gh optivem --auto --confirm=prod-agent implement 56 --headless    # narrower still: also confirm every production-agent dispatch
+gh optivem --auto --confirm=command implement 56 --headless       # narrowest: confirm everything except cheap build/test commands
 ```
+
+`--confirm=<tier>` sets the auto-approve floor: that tier and everything above it still prompts, everything below auto-yeses. Tiers, low to high stakes:
+
+| Tier | Covers |
+|---|---|
+| `command` | execute-command BPMN nodes (compile / build / start / test run). Cheap, no AI cost, no global state mutation. |
+| `prod-agent` | execute-agent for production code (`implement-*`, `update-*`, `refactor-system`). AI cost; produces reviewable diffs. |
+| `test-agent` | execute-agent for tests (`write-*-tests`, `refactor-tests`). Tests-as-contract — ranked above `prod-agent` because broken tests mask regressions. |
+| `prod-commit` | commit node after a production-agent phase. Persistent git write. |
+| `test-commit` | commit node after a test-agent phase. Persistent git write of the test contract. |
+| `human` | fix-`*` agents, `refine-acceptance-criteria`, BPMN STOP nodes, release. Top tier — always prompts, cannot be auto-yes'd at any reachable floor. |
+
+Default when `--auto` is set and `--confirm` is omitted: `human`. See [Auto-approve](docs/cli-reference.md#auto-approve) for env-var overrides and more detail.
 
 # Reference
 
