@@ -179,6 +179,16 @@ func missingGhScopes(have []string) []string {
 	return missing
 }
 
+// scopeStatus is one line of the "Scopes:" section VerifyEnvironment prints
+// after the tools section: which required gh scope, and whether it was
+// granted. Populated by verifyGhAuth (in requiredGhScopes order) so the
+// caller can print the section once every tool check has settled, rather
+// than interleaved mid-check the way it printed before this type existed.
+type scopeStatus struct {
+	name    string
+	granted bool
+}
+
 // verifyGhAuth checks that the gh CLI is installed, authenticated, and that
 // its token carries the scopes gh-optivem needs. Uses plain `gh auth status`
 // (no -h flag) for symmetry with internal/shell/github.go, which never locks
@@ -205,7 +215,14 @@ func missingGhScopes(have []string) []string {
 // false negative against a perfectly valid token. The check reports what it
 // can prove and puts the requirement in the message; if the permission really
 // is absent, the project step downstream still fails loudly.
-func verifyGhAuth() error {
+//
+// scopes collects one scopeStatus per required scope, in requiredGhScopes
+// order, for the caller to print as its own "Scopes:" section — this
+// function stays silent so that section prints together, after the tools
+// section, instead of interleaved mid-check. Left nil when gh never reached
+// the point of reporting scopes (not found, not authenticated, no scope
+// line at all).
+func verifyGhAuth(scopes *[]scopeStatus) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return errors.New("gh CLI not found on PATH.\n    " +
 			"Install: https://cli.github.com/")
@@ -221,28 +238,27 @@ func verifyGhAuth() error {
 			"Run: gh auth login\n    "+
 			"Output:\n%s", string(out))
 	}
-	scopes, reported := ghTokenScopes(string(out))
-	if !reported || len(scopes) == 0 {
+	have, reported := ghTokenScopes(string(out))
+	if !reported || len(have) == 0 {
 		log.Warnf("gh did not report token scopes (fine-grained PAT or GH_TOKEN/GITHUB_TOKEN env token?) — "+
 			"could not verify that it grants: %s. If a later step fails on permissions, that is why.",
 			strings.Join(requiredGhScopes, ", "))
 		return nil
 	}
-	// One line per required scope, printed as each is resolved — not just
+	// One entry per required scope, recorded as each is resolved — not just
 	// the missing ones — so a partial failure (e.g. project absent) doesn't
 	// leave the caller guessing whether repo/workflow were actually checked
 	// or silently skipped.
-	granted := make(map[string]bool, len(scopes))
-	for _, s := range scopes {
+	granted := make(map[string]bool, len(have))
+	for _, s := range have {
 		granted[s] = true
 	}
 	var missing []string
 	for _, want := range requiredGhScopes {
-		if granted[want] {
-			log.Successf("  scope: %s: granted", want)
-		} else {
+		ok := granted[want]
+		*scopes = append(*scopes, scopeStatus{name: want, granted: ok})
+		if !ok {
 			missing = append(missing, want)
-			log.Errorf("  scope: %s: missing", want)
 		}
 	}
 	if len(missing) > 0 {

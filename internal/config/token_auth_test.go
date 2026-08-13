@@ -58,20 +58,19 @@ func TestGhcrOCITokenExchange_Succeeds(t *testing.T) {
 	}
 }
 
-// TestWarnIfExpiringSoon covers the three states of the classic-PAT
-// expiration header: absent (fine-grained tokens / OAuth apps), present with
-// plenty of runway, and present within the 7-day escalation window. The
-// function only logs — these tests just confirm it doesn't panic or error
-// on any shape of input, since log output isn't captured here.
-func TestWarnIfExpiringSoon(t *testing.T) {
+// TestExpiryWarning covers the three states of the classic-PAT expiration
+// header: absent (fine-grained tokens / OAuth apps), present with plenty of
+// runway, and present within the 7-day escalation window.
+func TestExpiryWarning(t *testing.T) {
 	cases := []struct {
 		name   string
 		header string
+		want   bool // whether a non-empty warning is expected
 	}{
-		{name: "absent", header: ""},
-		{name: "far in the future", header: time.Now().Add(365 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout)},
-		{name: "within 7 days", header: time.Now().Add(3 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout)},
-		{name: "unparseable", header: "not-a-date"},
+		{name: "absent", header: "", want: false},
+		{name: "far in the future", header: time.Now().Add(365 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout), want: true},
+		{name: "within 7 days", header: time.Now().Add(3 * 24 * time.Hour).UTC().Format(githubTokenExpirationLayout), want: true},
+		{name: "unparseable", header: "not-a-date", want: false},
 	}
 
 	for _, tc := range cases {
@@ -80,7 +79,10 @@ func TestWarnIfExpiringSoon(t *testing.T) {
 			if tc.header != "" {
 				resp.Header.Set(githubTokenExpirationHeader, tc.header)
 			}
-			warnIfExpiringSoon(resp, "GHCR_TOKEN") // must not panic
+			got := expiryWarning(resp, "GHCR_TOKEN")
+			if (got != "") != tc.want {
+				t.Errorf("expiryWarning() = %q, want non-empty: %v", got, tc.want)
+			}
 		})
 	}
 }

@@ -227,7 +227,11 @@ func githubUserAuthCheck(client *http.Client, token string) (*http.Response, err
 // header. Fine-grained tokens don't set that header — accept them as-is,
 // since later steps will surface a clearer error if a specific permission
 // is missing.
-func verifyGitHubToken(client *http.Client, token, name string, requiredScopes []string) error {
+//
+// warn receives any expiry advisory (via expiryWarning) so the caller can
+// print it after the category's OK/FAIL lines instead of mid-check; left
+// untouched (empty) when there's nothing to report.
+func verifyGitHubToken(client *http.Client, token, name string, requiredScopes []string, warn *string) error {
 	resp, err := githubUserAuthCheck(client, token)
 	if err != nil {
 		return err
@@ -244,7 +248,7 @@ func verifyGitHubToken(client *http.Client, token, name string, requiredScopes [
 		return fmt.Errorf("unexpected HTTP %d from GitHub", resp.StatusCode)
 	}
 
-	warnIfExpiringSoon(resp, name)
+	*warn = expiryWarning(resp, name)
 
 	// X-OAuth-Scopes is comma-separated for classic PATs (e.g. "repo, workflow").
 	scopes := resp.Header.Get("X-OAuth-Scopes")
@@ -271,7 +275,9 @@ func verifyGitHubToken(client *http.Client, token, name string, requiredScopes [
 // exercises the actual ghcr.io OCI bearer-token exchange the runtime
 // pipelines depend on (see ghcrOCITokenExchange) — the api.github.com check
 // alone can pass for a token that ghcr.io's own auth flow still rejects.
-func verifyGHCRToken(client *http.Client, token string) error {
+//
+// warn receives any expiry advisory (see verifyGitHubToken).
+func verifyGHCRToken(client *http.Client, token string, warn *string) error {
 	resp, err := githubUserAuthCheck(client, token)
 	if err != nil {
 		return err
@@ -295,7 +301,7 @@ func verifyGHCRToken(client *http.Client, token string) error {
 			"Regenerate the token with write:packages + read:packages at https://github.com/settings/tokens", scopes)
 	}
 
-	warnIfExpiringSoon(resp, "GHCR_TOKEN")
+	*warn = expiryWarning(resp, "GHCR_TOKEN")
 
 	body, _ := io.ReadAll(resp.Body)
 	var user struct {
@@ -372,26 +378,33 @@ const githubTokenExpirationHeader = "github-authentication-token-expiration"
 // "2026-07-08 00:00:00 UTC".
 const githubTokenExpirationLayout = "2006-01-02 15:04:05 MST"
 
-// warnIfExpiringSoon reads the classic-PAT expiration header, if present,
-// and logs a warning with the expiration date — escalated when the token
-// expires within 7 days, since these PATs back cron-scheduled pipelines
-// that will start failing silently once they lapse.
-func warnIfExpiringSoon(resp *http.Response, name string) {
+// expiryWarning reads the classic-PAT expiration header, if present, and
+// returns a warning message with the expiration date — escalated when the
+// token expires within 7 days, since these PATs back cron-scheduled
+// pipelines that will start failing silently once they lapse. Returns "" for
+// a fine-grained token/OAuth app (no header) or an unparseable header, same
+// as the silent-skip this replaced.
+//
+// Returns rather than logs directly so the caller can hold every check's
+// warning until its whole category (e.g. "Environment variables:") has
+// printed its OK/FAIL lines — otherwise a fast-resolving check's warning
+// would print out of order, ahead of a still-running sibling's pass/fail
+// line, since these run concurrently under runChecks.
+func expiryWarning(resp *http.Response, name string) string {
 	raw := resp.Header.Get(githubTokenExpirationHeader)
 	if raw == "" {
-		return
+		return ""
 	}
 	expiresAt, err := time.Parse(githubTokenExpirationLayout, raw)
 	if err != nil {
-		return
+		return ""
 	}
 	until := time.Until(expiresAt)
 	if until <= 7*24*time.Hour {
-		log.Warnf("%s expires %s (in %s) — rotate it soon; this backs a cron-scheduled pipeline "+
+		return fmt.Sprintf("%s expires %s (in %s) — rotate it soon; this backs a cron-scheduled pipeline "+
 			"that will start failing silently once it lapses.", name, expiresAt.Format("2006-01-02"), until.Round(time.Hour))
-		return
 	}
-	log.Warnf("%s expires %s.", name, expiresAt.Format("2006-01-02"))
+	return fmt.Sprintf("%s expires %s.", name, expiresAt.Format("2006-01-02"))
 }
 
 // VerifyEnvironment runs every readiness check the gh-optivem CLI needs
@@ -447,8 +460,15 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// about secrets, so the check order matches that.
 	// `check` is package-level (see tool_checks.go) so compilerChecksFor can
 	// return []check directly.
+	//
+	// scopeResults is populated by verifyGhAuth (in requiredGhScopes order)
+	// but printed as its own "Scopes:" section below, once every tool check
+	// has settled — not interleaved mid-check the way it used to be, and not
+	// nested under "gh CLI auth" either, since a gh scope is conceptually
+	// its own kind of thing (an auth grant, not a tool).
+	var scopeResults []scopeStatus
 	toolChecks := []check{
-		{"gh CLI auth", verifyGhAuth, "authenticated"},
+		{"gh CLI auth", func() error { return verifyGhAuth(&scopeResults) }, "authenticated"},
 		// Sibling of "gh CLI auth" rather than folded into it, so a too-old
 		// gh (issue #59: gh 2.42.0 predates `gh project link`, and the
 		// failure was silently swallowed) is distinguishable from an auth
@@ -481,12 +501,27 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// `environment verify` surface with no --lang flag).
 	toolChecks = append(toolChecks, compilerChecksFor(langs)...)
 
+	log.Info("Tools:")
 	toolFailures := runChecks(toolChecks)
+
+	// scopeResults is empty when gh never got far enough to report scopes
+	// (not found, not authenticated, or a token type that carries none) —
+	// nothing to show as its own section in that case.
+	if len(scopeResults) > 0 {
+		log.Info("Scopes:")
+		for _, s := range scopeResults {
+			if s.granted {
+				log.Successf("  %s: granted", s.name)
+			} else {
+				log.Errorf("  %s: missing", s.name)
+			}
+		}
+	}
 
 	// Phase 2: environment variables — presence first, then live provider
 	// auth for whichever tokens are required. Runs only after every tool
 	// check has completed, so both the check order and the reported failure
-	// order are "tools, then environment variables".
+	// order are "tools, then scopes, then environment variables".
 	e := readEnvTokens()
 
 	// requiredEnvVars is the single source shared with the presence-only
@@ -502,22 +537,42 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// Live HTTP checks only run when every required env var is present —
 	// each one needs its token value. Missing-var errors are reported
 	// separately in the aggregated error below.
+	//
+	// ghcrWarn/workflowWarn/repoWarn collect any expiry advisory (see
+	// expiryWarning) instead of it logging mid-check, so every warning
+	// prints together, below the category's OK/FAIL lines, instead of
+	// racing ahead of a still-running sibling check's pass/fail line.
 	var envChecks []check
+	var ghcrWarn, workflowWarn, repoWarn string
 	if len(missing) == 0 {
 		envChecks = []check{
 			{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }, "valid"},
 			{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }, "valid"},
-			{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.ghcrToken) }, "valid"},
+			{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.ghcrToken, &ghcrWarn) }, "valid"},
 			{"WORKFLOW_TOKEN", func() error {
-				return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN", []string{"repo", "workflow"})
+				return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN", []string{"repo", "workflow"}, &workflowWarn)
 			}, "valid"},
 			{"REPO_TOKEN", func() error {
-				return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN", []string{"repo"})
+				return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN", []string{"repo"}, &repoWarn)
 			}, "valid"},
 		}
 	}
 
+	if len(envChecks) > 0 {
+		log.Info("Environment variables:")
+	}
+
 	envFailures := runChecks(envChecks)
+
+	// Printed after every env-var check's OK/FAIL line, in check-list order,
+	// rather than as each check's own goroutine resolves — otherwise a fast
+	// token (e.g. GHCR_TOKEN) can log its expiry warning before a
+	// still-running sibling (e.g. SONAR_TOKEN) has even printed its OK line.
+	for _, w := range []string{ghcrWarn, workflowWarn, repoWarn} {
+		if w != "" {
+			log.Warn(w)
+		}
+	}
 
 	failures := append(toolFailures, envFailures...)
 	if len(missing) == 0 && len(failures) == 0 {
@@ -527,11 +582,15 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 }
 
 // runChecks runs the given checks concurrently among themselves, logs one
-// success line per passing check (in the order given), and returns the
-// failures in that same order. Splitting the tool and environment-variable
-// phases into two separate runChecks calls (rather than one combined batch)
-// is what makes tool checks complete — and report — before any
-// environment-variable check starts.
+// pass/fail line per check (in the order given) — OK with okWord on
+// success, FAIL with the error's first line on failure — and returns the
+// failures in that same order. The inline FAIL line is a summary only; the
+// full multi-line error (repair command, command output, etc.) still runs
+// through buildEnvVerifyError into the aggregated closing report, so nothing
+// is lost by truncating to one line here. Splitting the tool and
+// environment-variable phases into two separate runChecks calls (rather
+// than one combined batch) is what makes tool checks complete — and
+// report — before any environment-variable check starts.
 func runChecks(checks []check) []checkResult {
 	results := make([]checkResult, len(checks))
 	var wg sync.WaitGroup
@@ -551,6 +610,8 @@ func runChecks(checks []check) []checkResult {
 			continue
 		}
 		failures = append(failures, r)
+		firstLine, _, _ := strings.Cut(r.err.Error(), "\n")
+		log.Errorf("  %s: %s", r.name, firstLine)
 	}
 	return failures
 }
