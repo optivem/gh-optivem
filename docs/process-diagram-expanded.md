@@ -384,7 +384,7 @@ flowchart TD
 flowchart TD
     REDESIGN_END(( ))
     subgraph UPDATE_SYSTEM_DRIVER_ADAPTERS[Update System Driver Adapters]
-    UPDATE_SYSTEM_DRIVER_ADAPTERS__EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-updater<br/>category = prod-agent<br/>task-name = update-system-driver-adapters"]
+    UPDATE_SYSTEM_DRIVER_ADAPTERS__EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-updater<br/>category = system-agent<br/>task-name = update-system-driver-adapters"]
     UPDATE_SYSTEM_DRIVER_ADAPTERS__UPDATE_SYS_DA_END(( ))
     end
     subgraph IMPLEMENT_AND_VERIFY_SYSTEM[Implement and Verify System]
@@ -468,7 +468,7 @@ flowchart TD
     REDESIGN_EXTERNAL_SYSTEM__EXTERNAL_SYSTEM_SKIPPED(( ))
     REDESIGN_EXTERNAL_SYSTEM__REDESIGN_EXTERNAL_PER_SYSTEM_END(( ))
     subgraph REDESIGN_EXTERNAL_SYSTEM__UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Update External System Driver Adapters]
-    REDESIGN_EXTERNAL_SYSTEM__UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS__EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-driver-adapter-updater<br/>category = prod-agent<br/>task-name = update-external-system-driver-adapters"]
+    REDESIGN_EXTERNAL_SYSTEM__UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS__EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-driver-adapter-updater<br/>category = system-agent<br/>task-name = update-external-system-driver-adapters"]
     REDESIGN_EXTERNAL_SYSTEM__UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS__UPDATE_EXT_DA_END(( ))
     end
     subgraph REDESIGN_EXTERNAL_SYSTEM__RECONCILE_EXTERNAL_CONTRACT_PRODUCER[Reconcile External Contract Producer]
@@ -766,7 +766,7 @@ flowchart TD
     REFACTOR_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__BUILD_SYSTEM[Build the System — see § build-system]
     REFACTOR_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__START_SYSTEM[Start the System — see § start-system-restart]
     REFACTOR_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__VERIFY_TESTS_PASS[Verify Tests Pass — see § verify-tests-pass]
-    REFACTOR_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = prod-commit"]
+    REFACTOR_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = system-commit"]
     REFACTOR_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__IMPL_AND_VERIFY_SYSTEM_END(( ))
     end
     end
@@ -784,7 +784,7 @@ flowchart TD
     subgraph REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REDESIGN_SYSTEM_STRUCTURE__REDESIGN_END(( ))
     subgraph REDESIGN_SYSTEM_STRUCTURE__UPDATE_SYSTEM_DRIVER_ADAPTERS[Update System Driver Adapters]
-    REDESIGN_SYSTEM_STRUCTURE__UPDATE_SYSTEM_DRIVER_ADAPTERS__EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-updater<br/>category = prod-agent<br/>task-name = update-system-driver-adapters"]
+    REDESIGN_SYSTEM_STRUCTURE__UPDATE_SYSTEM_DRIVER_ADAPTERS__EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-updater<br/>category = system-agent<br/>task-name = update-system-driver-adapters"]
     REDESIGN_SYSTEM_STRUCTURE__UPDATE_SYSTEM_DRIVER_ADAPTERS__UPDATE_SYS_DA_END(( ))
     end
     subgraph REDESIGN_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM[Implement and Verify System]
@@ -795,7 +795,7 @@ flowchart TD
     REDESIGN_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__BUILD_SYSTEM[Build the System — see § build-system]
     REDESIGN_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__START_SYSTEM[Start the System — see § start-system-restart]
     REDESIGN_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__VERIFY_TESTS_PASS[Verify Tests Pass — see § verify-tests-pass]
-    REDESIGN_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = prod-commit"]
+    REDESIGN_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = system-commit"]
     REDESIGN_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__IMPL_AND_VERIFY_SYSTEM_END(( ))
     end
     end
@@ -819,7 +819,7 @@ flowchart TD
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__BUILD_SYSTEM[Build the System — see § build-system]
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__START_SYSTEM[Start the System — see § start-system-restart]
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__VERIFY_TESTS_PASS[Verify Tests Pass — see § verify-tests-pass]
-    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = prod-commit"]
+    REDESIGN_EXTERNAL_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = system-commit"]
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE__IMPLEMENT_AND_VERIFY_SYSTEM__IMPL_AND_VERIFY_SYSTEM_END(( ))
     end
     end

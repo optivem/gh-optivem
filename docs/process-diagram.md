@@ -406,7 +406,7 @@ flowchart TD
     BUILD_SYSTEM[Build the System — see § build-system]
     START_SYSTEM[Start the System — see § start-system-restart]
     VERIFY_TESTS_PASS[Verify Tests Pass]
-    COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = prod-commit"]
+    COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = system-commit"]
     IMPL_AND_VERIFY_SYSTEM_END(( ))
 
     RESOLVE_CHANNEL --> GATE_CHANNEL_TOUCHED
@@ -566,7 +566,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = dsl-implementer<br/>category = prod-agent<br/>task-name = implement-dsl"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = dsl-implementer<br/>category = system-agent<br/>task-name = implement-dsl"]
     IMPL_DSL_END(( ))
 
     EXECUTE_AGENT --> IMPL_DSL_END
@@ -581,7 +581,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-implementer<br/>category = prod-agent<br/>task-name = implement-system"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-implementer<br/>category = system-agent<br/>task-name = implement-system"]
     IMPL_SYS_END(( ))
 
     EXECUTE_AGENT --> IMPL_SYS_END
@@ -591,7 +591,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-implementer<br/>category = prod-agent<br/>task-name = implement-system-driver-adapters"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-implementer<br/>category = system-agent<br/>task-name = implement-system-driver-adapters"]
     IMPL_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> IMPL_SYS_DA_END
@@ -601,7 +601,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-driver-adapter-implementer<br/>category = prod-agent<br/>task-name = implement-external-system-driver-adapters"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-driver-adapter-implementer<br/>category = system-agent<br/>task-name = implement-external-system-driver-adapters"]
     IMPL_EXT_DA_END(( ))
 
     EXECUTE_AGENT --> IMPL_EXT_DA_END
@@ -611,7 +611,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-stub-implementer<br/>category = prod-agent<br/>task-name = implement-external-system-stubs"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-stub-implementer<br/>category = system-agent<br/>task-name = implement-external-system-stubs"]
     IMPL_STUBS_END(( ))
 
     EXECUTE_AGENT --> IMPL_STUBS_END
@@ -651,7 +651,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-refactorer<br/>category = prod-agent<br/>task-name = refactor-system"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-refactorer<br/>category = system-agent<br/>task-name = refactor-system"]
     REFACTOR_SYS_END(( ))
 
     EXECUTE_AGENT --> REFACTOR_SYS_END
@@ -844,7 +844,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-real-simulator-implementer<br/>category = prod-agent<br/>task-name = implement-external-system-real-simulator"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-real-simulator-implementer<br/>category = system-agent<br/>task-name = implement-external-system-real-simulator"]
     IMPL_REAL_SIM_END(( ))
 
     EXECUTE_AGENT --> IMPL_REAL_SIM_END
@@ -994,7 +994,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-driver-adapter-updater<br/>category = prod-agent<br/>task-name = update-external-system-driver-adapters"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = external-system-driver-adapter-updater<br/>category = system-agent<br/>task-name = update-external-system-driver-adapters"]
     UPDATE_EXT_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_EXT_DA_END
@@ -1004,7 +1004,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-updater<br/>category = prod-agent<br/>task-name = update-system"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-updater<br/>category = system-agent<br/>task-name = update-system"]
     UPDATE_SYS_END(( ))
 
     EXECUTE_AGENT --> UPDATE_SYS_END
@@ -1014,7 +1014,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-updater<br/>category = prod-agent<br/>task-name = update-system-driver-adapters"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-updater<br/>category = system-agent<br/>task-name = update-system-driver-adapters"]
     UPDATE_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_SYS_DA_END
