@@ -62,12 +62,21 @@ func (s *stubRunner) install() {
 		s.calls = append(s.calls, runRecord{cmd: cmd, stdin: stdin, via: "RunStdin"})
 		return ""
 	}
-	projectRun = func(cmd string, _ bool, _ string) (string, error) {
+	projectRun = func(cmd string, check bool, _ string) (string, error) {
 		s.calls = append(s.calls, runRecord{cmd: cmd, via: "Run"})
-		if v, err, ok := s.lookupRun(cmd); ok {
-			return v, err
+		v, err, ok := s.lookupRun(cmd)
+		if !ok {
+			return "", nil
 		}
-		return "", nil
+		if err != nil && !check {
+			// Mirrors shell.commandFailure's check=false policy: a real
+			// failure is swallowed into a nil error rather than surfaced.
+			// Without this, the stub can't reproduce the issue #59 bug
+			// (linkRepoToProject used to call with check=false) and a
+			// regression back to check=false would go undetected.
+			return v, nil
+		}
+		return v, err
 	}
 	s.t.Cleanup(func() {
 		projectRunCapture = prevCapture
@@ -396,6 +405,49 @@ func TestEnsureProjectBoard_PathA_LinkAlreadyExists(t *testing.T) {
 		Arch:         "monolith",
 	}
 	// Should not panic / Fatalf.
+	EnsureProjectBoard(cfg, nil)
+}
+
+// TestEnsureProjectBoard_PathA_LinkFailsMustNotReportSuccess is the
+// regression guard for issue #59: linkRepoToProject used to call projectRun
+// with check=false, which made shell.Run's shared commandFailure policy log
+// a warning and return a nil error for ANY failure — including a `gh` too
+// old to support `gh project link` at all ("unknown flag: --owner"). Control
+// then fell straight through to log.Successf, so the run reported "OK
+// Linked" for a repo that was never linked. A genuine (non-"already linked")
+// failure here must abort the step, not report success.
+func TestEnsureProjectBoard_PathA_LinkFailsMustNotReportSuccess(t *testing.T) {
+	stub := newStubRunner(t)
+	stub.captureResp["project list"] = `{"projects":[{"id":"PVT_E","number":3,"title":"X","url":"https://github.com/users/acme/projects/3"}]}`
+	stub.captureResp["project field-list"] = `{"fields":[{"id":"PVTSSF_S","name":"Status","type":"ProjectV2SingleSelectField","options":[]}]}`
+	stub.runOutput["project link"] = "unknown flag: --owner"
+	stub.runErr["project link"] = fmt.Errorf("exit status 1")
+	stub.install()
+
+	cfg := &config.Config{
+		Owner:        "acme",
+		FullRepo:     "acme/page-turner",
+		SystemName:   "X",
+		RepoStrategy: "monorepo",
+		Arch:         "monolith",
+	}
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected log.Fatalf panic when the link genuinely fails, got none — a failed link must never report success")
+		}
+		se, ok := r.(*log.StepError)
+		if !ok {
+			t.Fatalf("expected *log.StepError, got %T: %v", r, r)
+		}
+		if !strings.Contains(se.Msg, "link repo") {
+			t.Errorf("unexpected panic message: %q", se.Msg)
+		}
+		if !strings.Contains(se.Msg, "unknown flag: --owner") {
+			t.Errorf("panic message did not include the gh output: %q", se.Msg)
+		}
+	}()
 	EnsureProjectBoard(cfg, nil)
 }
 

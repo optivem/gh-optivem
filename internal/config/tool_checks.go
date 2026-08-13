@@ -462,8 +462,10 @@ func compilerChecksFor(langs []string) []check {
 // probes below. A healthy daemon answers in under 2s; 20s gives a Docker
 // Desktop that is still booting a real chance without leaving a genuinely
 // stuck daemon looking like a hang forever. Named so both probes share one
-// tunable.
-const dockerProbeTimeout = 20 * time.Second
+// tunable. A var, not a const, so tests can shrink it and exercise the
+// deadline-exceeded branch without a real 20s wait — same pattern as
+// ghAuthRetrySleep above.
+var dockerProbeTimeout = 20 * time.Second
 
 // verifyDocker checks that Docker is actually usable: the binary is on
 // PATH, the daemon answers, and the Compose v2 plugin is installed.

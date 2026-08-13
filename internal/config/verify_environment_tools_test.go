@@ -128,7 +128,7 @@ func TestVerifyEnvironment_GhAuthRetryRecovers(t *testing.T) {
 			"echo transient auth blip\n" +
 			"exit 1"
 	}
-	writeStubOSSpecific(t, dir, "gh", ghVersionGuard()+body) // body is built per-OS just above
+	writeStubOSSpecific(t, dir, "gh", ghVersionGuard(ghVersionLine)+body) // body is built per-OS just above
 	writeStub(t, dir, "actionlint", "exit 0")
 	writeStub(t, dir, "docker", "exit 0")
 	writeStub(t, dir, "bash", "exit 0")
@@ -556,5 +556,149 @@ func TestVerifyEnvironment_ClaudeSkipInvalid(t *testing.T) {
 	}
 	if !strings.Contains(msg, "not a valid boolean") {
 		t.Errorf("error did not explain the parse failure. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_DockerDaemonUnreachable is the regression guard for
+// issue #59: a `docker` binary that is present but whose daemon is not
+// running (Docker Desktop installed but not started) used to pass
+// verification on `exec.LookPath` alone, then die 6 phases into scaffolding
+// at `docker compose build` — after a repo, board, environments, secrets and
+// SonarCloud projects had already been created. `docker info` is the
+// discriminator that catches this before any of that happens.
+func TestVerifyEnvironment_DockerDaemonUnreachable(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStub(t, dir, "docker",
+		"echo Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running? >&2\nexit 1")
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error when the docker daemon is unreachable, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "docker daemon is not reachable") {
+		t.Errorf("error did not mention daemon unreachability. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "systemctl start docker") {
+		t.Errorf("error did not include the start-the-daemon hint. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "Cannot connect to the Docker daemon") {
+		t.Errorf("error did not include the docker stub's output. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_DockerDaemonTimeout covers a daemon that never
+// answers `docker info` at all — e.g. Docker Desktop still booting.
+// dockerProbeTimeout is shrunk for the test so this doesn't cost a real 20s;
+// the `docker` stub sleeps well past the shrunk deadline so
+// exec.CommandContext's kill-on-deadline path fires for real.
+func TestVerifyEnvironment_DockerDaemonTimeout(t *testing.T) {
+	orig := dockerProbeTimeout
+	dockerProbeTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { dockerProbeTimeout = orig })
+
+	dir := mkPathDir(t)
+	var body string
+	if runtime.GOOS == "windows" {
+		// mkPathDir points PATH at nothing but the stub dir, so a bare
+		// `ping` would fail to resolve — %SystemRoot% survives that and
+		// still finds the real binary.
+		body = "\"%SystemRoot%\\System32\\ping.exe\" -n 3 127.0.0.1 >nul\nexit /b 0"
+	} else {
+		body = "sleep 2\nexit 0"
+	}
+	writeStubOSSpecific(t, dir, "docker", body)
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error when docker info times out, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "did not respond within") {
+		t.Errorf("error did not mention the timeout. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "systemctl start docker") {
+		t.Errorf("error did not include the start-the-daemon hint. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_DockerComposeMissing covers a reachable daemon with
+// no Compose v2 plugin installed — the case tool_checks.go used to assume
+// away ("compose v2 is a docker sub-command, so the docker binary alone is
+// sufficient"). `docker info` passes; `docker compose version` is the one
+// that must fail and be believed.
+func TestVerifyEnvironment_DockerComposeMissing(t *testing.T) {
+	dir := mkPathDir(t)
+	var body string
+	if runtime.GOOS == "windows" {
+		body = "if \"%1\"==\"info\" exit /b 0\n" +
+			"if \"%1\"==\"compose\" (\n" +
+			"echo docker: 'compose' is not a docker command. 1>&2\n" +
+			"exit /b 1\n" +
+			")\n" +
+			"exit /b 0"
+	} else {
+		body = "if [ \"$1\" = \"info\" ]; then exit 0; fi\n" +
+			"if [ \"$1\" = \"compose\" ]; then echo \"docker: 'compose' is not a docker command.\" >&2; exit 1; fi\n" +
+			"exit 0"
+	}
+	writeStubOSSpecific(t, dir, "docker", body)
+	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error when the Compose v2 plugin is missing, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "docker Compose v2 plugin not found") {
+		t.Errorf("error did not mention the missing Compose plugin. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "docs.docker.com/compose/install") {
+		t.Errorf("error did not include the Compose install URL. Got:\n%s", msg)
+	}
+}
+
+// TestVerifyEnvironment_GhVersionBelowFloor is the regression guard for the
+// other half of issue #59: gh 2.42.0 (the reporter's actual version)
+// predates `gh project link` entirely, so a run with that CLI must fail
+// preflight with an upgrade hint rather than surface much later as
+// `unknown flag: --owner`.
+func TestVerifyEnvironment_GhVersionBelowFloor(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStubOSSpecific(t, dir, "gh",
+		ghVersionGuard("gh version 2.42.0 2024-01-01")+"echo Logged in to github.com\nexit 0")
+	writeStub(t, dir, "actionlint", "exit 0")
+	writeStub(t, dir, "docker", "exit 0")
+	writeStub(t, dir, "bash", "exit 0")
+	writeStub(t, dir, "claude", "exit 0")
+	setAllEnvTokens(t)
+
+	err := verifyEnvironmentWithClient(nil, happyAuthClient())
+	if err == nil {
+		t.Fatal("expected error when gh is older than the version floor, got nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "gh CLI 2.42.0 is older than the required v2.45.0") {
+		t.Errorf("error did not name the installed and required versions. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "cli.github.com") {
+		t.Errorf("error did not include the gh upgrade URL. Got:\n%s", msg)
+	}
+	if !strings.Contains(msg, "gh project link") {
+		t.Errorf("error did not name the feature the floor exists for. Got:\n%s", msg)
 	}
 }

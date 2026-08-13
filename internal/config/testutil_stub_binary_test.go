@@ -76,13 +76,14 @@ func checkShSyntax(t *testing.T, body string) {
 const ghVersionLine = "gh version 2.45.0 2024-03-04"
 
 // ghVersionGuard returns the OS-appropriate stub prefix that intercepts
-// `gh --version` and answers ghVersionLine, falling through to whatever
-// follows it in the stub body for every other invocation.
-func ghVersionGuard() string {
+// `gh --version` and answers versionLine, falling through to whatever
+// follows it in the stub body for every other invocation. versionLine must
+// itself avoid parens for the same cmd.exe-parsing reason as ghVersionLine.
+func ghVersionGuard(versionLine string) string {
 	if runtime.GOOS == "windows" {
-		return "if \"%1\"==\"--version\" (\necho " + ghVersionLine + "\nexit /b 0\n)\n"
+		return "if \"%1\"==\"--version\" (\necho " + versionLine + "\nexit /b 0\n)\n"
 	}
-	return "if [ \"$1\" = \"--version\" ]; then echo \"" + ghVersionLine + "\"; exit 0; fi\n"
+	return "if [ \"$1\" = \"--version\" ]; then echo \"" + versionLine + "\"; exit 0; fi\n"
 }
 
 // writeGhStub writes a `gh` stub that answers `gh --version` with
@@ -94,7 +95,7 @@ func ghVersionGuard() string {
 func writeGhStub(t *testing.T, dir, authBody string) {
 	t.Helper()
 	checkShSyntax(t, authBody)
-	writeStubOSSpecific(t, dir, "gh", ghVersionGuard()+authBody)
+	writeStubOSSpecific(t, dir, "gh", ghVersionGuard(ghVersionLine)+authBody)
 }
 
 // mkPathDir creates an empty temp directory and points PATH at it for the
