@@ -181,14 +181,6 @@ gh extension remove optivem
 
 Something went wrong? [Open an issue](https://github.com/optivem/gh-optivem/issues).
 
-If `gh optivem init` itself fails, add `--report-bug` and it files the issue for you, with your scaffold config and log file attached:
-
-```bash
-gh optivem init --report-bug ...
-```
-
-Every `init` run writes a plain-text log to `$TEMP/gh-optivem-<timestamp>.log` — attach it to the issue. `implement` only writes one when you ask for it: `gh optivem implement 56 --log-file run.log`.
-
 ## Maintainer
 
 Maintained by Valentina Jemuović at Optivem — [GitHub](https://github.com/valentinajemuovic) · [LinkedIn](https://www.linkedin.com/in/valentinajemuovic/).
