@@ -142,7 +142,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
-          category: prod-agent
+          category: system-agent
         read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
       - id: END
@@ -217,7 +217,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
-          category: prod-agent
+          category: system-agent
         read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, system-path]
         write: [system-path]
       - id: END
@@ -1360,7 +1360,7 @@ func TestClaudeRunDispatch_ScopedAgentWithoutDeclaredOutputs_SeedsEnvelopeChanne
 	// dispatch with a non-`none` scope, regardless of category — so
 	// refactor-tests (test-agent) and the two fix-unexpected-*-tests agents
 	// (human) raise the clean STOP_SCOPE_VIOLATION halt, not just the
-	// prod-agent MIDs. write-acceptance-tests in minimalYAML has a real
+	// system-agent MIDs. write-acceptance-tests in minimalYAML has a real
 	// write: scope and declares no flag outputs, so it stands in for any
 	// such MID; the category param must not change the outcome. The
 	// dispatcher seeds the per-dispatch JSONL path AND a write-time
@@ -1375,7 +1375,7 @@ func TestClaudeRunDispatch_ScopedAgentWithoutDeclaredOutputs_SeedsEnvelopeChanne
 	stdinIsTTYFn = func() bool { return true }
 	defer func() { stdinIsTTYFn = prevTTY }()
 
-	for _, category := range []string{"test-agent", "prod-agent", "human"} {
+	for _, category := range []string{"test-agent", "system-agent", "human"} {
 		t.Run(category, func(t *testing.T) {
 			testScopedEnvelopeSeeding(t, category)
 		})

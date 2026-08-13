@@ -24,19 +24,19 @@ import (
 // Category names a tier in the approval-policy ladder. Tiers are
 // ordered low-to-high by stakes:
 //
-//	command     — execute-command BPMN nodes (compile / build /
-//	              start / test run). Cheap, no AI cost, no global
-//	              state mutation.
-//	prod-agent  — execute-agent for production code (implement-*,
-//	              update-*, refactor-system). AI cost; produces
-//	              reviewable diffs.
-//	test-agent  — execute-agent for tests (write-*-tests,
-//	              refactor-tests). Tests-as-contract: ranked above
-//	              prod-agent because broken tests mask regressions.
-//	prod-commit — commit BPMN node after a prod-agent phase.
-//	              Persistent git write.
-//	test-commit — commit BPMN node after a test-agent phase.
-//	              Persistent git write of the test contract.
+//	command       — execute-command BPMN nodes (compile / build /
+//	                start / test run). Cheap, no AI cost, no global
+//	                state mutation.
+//	system-agent  — execute-agent for production code (implement-*,
+//	                update-*, refactor-system). AI cost; produces
+//	                reviewable diffs.
+//	test-agent    — execute-agent for tests (write-*-tests,
+//	                refactor-tests). Tests-as-contract: ranked above
+//	                system-agent because broken tests mask regressions.
+//	system-commit — commit BPMN node after a system-agent phase.
+//	                Persistent git write.
+//	test-commit   — commit BPMN node after a test-agent phase.
+//	                Persistent git write of the test contract.
 //	human       — always-prompts, operator-uncontrollable. Covers
 //	              fix-* agents (signals of upstream defect),
 //	              refine-acceptance-criteria (always-engage
@@ -50,12 +50,12 @@ import (
 type Category int
 
 const (
-	CategoryCommand    Category = iota // tier 1 — cheap commands
-	CategoryProdAgent                  // tier 2 — production agents
-	CategoryTestAgent                  // tier 3 — test agents
-	CategoryProdCommit                 // tier 4 — production-code commits
-	CategoryTestCommit                 // tier 5 — test-code commits
-	CategoryHuman                      // tier 6 — always-prompt, operator-uncontrollable
+	CategoryCommand      Category = iota // tier 1 — cheap commands
+	CategorySystemAgent                  // tier 2 — production agents
+	CategoryTestAgent                    // tier 3 — test agents
+	CategorySystemCommit                 // tier 4 — production-code commits
+	CategoryTestCommit                   // tier 5 — test-code commits
+	CategoryHuman                        // tier 6 — always-prompt, operator-uncontrollable
 )
 
 // String returns the lowercase token used in --confirm=<tier> and env vars.
@@ -63,12 +63,12 @@ func (c Category) String() string {
 	switch c {
 	case CategoryCommand:
 		return "command"
-	case CategoryProdAgent:
-		return "prod-agent"
+	case CategorySystemAgent:
+		return "system-agent"
 	case CategoryTestAgent:
 		return "test-agent"
-	case CategoryProdCommit:
-		return "prod-commit"
+	case CategorySystemCommit:
+		return "system-commit"
 	case CategoryTestCommit:
 		return "test-commit"
 	case CategoryHuman:
@@ -81,9 +81,9 @@ func (c Category) String() string {
 // allCategories is the parse-acceptable set, in iota (threshold) order.
 var allCategories = []Category{
 	CategoryCommand,
-	CategoryProdAgent,
+	CategorySystemAgent,
 	CategoryTestAgent,
-	CategoryProdCommit,
+	CategorySystemCommit,
 	CategoryTestCommit,
 	CategoryHuman,
 }
@@ -95,12 +95,12 @@ func ParseCategory(s string) (Category, error) {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "command":
 		return CategoryCommand, nil
-	case "prod-agent":
-		return CategoryProdAgent, nil
+	case "system-agent":
+		return CategorySystemAgent, nil
 	case "test-agent":
 		return CategoryTestAgent, nil
-	case "prod-commit":
-		return CategoryProdCommit, nil
+	case "system-commit":
+		return CategorySystemCommit, nil
 	case "test-commit":
 		return CategoryTestCommit, nil
 	case "human":

@@ -149,7 +149,7 @@ func newRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVar(&autoFlag, "auto", false,
 		"Auto-approve approvals below the --confirm threshold tier. Defaults to --confirm=human (truly autonomous). Env: "+approval.EnvAuto+".")
 	cmd.PersistentFlags().StringVar(&confirmFlag, "confirm", "",
-		"Threshold tier under --auto: this tier and above still prompt; lower tiers auto-yes. Valid: command, prod-agent, test-agent, prod-commit, test-commit, human. Default when --auto is set: human. Env: "+approval.EnvConfirm+".")
+		"Threshold tier under --auto: this tier and above still prompt; lower tiers auto-yes. Valid: command, system-agent, test-agent, system-commit, test-commit, human. Default when --auto is set: human. Env: "+approval.EnvConfirm+".")
 
 	// Help-text grouping. Without these, the new root verbs would
 	// interleave alphabetically with the project verbs and the visual

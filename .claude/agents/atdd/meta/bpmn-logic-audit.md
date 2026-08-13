@@ -52,7 +52,7 @@ This is the highest-value lens. `wrapCallActivity` pushes/pops **Params** per ca
 ### 5. Scope / outputs / category consistency
 - Every writing-agent MID with a non-`none` scope declares coherent `read:`/`write:` lists. Per project doctrine, declare both lists explicitly; do not infer subset constraints.
 - Reconcile `outputs:` (the per-MID declared output contract → write-time allow-list + presence check) with the **universal envelope** (`EnvelopeOutputSpecs`, seeded by `driver.go` per the dispatch's category). Flag any MID with a real scope that can neither declare nor be seeded the `scope-exception-*` envelope (it cannot raise the Layer-1 honest halt) — as a needs-decision, since the seeding condition (category-based) may be deliberate.
-- Confirm `category:` tiers (`prod-agent` / `test-agent` / `human` / `command`) thread consistently into the approve gates (PRE/POST) and are not contradicted by the node's role.
+- Confirm `category:` tiers (`system-agent` / `test-agent` / `human` / `command`) thread consistently into the approve gates (PRE/POST) and are not contradicted by the node's role.
 
 ### 6. YAML ↔ Go cross-checks
 - Every gateway `binding:` has a registered binding in `gates/bindings.go`. Every service-task `action:` has a registered action in `actions/bindings.go`. Flag any binding/action named in the YAML with no Go registration (and any registered binding/action the YAML never uses — possible dead binding).

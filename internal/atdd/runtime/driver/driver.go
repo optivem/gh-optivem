@@ -1399,7 +1399,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// Envelope exception (plans 20260528-1150, 20260606-1539): every
 		// dispatch with a non-`none` scope must be able to emit the
 		// scope-exception envelope per scope.md doctrine, even when its
-		// MID declares no flag outputs — the prod-agent MIDs
+		// MID declares no flag outputs — the system-agent MIDs
 		// (implement-system, update-system, the driver-adapter MIDs, …)
 		// plus refactor-tests and the two fix-unexpected-*-tests agents.
 		// The gate is "has a scope to violate" (!eng.IsScopeNone), not
@@ -1585,7 +1585,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 // withEnvelopeSpecs appends the scope-exception envelope OutputSpecs to outs,
 // skipping any whose key is already declared. The three writers and
 // implement-dsl list the envelope explicitly, so for them this is a no-op;
-// for every other non-`none`-scope dispatch (the prod-agent MIDs,
+// for every other non-`none`-scope dispatch (the system-agent MIDs,
 // refactor-tests, the two fix-unexpected-*-tests agents) it yields the
 // envelope-only allow-list.
 func withEnvelopeSpecs(outs []statemachine.OutputSpec) []statemachine.OutputSpec {

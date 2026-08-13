@@ -38,17 +38,7 @@ gh optivem init --owner <owner> --repo <repo> --system-name "<system-name>" --re
 
 Either way, `--test-lang` is independent of the system language(s), and `--repo-strategy` works with both architectures.
 
-**Flags:**
-
-- `--owner` — your GitHub username or organization name, whichever owns the scaffolded repo(s).
-- `--repo` — repo name (or monorepo root name for multi-repo layouts).
-- `--system-name` — human-readable system name (e.g. `"Book Shop"`).
-- `--repo-strategy` — `monorepo` | `multirepo`.
-- `--arch` — `monolith` | `multitier`.
-- `--monolith-lang` — system language, only when `--arch monolith`: `java` | `dotnet` | `typescript`.
-- `--backend-lang` — backend language, only when `--arch multitier`: `java` | `dotnet` | `typescript`.
-- `--frontend-lang` — frontend language, only when `--arch multitier`: currently only `typescript`.
-- `--test-lang` — system-test language, independent of the system language(s): `java` | `dotnet` | `typescript`.
+Run `gh optivem init --help` for the full, current flag list and defaults, or see [docs/cli-reference.md](docs/cli-reference.md#scaffolding-init) for flag details plus how they interact.
 
 For example:
 
@@ -86,10 +76,10 @@ gh optivem implement 56
 Every confirmation prompts by default. For an unattended run, opt into `--auto` and pick how much human approval to keep:
 
 ```bash
-gh optivem --auto implement 56 --headless                         # truly autonomous: prompt only on human-tier sites (STOPs, fix-agents, release)
-gh optivem --auto --confirm=prod-commit implement 56 --headless   # narrower: still confirm every commit
-gh optivem --auto --confirm=prod-agent implement 56 --headless    # narrower still: also confirm every production-agent dispatch
-gh optivem --auto --confirm=command implement 56 --headless       # narrowest: confirm everything except cheap build/test commands
+gh optivem --auto implement 56 --headless                           # truly autonomous: prompt only on human-tier sites (STOPs, fix-agents, release)
+gh optivem --auto --confirm=system-commit implement 56 --headless   # narrower: still confirm every commit
+gh optivem --auto --confirm=system-agent implement 56 --headless    # narrower still: also confirm every production-agent dispatch
+gh optivem --auto --confirm=command implement 56 --headless         # narrowest: confirm everything except cheap build/test commands
 ```
 
 `--confirm=<tier>` sets the auto-approve floor: that tier and everything above it still prompts, everything below auto-yeses. Tiers, low to high stakes:
@@ -97,9 +87,9 @@ gh optivem --auto --confirm=command implement 56 --headless       # narrowest: c
 | Tier | Covers |
 |---|---|
 | `command` | execute-command BPMN nodes (compile / build / start / test run). Cheap, no AI cost, no global state mutation. |
-| `prod-agent` | execute-agent for production code (`implement-*`, `update-*`, `refactor-system`). AI cost; produces reviewable diffs. |
-| `test-agent` | execute-agent for tests (`write-*-tests`, `refactor-tests`). Tests-as-contract — ranked above `prod-agent` because broken tests mask regressions. |
-| `prod-commit` | commit node after a production-agent phase. Persistent git write. |
+| `system-agent` | execute-agent for production code (`implement-*`, `update-*`, `refactor-system`). AI cost; produces reviewable diffs. |
+| `test-agent` | execute-agent for tests (`write-*-tests`, `refactor-tests`). Tests-as-contract — ranked above `system-agent` because broken tests mask regressions. |
+| `system-commit` | commit node after a production-agent phase. Persistent git write. |
 | `test-commit` | commit node after a test-agent phase. Persistent git write of the test contract. |
 | `human` | fix-`*` agents, `refine-acceptance-criteria`, BPMN STOP nodes, release. Top tier — always prompts, cannot be auto-yes'd at any reachable floor. |
 

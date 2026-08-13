@@ -652,7 +652,7 @@ Every new yes/no confirmation must go through `internal/kernel/approval` with a 
 ok, err := approval.Confirm(cmdctx.Approval(cmd), approval.CategoryCommand, os.Stdin, os.Stdout, "Proceed?")
 ```
 
-This routes the prompt through the `--auto` / `--confirm` policy resolved once in `PersistentPreRunE` (see [Auto-approve](docs/cli-reference.md#auto-approve) for the user-facing contract). Pick the tier that matches the stakes of what the prompt gates, from cheapest to most expensive: `CategoryCommand`, `CategoryProdAgent`, `CategoryTestAgent`, `CategoryProdCommit`, `CategoryTestCommit`, or `CategoryHuman` (always prompts, never auto-yes'd). The iota order is load-bearing — it *is* the threshold ranking, so a new tier cannot be slotted in arbitrarily. New `promptio.ConfirmYN` / `ConfirmYNVia` call sites that bypass `approval.Confirm` are a review-block — they read like unattended-mode bugs the next time someone runs `--auto`.
+This routes the prompt through the `--auto` / `--confirm` policy resolved once in `PersistentPreRunE` (see [Auto-approve](docs/cli-reference.md#auto-approve) for the user-facing contract). Pick the tier that matches the stakes of what the prompt gates, from cheapest to most expensive: `CategoryCommand`, `CategorySystemAgent`, `CategoryTestAgent`, `CategorySystemCommit`, `CategoryTestCommit`, or `CategoryHuman` (always prompts, never auto-yes'd). The iota order is load-bearing — it *is* the threshold ranking, so a new tier cannot be slotted in arbitrarily. New `promptio.ConfirmYN` / `ConfirmYNVia` call sites that bypass `approval.Confirm` are a review-block — they read like unattended-mode bugs the next time someone runs `--auto`.
 
 ## Releasing
 

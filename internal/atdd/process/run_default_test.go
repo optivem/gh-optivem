@@ -251,7 +251,7 @@ func TestExecuteAgent_ValidationFailureDispatchesFixerForFailureKind(t *testing.
 			// category threads through execute-agent's APPROVE_PRE /
 			// APPROVE_POST; in production the writing-agent MID caller
 			// supplies this. The test runs the primitive directly.
-			ctx.Params["category"] = "prod-agent"
+			ctx.Params["category"] = "system-agent"
 			if err := eng.RunProcess("execute-agent", ctx); err != nil {
 				t.Fatalf("RunProcess execute-agent: %v", err)
 			}
@@ -612,7 +612,7 @@ func TestExecuteAgent_FixLoopHaltsAtCap(t *testing.T) {
 	ctx := statemachine.NewContext()
 	ctx.Params["agent"] = "synthetic-writer"
 	ctx.Params["task-name"] = "synthetic-task"
-	ctx.Params["category"] = "prod-agent"
+	ctx.Params["category"] = "system-agent"
 	err = eng.RunProcess("execute-agent", ctx)
 	if err == nil {
 		t.Fatalf("RunProcess(execute-agent) returned nil; want halt at AGENT_FIX_EXHAUSTED")

@@ -434,6 +434,6 @@ func approvalValidList() string {
 	// Mirror approval.allCategories ordering by parsing-and-stringifying
 	// each known tier. Hardcoded here to avoid exposing the slice from
 	// the approval package.
-	tokens := []string{"command", "prod-agent", "test-agent", "prod-commit", "test-commit", "human"}
+	tokens := []string{"command", "system-agent", "test-agent", "system-commit", "test-commit", "human"}
 	return strings.Join(tokens, ", ")
 }

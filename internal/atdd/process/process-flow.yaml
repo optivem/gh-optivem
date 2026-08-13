@@ -1680,8 +1680,8 @@ processes:
         process: commit
         name: "Commit System Changes"
         params:
-          # prod-commit tier: persists production-code work.
-          category: prod-commit
+          # system-commit tier: persists production-code work.
+          category: system-commit
           layer: "SYSTEM${layer-suffix}"
 
       - id: IMPL_AND_VERIFY_SYSTEM_END
@@ -2214,8 +2214,8 @@ processes:
         params:
           task-name: implement-dsl
           agent: dsl-implementer
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         # Adapters are in scope because dsl-implementer adds throwing-TODO
         # stub bodies in the impl classes whenever it adds a new method
         # signature to a port (interfaces hold signatures only).
@@ -2258,8 +2258,8 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         # domain-value-types (read-only): the system's domain value types (e.g.
         # OrderStatus) used to live under system-driver-port/dtos, so the
         # implementer could read that vocabulary while implementing system-path.
@@ -2297,8 +2297,8 @@ processes:
         params:
           task-name: update-system
           agent: system-updater
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         # domain-value-types (read-only): same rationale as implement-system —
         # the reshape variant reads the domain vocabulary (e.g. OrderStatus) it
         # must keep satisfying; that vocabulary moved out of system-driver-port.
@@ -2327,8 +2327,8 @@ processes:
         params:
           task-name: implement-system-driver-adapters
           agent: system-driver-adapter-implementer
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
         # This node is shared: UnrollSystemDriverAdapterChannels clones it
         # once per channel (binding a `channel` param). The scope checker
@@ -2366,8 +2366,8 @@ processes:
         params:
           task-name: update-system-driver-adapters
           agent: system-driver-adapter-updater
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
         write: [system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
 
@@ -2390,8 +2390,8 @@ processes:
         params:
           task-name: implement-external-system-driver-adapters
           agent: external-system-driver-adapter-implementer
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         # system-driver-adapter-shared: an external system with no API can only
         # be driven via Playwright, and the HTTP wrappers under
         # driver/adapter/shared are shared across api + every external adapter,
@@ -2422,8 +2422,8 @@ processes:
         params:
           task-name: update-external-system-driver-adapters
           agent: external-system-driver-adapter-updater
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         read:  [external-system-driver-port, external-system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
         write: [external-system-driver-adapter, system-driver-adapter-shared, common, domain-value-types]
 
@@ -2445,8 +2445,8 @@ processes:
         params:
           task-name: implement-external-system-stubs
           agent: external-system-stub-implementer
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         # The stub implementer WRITES the stub stand-in dir (the WireMock mapping
         # set, external-system-stub — the registry-projected scope key from the
         # external-systems: registry's stub.path), NOT the testkit driver-adapter:
@@ -2488,8 +2488,8 @@ processes:
         params:
           task-name: implement-external-system-real-simulator
           agent: external-system-real-simulator-implementer
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         # Faithful mirror of implement-external-system-stubs: WRITES the simulator
         # stand-in dir and READS the full coupled interface (driver-adapter ↔
         # simulator ↔ stub seen from three sides) so it emits a simulator shape
@@ -2600,8 +2600,8 @@ processes:
         params:
           task-name: refactor-system
           agent: system-refactorer
-          # prod-agent tier: production-code writing agent.
-          category: prod-agent
+          # system-agent tier: production-code writing agent.
+          category: system-agent
         read:  [system-path, system-db-migration-path]
         write: [system-path]
 
@@ -2816,7 +2816,7 @@ processes:
           # task-name: see compile-tests — traces the bpmn-step column to the diagram.
           task-name: commit
           message: "#${ticket-id} ${issue-title} - ${layer}"
-          # Threaded from the commit-process caller (prod-commit or
+          # Threaded from the commit-process caller (system-commit or
           # test-commit), so the inner execute-command's approve gate
           # resolves at the caller's commit tier, not as `command`.
           category: ${category}
@@ -2972,7 +2972,7 @@ processes:
         params:
           question: "Do you approve agent ${task-name} to execute?"
           # Threaded from the writing-agent MID caller
-          # (prod-agent / test-agent / human).
+          # (system-agent / test-agent / human).
           category: ${category}
 
       - id: GATE_APPROVED_PRE
@@ -3191,7 +3191,7 @@ processes:
         params:
           question: "Do you approve running command ${command} ?"
           # Threaded from the execute-command caller (most commands pin
-          # `command`; the commit MID re-pins `prod-commit` / `test-commit`
+          # `command`; the commit MID re-pins `system-commit` / `test-commit`
           # from its own caller via its EXECUTE_COMMAND `params:` block).
           category: ${category}
 

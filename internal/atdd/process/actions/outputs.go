@@ -363,7 +363,7 @@ func readOutputsJSONL(path string, declared []statemachine.OutputSpec) (map[stri
 // buildOutputTypeIndex merges the MID's declared OutputSpec types with the
 // universal envelope keys (plan 20260528-1150). When the MID declares no
 // outputs but the dispatcher seeded the envelope channel (because
-// category: prod-agent), the JSONL may carry scope-exception-* lines the
+// category: system-agent), the JSONL may carry scope-exception-* lines the
 // coercer must shape correctly — coerceJSONOutputValue's default branch
 // returns the JSON-decoded []any as-is, but scopeExceptionRequested gate
 // type-asserts []string, so an uncoerced value mis-routes the cycle to

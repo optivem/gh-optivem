@@ -998,7 +998,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
-          category: prod-agent
+          category: system-agent
         write: [system-path]
       - id: IMPL_END
         type: end-event
@@ -1079,7 +1079,7 @@ processes:
         params:
           task-name: implement-system
           agent: system-implementer
-          category: prod-agent
+          category: system-agent
         read: [system-path]
         write: [system-path]
       - id: IMPL_END

@@ -15,9 +15,9 @@ func envOf(pairs map[string]string) func(string) string {
 func TestCategory_String(t *testing.T) {
 	cases := map[Category]string{
 		CategoryCommand:    "command",
-		CategoryProdAgent:  "prod-agent",
+		CategorySystemAgent:  "system-agent",
 		CategoryTestAgent:  "test-agent",
-		CategoryProdCommit: "prod-commit",
+		CategorySystemCommit: "system-commit",
 		CategoryTestCommit: "test-commit",
 		CategoryHuman:      "human",
 	}
@@ -29,7 +29,7 @@ func TestCategory_String(t *testing.T) {
 }
 
 func TestParseCategory_RoundTrip(t *testing.T) {
-	for _, c := range []Category{CategoryCommand, CategoryProdAgent, CategoryTestAgent, CategoryProdCommit, CategoryTestCommit, CategoryHuman} {
+	for _, c := range []Category{CategoryCommand, CategorySystemAgent, CategoryTestAgent, CategorySystemCommit, CategoryTestCommit, CategoryHuman} {
 		got, err := ParseCategory(c.String())
 		if err != nil {
 			t.Errorf("ParseCategory(%q) err: %v", c.String(), err)
@@ -41,7 +41,7 @@ func TestParseCategory_RoundTrip(t *testing.T) {
 }
 
 func TestParseCategory_CaseInsensitiveAndTrimmed(t *testing.T) {
-	for _, s := range []string{"COMMAND", "Prod-Agent", "  test-agent  ", "Human"} {
+	for _, s := range []string{"COMMAND", "System-Agent", "  test-agent  ", "Human"} {
 		if _, err := ParseCategory(s); err != nil {
 			t.Errorf("ParseCategory(%q) err: %v", s, err)
 		}
@@ -54,7 +54,7 @@ func TestParseCategory_Invalid_ErrorListsValidSet(t *testing.T) {
 		t.Fatal("expected error for invalid category")
 	}
 	msg := err.Error()
-	for _, want := range []string{"command", "prod-agent", "test-agent", "prod-commit", "test-commit", "human"} {
+	for _, want := range []string{"command", "system-agent", "test-agent", "system-commit", "test-commit", "human"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("error %q does not list %q", msg, want)
 		}
@@ -152,20 +152,20 @@ func TestResolve_AutoEnvFalsyDoesNotEnable(t *testing.T) {
 }
 
 func TestResolve_ConfirmFlag_ExplicitTier(t *testing.T) {
-	r, err := Resolve(true, true, "prod-commit", true, envOf(nil))
+	r, err := Resolve(true, true, "system-commit", true, envOf(nil))
 	if err != nil {
 		t.Fatalf("Resolve err: %v", err)
 	}
 	if r.ConfirmSource != "flag" {
 		t.Errorf("ConfirmSource = %q, want flag", r.ConfirmSource)
 	}
-	if r.ConfirmFloor != CategoryProdCommit {
-		t.Errorf("ConfirmFloor = %v, want CategoryProdCommit", r.ConfirmFloor)
+	if r.ConfirmFloor != CategorySystemCommit {
+		t.Errorf("ConfirmFloor = %v, want CategorySystemCommit", r.ConfirmFloor)
 	}
 }
 
 func TestResolve_ConfirmFlag_MultiTokenErrors(t *testing.T) {
-	_, err := Resolve(true, true, "prod-commit,test-commit", true, envOf(nil))
+	_, err := Resolve(true, true, "system-commit,test-commit", true, envOf(nil))
 	if err == nil {
 		t.Fatal("expected error for multi-token --confirm (threshold is single tier)")
 	}
@@ -227,10 +227,10 @@ func TestResolve_AutoOff_FloorIsUnusedAtConfirmTime(t *testing.T) {
 }
 
 func TestConfirm_ShortCircuit_BelowFloor(t *testing.T) {
-	// Floor = test-commit. Tiers below (command, prod-agent, test-agent,
-	// prod-commit) all auto-yes; tiers at/above (test-commit, human) prompt.
+	// Floor = test-commit. Tiers below (command, system-agent, test-agent,
+	// system-commit) all auto-yes; tiers at/above (test-commit, human) prompt.
 	r, _ := Resolve(true, true, "test-commit", true, envOf(nil))
-	for _, c := range []Category{CategoryCommand, CategoryProdAgent, CategoryTestAgent, CategoryProdCommit} {
+	for _, c := range []Category{CategoryCommand, CategorySystemAgent, CategoryTestAgent, CategorySystemCommit} {
 		ok, err := Confirm(r, c, strings.NewReader(""), &bytes.Buffer{}, "Anything?")
 		if err != nil {
 			t.Fatalf("Confirm(%s) err: %v", c, err)
@@ -242,16 +242,16 @@ func TestConfirm_ShortCircuit_BelowFloor(t *testing.T) {
 }
 
 func TestConfirm_Prompts_AtOrAboveFloor(t *testing.T) {
-	// Floor = prod-commit. prod-commit / test-commit / human all prompt.
-	r, _ := Resolve(true, true, "prod-commit", true, envOf(nil))
-	for _, c := range []Category{CategoryProdCommit, CategoryTestCommit, CategoryHuman} {
+	// Floor = system-commit. system-commit / test-commit / human all prompt.
+	r, _ := Resolve(true, true, "system-commit", true, envOf(nil))
+	for _, c := range []Category{CategorySystemCommit, CategoryTestCommit, CategoryHuman} {
 		var out bytes.Buffer
 		ok, err := Confirm(r, c, strings.NewReader("y\n"), &out, "Go?")
 		if err != nil {
 			t.Fatalf("Confirm(%s) err: %v", c, err)
 		}
 		if !ok {
-			t.Errorf("expected y for %s at/above floor=prod-commit", c)
+			t.Errorf("expected y for %s at/above floor=system-commit", c)
 		}
 		if !strings.Contains(out.String(), "Go?") {
 			t.Errorf("%s should have written the prompt (no short-circuit at/above floor)", c)
@@ -338,8 +338,8 @@ func TestConfirmVia_PromptsAtOrAboveFloor(t *testing.T) {
 }
 
 func TestResolved_ConfirmFloorString(t *testing.T) {
-	r, _ := Resolve(true, true, "prod-commit", true, envOf(nil))
-	if got := r.ConfirmFloorString(); got != "prod-commit" {
-		t.Errorf("ConfirmFloorString() = %q, want %q", got, "prod-commit")
+	r, _ := Resolve(true, true, "system-commit", true, envOf(nil))
+	if got := r.ConfirmFloorString(); got != "system-commit" {
+		t.Errorf("ConfirmFloorString() = %q, want %q", got, "system-commit")
 	}
 }

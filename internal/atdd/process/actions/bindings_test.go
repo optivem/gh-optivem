@@ -2115,7 +2115,7 @@ func TestValidateOutputsAndScopes_JSONL_TypedCoercionForDeclaredKeys(t *testing.
 }
 
 func TestValidateOutputsAndScopes_JSONL_EnvelopeKeysCoercedForNoOutputsMID(t *testing.T) {
-	// Plan 20260528-1150: prod-agent MIDs that declare no `outputs:` block
+	// Plan 20260528-1150: system-agent MIDs that declare no `outputs:` block
 	// (implement-system, update-system, the adapter implementers/updaters)
 	// can still emit the universal scope-exception envelope via the
 	// runtime-seeded channel. The reader must coerce the envelope keys

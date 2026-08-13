@@ -244,8 +244,8 @@ Each sink subscribes to a maximum level. Defaults: terminal = Phase (clean), `--
 By default every confirmation prompts. `--auto` (a root-level flag, so it goes *before* `implement`) auto-approves everything below the `--confirm` threshold tier:
 
 ```bash
-gh optivem --auto implement 42 --headless              # typical unattended invocation
-gh optivem --auto --confirm=prod-commit implement 42   # ...but still confirm every commit
+gh optivem --auto implement 42 --headless                # typical unattended invocation
+gh optivem --auto --confirm=system-commit implement 42   # ...but still confirm every commit
 ```
 
 The default floor is `human`, so BPMN STOP nodes and fix-agent dispatch always prompt. See [Auto-approve](#auto-approve) for the full tier ladder.
@@ -370,9 +370,9 @@ Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The run
 `gh optivem` prompts on every confirmation by default. To run unattended, opt into auto-approve policy with `--auto`:
 
 ```bash
-gh optivem --auto implement 42                         # truly autonomous: prompt only on human-tier sites
-gh optivem --auto --confirm=prod-commit implement 42   # narrower: still prompt on both commit tiers (and human)
-gh optivem --auto --confirm=prod-agent implement 42    # narrower still: prompt from production-agent dispatch upward
+gh optivem --auto implement 42                           # truly autonomous: prompt only on human-tier sites
+gh optivem --auto --confirm=system-commit implement 42   # narrower: still prompt on both commit tiers (and human)
+gh optivem --auto --confirm=system-agent implement 42    # narrower still: prompt from production-agent dispatch upward
 ```
 
 `--auto` is a root-level persistent flag. `--confirm` takes a **single tier**, which becomes the *threshold floor*: sites at or above the floor still prompt, sites strictly below it auto-yes. The tiers, ordered low-to-high by stakes:
@@ -380,9 +380,9 @@ gh optivem --auto --confirm=prod-agent implement 42    # narrower still: prompt 
 | Tier | Covers |
 |---|---|
 | `command` | execute-command BPMN nodes (compile / build / start / test run). Cheap, no AI cost, no global state mutation. |
-| `prod-agent` | execute-agent for production code (`implement-*`, `update-*`, `refactor-system`). AI cost; produces reviewable diffs. |
-| `test-agent` | execute-agent for tests (`write-*-tests`, `refactor-tests`). Tests-as-contract — ranked above `prod-agent` because broken tests mask regressions. |
-| `prod-commit` | commit node after a production-agent phase. Persistent git write. |
+| `system-agent` | execute-agent for production code (`implement-*`, `update-*`, `refactor-system`). AI cost; produces reviewable diffs. |
+| `test-agent` | execute-agent for tests (`write-*-tests`, `refactor-tests`). Tests-as-contract — ranked above `system-agent` because broken tests mask regressions. |
+| `system-commit` | commit node after a production-agent phase. Persistent git write. |
 | `test-commit` | commit node after a test-agent phase. Persistent git write of the test contract. |
 | `human` | fix-`*` agents, `refine-acceptance-criteria`, BPMN STOP nodes, release. Top tier — always prompts, cannot be auto-yes'd at any reachable floor. |
 

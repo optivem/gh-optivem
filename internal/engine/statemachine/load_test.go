@@ -207,7 +207,7 @@ processes:
 	if !strings.Contains(msg, "some-mid") || !strings.Contains(msg, "EXECUTE_AGENT") {
 		t.Errorf("error should name the offending process/node, got %q", msg)
 	}
-	if !strings.Contains(msg, "prod-agent") || !strings.Contains(msg, "human") {
+	if !strings.Contains(msg, "system-agent") || !strings.Contains(msg, "human") {
 		t.Errorf("error should list valid set, got %q", msg)
 	}
 }

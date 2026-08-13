@@ -207,7 +207,7 @@ func TestRootCmd_ConfirmFlagIsPersistent(t *testing.T) {
 	if !strings.Contains(flag.Usage, approval.EnvConfirm) {
 		t.Errorf("--confirm Usage should mention $%s; got: %q", approval.EnvConfirm, flag.Usage)
 	}
-	for _, cat := range []string{"command", "prod-agent", "test-agent", "prod-commit", "test-commit", "human"} {
+	for _, cat := range []string{"command", "system-agent", "test-agent", "system-commit", "test-commit", "human"} {
 		if !strings.Contains(flag.Usage, cat) {
 			t.Errorf("--confirm Usage should list tier %q; got: %q", cat, flag.Usage)
 		}
@@ -232,7 +232,7 @@ func TestRootCmd_InvalidConfirmCategory_ParseError(t *testing.T) {
 	if !strings.Contains(err.Error(), "garbage") {
 		t.Errorf("error should name the offending token; got: %v", err)
 	}
-	for _, want := range []string{"command", "prod-agent", "test-agent", "prod-commit", "test-commit", "human"} {
+	for _, want := range []string{"command", "system-agent", "test-agent", "system-commit", "test-commit", "human"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error should list valid tier %q; got: %v", want, err)
 		}

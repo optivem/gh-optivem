@@ -122,7 +122,7 @@ const (
 )
 
 // Universal scope-exception envelope keys (plan 20260528-1150). Every
-// prod-agent dispatch exposes these two keys via the structured-output
+// system-agent dispatch exposes these two keys via the structured-output
 // channel — the runtime injects them when the dispatching MID's
 // `outputs:` block does not already declare them, so an agent can emit
 // `gh optivem output write scope-exception-files=...` even from a MID
