@@ -448,18 +448,20 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// `check` is package-level (see tool_checks.go) so compilerChecksFor can
 	// return []check directly.
 	toolChecks := []check{
-		{"gh CLI auth", verifyGhAuth},
+		{"gh CLI auth", verifyGhAuth, "authenticated"},
 		// Sibling of "gh CLI auth" rather than folded into it, so a too-old
 		// gh (issue #59: gh 2.42.0 predates `gh project link`, and the
 		// failure was silently swallowed) is distinguishable from an auth
 		// failure in the aggregated output.
-		{"gh CLI version", verifyGhVersion},
-		{"actionlint", verifyActionlint},
-		{"bash", verifyBash},
+		{"gh CLI version", verifyGhVersion, "valid"},
+		{"actionlint", verifyActionlint, "installed"},
+		{"bash", verifyBash, "installed"},
 		// docker is unconditional, not deploy-target-gated: every scaffold
 		// runs its system locally through `docker compose`, whatever it
-		// deploys to.
-		{"docker", verifyDocker},
+		// deploys to. Installed/running are siblings (see verifyDockerInstalled)
+		// so "not installed" and "installed but not usable" are distinguishable.
+		{"docker", verifyDockerInstalled, "installed"},
+		{"docker", verifyDockerRunning, "running"},
 	}
 	// claude runs every ATDD agent as a subprocess, so `implement` needs it —
 	// but CI runners scaffold without ever implementing, and have no claude.
@@ -472,7 +474,7 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	if skipClaude {
 		log.Info("Skipping claude check (" + skipClaudeCheckEnv + " set).")
 	} else {
-		toolChecks = append(toolChecks, check{"claude", verifyClaude})
+		toolChecks = append(toolChecks, check{"claude", verifyClaude, "installed"})
 	}
 	// Per-language compiler presence, gated on the caller-supplied langs.
 	// Nil/empty langs => no compiler checks (the standalone
@@ -503,15 +505,15 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	var envChecks []check
 	if len(missing) == 0 {
 		envChecks = []check{
-			{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }},
-			{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }},
-			{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.ghcrToken) }},
+			{"DOCKERHUB_TOKEN", func() error { return verifyDockerHubAuth(client, e.dockerHubUsername, e.dockerHubToken) }, "valid"},
+			{"SONAR_TOKEN", func() error { return verifySonarToken(client, e.sonarToken) }, "valid"},
+			{"GHCR_TOKEN", func() error { return verifyGHCRToken(client, e.ghcrToken) }, "valid"},
 			{"WORKFLOW_TOKEN", func() error {
 				return verifyGitHubToken(client, e.workflowToken, "WORKFLOW_TOKEN", []string{"repo", "workflow"})
-			}},
+			}, "valid"},
 			{"REPO_TOKEN", func() error {
 				return verifyGitHubToken(client, e.repoToken, "REPO_TOKEN", []string{"repo"})
-			}},
+			}, "valid"},
 		}
 	}
 
@@ -543,9 +545,9 @@ func runChecks(checks []check) []checkResult {
 	wg.Wait()
 
 	var failures []checkResult
-	for _, r := range results {
+	for i, r := range results {
 		if r.err == nil {
-			log.Successf("  %s: valid", r.name)
+			log.Successf("  %s: %s", r.name, checks[i].okWord)
 			continue
 		}
 		failures = append(failures, r)

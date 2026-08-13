@@ -32,13 +32,17 @@ import (
 )
 
 // check is the unit the parallel runner in VerifyEnvironment fans out over:
-// a label for the success / failure line and a no-arg function returning an
-// error. Lifted to package level so the per-language dispatcher
+// a label for the success / failure line, a no-arg function returning an
+// error, and the word printed after "name: " when fn succeeds (okWord) —
+// e.g. "installed" for a PATH-presence check, "valid" for a check that
+// verifies against a provider or a version floor, "running" for a
+// reachability probe. Lifted to package level so the per-language dispatcher
 // (compilerChecksFor) can return []check directly instead of an anonymous
 // struct that would require a conversion loop at the call site.
 type check struct {
-	name string
-	fn   func() error
+	name   string
+	fn     func() error
+	okWord string
 }
 
 // ghAuthRetrySleep is the backoff between the two `gh auth status` attempts.
@@ -224,7 +228,24 @@ func verifyGhAuth() error {
 			strings.Join(requiredGhScopes, ", "))
 		return nil
 	}
-	if missing := missingGhScopes(scopes); len(missing) > 0 {
+	// One line per required scope, printed as each is resolved — not just
+	// the missing ones — so a partial failure (e.g. project absent) doesn't
+	// leave the caller guessing whether repo/workflow were actually checked
+	// or silently skipped.
+	granted := make(map[string]bool, len(scopes))
+	for _, s := range scopes {
+		granted[s] = true
+	}
+	var missing []string
+	for _, want := range requiredGhScopes {
+		if granted[want] {
+			log.Successf("  scope: %s: granted", want)
+		} else {
+			missing = append(missing, want)
+			log.Errorf("  scope: %s: missing", want)
+		}
+	}
+	if len(missing) > 0 {
 		return fmt.Errorf("gh token is missing required scope(s): %s.\n    "+
 			"Grant them: gh auth refresh -s %s",
 			strings.Join(missing, ", "), strings.Join(missing, ","))
@@ -448,11 +469,11 @@ func compilerChecksFor(langs []string) []check {
 		seen[l] = true
 		switch l {
 		case projectconfig.LangTypescript:
-			out = append(out, check{"npm", verifyNpm})
+			out = append(out, check{"npm", verifyNpm, "installed"})
 		case projectconfig.LangDotnet:
-			out = append(out, check{"dotnet", verifyDotnet})
+			out = append(out, check{"dotnet", verifyDotnet, "installed"})
 		case projectconfig.LangJava:
-			out = append(out, check{"java", verifyJava})
+			out = append(out, check{"java", verifyJava, "installed"})
 		}
 	}
 	return out
@@ -467,12 +488,34 @@ func compilerChecksFor(langs []string) []check {
 // ghAuthRetrySleep above.
 var dockerProbeTimeout = 20 * time.Second
 
-// verifyDocker checks that Docker is actually usable: the binary is on
-// PATH, the daemon answers, and the Compose v2 plugin is installed.
-// Required unconditionally, independent of the deploy target: the
-// local-verify lifecycle (Build / Up / Run tests / Down / Clean in
-// internal/runner) shells out to `docker compose` for every scaffold, so a
-// cloud-run project still needs Docker to run its system locally.
+// dockerNotFoundErr is shared verbatim by verifyDockerInstalled and
+// verifyDockerRunning: both independently LookPath "docker" (see
+// verifyDockerRunning for why), so an entirely absent binary fails both
+// checks with the same message rather than one of them guessing.
+func dockerNotFoundErr() error {
+	return errors.New("docker not found on PATH.\n    " +
+		"Install Docker Desktop (macOS/Windows): https://www.docker.com/products/docker-desktop\n    " +
+		"Install Docker Engine (Linux): https://docs.docker.com/engine/install/")
+}
+
+// verifyDockerInstalled checks that the docker binary is on PATH. Sibling of
+// verifyDockerRunning (rather than folded into it) so "docker isn't
+// installed" and "docker is installed but the daemon/Compose isn't usable"
+// are distinguishable in the aggregated `environment verify` output — same
+// reasoning as verifyGhAuth/verifyGhVersion above.
+func verifyDockerInstalled() error {
+	if _, err := exec.LookPath("docker"); err != nil {
+		return dockerNotFoundErr()
+	}
+	return nil
+}
+
+// verifyDockerRunning checks that Docker is actually usable: the daemon
+// answers and the Compose v2 plugin is installed. Required unconditionally,
+// independent of the deploy target: the local-verify lifecycle (Build / Up /
+// Run tests / Down / Clean in internal/runner) shells out to `docker
+// compose` for every scaffold, so a cloud-run project still needs Docker to
+// run its system locally.
 //
 // Binary presence alone used to be treated as sufficient — issue #59: a
 // `book-shop` scaffold with Docker Desktop installed but not running passed
@@ -484,11 +527,9 @@ var dockerProbeTimeout = 20 * time.Second
 // whether or not the plugin is installed if run against a dead daemon, so it
 // only proves plugin presence once the daemon probe above has already
 // passed — it cannot substitute for it.
-func verifyDocker() error {
+func verifyDockerRunning() error {
 	if _, err := exec.LookPath("docker"); err != nil {
-		return errors.New("docker not found on PATH.\n    " +
-			"Install Docker Desktop (macOS/Windows): https://www.docker.com/products/docker-desktop\n    " +
-			"Install Docker Engine (Linux): https://docs.docker.com/engine/install/")
+		return dockerNotFoundErr()
 	}
 	if err := probeDockerDaemon(); err != nil {
 		return err
