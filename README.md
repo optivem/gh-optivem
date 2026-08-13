@@ -93,7 +93,7 @@ flowchart TD
     C -.- NOTE
 
     classDef step fill:#DAD1F7,stroke:#1a1a1a,stroke-width:2px,color:#1a1a1a
-    classDef note fill:#FFF9C4,stroke:#FFD400,stroke-width:2px,color:#1a1a1a,stroke-dasharray: 4 2
+    classDef note fill:#FFF9C4,stroke:#FFD400,stroke-width:2px,color:#1a1a1a,stroke-dasharray:4 2
     class A,B,C,D,E,F,G,Z step
     class NOTE note
 ```
