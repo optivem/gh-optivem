@@ -14,18 +14,11 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 1: In `internal/kernel/shell/github.go`, change `GitHub.CreateRepo()` (~line 427-438) so that when `exists` is true, it fails loud (`log.Fatalf`) with a message naming the repo and stating that re-scaffolding an existing repo is unsupported. No `--force`/override — the `exists` check is already a definitive answer via `RepoExists()`, so failing outright on `true` is the complete fix; no new evaluation logic needed.
+All code, tests, and the full suite run are done and were approved for commit. Only Step 7 remains, and it is deferred (see below) — optionally run it manually against a throwaway GitHub repo (not `jcupac/book-shop`) to end-to-end confirm the second `init` run fails loudly at the `CreateRepo` guard. No further code changes are expected; this plan file is otherwise ready to be deleted once Step 7 is either run or accepted as permanently deferred.
 
 ## Steps
 
-- [ ] Step 1: Fix `CreateRepo()` in `internal/kernel/shell/github.go` (~line 427-438) to fail loud when the target repo already exists, instead of silently skipping creation. Message must name the repo and state that re-scaffolding an existing repo is not supported. No override flag.
-- [ ] Step 2: Fix `renameDirs()` in `internal/scaffolding/files/files.go` (~line 164-188, the swallowed error at line 183) to propagate/fail loud on any `os.Rename` error (e.g. destination-already-exists collision), naming source and destination paths, instead of `if err == nil { count++ }` silently continuing.
-- [ ] Step 3: Trace callers of `renameDirs()` (`internal/scaffolding/steps/replacements.go` ~line 120-141, `applyPlaceholderPairs`) to confirm the propagated error surfaces as a scaffold-abort (not swallowed again one level up).
-- [ ] Step 4: Check whether `internal/scaffolding/steps/apply_template.go` (`copySystemTests`, ~line 141-161) and `internal/scaffolding/files/files.go` (`CopyDir`, ~line 211-238) are used for other language combinations (backend-lang=java, other test-lang values) beyond the Java test-lang path that reproduced this bug — if the same copy+rename+replace pipeline is shared, no additional per-language fix should be needed once Steps 1-2 land, but confirm via a quick read/test rather than assuming.
-- [ ] Step 5: Add/update a Go test covering `CreateRepo()`'s existing-repo behavior (fails loud, correct error message) in the `internal/kernel/shell` test suite.
-- [ ] Step 6: Add/update a Go test covering `renameDirs()`'s error-propagation behavior (destination collision surfaces as an error, not swallowed) in the `internal/scaffolding/files` test suite.
-- [ ] Step 7: Manually verify: run `gh optivem init` with the same flags twice in a row against the same fresh target repo (a throwaway/test repo, not `jcupac/book-shop`) and confirm the second run fails loudly at the `CreateRepo` guard rather than producing corrupted output.
-- [ ] Step 8: Run the full Go test suite to confirm no regressions.
+- [ ] Step 7: Manually verify: run `gh optivem init` with the same flags twice in a row against the same fresh target repo (a throwaway/test repo, not `jcupac/book-shop`) and confirm the second run fails loudly at the `CreateRepo` guard rather than producing corrupted output. — ⏳ Deferred: skipped to avoid creating real GitHub side effects (repo/CI) in this session; `TestCreateRepo_ExistingRepoFailsLoud` already covers the fail-loud behavior at the unit level. Run manually against a throwaway repo when convenient.
 
 ## Open questions
 

@@ -430,8 +430,7 @@ func (g *GitHub) CreateRepo() {
 		log.Fatalf("failed to check if repository %s exists: %v", g.Repo, err)
 	}
 	if exists {
-		log.Warnf("Repository %s already exists -- skipping creation", g.Repo)
-		return
+		log.Fatalf("Repository %s already exists -- re-scaffolding an existing repo is not supported", g.Repo)
 	}
 	MustRunWithRetry("gh repo create "+g.Repo+" --public", "")
 	g.waitForRepoVisible()

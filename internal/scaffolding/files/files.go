@@ -2,6 +2,7 @@
 package files
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,19 +150,21 @@ func RenameFilesInTree(root, old, new string) int {
 }
 
 // RenameDirsInTree renames directories containing old in their name to new.
-// Walks bottom-up to avoid renaming parent before child.
-func RenameDirsInTree(root, old, new string) int {
+// Walks bottom-up to avoid renaming parent before child. Returns an error
+// naming the source and destination on any rename failure (e.g. a
+// destination-already-exists collision) instead of silently skipping it.
+func RenameDirsInTree(root, old, new string) (int, error) {
 	return renameDirs(root, old, new, nil)
 }
 
 // RenameDirsInSubtree is like RenameDirsInTree but only renames directories
 // whose path contains subtreeMarker (e.g. filepath.Join("system-test", "typescript")).
 // Used to apply language-specific casing rules to domain folders.
-func RenameDirsInSubtree(root, subtreeMarker, old, new string) int {
+func RenameDirsInSubtree(root, subtreeMarker, old, new string) (int, error) {
 	return renameDirs(root, old, new, &subtreeMarker)
 }
 
-func renameDirs(root, old, new string, subtreeMarker *string) int {
+func renameDirs(root, old, new string, subtreeMarker *string) (int, error) {
 	var dirs []string
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || !info.IsDir() || IsGitDir(path) {
@@ -180,11 +183,12 @@ func renameDirs(root, old, new string, subtreeMarker *string) int {
 		dir := dirs[i]
 		newName := strings.ReplaceAll(filepath.Base(dir), old, new)
 		newPath := filepath.Join(filepath.Dir(dir), newName)
-		if err := os.Rename(dir, newPath); err == nil {
-			count++
+		if err := os.Rename(dir, newPath); err != nil {
+			return count, fmt.Errorf("rename %s -> %s: %w", dir, newPath, err)
 		}
+		count++
 	}
-	return count
+	return count, nil
 }
 
 // CopyDir recursively copies a directory tree.

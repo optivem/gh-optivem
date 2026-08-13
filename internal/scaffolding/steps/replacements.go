@@ -120,7 +120,11 @@ func applyToAllRepos(cfg *config.Config, pairs [][2]string, label string) {
 func applyPlaceholderPairs(repoDir string, pairs [][2]string, label string) {
 	// 1. Directories (bottom-up inside RenameDirsInTree).
 	for _, p := range pairs {
-		if n := files.RenameDirsInTree(repoDir, p[0], p[1]); n > 0 {
+		n, err := files.RenameDirsInTree(repoDir, p[0], p[1])
+		if err != nil {
+			log.Fatalf("%s dirs: %s -> %s: %v", label, p[0], p[1], err)
+		}
+		if n > 0 {
 			log.Successf("%s dirs: %s -> %s (%d renamed)", label, p[0], p[1], n)
 		}
 	}

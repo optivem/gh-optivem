@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 func TestSplitCommand(t *testing.T) {
@@ -215,6 +217,42 @@ func TestRepoExists_HardFail4xxNotARepoNotFoundStillErrors(t *testing.T) {
 	}
 	if len(sleeps) != 0 {
 		t.Fatalf("sleeps = %d, want 0 (hard-fail must not retry)", len(sleeps))
+	}
+}
+
+// TestCreateRepo_ExistingRepoFailsLoud is the regression test for issue #60:
+// a repeat `init` run against an already-scaffolded repo must abort at the
+// existence check instead of logging a warning and falling through to
+// re-scaffold (which corrupted output by colliding with the stale tree from
+// the first run).
+func TestCreateRepo_ExistingRepoFailsLoud(t *testing.T) {
+	withFakeRunFn(t, func(int) (string, error) {
+		return `{"name":"myrepo"}`, nil // gh repo view succeeds -> repo exists
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	var caught *log.StepError
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				return
+			}
+			var ok bool
+			caught, ok = r.(*log.StepError)
+			if !ok {
+				t.Fatalf("panic value is %T, want *log.StepError", r)
+			}
+		}()
+		gh.CreateRepo()
+	}()
+	if caught == nil {
+		t.Fatal("CreateRepo: want a fatal abort when the repo already exists, got none")
+	}
+	for _, want := range []string{"myorg/myrepo", "already exists", "not supported"} {
+		if !strings.Contains(caught.Error(), want) {
+			t.Fatalf("error %q does not mention %q", caught.Error(), want)
+		}
 	}
 }
 
