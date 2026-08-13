@@ -189,8 +189,32 @@ type scopeStatus struct {
 	granted bool
 }
 
-// verifyGhAuth checks that the gh CLI is installed, authenticated, and that
-// its token carries the scopes gh-optivem needs. Uses plain `gh auth status`
+// ghNotFoundErr is shared verbatim by verifyGhInstalled, verifyGhAuth, and
+// verifyGhVersion: all three independently LookPath "gh" (see
+// dockerNotFoundErr below for the same pattern on docker), so an entirely
+// absent binary fails all three siblings with the same message rather than
+// one of them guessing.
+func ghNotFoundErr() error {
+	return errors.New("gh CLI not found on PATH.\n    " +
+		"Install: https://cli.github.com/")
+}
+
+// verifyGhInstalled checks that the gh binary is on PATH. Sibling of
+// verifyGhAuth and verifyGhVersion (rather than folded into either) so
+// "gh isn't installed", "installed but not authenticated", and "installed
+// but too old" are three distinguishable lines in the aggregated
+// `environment verify` output — same reasoning as verifyDockerInstalled /
+// verifyDockerRunning below.
+func verifyGhInstalled() error {
+	if _, err := exec.LookPath("gh"); err != nil {
+		return ghNotFoundErr()
+	}
+	return nil
+}
+
+// verifyGhAuth checks that the gh CLI is authenticated and that its token
+// carries the scopes gh-optivem needs (installed-ness is verifyGhInstalled's
+// job — see above). Uses plain `gh auth status`
 // (no -h flag) for symmetry with internal/shell/github.go, which never locks
 // host either — both use whichever default host `gh` is configured for.
 //
@@ -232,8 +256,7 @@ type scopeStatus struct {
 // the generic per-check FAIL line.
 func verifyGhAuth(scopes *[]scopeStatus, scopeErr *error) error {
 	if _, err := exec.LookPath("gh"); err != nil {
-		return errors.New("gh CLI not found on PATH.\n    " +
-			"Install: https://cli.github.com/")
+		return ghNotFoundErr()
 	}
 	out, err := exec.Command("gh", "auth", "status").CombinedOutput()
 	if err != nil {
@@ -328,13 +351,12 @@ func formatVersion(v [3]int) string {
 }
 
 // verifyGhVersion checks that the gh CLI on PATH meets ghVersionFloor.
-// Registered as a sibling of verifyGhAuth (rather than folded into it) so a
-// too-old gh and an auth failure are distinguishable in the aggregated
-// `environment verify` output.
+// Registered as a sibling of verifyGhInstalled/verifyGhAuth (rather than
+// folded into either) so a too-old gh and an auth failure are
+// distinguishable in the aggregated `environment verify` output.
 func verifyGhVersion() error {
 	if _, err := exec.LookPath("gh"); err != nil {
-		return errors.New("gh CLI not found on PATH.\n    " +
-			"Install: https://cli.github.com/")
+		return ghNotFoundErr()
 	}
 	out, err := exec.Command("gh", "--version").CombinedOutput()
 	if err != nil {

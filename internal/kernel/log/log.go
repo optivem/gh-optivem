@@ -176,12 +176,21 @@ func StepDone(pos, total int, duration string) {
 // suppressed by --quiet like Info, since it has no meaning without the check
 // lines it groups. The log file mirror stays plain (no ANSI) but keeps the
 // uppercasing so a grepped log file visually matches the terminal.
+//
+// A blank line always precedes the heading (terminal and file alike) so a
+// section reads as its own block instead of running straight into the
+// previous section's last line — no blank line follows, so the heading
+// stays visually attached to the content it introduces.
 func Section(title string) {
 	heading := strings.ToUpper(title)
+	if logFile != nil {
+		fmt.Fprintln(logFile)
+	}
 	writeFile(plainInfo, heading)
 	if quiet {
 		return
 	}
+	fmt.Println()
 	color.New(color.Bold, color.FgCyan).Println(heading)
 }
 

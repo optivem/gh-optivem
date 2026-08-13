@@ -49,7 +49,7 @@ const (
 )
 
 type checkResult struct {
-	name string // e.g. "gh CLI auth", "DOCKERHUB_TOKEN"
+	name string // e.g. "gh CLI", "DOCKERHUB_TOKEN"
 	err  error  // nil on success
 }
 
@@ -478,25 +478,26 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// scopeResults is populated by verifyGhAuth (in requiredGhScopes order)
 	// but printed as its own "Scopes:" section below, once every tool check
 	// has settled — not interleaved mid-check the way it used to be, and not
-	// nested under "gh CLI auth" either, since a gh scope is conceptually
+	// nested under "gh CLI" either, since a gh scope is conceptually
 	// its own kind of thing (an auth grant, not a tool).
 	//
 	// scopeErr holds the missing-scope error, if any, separately from the
-	// "gh CLI auth" check's own return value: the Scopes: section already
-	// names each missing scope on its own line, so folding the same fact
-	// into "gh CLI auth"'s pass/fail would print it a second time as that
-	// check's generic FAIL line. It's still added to toolFailures below
-	// (without going through that generic line) so the aggregated summary
-	// keeps the "Grant them: gh auth refresh -s ..." instruction.
+	// "gh CLI: authenticated" check's own return value: the Scopes: section
+	// already names each missing scope on its own line, so folding the same
+	// fact into that check's pass/fail would print it a second time as its
+	// generic FAIL line. It's still added to toolFailures below (without
+	// going through that generic line) so the aggregated summary keeps the
+	// "Grant them: gh auth refresh -s ..." instruction.
 	var scopeResults []scopeStatus
 	var scopeErr error
 	toolChecks := []check{
-		{"gh CLI auth", func() error { return verifyGhAuth(&scopeResults, &scopeErr) }, "authenticated"},
-		// Sibling of "gh CLI auth" rather than folded into it, so a too-old
-		// gh (issue #59: gh 2.42.0 predates `gh project link`, and the
-		// failure was silently swallowed) is distinguishable from an auth
-		// failure in the aggregated output.
-		{"gh CLI version", verifyGhVersion, "valid"},
+		// installed / authenticated / valid version are siblings (like
+		// docker's installed/running below) so a missing binary, a bad
+		// auth, and a too-old version are three distinguishable lines
+		// instead of one check's error message trying to cover all three.
+		{"gh CLI", verifyGhInstalled, "installed"},
+		{"gh CLI", func() error { return verifyGhAuth(&scopeResults, &scopeErr) }, "authenticated"},
+		{"gh CLI", verifyGhVersion, "valid version"},
 		{"actionlint", verifyActionlint, "installed"},
 		{"bash", verifyBash, "installed"},
 		// docker is unconditional, not deploy-target-gated: every scaffold
@@ -541,7 +542,7 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 		}
 	}
 	if scopeErr != nil {
-		toolFailures = append(toolFailures, checkResult{name: "gh CLI auth", err: scopeErr})
+		toolFailures = append(toolFailures, checkResult{name: "gh CLI", err: scopeErr})
 	}
 
 	// Phase 2: environment variables — presence first, then live provider
@@ -645,7 +646,7 @@ func runChecks(checks []check) []checkResult {
 func buildEnvVerifyError(missing []string, failures []checkResult) error {
 	var b strings.Builder
 	if len(failures) > 0 {
-		fmt.Fprintf(&b, "Verification failed for %d check(s):\n", len(failures))
+		fmt.Fprintf(&b, "Verification failed for %d check(s):\n\nERROR DETAILS:\n", len(failures))
 		for _, f := range failures {
 			b.WriteString("\n  ")
 			b.WriteString(f.name)
