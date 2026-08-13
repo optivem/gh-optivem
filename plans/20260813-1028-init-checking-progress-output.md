@@ -1,7 +1,5 @@
 # 2026-08-13 10:28:00 UTC — Print visible "checking..." progress lines for gh optivem init's Phase 2 GitHub-prerequisite checks
 
-🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-08-13T11:33:46Z`
-
 ## TL;DR
 
 **Why:** `gh optivem init`'s Phase 2 (`internal/config/config.go` `ParseAndValidate`, ~lines 1193-1212) runs `CheckOwnerExists`, `CheckProjectExists`, and `confirmReposExist` entirely silently — nothing is printed unless a check fails. This is inconsistent with the immediately-preceding `VerifyEnvironment` call, which prints one `log.Successf`/`log.Errorf` line per tool/compiler check (`  gh CLI: installed`, `  java: installed`, etc.) under a "Verifying environment..." header (`internal/config/token_auth.go` `verifyEnvironmentWithClient` + `runChecks`). A user watching `init` run sees a burst of environment-check lines, then a long silent gap before either Phase 3 starts or a FatalExit appears — no feedback on which owner/project/repo check is in flight.
@@ -24,8 +22,8 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 5: Manually verify: run `gh optivem init` and visually confirm the new progress lines appear in the right place, in the right order, with the right wording — including the existing-repo FATAL case still working as before. This needs a real run against GitHub, so it's for the user to trigger (or hand back a throwaway repo target).
+Step 5 is deferred — no more agent-executable work remains. When the user is ready, they run `gh optivem init` themselves (or hand back a throwaway repo target) and visually confirm the new progress lines appear in the right place, in the right order, with the right wording — including the existing-repo FATAL case still working as before. Once confirmed, delete this plan file.
 
 ## Steps
 
-- [ ] Step 5: Manually verify: run `gh optivem init` and visually confirm the new progress lines appear in the right place, in the right order, with the right wording — including the existing-repo FATAL case still working as before.
+- [ ] Step 5: Manually verify: run `gh optivem init` and visually confirm the new progress lines appear in the right place, in the right order, with the right wording — including the existing-repo FATAL case still working as before. — ⏳ Deferred: needs a real run against live GitHub; user to trigger when convenient.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Every command in README.md, in README order, on a brand-new system.
+# Every command in docs/setup.md, then every command in README.md, in each
+# doc's own order, on a brand-new system.
 #
 # Run this in a throwaway VM to confirm the documented setup path still works.
 # Stops at the first failure — that is the one worth reading.
@@ -18,18 +19,21 @@
 #
 # SHAPE
 #
-# The README is the specification, so it is also the table of contents:
+# docs/setup.md and README.md are the specification, so together they are also
+# the table of contents:
 #
-#   - one `readme_<heading>` function per README heading, holding that section's
-#     commands in the README's own order;
-#   - one `ensure_<tool>_installed` per tool the README asks you to have, so
+#   - one `setup_<heading>` function per docs/setup.md heading, one
+#     `readme_<heading>` function per README.md heading, each holding that
+#     section's commands in its own doc's order;
+#   - one `ensure_<tool>_installed` per tool docs/setup.md asks you to have, so
 #     "what does this file do about Go" has one place to look;
 #   - a "Run" block at the very bottom that is nothing but the call list. Read
-#     it side by side with the README's contents — they are the same list.
+#     it side by side with the two docs' contents — they are the same list,
+#     docs/setup.md's headings first, then README.md's.
 #
-# If you add a command to the README, add it to the function named after its
+# If you add a command to either doc, add it to the function named after its
 # heading; if a heading appears in one and not the other, this file is wrong.
-# The one exception is machine_setup, which has no README counterpart — see the
+# The one exception is machine_setup, which has no doc counterpart — see the
 # note there.
 
 set -euo pipefail
@@ -291,7 +295,7 @@ winget_install() {
 # For the two tools this script deliberately does not install: Bash, which
 # supplies the shell it is running in, and Docker Desktop, which needs a reboot
 # and an interactive first launch (see ensure_docker_installed). A guest without
-# them stops here - but it stops naming the tool and the same link the README
+# them stops here - but it stops naming the tool and the same link docs/setup.md
 # would have sent you to, rather than as a bare "docker: command not found".
 #
 # $1 label, $2 download URL, $3.. version command
@@ -308,8 +312,8 @@ require_tool() {
 # `go install` drops the binary in $(go env GOPATH)/bin and never edits PATH —
 # the Go installer only puts the toolchain itself there. On a brand-new system
 # actionlint is "command not found" straight after installing it without this.
-# The README says the same under its actionlint bullet: "Add that directory to
-# PATH yourself."
+# docs/setup.md says the same under its actionlint bullet: "Add that directory
+# to PATH yourself."
 #
 # cygpath because on Windows `go env GOPATH` answers in native form
 # (C:\Users\you\go) and PATH here is colon-separated, so appending it raw splits
@@ -329,8 +333,8 @@ add_go_bin_to_path() {
 # claude.ai/install.ps1 drops claude.exe in %USERPROFILE%\.local\bin and never
 # writes the registry PATH - it prints a warning telling you to add it yourself.
 # So refresh_path alone can never find it, no matter how many times it re-reads
-# the registry, and that is the exact failure this prevents. The README says the
-# same under its Claude Code bullet.
+# the registry, and that is the exact failure this prevents. docs/setup.md says
+# the same under its Claude Code bullet.
 #
 # Built from USERPROFILE rather than $HOME because the installer installs
 # relative to the Windows user profile, and $HOME in Git Bash is a separate
@@ -356,20 +360,20 @@ add_claude_bin_to_path() {
 #            that block the proof the checkpoint was restored; on a guest that
 #            is not clean it is the explanation for whatever happens further
 #            down, in the one place nobody has to scroll to find.
-#   after  - straight after readme_local_environment_setup, the last function in
+#   after  - straight after setup_local_environment_setup, the last function in
 #            the file that installs anything, and before the README's own
 #            verification steps. Every NOT installed line above it should now
 #            have a version next to it, and the two blocks read side by side say
 #            what this run actually changed about the guest.
 #
-# A run that stops inside readme_local_environment_setup never reaches the
+# A run that stops inside setup_local_environment_setup never reaches the
 # closing pass - require_tool exits on a missing Docker. That is accepted rather
 # than worked around: the exit message already names the tool and the page to get
 # it from, and probing all eleven from the EXIT trap would put a slow sweep in
 # front of every failure verdict.
 #
 # Nothing here exits. Enforcement stays with the ensure_*/require_* functions
-# below, which run in README order and stop where the README's reader would -
+# below, which run in docs/setup.md order and stop where its reader would -
 # these passes only report, so the whole picture is in the log even when the run
 # is about to stop on the first missing tool.
 #
@@ -408,9 +412,10 @@ inventory() {
 
 # Machine setup ===============================================================
 #
-# Not a README heading. The README names an install command for Claude Code only
-# and links out to a download page for the rest, so these are the commands for
-# the Windows clean-room guest, in the order they have to happen.
+# Not a docs/setup.md heading. docs/setup.md names an install command for
+# Claude Code only and links out to a download page for the rest, so these are
+# the commands for the Windows clean-room guest, in the order they have to
+# happen.
 #
 # These run. Steps marked [interactive] need you at the keyboard — answering
 # prompts or signing in through a browser — so start this script from a console,
@@ -477,8 +482,8 @@ ensure_gh_signed_in() {
 
 # The native-Windows installer, run through a PowerShell shim because this file
 # is Git Bash. claude.ai/install.sh is the macOS/Linux/WSL installer and is NOT
-# the right one here - the README's Prerequisites bullet says the same, and this
-# is the command it names.
+# the right one here - docs/setup.md's Prerequisites bullet says the same, and
+# this is the command it names.
 ensure_claude_installed() {
     step 'machine setup: Claude Code install'
     if probe_tool 'Claude Code' claude --version; then
@@ -519,7 +524,7 @@ ensure_claude_signed_in() {
 #
 # Verification only — machine_setup above is what installs these.
 
-readme_prerequisites() {
+setup_prerequisites() {
     step 'Prerequisites'
 
     # GitHub CLI
@@ -533,7 +538,7 @@ readme_prerequisites() {
 
 # Install =====================================================================
 
-readme_install() {
+setup_install() {
     step 'Install'
     gh extension install optivem/gh-optivem
     gh optivem --version
@@ -542,13 +547,13 @@ readme_install() {
 
 # Local environment setup =====================================================
 
-readme_local_environment_setup() {
+setup_local_environment_setup() {
     step 'Local environment setup'
 
-    # The README runs this first, before the tools below are installed, precisely
-    # so it reports everything missing in one pass. On a brand-new system it is
-    # therefore EXPECTED to fail here — hence `|| true`. The re-run in
-    # readme_environment_variables is the one that must pass.
+    # docs/setup.md runs this first, before the tools below are installed,
+    # precisely so it reports everything missing in one pass. On a brand-new
+    # system it is therefore EXPECTED to fail here — hence `|| true`. The
+    # re-run in setup_environment_variables is the one that must pass.
     gh optivem environment verify || true
 
     ensure_bash_installed
@@ -562,15 +567,17 @@ ensure_bash_installed() {
     require_tool 'Bash' 'https://git-scm.com/download/win' bash --version
 }
 
-# The README's own note: Go only matters because actionlint below is installed
-# with it — which is also why the version is deliberately left unpinned. Nothing
-# in this repo builds with Go; it is here to carry `go install`.
+# docs/setup.md's own note: Go only matters because actionlint below is
+# installed with it — which is also why the version is deliberately left
+# unpinned. Nothing in this repo builds with Go; it is here to carry
+# `go install`.
 ensure_go_installed() {
     winget_install GoLang.Go 'Go' go version
 }
 
-# The one README bullet that names an install command rather than a download
-# page, so this is the only tool down here that `ensure` can actually install.
+# The one docs/setup.md bullet that names an install command rather than a
+# download page, so this is the only tool down here that `ensure` can
+# actually install.
 ensure_actionlint_installed() {
     if probe_tool 'actionlint' actionlint --version; then
         return
@@ -594,8 +601,8 @@ ensure_docker_installed() {
     require_tool 'Docker' 'https://docs.docker.com/get-started/get-docker/' docker --version
 }
 
-# The README says to check only the languages you need. All three are installed
-# because readme_generate_your_project scaffolds with all three.
+# docs/setup.md says to check only the languages you need. All three are
+# installed because readme_generate_your_project scaffolds with all three.
 #
 # The versions are the ones CI pins in .github/actions/acceptance-test/action.yml
 # — Temurin 21, .NET 8.0.x, Node 22.x — so a scaffolded project that builds on
@@ -613,7 +620,7 @@ ensure_language_toolchains() {
 
 # Environment variables =======================================================
 
-readme_environment_variables() {
+setup_environment_variables() {
     step 'Environment variables'
     gh optivem environment show
 
@@ -625,7 +632,7 @@ readme_environment_variables() {
 
 # Claude Code setup ===========================================================
 
-readme_claude_code_setup() {
+setup_claude_code_setup() {
     step 'Claude Code setup'
     gh optivem claude setup
 }
@@ -648,17 +655,6 @@ readme_clone_project_repository() {
     # whole script - which is the point. Everything after this runs in the
     # generated repo, exactly as the README's reader would be sitting in it.
     cd "$REPO"
-}
-
-
-# Verify your project =========================================================
-
-readme_verify_your_project() {
-    step 'Verify your project'
-    gh optivem system-test setup
-    gh optivem system start
-    gh optivem system-test run --sample
-    gh optivem system stop
 }
 
 
@@ -760,9 +756,10 @@ add_ticket_to_project_board() {
 
 # Run =========================================================================
 #
-# README.md's table of contents, in its order, plus the three lines that have no
-# README counterpart - the two inventory passes and machine_setup. If the rest of
-# these two lists stop matching, this file is wrong.
+# docs/setup.md's table of contents, then README.md's, each in its own order,
+# plus the three lines that have no doc counterpart - the two inventory passes
+# and machine_setup. If the rest of these lists stop matching their docs, this
+# file is wrong.
 
 # Before the first probe, not just after an install. This shell was handed a
 # PATH snapshot taken when its parent window opened, which can predate anything
@@ -772,18 +769,18 @@ add_ticket_to_project_board() {
 echo "readme-steps: reading PATH back from the registry before the first probe"
 refresh_path
 
-inventory before                  # no README counterpart - read-only, reports only
-machine_setup                     # no README counterpart - see the section above
+inventory before                  # no doc counterpart - read-only, reports only
+machine_setup                     # no doc counterpart - see the section above
 
-readme_prerequisites
-readme_install
-readme_local_environment_setup
-inventory after                   # no README counterpart - the closing half of the pair
-readme_environment_variables
-readme_claude_code_setup
+setup_prerequisites
+setup_install
+setup_local_environment_setup
+inventory after                   # no doc counterpart - the closing half of the pair
+setup_environment_variables
+setup_claude_code_setup
+
 readme_generate_your_project
 readme_clone_project_repository
-readme_verify_your_project
 readme_implement_a_ticket
 
 # The trap prints the verdict and the log path; this is the part it cannot know.

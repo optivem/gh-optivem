@@ -318,17 +318,17 @@ go test -tags=system ./internal/config/ -v -timeout 2h \
 
 ### Docs gate
 
-One thing keeps `README.md` honest, and it answers the only question that matters: do the documented commands still work? There is deliberately no static counterpart — the README is proven by execution, in a clean room, or not at all.
+One thing keeps `README.md` and [`docs/setup.md`](docs/setup.md) honest, and it answers the only question that matters: do the documented commands still work? There is deliberately no static counterpart — the docs are proven by execution, in a clean room, or not at all.
 
-[`scripts/readme-steps.sh`](scripts/readme-steps.sh) is every command in `README.md`, in README order, as a flat transcript:
+[`scripts/readme-steps.sh`](scripts/readme-steps.sh) is every command in `docs/setup.md` (the one-time setup) followed by every command in `README.md` (create a project, run the ATDD loop), each in its own document's order, as a flat transcript:
 
 ```bash
 bash scripts/readme-steps.sh
 ```
 
-Its section banners are the README's own headings, in the README's own order, so the two can be read side by side — that transparency is the point, and it is why the README-derived sections have no flags, no capability probes, and no control flow beyond `set -euo pipefail`. If you add a command to the README, add it here under the same heading.
+Its section banners are those two docs' own headings, in each doc's own order — `setup_<heading>` functions for `docs/setup.md`, `readme_<heading>` functions for `README.md` — so each half of the script can be read side by side with its source doc — that transparency is the point, and it is why the derived sections have no flags, no capability probes, and no control flow beyond `set -euo pipefail`. If you add a command to either doc, add it here under the same heading.
 
-The one section with no README counterpart is **Machine setup**, which runs ahead of them and does have branches: it installs the GitHub CLI and Claude Code and signs you in to both, skipping whatever is already there so a re-run after a fix costs nothing. Installers edit PATH in the registry rather than in the running process, so it re-reads PATH after each install. Go, Docker Desktop, Java, .NET, and Node are still yours to install by hand — the sections below verify them but nothing installs them.
+The one section with no counterpart in either doc is **Machine setup**, which runs ahead of them and does have branches: it installs the GitHub CLI and Claude Code and signs you in to both, skipping whatever is already there so a re-run after a fix costs nothing. Installers edit PATH in the registry rather than in the running process, so it re-reads PATH after each install. Go, Docker Desktop, Java, .NET, and Node are still yours to install by hand — the sections below verify them but nothing installs them.
 
 Two of those steps wait on the keyboard, so run the script from a console, not a pipe.
 
@@ -382,11 +382,11 @@ pwsh -File scripts/vm-logs-copy.ps1     # prompts, then copies into .vm-logs/
 
 Run it **before** `vm-checkpoint-restore.ps1`. The revert discards the guest's copies and there is no undo; the restore script now says so in its confirmation prompt.
 
-The one command allowed to fail is the first `environment verify`, because the README runs it *before* the tools it checks are installed, precisely so it reports everything missing in one pass. The re-run under "Environment variables" is the one that must pass.
+The one command allowed to fail is the first `environment verify`, because `docs/setup.md` runs it *before* the tools it checks are installed, precisely so it reports everything missing in one pass. The re-run under "Environment variables" is the one that must pass.
 
 Two README steps are commented rather than executed, with the reason inline: `implement` needs an issue with Gherkin acceptance criteria on the Project board, which a freshly scaffolded repo has none of; `upgrade`/`uninstall` would undo the install above.
 
-The script holds a *copy* of the README's commands, not an extract, and nothing enforces that they agree — compare the two by eye when you touch either. It will never be a literal transcript: its Machine setup section collects the install and sign-in commands the README only links out to, and the steps above are commented rather than run. Expect it to track the README at roughly 95%.
+The script holds a *copy* of the two docs' commands, not an extract, and nothing enforces that they agree — compare the script to its source doc by eye when you touch either. It will never be a literal transcript: its Machine setup section collects the install and sign-in commands `docs/setup.md` only links out to, and the steps above are commented rather than run. Expect it to track the two docs at roughly 95%.
 
 Because the only gate is execution, a dead link in the docs is caught by a reader following it, not by CI. When you move a package, grep the Markdown for its old path.
 
