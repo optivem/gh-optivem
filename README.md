@@ -63,21 +63,22 @@ cd book-shop
 
 Setup and creating your project are one-offs. From here on, `gh optivem implement` is the day-to-day verb: it takes one GitHub issue — a User Story with Acceptance Criteria — and walks it through the ATDD pipeline, dispatching an AI agent at each step and running the real build, system, and test commands in between.
 
-The pipeline follows the double-loop red-green-refactor cycle, with the AI agent writing and the human reviewing at each step:
+The pipeline follows the double-loop red-green-refactor cycle. Unless a step says otherwise, each step follows the same pattern: **AI writes · Human reviews · Commit**.
 
 **RED** — write failing acceptance tests, DSL, and drivers:
 
+Acceptance Tests are written at the product level — independent of UI/API/Mobile, and independent of teams.
+
 ```mermaid
 flowchart TD
-    A["<b>Write Acceptance Tests</b><br/><small>AI writes · Human reviews · Commit</small>"]
+    A["<b>Write Acceptance Tests</b>"]
     B{"DSL Interface Changed?"}
-    C["<b>Implement DSL</b><br/><small>AI writes · Human reviews · Commit</small>"]
+    C["<b>Implement DSL</b>"]
     D{"External System Driver Interface Changed?"}
-    E["<b>Implement External-System Drivers</b><br/><small>AI writes · Human reviews · Commit</small><br/><i>(subprocess loop with contract tests)</i>"]
+    E["<b>Implement External-System Drivers</b><br/><i>(subprocess loop with contract tests)</i>"]
     F{"System Driver Interface Changed?"}
-    G["<b>Implement System Drivers</b><br/><small>AI writes · Human reviews · Commit</small>"]
+    G["<b>Implement System Drivers</b>"]
     Z(("RED DONE"))
-    NOTE["Product level, independent of UI/API/Mobile"]
 
     A --> B
     B -->|Yes| C
@@ -89,20 +90,16 @@ flowchart TD
     F -->|Yes| G
     F -->|No| Z
     G --> Z
-    A -.- NOTE
-    C -.- NOTE
 
     classDef step fill:#DAD1F7,stroke:#1a1a1a,stroke-width:2px,color:#1a1a1a
-    classDef note fill:#FFF9C4,stroke:#FFD400,stroke-width:2px,color:#1a1a1a,stroke-dasharray:4 2
     class A,B,C,D,E,F,G,Z step
-    class NOTE note
 ```
 
 **GREEN** — implement, build, start, and verify the system:
 
 ```mermaid
 flowchart TD
-    A["<b>Implement System Changes</b><br/><small>AI writes · Human reviews · Commit</small>"]
+    A["<b>Implement System Changes</b>"]
     B["<b>Build the System</b><br/><small>Docker</small>"]
     C["<b>Start the System</b><br/><small>Docker</small>"]
     D["<b>Verify Tests Pass</b>"]
