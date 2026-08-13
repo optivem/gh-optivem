@@ -178,16 +178,28 @@ Run it with your project's values. Which language flags you pass depends on `--a
 **Multitier** — separate `backend/` and `frontend/` trees, each with its own language:
 
 ```bash
-gh optivem init --owner <username|organization> --repo <repo_name> --system-name "<system_name>" --repo-strategy <monorepo|multirepo> --arch multitier --backend-lang <java|dotnet|typescript> --frontend-lang typescript --test-lang <java|dotnet|typescript>
+gh optivem init --owner <owner> --repo <repo> --system-name "<system-name>" --repo-strategy <repo-strategy> --arch multitier --backend-lang <backend-lang> --frontend-lang typescript --test-lang <test-lang>
 ```
 
 **Monolith** — a single `system/` tree in one language, so there is no separate frontend flag:
 
 ```bash
-gh optivem init --owner <username|organization> --repo <repo_name> --system-name "<system_name>" --repo-strategy <monorepo|multirepo> --arch monolith --monolith-lang <java|dotnet|typescript> --test-lang <java|dotnet|typescript>
+gh optivem init --owner <owner> --repo <repo> --system-name "<system-name>" --repo-strategy <repo-strategy> --arch monolith --monolith-lang <monolith-lang> --test-lang <test-lang>
 ```
 
 Either way, `--test-lang` is independent of the system language(s), and `--repo-strategy` works with both architectures.
+
+**Flags:**
+
+- `--owner` — your GitHub username or organization name, whichever owns the scaffolded repo(s).
+- `--repo` — repo name (or monorepo root name for multi-repo layouts).
+- `--system-name` — human-readable system name (e.g. `"Book Shop"`).
+- `--repo-strategy` — `monorepo` | `multirepo`.
+- `--arch` — `monolith` | `multitier`.
+- `--monolith-lang` — system language, only when `--arch monolith`: `java` | `dotnet` | `typescript`.
+- `--backend-lang` — backend language, only when `--arch multitier`: `java` | `dotnet` | `typescript`.
+- `--frontend-lang` — frontend language, only when `--arch multitier`: currently only `typescript`.
+- `--test-lang` — system-test language, independent of the system language(s): `java` | `dotnet` | `typescript`.
 
 For example:
 
