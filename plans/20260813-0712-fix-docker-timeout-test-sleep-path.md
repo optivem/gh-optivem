@@ -13,13 +13,11 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 1: edit `internal/config/verify_environment_tools_test.go:613`, changing `body = "sleep 2\nexit 0"` to `body = "/bin/sleep 2\nexit 0"`. Then run Step 2's verification.
+All local work is done (line fixed, full `go test ./...` green on Windows). Step 2 needs a Linux CI run to confirm — commit and push, then watch the next Actions run for `TestVerifyEnvironment_DockerDaemonTimeout` on the Linux job. If it passes, delete this plan file; if it still fails, reopen investigation.
 
 ## Steps
 
-- [ ] Step 1: In `internal/config/verify_environment_tools_test.go`, change line 613 from `body = "sleep 2\nexit 0"` to `body = "/bin/sleep 2\nexit 0"` (absolute path, mirroring the Windows branch's `%SystemRoot%\System32\ping.exe` pattern immediately above it).
-- [ ] Step 2: Run `go test ./internal/config/... -run TestVerifyEnvironment_DockerDaemonTimeout -v` in CI (Linux) — this fix targets a Linux/macOS-only code path and cannot be meaningfully verified on the Windows dev box, where the test already takes the `ping.exe` branch regardless of this change.
-- [ ] Step 3: Run the full `go test ./...` suite to confirm nothing else regressed.
+- [ ] Step 2: Run `go test ./internal/config/... -run TestVerifyEnvironment_DockerDaemonTimeout -v` in CI (Linux) — this fix targets a Linux/macOS-only code path and cannot be meaningfully verified on the Windows dev box, where the test already takes the `ping.exe` branch regardless of this change. ⏳ Deferred: requires a Linux CI run; local Windows box only exercises the `ping.exe` branch.
 
 ## Open questions
 

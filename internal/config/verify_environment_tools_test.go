@@ -610,7 +610,7 @@ func TestVerifyEnvironment_DockerDaemonTimeout(t *testing.T) {
 		// still finds the real binary.
 		body = "\"%SystemRoot%\\System32\\ping.exe\" -n 3 127.0.0.1 >nul\nexit /b 0"
 	} else {
-		body = "sleep 2\nexit 0"
+		body = "/bin/sleep 2\nexit 0"
 	}
 	writeStubOSSpecific(t, dir, "docker", body)
 	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")
