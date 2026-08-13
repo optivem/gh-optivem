@@ -1,10 +1,5 @@
 # 2026-08-12 10:24:00 CEST — Track the latest actionlint without unpinning the merge gate
 
-> **⏸ PENDING — TO BE DISCUSSED. Do not execute.**
-> This plan is a proposal, not an approved work item. The `## Open questions` section
-> below has four unresolved decisions, each with a recommendation. Discuss and resolve
-> them first; only then does `## Steps` become executable.
-
 ## TL;DR
 
 **Why:** The three `actionlint` install sites are pinned to commit `914e7df` (= tag v1.7.12) and nothing in the repo ever tells us when a newer actionlint would flag our workflows. The pin is correct and should stay — it protects the merge gate — but it also means new upstream rules are invisible until someone bumps the SHA by hand, which has not happened since the pin landed on 2026-07-01.
@@ -58,25 +53,17 @@ S8545 demonstrably fired on `@v1.7.12`, a pinned patch tag. It is a near-certain
 - **Resolve the latest tag into a variable at runtime** (`LATEST=$(gh release view …); go install …@"$LATEST"`) so no literal mutable ref appears. This would likely dodge S8545 without a suppression, but it evades the rule instead of stating intent. An explicit, commented, file-scoped ignore is honest about what is happening and why.
 - **Renovate with a `customManagers` regex rule** to auto-PR the SHA bump. Genuinely attractive: the PR carries a *new SHA* rather than a mutable ref, so it needs no Sonar suppression at all, and the existing CI on that PR answers "does latest pass?" with full signal. Not chosen for now only because neither Renovate nor Dependabot is configured on this repo (no `renovate.json`, no `.github/dependabot.yml`), making it an app-installation and config task rather than a single self-contained workflow file. **Worth revisiting** — see Open question 4.
 
-## Open questions
+## Resolved decisions
 
-Each has a recommendation; none are settled.
+1. **Canary trigger.** Scheduled weekly + `workflow_dispatch`. A scheduled run is non-blocking by construction and produces no per-PR noise; `continue-on-error` on PRs would add a green-but-actually-failed step people learn to ignore. Existing precedent for the shape is `gh-cleanup-prereleases.yml:4-6`.
 
-1. **Canary trigger — scheduled, or `continue-on-error` on every PR?**
-   *Recommended: scheduled weekly + `workflow_dispatch`.* A scheduled run is non-blocking by construction and produces no per-PR noise; `continue-on-error` on PRs adds a green-but-actually-failed step that people learn to ignore. Existing precedent for the shape is `gh-cleanup-prereleases.yml:4-6`.
+2. **What the canary lints.** This repo's own workflows only. Linting scaffolded output would require a full `gh optivem init` run per canary execution — the expensive part of the acceptance pipeline — and scaffolded workflows are largely copied from `shop`, so drift there is `shop`'s canary to own.
 
-2. **What the canary lints — this repo's workflows only, or also scaffolded output?**
-   *Recommended: this repo's own workflows only.* Linting scaffolded output would require a full `gh optivem init` run per canary execution, which is the expensive part of the acceptance pipeline; the marginal signal does not justify it. Scaffolded workflows are largely copied from `shop`, so drift there is `shop`'s canary to own.
+3. **How a red canary is surfaced.** Failed job only, to start. GitHub notifies on scheduled-workflow failure and the Actions tab shows it. Issue-filing can be added later only if a red canary is demonstrably missed.
 
-3. **How a red canary is surfaced — failed job only, or auto-filed issue?**
-   *Recommended: failed job only, to start.* GitHub notifies on scheduled-workflow failure and the Actions tab shows it. Add issue-filing later only if a red canary is demonstrably missed — building the notification machinery before knowing it is needed is speculative.
-
-4. **Canary now, or set up Renovate instead?**
-   *Recommended: canary now.* It is one file and answers the question this week, whereas Renovate is an app install plus config plus a regex manager for a non-standard `go install` line. If Renovate later lands for other reasons, the canary becomes redundant and should be deleted — not kept alongside.
+4. **Canary now vs. Renovate.** Canary now. It is one file and answers the question this week, whereas Renovate is an app install plus config plus a regex manager for a non-standard `go install` line. If Renovate later lands for other reasons, the canary becomes redundant and should be deleted — not kept alongside.
 
 ## Steps
-
-*(Blocked on the Open questions above. Written against the recommended answers.)*
 
 - [ ] **Step 1 — Add the canary workflow.**
   New file: `.github/workflows/gh-actionlint-canary.yml`.
