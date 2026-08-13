@@ -63,6 +63,73 @@ cd book-shop
 
 Setup and creating your project are one-offs. From here on, `gh optivem implement` is the day-to-day verb: it takes one GitHub issue — a User Story with Acceptance Criteria — and walks it through the ATDD pipeline, dispatching an AI agent at each step and running the real build, system, and test commands in between.
 
+The pipeline follows the double-loop red-green-refactor cycle, with the AI agent writing and the human reviewing at each step:
+
+**RED** — write failing acceptance tests, DSL, and drivers:
+
+```mermaid
+flowchart TD
+    A["<b>Write Acceptance Tests</b><br/><small>AI writes · Human reviews · Commit</small>"]
+    B{"DSL Interface Changed?"}
+    C["<b>Implement DSL</b><br/><small>AI writes · Human reviews · Commit</small>"]
+    D{"External System Driver Interface Changed?"}
+    E["<b>Implement External-System Drivers</b><br/><small>AI writes · Human reviews · Commit</small><br/><i>(subprocess loop with contract tests)</i>"]
+    F{"System Driver Interface Changed?"}
+    G["<b>Implement System Drivers</b><br/><small>AI writes · Human reviews · Commit</small>"]
+    Z(("RED DONE"))
+    NOTE["Product level, independent of UI/API/Mobile"]
+
+    A --> B
+    B -->|Yes| C
+    B -->|No| Z
+    C --> D
+    D -->|Yes| E
+    D -->|No| F
+    E --> F
+    F -->|Yes| G
+    F -->|No| Z
+    G --> Z
+    A -.- NOTE
+    C -.- NOTE
+
+    classDef step fill:#DAD1F7,stroke:#1a1a1a,stroke-width:2px,color:#1a1a1a
+    classDef note fill:#FFF9C4,stroke:#FFD400,stroke-width:2px,color:#1a1a1a,stroke-dasharray: 4 2
+    class A,B,C,D,E,F,G,Z step
+    class NOTE note
+```
+
+**GREEN** — implement, build, start, and verify the system:
+
+```mermaid
+flowchart TD
+    A["<b>Implement System Changes</b><br/><small>AI writes · Human reviews · Commit</small>"]
+    B["<b>Build the System</b><br/><small>Docker</small>"]
+    C["<b>Start the System</b><br/><small>Docker</small>"]
+    D["<b>Verify Tests Pass</b>"]
+    E["<b>Commit System Changes</b>"]
+    Z(("GREEN DONE"))
+
+    A --> B --> C --> D --> E --> Z
+
+    classDef step fill:#A9E8C7,stroke:#1a1a1a,stroke-width:2px,color:#1a1a1a
+    class A,B,C,D,E,Z step
+```
+
+**REFACTOR** — refactor system and tests, then verify and commit:
+
+```mermaid
+flowchart TD
+    A["<b>Refactor System / Tests</b><br/><small>AI / Human decide · AI refactors · Human reviews</small>"]
+    B["<b>Verify Tests Pass</b>"]
+    Z(("REFACTOR DONE"))
+
+    A --> B
+    B -->|Commit| Z
+
+    classDef step fill:#AED9F7,stroke:#1a1a1a,stroke-width:2px,color:#1a1a1a
+    class A,B,Z step
+```
+
 ## Implement a ticket
 
 First, create a ticket and add it to the project board `init` created: **[docs/create-ticket.md](docs/create-ticket.md)**.
