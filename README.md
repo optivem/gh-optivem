@@ -15,8 +15,9 @@ I originally hand-rolled this as a single AI agent that owned the entire ATDD pr
 1. **Ship AI-generated code you can trust, faster.** A fixed, auditable process — not an agent's own judgment — drives every change, with a human reviewing and approving before anything merges. Red-green, test-first discipline catches defects early, and narrow per-step context stops rework loops that eat into velocity.
 2. **Full traceability from ticket to commit.** Every acceptance criterion maps to a test, every step lands as its own reviewed commit, and the GitHub board status updates itself — you always know exactly what shipped and why.
 3. **Token-cost-optimized by design, and fully visible.** Each step runs in a narrow, focused context instead of handing an agent the whole ticket at once, which keeps token usage down — and per-agent, per-run cost accounting shows exactly what AI work costs as it happens, not as a line item you have to explain after the fact.
-4. **Scales across teams and stacks, on your existing GitHub workflow.** One CLI to install; everything it drives — repos, boards, PRs, CI — is what your org already uses. Slice a ticket across API/UI/mobile teams and mix languages per tier without asking anyone to change how they work.
-5. **One methodology, centrally maintained.** Update how every project on your team does ATDD with a single command — no per-repo drift to chase down as your repo count grows.
+4. **Fits your existing GitHub workflow.** One CLI to install; everything it drives — repos, boards, PRs, CI — is what your org already uses, so there's nothing new to stand up or migrate to.
+5. **Scales across teams and stacks.** Slice a ticket across API/UI/mobile teams and mix languages per tier without asking anyone to change how they work.
+6. **One methodology, centrally maintained.** Update how every project on your team does ATDD with a single command — no per-repo drift to chase down as your repo count grows.
 
 # Setup
 
