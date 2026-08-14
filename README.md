@@ -87,11 +87,11 @@ Acceptance Tests are written at the product level — independent of UI/API/Mobi
 ```mermaid
 flowchart TD
     A["<b>Write Acceptance Tests</b>"]
-    B{"DSL Interface Changed?"}
+    B{"DSL Port Changed?"}
     C["<b>Implement DSL</b>"]
-    D{"External System Driver Interface Changed?"}
+    D{"Ticket Declares External System Contract Criteria?"}
     E["<b>Implement External-System Drivers</b><br/><i> (using Contract Tests)</i>"]
-    F{"System Driver Interface Changed?"}
+    F{"System Driver Ports Changed?"}
     G["<b>Implement System Drivers</b>"]
     Z(("RED DONE"))
 
@@ -160,7 +160,6 @@ Every confirmation prompts by default. For an unattended run, opt into `--auto` 
 gh optivem --auto implement 56 --headless                           # truly autonomous: prompt only on human-tier sites (STOPs, fix-agents, release)
 gh optivem --auto --confirm=system-commit implement 56 --headless   # narrower: still confirm every commit
 gh optivem --auto --confirm=system-agent implement 56 --headless    # narrower still: also confirm every production-agent dispatch
-gh optivem --auto --confirm=command implement 56 --headless         # narrowest: confirm everything except cheap build/test commands
 ```
 
 `--confirm=<tier>` sets the auto-approve floor: that tier and everything above it still prompts, everything below auto-yeses. Tiers, low to high stakes:

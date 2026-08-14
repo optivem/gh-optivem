@@ -91,7 +91,7 @@ The credentials, either way:
 - `WORKFLOW_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` + `workflow` scopes.
 - `REPO_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` scope.
 
-The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines (e.g. `<arch>-<lang>-acceptance-stage-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — when one of these tokens expires, the schedule starts failing silently, with no scaffold-time signal. Put a reminder in your calendar to rotate them, and re-run `gh optivem environment verify` after each rotation; it warns when a classic PAT's expiration is within 7 days.
+The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines (e.g. `<arch>-<lang>-acceptance-stage-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — when one of these tokens expires, the schedule starts failing silently, with no scaffold-time signal. Put a reminder in your calendar to rotate them, and re-run `gh optivem environment verify` after each rotation; it warns when a classic PAT's expiration is within 30 days, escalating to an urgent "rotate it soon" message inside 7 days.
 
 These are read from your local environment at scaffold time and then propagated as variables and secrets onto the GitHub repos that `gh optivem init` creates, so the pipelines it generates can pull base images from Docker Hub under the authenticated rate limit (rather than the much lower anonymous one), publish and pull pipeline images to/from GHCR, send analysis to SonarCloud, and dispatch cross-repo workflows — all without you having to set each secret in the GitHub UI afterwards.
 
@@ -170,7 +170,7 @@ Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `in
 gh optivem config init       # write a fresh gh-optivem.yaml from CLI flags (or interactive prompt on a TTY)
 gh optivem config validate   # parse the YAML and validate it against the schema
 gh optivem config preflight  # validate + check every declared repo and tier path exists on disk
-gh optivem config migrate    # idempotently back-fill required fields (project.provider, repos:) on a pre-schema-bump file
+gh optivem config migrate    # idempotently back-fill required fields (project.provider, repos:, system.db-migration-path) on a pre-schema-bump file
 ```
 
 `config init` accepts the same YAML-affecting flags as `gh optivem init` (`--owner`, `--repo`, `--system-name`, `--arch`, `--repo-strategy`, `--monolith-lang` / `--backend-lang` / `--frontend-lang`, `--test-lang`, `--project-url`, `--license`, `--deploy`, plus the `--system-path` / `--system-test-path` / `--backend-path` / `--frontend-path` tier-path overrides). On a TTY with no required flags set, it drops into the same interactive prompt the `init` command uses. Extra flags: `--force` (overwrite an existing file) and `--dir <dir>` (target directory; ignored when `--config` is set).
@@ -193,7 +193,6 @@ Once a scaffolded project carries a valid `gh-optivem.yaml` and the sibling repo
 gh optivem implement 42                                        # walk the pipeline for a specific issue
 gh optivem implement --issue 42                                # ...or the flag form (supply exactly one)
 gh optivem implement --issue https://github.com/myorg/myrepo/issues/42
-gh optivem implement                                           # pick the top Ready ticket and walk from START
 ```
 
 ### Team handoff (`--target` / `--channel`)
@@ -389,7 +388,7 @@ gh optivem --auto --confirm=system-agent implement 42    # narrower still: promp
 Default `--confirm` when `--auto` is set and `--confirm` is omitted: `human` — i.e. truly autonomous, everything below the human tier auto-yeses. Pass a lower tier to keep prompting on it and everything above it.
 
 > [!WARNING]
-> `--confirm` is a single tier, not a list: a comma-separated value (`--confirm=commit,fix`) is rejected. An explicit empty `--confirm=` resolves the floor to the lowest tier, which makes *every* site prompt — the opposite of autonomous.
+> `--confirm` is a single tier, not a list: a comma-separated value (`--confirm=system-commit,human`) is rejected. An explicit empty `--confirm=` resolves the floor to the lowest tier, which makes *every* site prompt — the opposite of autonomous.
 
 Environment variables:
 
@@ -428,6 +427,8 @@ gh optivem rate-limit                                                   # curren
 Each run prints a `Mode:` banner showing the resolved scope — `Mode: workspace (5 repos from page-turner.code-workspace)`, `Mode: project (3 repos from gh-optivem.yaml)`, or `Mode: single repo (shop)`.
 
 `commit --yes` refuses to stage untracked (`??`) files unless `--include-untracked` is also passed — the stray-file foot-gun is opt-in for scripted callers.
+
+`gh optivem lint-history` and `gh optivem stale-branches` are hidden (excluded from `--help` listings) but functional TBD-discipline verbs: the former detects merge commits on `main`, the latter flags stale local branches. Run them directly by name.
 
 ## Cleanup
 
@@ -498,6 +499,8 @@ gh optivem hooks install                       # install a pre-push hook that re
 ## Methodology assets
 
 `gh optivem` ships its ATDD methodology assets (the per-phase agent prompts and the shared preamble) embedded in the binary. They are fed to the `claude -p` subprocess via argv at dispatch time and are never written to disk in consumer repos — scaffolded projects hold zero ATDD assets locally, and updates propagate simply by upgrading the `gh-optivem` binary.
+
+`gh optivem output write` is the corresponding return channel: dispatched agents call it to report structured `key=value` results back through the `GH_OPTIVEM_OUTPUT_FILE` / `GH_OPTIVEM_OUTPUT_KEYS` env contract. It's an internal plumbing command for agents, not an operator-facing verb — see `gh optivem output write --help` for the contract if you're authoring a new agent.
 
 ## Further reading
 
