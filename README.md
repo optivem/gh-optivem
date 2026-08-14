@@ -24,22 +24,13 @@ I originally hand-rolled this as a single AI agent that owned the entire ATDD pr
 - **No ATDD:** AI ships code fast, but nothing proves it does what the ticket asked, and nothing stops it from drifting into files it shouldn't touch.
 - **A hand-rolled "ATDD agent":** you get AI-authored tests and code, but the agent — not a fixed process — decides what step runs next, can skip steps under pressure to "just finish", and has no built-in check on which files each step is allowed to touch.
 
-### Proves the pipeline actually works
+### Cost visibility, not a surprise bill
 
-- [x] **`init` doesn't hand you a repo and wish you luck.** It compiles, runs your local tests and a SonarCloud scan, then triggers and watches the real commit → acceptance → QA → production pipeline on GitHub Actions go green before it reports success.
-- [x] **Dead CI is caught at scaffold time, not weeks later.** A generated workflow whose trigger path-filter matches nothing in the repo fails scaffolding outright, and every generated workflow is linted with `actionlint` immediately after push.
-- [x] **External-system contract tests can't quietly go stale.** Every integration is tested from three angles — your driver, an owned simulator, and a real contract probe. If a vendor's real system doesn't support a new shape, the tool hard-halts with an explicit "upstream contract gap" instead of letting a stale mock keep passing.
+- [x] **Itemized cost accounting.** `gh optivem run summary` shows per-agent, per-model, per-dispatch token and dollar cost, written incrementally so it survives a crash — the kind of tool that caused the $1,000 origin-story bill above now gives you that number before it happens.
 
-### Full cost and scope visibility
-
-- [x] **Itemized cost accounting, not a surprise bill.** `gh optivem run summary` shows per-agent, per-model, per-dispatch token and dollar cost, written incrementally so it survives a crash — the kind of tool that caused the $1,000 origin-story bill above now gives you that number before it happens.
-- [x] **Preview an agent's scope before running it.** `gh optivem process scope [phase]` prints exactly which files an ATDD phase is allowed to touch, so the scope-enforcement gate is inspectable up front, not just enforced after the fact.
-- [x] **Orphaned agent processes get caught and cleaned up.** `gh optivem doctor --orphans` finds `claude` subprocesses left running after a crashed or force-cancelled `implement` run, so a killed terminal doesn't quietly keep burning tokens in the background.
-
-### Built for teams and multi-language stacks
+### Built for teams
 
 - [x] **A ticket can be sliced across teams without a shared state file.** `--target test|driver-adapter|system` lets separate API/UI/mobile teams each own their channel independently — a slice reads how far the ticket got straight from the committed git tree.
-- [x] **Backend, frontend, and test languages are chosen independently.** Java, .NET, or TypeScript for each — useful when your test-automation team's stack differs from the product team's.
 
 ### Methodology stays centrally versioned
 
