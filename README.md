@@ -24,6 +24,18 @@ I originally hand-rolled this as a single AI agent that owned the entire ATDD pr
 - **No ATDD:** AI ships code fast, but nothing proves it does what the ticket asked, and nothing stops it from drifting into files it shouldn't touch.
 - **A hand-rolled "ATDD agent":** you get AI-authored tests and code, but the agent — not a fixed process — decides what step runs next, can skip steps under pressure to "just finish", and has no built-in check on which files each step is allowed to touch.
 
+### One config file, not hardcoded assumptions
+
+- [x] **Your project's architecture is declared once, in `gh-optivem.yaml`.** Repo strategy (monorepo/multirepo), architecture (monolith/multitier/microservices), per-tier language (Java/.NET/TypeScript), tier paths, license, and deploy target all live there — every command (`compile`, `implement`, `architecture show`, `process scope`) reads it instead of assuming a fixed layout.
+- [x] **You can override the ATDD process itself, per project, without forking the tool.** `process_flow:`, `task_prompts:`, `node_extras:`, and `node_replacements:` in `gh-optivem.yaml` let you extend or override individual BPMN steps and agent prompts.
+- [x] **Config is validated, not just trusted.** `gh optivem config validate` and `config preflight` catch a malformed or drifted YAML — including checking that every declared repo/tier path actually exists on disk — before it silently breaks a run.
+
+### Wired into GitHub, not a separate workflow
+
+- [x] **The ticket is the input, not a side note.** `gh optivem implement 42` reads issue #42's Description and Acceptance Criteria straight from its body, and every agent — writing tests, DSL, drivers, or code — works from that same parsed spec.
+- [x] **Every step commits to version control as it completes.** Test → DSL → drivers → implementation each land as their own reviewed commit, not one giant commit at the end.
+- [x] **The ticket's board status moves itself as work progresses.** The GitHub Project card advances through In refinement → Ready → In progress → In acceptance → Done automatically, so status always reflects where the ticket actually is in the pipeline — no one has to remember to drag the card.
+
 ### Cost visibility, not a surprise bill
 
 - [x] **Itemized cost accounting.** `gh optivem run summary` shows per-agent, per-model, per-dispatch token and dollar cost, written incrementally so it survives a crash — the kind of tool that caused the $1,000 origin-story bill above now gives you that number before it happens.
@@ -32,10 +44,9 @@ I originally hand-rolled this as a single AI agent that owned the entire ATDD pr
 
 - [x] **A ticket can be sliced across teams without a shared state file.** `--target test|driver-adapter|system` lets separate API/UI/mobile teams each own their channel independently — a slice reads how far the ticket got straight from the committed git tree.
 
-### Methodology stays centrally versioned
+### Centralized Claude agent definitions across the whole team
 
-- [x] **ATDD prompts live in the binary, not copy-pasted into your repo.** Updating the methodology across every project you've scaffolded is `gh extension upgrade optivem` — no per-repo drift to reconcile.
-- [x] **Local agent config drift is a CI-gateable check.** `gh optivem claude check` diffs your installed Claude Code config against the canonical one and exits non-zero on drift, so a team can enforce everyone's local setup actually matches.
+- [x] **ATDD prompts and agent config live in the binary, not copy-pasted into each repo.** Updating the methodology across every project you've scaffolded is `gh extension upgrade optivem` — no per-repo drift to reconcile, and `gh optivem claude check` diffs each developer's local Claude Code config against the canonical one, exiting non-zero on drift, so a team can enforce everyone's setup actually matches.
 
 # Setup
 
