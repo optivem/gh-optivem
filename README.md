@@ -12,26 +12,11 @@ I originally hand-rolled this as a single AI agent that owned the entire ATDD pr
 
 ### What you get
 
-- [x] **The ATDD process is a deterministic engine, not an agent's judgment call.** A BPMN workflow drives every red-green-refactor step in a fixed order — no agent decides what runs next or gets to skip a step.
-- [x] **AI only does the steps that genuinely need judgment.** Writing acceptance tests, DSL, drivers, and implementation code goes to an agent; everything mechanical — enabling/disabling tests, committing, sequencing steps — is scripted and fully deterministic.
-- [x] **Agent output is scope-checked, not just scope-requested.** Telling an agent "only write the test" doesn't stop it from also touching the implementation. After every step, gh-optivem checks the diff — e.g. a test-writing step that also touched drivers or source code fails the gate, even if the test itself looks correct.
-- [x] **Human and AI responsibilities are split explicitly, not blended.** Agents write; humans review and approve before anything commits. You always know which lines came from an agent and which decision was a human's.
-- [x] **Each step runs in a narrow, focused context.** Test → DSL interface → driver interface → driver implementation → API channel → UI channel, one at a time, each with its own commit checkpoint — smaller context per step means fewer mistakes and far lower token cost than handing an agent the whole ticket at once.
-- [x] **Autonomy is a dial, not all-or-nothing.** Run fully autonomous, or require human approval at the red step (recommended minimum — it's the actual spec of what you're building), the green step, or both.
-- [x] **Your project's architecture is declared once, in `gh-optivem.yaml`.** Repo strategy (monorepo/multirepo), architecture (monolith/multitier/microservices), per-tier language (Java/.NET/TypeScript), tier paths, license, and deploy target all live there — every command (`compile`, `implement`, `architecture show`, `process scope`) reads it instead of assuming a fixed layout.
-- [x] **You can override the ATDD process itself, per project, without forking the tool.** `process_flow:`, `task_prompts:`, `node_extras:`, and `node_replacements:` in `gh-optivem.yaml` let you extend or override individual BPMN steps and agent prompts.
-- [x] **Config is validated, not just trusted.** `gh optivem config validate` and `config preflight` catch a malformed or drifted YAML — including checking that every declared repo/tier path actually exists on disk — before it silently breaks a run.
-- [x] **The ticket is the input, not a side note.** `gh optivem implement 42` reads issue #42's Description and Acceptance Criteria straight from its body, and every agent — writing tests, DSL, drivers, or code — works from that same parsed spec.
-- [x] **Every step commits to version control as it completes.** Test → DSL → drivers → implementation each land as their own reviewed commit, not one giant commit at the end.
-- [x] **The ticket's board status moves itself as work progresses.** The GitHub Project card advances through In refinement → Ready → In progress → In acceptance → Done automatically, so status always reflects where the ticket actually is in the pipeline — no one has to remember to drag the card.
-- [x] **Itemized cost accounting.** `gh optivem run summary` shows per-agent, per-model, per-dispatch token and dollar cost, written incrementally so it survives a crash — the kind of tool that caused the $1,000 origin-story bill above now gives you that number before it happens.
-- [x] **A ticket can be sliced across teams without a shared state file.** `--target test|driver-adapter|system` lets separate API/UI/mobile teams each own their channel independently — a slice reads how far the ticket got straight from the committed git tree.
-- [x] **ATDD prompts and agent config live in the binary, not copy-pasted into each repo.** Updating the methodology across every project you've scaffolded is `gh extension upgrade optivem` — no per-repo drift to reconcile, and `gh optivem claude check` diffs each developer's local Claude Code config against the canonical one, exiting non-zero on drift, so a team can enforce everyone's setup actually matches.
-
-**Compared to the alternatives:**
-
-- **No ATDD:** AI ships code fast, but nothing proves it does what the ticket asked, and nothing stops it from drifting into files it shouldn't touch.
-- **A hand-rolled "ATDD agent":** you get AI-authored tests and code, but the agent — not a fixed process — decides what step runs next, can skip steps under pressure to "just finish", and has no built-in check on which files each step is allowed to touch.
+1. **Ship AI-generated code you can actually trust.** A fixed, auditable process drives every change — not an agent's own judgment — with a human reviewing and approving before anything merges. No skipped steps, no unreviewed code reaching production.
+2. **Full traceability from ticket to commit.** Every acceptance criterion maps to a test, every step lands as its own reviewed commit, and the GitHub board status updates itself — you always know exactly what shipped and why.
+3. **Predictable AI spend, not a surprise bill.** Per-agent, per-run cost accounting shows what AI work costs as it happens, not as a line item you have to explain after the fact.
+4. **Scales across teams and stacks, on your existing GitHub workflow.** Slice a ticket across API/UI/mobile teams, mix languages per tier, no new tool or process for your org to adopt.
+5. **One methodology, centrally maintained.** Update how every project on your team does ATDD with a single command — no per-repo drift to chase down as your repo count grows.
 
 # Setup
 
