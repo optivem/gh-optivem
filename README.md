@@ -19,6 +19,8 @@ I originally hand-rolled this as a single AI agent that owned the entire ATDD pr
 5. **Scales across teams and stacks.** Slice a ticket across API/UI/mobile teams and mix languages per tier without asking anyone to change how they work.
 6. **One methodology, centrally maintained.** Update how every project on your team does ATDD with a single command — no per-repo drift to chase down as your repo count grows.
 
+Want help rolling this out to your team? [Book a call](https://calendly.com/valentinajemuovic/call) or send Valentina a [DM on LinkedIn](https://www.linkedin.com/in/valentinajemuovic).
+
 # Setup
 
 One-time, before your first project: install the prerequisites, `gh-optivem` itself, and your local tooling, then set your credentials. Full walkthrough: **[docs/setup.md](docs/setup.md)**.
