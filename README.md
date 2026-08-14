@@ -6,6 +6,46 @@
 
 `gh-optivem` is a command line tool that helps you implement software in a reliable way using ATDD & AI.
 
+# Why gh-optivem
+
+I originally hand-rolled this as a single AI agent that owned the entire ATDD process end to end. It decided for itself when to run each step — and would sometimes skip straight to writing implementation code without ever writing the acceptance test it was meant to be red against first. It also ran up about $1,000 in extra usage on top of my Claude Pro plan, because nothing stopped it from re-exploring the whole codebase at every step. gh-optivem exists to fix both problems.
+
+### Deterministic process, scoped agents
+
+- [x] **The ATDD process is a deterministic engine, not an agent's judgment call.** A BPMN workflow drives every red-green-refactor step in a fixed order — no agent decides what runs next or gets to skip a step.
+- [x] **AI only does the steps that genuinely need judgment.** Writing acceptance tests, DSL, drivers, and implementation code goes to an agent; everything mechanical — enabling/disabling tests, committing, sequencing steps — is scripted and fully deterministic.
+- [x] **Agent output is scope-checked, not just scope-requested.** Telling an agent "only write the test" doesn't stop it from also touching the implementation. After every step, gh-optivem checks the diff — e.g. a test-writing step that also touched drivers or source code fails the gate, even if the test itself looks correct.
+- [x] **Human and AI responsibilities are split explicitly, not blended.** Agents write; humans review and approve before anything commits. You always know which lines came from an agent and which decision was a human's.
+- [x] **Each step runs in a narrow, focused context.** Test → DSL interface → driver interface → driver implementation → API channel → UI channel, one at a time, each with its own commit checkpoint — smaller context per step means fewer mistakes and far lower token cost than handing an agent the whole ticket at once.
+- [x] **Autonomy is a dial, not all-or-nothing.** Run fully autonomous, or require human approval at the red step (recommended minimum — it's the actual spec of what you're building), the green step, or both.
+
+**Compared to the alternatives:**
+
+- **No ATDD:** AI ships code fast, but nothing proves it does what the ticket asked, and nothing stops it from drifting into files it shouldn't touch.
+- **A hand-rolled "ATDD agent":** you get AI-authored tests and code, but the agent — not a fixed process — decides what step runs next, can skip steps under pressure to "just finish", and has no built-in check on which files each step is allowed to touch.
+
+### Proves the pipeline actually works
+
+- [x] **`init` doesn't hand you a repo and wish you luck.** It compiles, runs your local tests and a SonarCloud scan, then triggers and watches the real commit → acceptance → QA → production pipeline on GitHub Actions go green before it reports success.
+- [x] **Dead CI is caught at scaffold time, not weeks later.** A generated workflow whose trigger path-filter matches nothing in the repo fails scaffolding outright, and every generated workflow is linted with `actionlint` immediately after push.
+- [x] **External-system contract tests can't quietly go stale.** Every integration is tested from three angles — your driver, an owned simulator, and a real contract probe. If a vendor's real system doesn't support a new shape, the tool hard-halts with an explicit "upstream contract gap" instead of letting a stale mock keep passing.
+
+### Full cost and scope visibility
+
+- [x] **Itemized cost accounting, not a surprise bill.** `gh optivem run summary` shows per-agent, per-model, per-dispatch token and dollar cost, written incrementally so it survives a crash — the kind of tool that caused the $1,000 origin-story bill above now gives you that number before it happens.
+- [x] **Preview an agent's scope before running it.** `gh optivem process scope [phase]` prints exactly which files an ATDD phase is allowed to touch, so the scope-enforcement gate is inspectable up front, not just enforced after the fact.
+- [x] **Orphaned agent processes get caught and cleaned up.** `gh optivem doctor --orphans` finds `claude` subprocesses left running after a crashed or force-cancelled `implement` run, so a killed terminal doesn't quietly keep burning tokens in the background.
+
+### Built for teams and multi-language stacks
+
+- [x] **A ticket can be sliced across teams without a shared state file.** `--target test|driver-adapter|system` lets separate API/UI/mobile teams each own their channel independently — a slice reads how far the ticket got straight from the committed git tree.
+- [x] **Backend, frontend, and test languages are chosen independently.** Java, .NET, or TypeScript for each — useful when your test-automation team's stack differs from the product team's.
+
+### Methodology stays centrally versioned
+
+- [x] **ATDD prompts live in the binary, not copy-pasted into your repo.** Updating the methodology across every project you've scaffolded is `gh extension upgrade optivem` — no per-repo drift to reconcile.
+- [x] **Local agent config drift is a CI-gateable check.** `gh optivem claude check` diffs your installed Claude Code config against the canonical one and exits non-zero on drift, so a team can enforce everyone's local setup actually matches.
+
 # Setup
 
 One-time, before your first project: install the prerequisites, `gh-optivem` itself, and your local tooling, then set your credentials. Full walkthrough: **[docs/setup.md](docs/setup.md)**.
@@ -189,4 +229,6 @@ Maintained by Valentina Jemuović at Optivem — [GitHub](https://github.com/val
 
 ## License
 
-[MIT](LICENSE) © Optivem
+[AGPL-3.0](LICENSE) © Optivem
+
+gh-optivem is free to use, including for commercial purposes. If you modify the source and distribute it, or run a modified version as a network service, AGPL-3.0 requires you to release the modified source under the same license. If you want to modify or embed gh-optivem in a proprietary product without that obligation, a commercial license is available — [open an issue](https://github.com/optivem/gh-optivem/issues) or contact Optivem to discuss.
