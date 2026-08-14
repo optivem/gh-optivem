@@ -13,10 +13,11 @@ I originally hand-rolled this as a single AI agent that owned the entire ATDD pr
 ### What you get
 
 1. **Ship AI-generated code you can actually trust.** A fixed, auditable process drives every change — not an agent's own judgment — with a human reviewing and approving before anything merges. No skipped steps, no unreviewed code reaching production.
-2. **Full traceability from ticket to commit.** Every acceptance criterion maps to a test, every step lands as its own reviewed commit, and the GitHub board status updates itself — you always know exactly what shipped and why.
-3. **Predictable AI spend, not a surprise bill.** Per-agent, per-run cost accounting shows what AI work costs as it happens, not as a line item you have to explain after the fact.
-4. **Scales across teams and stacks, on your existing GitHub workflow.** Slice a ticket across API/UI/mobile teams, mix languages per tier, no new tool or process for your org to adopt.
-5. **One methodology, centrally maintained.** Update how every project on your team does ATDD with a single command — no per-repo drift to chase down as your repo count grows.
+2. **Ship faster, with fewer bugs reaching review.** Red-green, test-first discipline catches defects before a human ever opens the PR, and narrow per-step context stops the agent from re-exploring the codebase or re-litigating earlier decisions — no rework loops eating into your team's velocity.
+3. **Full traceability from ticket to commit.** Every acceptance criterion maps to a test, every step lands as its own reviewed commit, and the GitHub board status updates itself — you always know exactly what shipped and why.
+4. **Token-cost-optimized by design, and fully visible.** Each step runs in a narrow, focused context instead of handing an agent the whole ticket at once, which keeps token usage down — and per-agent, per-run cost accounting shows exactly what AI work costs as it happens, not as a line item you have to explain after the fact.
+5. **Scales across teams and stacks, on your existing GitHub workflow.** One CLI to install; everything it drives — repos, boards, PRs, CI — is what your org already uses. Slice a ticket across API/UI/mobile teams and mix languages per tier without asking anyone to change how they work.
+6. **One methodology, centrally maintained.** Update how every project on your team does ATDD with a single command — no per-repo drift to chase down as your repo count grows.
 
 # Setup
 
