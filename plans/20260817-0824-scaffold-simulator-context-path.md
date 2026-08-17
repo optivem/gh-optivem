@@ -1,5 +1,7 @@
 # 2026-08-17 08:24:41 UTC — Fix scaffolded multitier Java backend's external-simulator docker context
 
+🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-08-17T09:00:57Z`
+
 ## TL;DR
 
 **Why:** The scaffolded multitier Java backend's commit stage fails at `Run External System Contract Tests (Real ERP)` with `unable to prepare context: path "external-systems/simulators" not found`. Shop's `externalSimulatorImage` Gradle task hardcodes shop's monorepo depth (`file("${rootDir}/../../..")`), and the scaffolder neither rewrites that depth for the flattened `<repo>/backend` layout nor copies `external-systems/` into the split backend repo.
@@ -60,21 +62,12 @@ In shop, `rootDir` = `system/multitier/backend-java`, so 3-up lands on the shop 
 
 ## ▶ Next executable step (resume here)
 
-Step 1 — in `gh-optivem`, add a `simulatorContextPathReplacements()` helper to `internal/scaffolding/steps/apply_template.go`, placed alongside `flywayPathReplacements()` / `tsMigrationsPathReplacements()` (~line 935), returning the single literal rewrite:
+Steps 1-5 are done (path-rewrite rule added and wired into both multitier layouts, `copyExternals` wired into the split backend repo, scaffolding tests added and passing, `go build ./...` / `go test ./internal/scaffolding/...` / `go test ./internal/config/...` all green, shop's `build.gradle:156` annotated). All of that is uncommitted, pending the review gate.
 
-```go
-{`file("${rootDir}/../../..")`, `file("${rootDir}/..")`}
-```
-
-Give it a doc comment in the same style as `flywayPathReplacements()`, spelling out the depth arithmetic per layout (shop: `system/multitier/backend-java` → 3 up → repo root; scaffold: `backend/` → 1 up → repo root). Then wire it in via `templates.FixupAllTextFiles` — whose extension allowlist already covers `.gradle` — in **both** `applyMultitierMonorepo` (target `repoDir`) and `applyMultitierMultirepo` (target `bDir`, the split backend repo). No-op on the .NET / TS backends, which don't carry the literal. Stop after `go build ./...` passes; this unblocks Step 3's test assertions.
+Step 6 — after the review-and-commit gate, re-run the gh-optivem acceptance stage and confirm the scaffolded backend commit stage's `Run External System Contract Tests (Real ERP)` step passes for `multitier/multirepo/java`. Since `multitier/monorepo/java` is not in the default smoke matrix, also trigger an explicit `workflow_dispatch` for that combination to prove the second half.
 
 ## Steps
 
-- [ ] **Step 1 — Add the path-rewrite rule.** In `internal/scaffolding/steps/apply_template.go`, add `simulatorContextPathReplacements()` next to `flywayPathReplacements()` / `tsMigrationsPathReplacements()` (~line 935) returning `{`file("${rootDir}/../../..")`, `file("${rootDir}/..")`}`, with a doc comment explaining the per-layout depth arithmetic. Apply it via `templates.FixupAllTextFiles` in **both** `applyMultitierMonorepo` (`repoDir`) and `applyMultitierMultirepo` (`bDir`).
-- [ ] **Step 2 — Copy the simulators into the split backend repo.** In `applyMultitierMultirepo`'s backend-repo block (`apply_template.go:578-583`), add `copyExternals(shop, bDir)` next to the existing `copyDbMigrations(shop, bDir)` / `copyContracts(shop, bDir)` calls, preceded by the existing `log.Info(infoCopyingExternals)` line — matching the root-repo block at `:512-513`. **Decision (settled, do not re-open):** reuse `copyExternals` (which ships both `simulators/` and `stubs/`) rather than adding a simulators-only helper. Run `32006353486` proves `stubs/` is not *needed* — the `external-contract` (stub) suite passed in the backend commit stage with no `external-systems/` in the repo at all, so the stub side runs entirely in-process on WireMock. This is therefore a symmetry choice, not a correctness one: layout parity with the root repo and no second near-identical helper beats eliding one unused directory. Record that reasoning in a comment on the call.
-- [ ] **Step 3 — Pin both halves with scaffolding tests.** Add to `internal/scaffolding/steps/replacements_test.go`, alongside the existing `TestFlywayPathReplacementsRewritesAndIsIdempotent` (`:922`) and `TestTsMigrationsPathReplacementsRewritePerArch` (`:1017`): (a) a unit test on `simulatorContextPathReplacements()` asserting the rewrite and its idempotency, mirroring the Flyway test's shape; (b) a full-apply assertion in the style of `TestMonolithFullApplyFlattensConfigNoSystemResidual` (`:807`) covering **both** multitier layouts — the scaffolded `backend/build.gradle` contains `file("${rootDir}/..")` and no longer contains `file("${rootDir}/../../..")`, and for **multirepo** the backend repo contains `external-systems/simulators/Dockerfile`.
-- [ ] **Step 4 — Verify in gh-optivem.** Run `go build ./...`, `go test ./internal/scaffolding/...` and `go test ./internal/config/...` (unit tests only — not the long-running system test).
-- [ ] **Step 5 — Annotate the shop-side literal (comment-only).** In `shop/system/multitier/backend-java/build.gradle:156`, note that `file("${rootDir}/../../..")` is depth-coupled to the gh-optivem scaffolder rewrite (`simulatorContextPathReplacements`), so a future edit must be mirrored there — same warning style the Flyway and Pact-contracts paths already carry. Behaviour-neutral; this is the only shop-side change.
 - [ ] **Step 6 — Re-run the acceptance stage.** Re-run the gh-optivem acceptance stage and confirm the scaffolded backend commit stage's `Run External System Contract Tests (Real ERP)` step passes. Note that `multitier/monorepo/java` is **not** in the default smoke matrix (which runs `multitier/multirepo/java`, `monolith/monorepo/java`, `multitier/monorepo/typescript`, `monolith/multirepo/dotnet`), so covering the second half needs an explicit `workflow_dispatch` for that combination — a plain re-run only re-proves the multirepo half.
 
 ## Verification

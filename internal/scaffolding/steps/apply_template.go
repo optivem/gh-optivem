@@ -469,6 +469,9 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	// Flyway path rewrite for Java backend application-test.yml (no-op on TS).
 	templates.FixupAllTextFiles(repoDir, flywayPathReplacements())
 
+	// External-simulator docker context path rewrite for Java backend build.gradle (no-op on TS/.NET).
+	templates.FixupAllTextFiles(repoDir, simulatorContextPathReplacements())
+
 	// TS: rewrite the backend integration spec's MIGRATIONS_DIR (multitier 5→4 up).
 	templates.FixupSourceFiles(repoDir, tsMigrationsPathReplacements("multitier"))
 
@@ -572,6 +575,16 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	backendSrc := filepath.Join(shop, Expand(Names.ShopSystemMultitierBackend, vars))
 	files.CopyDir(backendSrc, filepath.Join(bDir, Names.TargetBackendDir))
 
+	// External-system simulators also land in the backend repo so the Java
+	// externalSimulatorImage docker build has a context to build from. Reusing
+	// copyExternals (ships both simulators/ and stubs/) rather than a
+	// simulators-only helper is a symmetry choice, not a correctness one: the
+	// stub suite runs entirely in-process on WireMock and needs no
+	// external-systems/ present (proven by run 32006353486), but mirroring the
+	// root repo's copyExternals call avoids a second near-identical helper.
+	log.Info(infoCopyingExternals)
+	copyExternals(shop, bDir)
+
 	// Flyway migrations also land in the backend repo so the Java
 	// application-test.yml's filesystem:../db/migrations resolves from backend/.
 	log.Info(infoCopyingDbMigrations)
@@ -608,6 +621,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(bDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(bDir, systemTestSonarKeyReplacements())
 	templates.FixupAllTextFiles(bDir, flywayPathReplacements())
+	templates.FixupAllTextFiles(bDir, simulatorContextPathReplacements())
 	templates.FixupSourceFiles(bDir, contractsPathReplacements())
 	// .NET backend provider verification: deeper path, .cs-scoped (7→5 `../`).
 	templates.FixupDotnetSourceFiles(bDir, dotnetContractsPathReplacements())
@@ -935,6 +949,19 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 func flywayPathReplacements() [][2]string {
 	return [][2]string{
 		{"filesystem:../../db/migrations", "filesystem:../db/migrations"},
+	}
+}
+
+// simulatorContextPathReplacements rewrites the Java backend's
+// externalSimulatorImage docker-build workingDir from shop's monorepo depth
+// (shop layout: system/multitier/backend-java/ → up 3 → shop root, where
+// external-systems/simulators/ lives) to the flattened scaffold layout
+// (backend/ → up 1 → repo root). Applied to all text files via
+// FixupAllTextFiles, which already covers .gradle. No-op on the .NET / TS
+// multitier backends, which don't carry this literal.
+func simulatorContextPathReplacements() [][2]string {
+	return [][2]string{
+		{`file("${rootDir}/../../..")`, `file("${rootDir}/..")`},
 	}
 }
 

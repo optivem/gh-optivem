@@ -944,6 +944,74 @@ func TestFlywayPathReplacementsRewritesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestSimulatorContextPathReplacementsRewritesAndIsIdempotent asserts that
+// the Java build.gradle's externalSimulatorImage docker-build workingDir
+// rewrites from shop's three-levels-up form to the scaffold's one-level-up
+// form, and that a second pass over the already-rewritten content is a
+// no-op.
+func TestSimulatorContextPathReplacementsRewritesAndIsIdempotent(t *testing.T) {
+	in := "\tworkingDir = file(\"${rootDir}/../../..\")\n"
+	expected := "\tworkingDir = file(\"${rootDir}/..\")\n"
+
+	pairs := simulatorContextPathReplacements()
+	got := applyPairs(in, pairs)
+	if got != expected {
+		t.Errorf("first pass got  %q\nwant %q", got, expected)
+	}
+
+	second := applyPairs(got, pairs)
+	if second != expected {
+		t.Errorf("second pass changed result\nfirst:  %q\nsecond: %q", got, second)
+	}
+}
+
+// TestMultitierFullApplyRewritesSimulatorContextBothLayouts asserts that
+// simulatorContextPathReplacements, applied the way applyMultitierMonorepo
+// and applyMultitierMultirepo wire it in, rewrites the scaffolded
+// backend/build.gradle in both layouts and leaves no trace of the
+// unrewritten shop-depth literal. Regression guard for the multitier
+// monorepo/multirepo external-simulator docker-context bug.
+func TestMultitierFullApplyRewritesSimulatorContextBothLayouts(t *testing.T) {
+	gradleContent := "\tworkingDir = file(\"${rootDir}/../../..\")\n" +
+		"\tcommandLine 'docker', 'build', '-t', 'myshop/external-system-simulators:contract-test', 'external-systems/simulators'\n"
+
+	cases := []struct {
+		name string
+		rel  string
+	}{
+		{"monorepo", "backend/build.gradle"},
+		{"multirepo backend repo", "backend/build.gradle"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repoDir := t.TempDir()
+			writeRepoFile(t, repoDir, tc.rel, gradleContent)
+
+			templates.FixupAllTextFiles(repoDir, simulatorContextPathReplacements())
+
+			assertLiteralPresent(t, repoDir, tc.rel, `file("${rootDir}/..")`)
+			assertNoLiteralSurvives(t, repoDir, []string{`file("${rootDir}/../../..")`})
+		})
+	}
+}
+
+// TestMultirepoBackendRepoGetsExternalSimulators asserts that copyExternals,
+// wired into applyMultitierMultirepo's backend-repo block, lands
+// external-systems/simulators/ (the externalSimulatorImage docker-build
+// context) in the split backend repo. Regression guard: before this call
+// was added, the split backend repo built its contract-test image against a
+// docker context that did not exist in the repo at all.
+func TestMultirepoBackendRepoGetsExternalSimulators(t *testing.T) {
+	shop := t.TempDir()
+	writeRepoFile(t, shop, "external-systems/simulators/Dockerfile", "FROM node:20\n")
+
+	bDir := t.TempDir()
+	copyExternals(shop, bDir)
+
+	assertLiteralPresent(t, bDir, "external-systems/simulators/Dockerfile", "FROM node:20")
+}
+
 // TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue asserts
 // that the backendReplacements / frontendReplacements lists composed in
 // applyMultitierMultirepo (per-component repo path) collapse the 3-segment
