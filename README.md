@@ -8,18 +8,15 @@
 
 # Why gh-optivem
 
-I originally hand-rolled this as a single AI agent that owned the entire ATDD process end to end. It decided for itself when to run each step — and would sometimes skip straight to writing implementation code without ever writing the acceptance test it was meant to be red against first. It also ran up about $1,000 in extra usage on top of my Claude Pro plan. gh-optivem exists to fix both problems: it enforces the ATDD sequence and scopes what each step re-reads.
+I originally hand-rolled this as a single AI agent that owned the entire ATDD process end to end. It decided for itself when to run each step — and would sometimes skip straight to writing implementation code without ever writing the acceptance test it was meant to be red against first. It also ran up about $1,000 in extra usage on top of my Claude Pro plan, because nothing stopped it from re-exploring the whole codebase at every step. gh-optivem exists to fix both problems.
 
 ### What you get
 
-1. **Ship AI-generated code you can trust, faster.** A fixed, auditable process — not an agent's own judgment — drives every change, with a human reviewing and approving before anything merges. Red-green, test-first discipline catches defects early, and narrow per-step context stops rework loops that eat into velocity.
+1. **Ship AI-generated code you can trust, faster.** A fixed, auditable process — not an agent's own judgment — drives every change, with a human reviewing and approving before anything merges. ATDD discipline catches defects early, and narrow per-step context stops rework loops that eat into velocity.
 2. **Full traceability from ticket to commit.** Every acceptance criterion maps to a test, every step lands as its own reviewed commit, and the GitHub board status updates itself — you always know exactly what shipped and why.
 3. **Token-cost-optimized by design, and fully visible.** Each step runs in a narrow, focused context instead of handing an agent the whole ticket at once, which keeps token usage down — and per-agent, per-run cost accounting shows exactly what AI work costs as it happens, not as a line item you have to explain after the fact.
-4. **Fits your existing GitHub workflow.** One CLI to install; everything it drives — repos, boards, PRs, CI — is what your org already uses, so there's nothing new to stand up or migrate to.
-5. **Scales across teams and stacks.** Slice a ticket across API/UI/mobile teams and mix languages per tier without asking anyone to change how they work.
-6. **One methodology, centrally maintained.** Update how every project on your team does ATDD with a single command — no per-repo drift to chase down as your repo count grows.
-
-Want help rolling this out to your team? [Book a call](https://calendly.com/valentinajemuovic/call) or send Valentina a [DM on LinkedIn](https://www.linkedin.com/in/valentinajemuovic).
+4. **Scales across teams and stacks, on your existing GitHub workflow.** One CLI to install; everything it drives — repos, boards, PRs, CI — is what your org already uses. Slice a ticket across API/UI/mobile teams and mix languages per tier without asking anyone to change how they work.
+5. **One methodology, centrally maintained.** Update how every project on your team does ATDD with a single command — no per-repo drift to chase down as your repo count grows.
 
 # Setup
 
@@ -87,11 +84,11 @@ Acceptance Tests are written at the product level — independent of UI/API/Mobi
 ```mermaid
 flowchart TD
     A["<b>Write Acceptance Tests</b>"]
-    B{"DSL Port Changed?"}
+    B{"DSL Interface Changed?"}
     C["<b>Implement DSL</b>"]
-    D{"Ticket Declares External System Contract Criteria?"}
+    D{"External System Driver Interface Changed?"}
     E["<b>Implement External-System Drivers</b><br/><i> (using Contract Tests)</i>"]
-    F{"System Driver Ports Changed?"}
+    F{"System Driver Interface Changed?"}
     G["<b>Implement System Drivers</b>"]
     Z(("RED DONE"))
 
@@ -160,6 +157,7 @@ Every confirmation prompts by default. For an unattended run, opt into `--auto` 
 gh optivem --auto implement 56 --headless                           # truly autonomous: prompt only on human-tier sites (STOPs, fix-agents, release)
 gh optivem --auto --confirm=system-commit implement 56 --headless   # narrower: still confirm every commit
 gh optivem --auto --confirm=system-agent implement 56 --headless    # narrower still: also confirm every production-agent dispatch
+gh optivem --auto --confirm=command implement 56 --headless         # narrowest: confirm everything except cheap build/test commands
 ```
 
 `--confirm=<tier>` sets the auto-approve floor: that tier and everything above it still prompts, everything below auto-yeses. Tiers, low to high stakes:
