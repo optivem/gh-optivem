@@ -8,6 +8,14 @@
 //     per-dispatch PID markers internal/userstate owns. See
 //     doctor_orphans.go for the recovery logic.
 //
+// It also reports the active project's kind: — the top-level discriminator
+// that decides which verbs apply — because "why did `gh optivem system start`
+// refuse?" is exactly the question doctor exists to answer, and the answer is
+// usually "this project is kind: component". Every check doctor runs is
+// kind-agnostic (git config is a machine-level invariant; orphan claude
+// subprocesses are a runtime artifact), so there is no system-tier check to
+// skip for a component project — the kind line is informational.
+//
 // Broader repo-health checks belong in their own command; this one stays
 // focused on "the things gh-optivem itself needs in order to work."
 package main
@@ -19,6 +27,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 type doctorOptions struct {
@@ -80,6 +90,7 @@ func runDoctor(opts doctorOptions) error {
 	fmt.Println("  Doctor — git config for trunk-based development")
 	fmt.Println(separator)
 	fmt.Println()
+	printProjectKind()
 
 	failed := 0
 	for _, kv := range requiredGitConfig {
@@ -138,4 +149,30 @@ func setGlobalGitConfig(key, val string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// printProjectKind reports the active project's kind, or says nothing when
+// there is no readable gh-optivem.yaml in scope. Doctor is usable outside a
+// consumer repo (its git-config check is machine-level), so an unreadable
+// config is not an error here — it just means there is no kind to report.
+//
+// The line names the consequence, not just the value: an operator who ran
+// doctor because a system verb refused needs to connect "kind: component" to
+// "that verb needs a system".
+func printProjectKind() {
+	path, _ := projectconfig.ResolvePath(projectConfigPath)
+	cfg, err := projectconfig.LoadFromPath(path)
+	if err != nil || cfg == nil {
+		return
+	}
+	fmt.Printf("  Project kind: %s (%s)\n", cfg.KindOrDefault(), kindConsequence(cfg))
+	fmt.Println()
+}
+
+// kindConsequence is the one-clause explanation appended to the kind line.
+func kindConsequence(cfg *projectconfig.Config) string {
+	if cfg.IsComponent() {
+		return "one component, no system under test — the system and system-test verbs, `init`, and `implement` do not apply"
+	}
+	return "a whole system under test — every verb applies"
 }

@@ -61,6 +61,23 @@ const (
 	RepoStrategyMultiRepo = "multi-repo"
 )
 
+// Kind enum values for the top-level `kind:` discriminator. It answers
+// "what is this project?" — a whole system under test, or a single unit
+// of code that belongs to someone else's system.
+//
+// Absent means KindSystem: every config authored before this field
+// existed describes a system, so the default keeps them working with no
+// edit. Use (*Config).KindOrDefault() rather than comparing against ""
+// so that default lives in exactly one place.
+//
+// The discriminator is deliberately top-level rather than a value of
+// system.architecture: architecture answers "what shape is the system?",
+// and a project with no system has nowhere inside system: to say so.
+const (
+	KindSystem    = "system"
+	KindComponent = "component"
+)
+
 // Architecture enum values.
 const (
 	ArchMonolith      = "monolith"
@@ -96,12 +113,31 @@ const (
 //   - license:          license key for the scaffolded LICENSE file.
 //   - deploy:           deployment target (docker | cloud-run).
 type Config struct {
+	// Kind discriminates a whole-system project from a component-only
+	// one. Empty means KindSystem (see the Kind* constants); read it
+	// through KindOrDefault, never by comparing against "".
+	//
+	// kind: system  — the config describes a system under test: system:,
+	//                 system-test:, channels:, external-systems:. Every
+	//                 verb is available.
+	// kind: component — the config describes one unit of code (component:)
+	//                 and nothing else. The verbs that need a booted SUT
+	//                 (system start/stop/build/compile, system-test
+	//                 setup/run, init, implement) refuse it by name.
+	Kind string `yaml:"kind,omitempty"`
+
 	Project         Project         `yaml:"project"`
 	RepoStrategy    string          `yaml:"repo-strategy,omitempty"`
 	Sonar           Sonar           `yaml:"sonar,omitempty"`
-	System          System          `yaml:"system"`
-	SystemTest      TierSpec        `yaml:"system-test"`
+	System          System          `yaml:"system,omitempty"`
+	SystemTest      TierSpec        `yaml:"system-test,omitempty"`
 	ExternalSystems ExternalSystems `yaml:"external-systems,omitempty"`
+
+	// Component declares the single unit of code a kind: component
+	// project owns. Required (all four fields) when kind is component;
+	// rejected otherwise — it is the component-kind counterpart of the
+	// system: block, and a config carrying both is operator confusion.
+	Component Component `yaml:"component,omitempty"`
 
 	// LocalRepos declares the project's own constituent local repos —
 	// multitier projects whose frontend, backend, and system-test live in
@@ -218,6 +254,28 @@ type Project struct {
 // GitHub owner can override the value without a schema migration.
 type Sonar struct {
 	Organization string `yaml:"organization,omitempty"`
+}
+
+// Component describes the single unit of code a kind: component project
+// owns — the same four facts a TierSpec carries for a system tier, minus
+// the fields that only mean something inside a system (sonar-project,
+// config, paths). It maps 1:1 onto componenttest.Component, which is the
+// shape the component-test runner already operates over; this block
+// surfaces that shape in the schema rather than inventing a new one.
+//
+// Name is the logical handle `--component <name>` selects on, mirroring
+// how backend / frontend / <service> name a kind: system component.
+type Component struct {
+	Name string `yaml:"name,omitempty"`
+	Path string `yaml:"path,omitempty"`
+	Repo string `yaml:"repo,omitempty"`
+	Lang string `yaml:"lang,omitempty"`
+}
+
+// IsEmpty reports whether no component field is set. Mirrors
+// TierSpec.IsEmpty so the "declared at all?" test reads the same for both.
+func (c Component) IsEmpty() bool {
+	return c.Name == "" && c.Path == "" && c.Repo == "" && c.Lang == ""
 }
 
 // System describes the system being built. Polymorphic by architecture:
@@ -458,6 +516,26 @@ func (c *Config) ExternalRegistryPaths(key string) ([]string, bool) {
 	return out, true
 }
 
+// KindOrDefault returns the project kind, resolving an absent value to
+// KindSystem. Every call site dispatches through this rather than
+// comparing Kind against "" so the default lives in exactly one place —
+// a config written before `kind:` existed is a system, always.
+//
+// Nil-safe: a nil *Config is treated as a system, matching Validate's
+// nil-is-fine posture.
+func (c *Config) KindOrDefault() string {
+	if c == nil || c.Kind == "" {
+		return KindSystem
+	}
+	return c.Kind
+}
+
+// IsComponent reports whether the project declares kind: component —
+// one unit of code, no system to boot, no system tests to drive.
+func (c *Config) IsComponent() bool {
+	return c.KindOrDefault() == KindComponent
+}
+
 // ExternalSystemNames returns the external-system map keys in sorted order.
 // Used wherever deterministic iteration matters — Validate's error messages,
 // preflight existence checks, the driver config banner.
@@ -515,6 +593,12 @@ func (c *Config) Repos() []string {
 			set[r] = struct{}{}
 		}
 	}
+	// A kind: component project's only repo is its component's. The system
+	// adds below are all no-ops there (Validate Rule 0a rejects those blocks),
+	// so this is an add, not a branch — but without it Repos() returns empty
+	// and every consumer that resolves a local clone from a repo slug (notably
+	// the preflight tier-path check) silently has nothing to resolve against.
+	add(c.Component.Repo)
 	add(c.System.Repo)
 	add(c.System.Backend.Repo)
 	add(c.System.Frontend.Repo)
@@ -673,6 +757,24 @@ func lastPathSegment(s string) string {
 func (c *Config) Validate() error {
 	if c == nil {
 		return nil
+	}
+
+	// Rule 0a: kind enum, and the per-kind shape it selects. kind: is the
+	// top-level "what is this project?" discriminator — a whole system
+	// under test, or a single unit of code that belongs to someone else's
+	// system. Absent means system (KindOrDefault), so every config
+	// authored before this field existed keeps validating unchanged.
+	//
+	// The two shapes are mutually exclusive and validateKindShape enforces
+	// that both ways: a component config may not carry system:,
+	// system-test:, channels:, or external-systems:, and a system config
+	// may not carry component:. Because a component config therefore has
+	// an empty system: block, every architecture-keyed rule below (Rules
+	// 7, 17/18, 22a, 22b, and the channel-adapter join) is a no-op for
+	// kind: component by construction — the cascade is unreachable rather
+	// than separately suppressed.
+	if err := c.validateKindShape(); err != nil {
+		return err
 	}
 
 	// Rule 0b: Config on backend/frontend tiers is meaningless — the runner
@@ -1080,6 +1182,83 @@ func (c *Config) Validate() error {
 		return err
 	}
 
+	return nil
+}
+
+// validateKindShape enforces Rule 0a: the kind enum, and the block set
+// each kind is allowed to carry.
+//
+// The two shapes are exclusive in both directions, and the error messages
+// name the other kind so an operator who put a block in the wrong config
+// is told which one it belongs to:
+//
+//   - kind: component requires component.{name,path,repo,lang} — all four,
+//     no defaults, no inference (the same "declared or absent, never
+//     half-filled" contract requireFullTier applies to a system tier) —
+//     and rejects system:, system-test:, channels:, and external-systems:.
+//     Those four describe a system under test; a component project has
+//     none.
+//   - kind: system rejects component:. A system's units of code are its
+//     tiers (system.backend, system.frontend, system.backend-services);
+//     a second, parallel way to declare one would be a drift source.
+//
+// Rejecting rather than ignoring matters: a silently-ignored system:
+// block in a component config would leave the operator believing the tool
+// knows about a system it will never boot.
+func (c *Config) validateKindShape() error {
+	switch c.Kind {
+	case "", KindSystem, KindComponent:
+	default:
+		return fmt.Errorf("config: kind %q must be one of %q, %q", c.Kind, KindSystem, KindComponent)
+	}
+
+	if !c.IsComponent() {
+		if !c.Component.IsEmpty() {
+			return fmt.Errorf("config: component: belongs to kind: %s; this project is kind: %s (declare its code under system.backend / system.frontend / system.backend-services)",
+				KindComponent, c.KindOrDefault())
+		}
+		return nil
+	}
+
+	// kind: component — the four required fields, then the rejected blocks.
+	for _, f := range []struct {
+		field string
+		val   string
+	}{
+		{"component.name", c.Component.Name},
+		{"component.path", c.Component.Path},
+		{"component.repo", c.Component.Repo},
+		{"component.lang", c.Component.Lang},
+	} {
+		if f.val == "" {
+			return fmt.Errorf("config: kind=%s requires component.{name,path,repo,lang} all set (%s is empty)",
+				KindComponent, f.field)
+		}
+	}
+	if err := validateLang("component.lang", c.Component.Lang); err != nil {
+		return err
+	}
+	if err := validatePath("component.path", c.Component.Path); err != nil {
+		return err
+	}
+
+	for _, b := range []struct {
+		field string
+		set   bool
+	}{
+		{"system", c.System.Architecture != "" || c.System.Config != "" || c.System.DbMigrationPath != "" ||
+			!c.System.Backend.IsEmpty() || !c.System.Frontend.IsEmpty() || len(c.System.BackendServices) > 0 ||
+			c.System.Path != "" || c.System.Repo != "" || c.System.Lang != "" || c.System.SonarProject != ""},
+		{"system-test", !c.SystemTest.IsEmpty() || len(c.SystemTest.Paths) > 0 ||
+			len(c.SystemTest.SystemDriverAdapterChannels) > 0 || c.SystemTest.Config != "" || c.SystemTest.SonarProject != ""},
+		{"channels", len(c.Channels) > 0},
+		{"external-systems", len(c.ExternalSystems) > 0},
+	} {
+		if b.set {
+			return fmt.Errorf("config: kind=%s incompatible with %s: (it describes a system under test, which a component project does not have — that block belongs to kind: %s)",
+				KindComponent, b.field, KindSystem)
+		}
+	}
 	return nil
 }
 

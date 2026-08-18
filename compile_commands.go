@@ -36,6 +36,8 @@ import (
 // Phase/summary labels for the compile tiers, shared across the for-all walk and
 // the per-tier recorders.
 const (
+	labelCompileSystem         = "Compile system"
+	labelCompileComponent      = "Compile component"
 	labelCompileComponentTests = "Compile component-tests"
 	labelCompileSystemTests    = "Compile system-tests"
 )
@@ -57,6 +59,9 @@ func newCompileCmd() *cobra.Command {
 "component-test compile" then "system-test compile" in sequence, halting on
 first failure. Distinct from "gh optivem system build", which runs "docker
 compose build" against the system's container images.
+
+On a "kind: component" project the walk is the component's own source then
+its component-test tier — there is no system-test tier to compile.
 
 The system and system-test tiers dispatch per-language commands from
 gh-optivem.yaml:
@@ -82,16 +87,30 @@ Use the noun-scoped forms to narrow to one tier:
 			cfg := loadProjectConfigOrExit()
 			sum := newCompileSummary()
 
-			log.PhaseHeader(1, 3, "Compile system")
+			// A kind: component project has no system-test tier, so the walk is
+			// two phases, not three. Skipping is the correct outcome rather
+			// than erroring on SystemTest.IsEmpty(): the tier is absent by
+			// design for this kind, not misconfigured.
+			total := 3
+			if cfg.IsComponent() {
+				total = 2
+			}
+
+			log.PhaseHeader(1, total, compilePhaseLabel(cfg))
 			err := compileSystem(cfg, sum)
 			if err == nil {
-				log.PhaseHeader(2, 3, labelCompileComponentTests)
+				log.PhaseHeader(2, total, labelCompileComponentTests)
 				err = compileComponentTests(cfg, sum, nil)
 			} else {
 				sum.MarkSkipped(labelCompileComponentTests)
 			}
+			if cfg.IsComponent() {
+				sum.Print()
+				exitOnError(err)
+				return
+			}
 			if err == nil {
-				log.PhaseHeader(3, 3, labelCompileSystemTests)
+				log.PhaseHeader(3, total, labelCompileSystemTests)
 				err = compileSystemTests(cfg, sum)
 			} else {
 				sum.MarkSkipped(labelCompileSystemTests)
@@ -132,13 +151,22 @@ func loadProjectConfigOrExit() *projectconfig.Config {
 	return cfg
 }
 
-// compileSystem dispatches by architecture. Monolith uses the System tier;
-// multitier compiles Backend then Frontend, halting on first failure (matches
-// today's `compile-all.sh` behavior — first error wins). Each `compiler.Compile`
-// call is timed and recorded on sum so the tail summary can report per-tier
-// outcomes.
+// compileSystem compiles the project's own source (as opposed to its test
+// tiers) and dispatches first by kind, then — for kind: system — by
+// architecture. Monolith uses the System tier; multitier compiles Backend then
+// Frontend, halting on first failure (matches today's `compile-all.sh` behavior
+// — first error wins). A kind: component project compiles its single declared
+// component. Each `compiler.Compile` call is timed and recorded on sum so the
+// tail summary can report per-tier outcomes.
 func compileSystem(cfg *projectconfig.Config, sum *compileSummary) error {
-	const phase = "Compile system"
+	phase := compilePhaseLabel(cfg)
+	if cfg.IsComponent() {
+		tier := componentTier(cfg)
+		log.Infof("Compiling component %s (%s) in %s", cfg.Component.Name, tier.Lang, tier.Path)
+		return recordCompile(sum, phase, cfg.Component.Name, tier, func() error {
+			return compiler.Compile(tier, ".")
+		})
+	}
 	switch cfg.System.Architecture {
 	case projectconfig.ArchMonolith:
 		tier := monolithTier(cfg)
@@ -153,6 +181,15 @@ func compileSystem(cfg *projectconfig.Config, sum *compileSummary) error {
 		}); err != nil {
 			return err
 		}
+		// An absent frontend is a legitimate multitier shape (a backend-only
+		// project whose UI lives elsewhere, or does not exist yet). Without
+		// this skip, compiler.Compile would dispatch on an empty Lang against
+		// an empty Path. Validate's Rule 5 requires system.frontend for
+		// multitier today, so this is defence in depth rather than a reachable
+		// path — but it is the correct shape either way.
+		if cfg.System.Frontend.IsEmpty() {
+			return nil
+		}
 		log.Infof("Compiling frontend (%s) in %s", cfg.System.Frontend.Lang, cfg.System.Frontend.Path)
 		return recordCompile(sum, phase, "frontend", cfg.System.Frontend, func() error {
 			return compiler.Compile(cfg.System.Frontend, ".")
@@ -162,6 +199,29 @@ func compileSystem(cfg *projectconfig.Config, sum *compileSummary) error {
 	default:
 		return fmt.Errorf("compile system: unknown system.architecture %q", cfg.System.Architecture)
 	}
+}
+
+// componentTier projects a kind: component Component onto a TierSpec so
+// compiler.Compile dispatches on Lang uniformly with the system branches.
+// The two types carry the same path/repo/lang triple; TierSpec's extra
+// system-only fields (config, sonar-project, paths) stay zero.
+func componentTier(cfg *projectconfig.Config) projectconfig.TierSpec {
+	return projectconfig.TierSpec{
+		Path: cfg.Component.Path,
+		Repo: cfg.Component.Repo,
+		Lang: cfg.Component.Lang,
+	}
+}
+
+// compilePhaseLabel names the source-compile phase for the project's kind.
+// A kind: component project has no system, so labelling its compile "Compile
+// system" would print a tier it does not have in every phase header and
+// summary row.
+func compilePhaseLabel(cfg *projectconfig.Config) string {
+	if cfg.IsComponent() {
+		return labelCompileComponent
+	}
+	return labelCompileSystem
 }
 
 // monolithTier projects a monolith System onto a TierSpec so compiler.Compile

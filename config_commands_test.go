@@ -722,13 +722,21 @@ func TestRunConfigMigrate_AddsMarkdownProviderForNonGitHubURL(t *testing.T) {
 	}
 }
 
+// kindSystemPrefix is prepended to the seed body of every migrate test that
+// asserts changed=false. `kind:` is itself a back-fill target now, so a
+// fixture that omits it is legitimately not yet migrated — and each test below
+// is scoped to ONE back-fill (repos:, db-migration-path, provider), so every
+// other target must already be satisfied for the assertion to mean what it
+// says.
+const kindSystemPrefix = "kind: system\n"
+
 // TestRunConfigMigrate_IsIdempotent — running migrate a second time on
 // an already-migrated file is a no-op (changed=false, file untouched).
 func TestRunConfigMigrate_IsIdempotent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
-	body := "project:\n  provider: github\n  url: https://github.com/orgs/acme/projects/1\n"
+	body := kindSystemPrefix + "project:\n  provider: github\n  url: https://github.com/orgs/acme/projects/1\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -958,7 +966,7 @@ func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
 	// Append the paths: block nested under system-test:. monoRepoMonolithBody
 	// ends with the system-test: tier (no trailing repos: / paths:), so we
 	// can extend it with indented entries directly.
-	body := monoRepoMonolithBody + `  paths:
+	body := kindSystemPrefix + monoRepoMonolithBody + `  paths:
     system-driver-port: system-test/java/src/main/java/testkit/driver/port
     system-driver-adapter: system-test/java/src/main/java/testkit/driver/adapter
     external-system-driver-port: system-test/java/src/main/java/testkit/external/port
@@ -1056,7 +1064,7 @@ func TestRunConfigMigrate_RespectsExistingRepos(t *testing.T) {
 	// multiRepoMultitierBody now carries a paths: block of its own (post
 	// Rule 22a — architecture set requires paths). Add only the custom
 	// repos list here; the test is scoped to the repos: front.
-	body := multiRepoMultitierBody + `
+	body := kindSystemPrefix + multiRepoMultitierBody + `
 repos:
   - path: ./custom-backend
   - path: ./custom-frontend
@@ -1145,7 +1153,7 @@ func TestRunConfigMigrate_DbMigrationPathBackfillIsIdempotent(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
-	body := strings.Replace(dbMigrationPathTestBody,
+	body := kindSystemPrefix + strings.Replace(dbMigrationPathTestBody,
 		"  db-migration-path: system/db/migrations\n",
 		"  db-migration-path: legacy/sql/migrations\n", 1)
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
@@ -1176,7 +1184,7 @@ func TestRunConfigMigrate_DbMigrationPathBackfillSkippedWhenArchitectureUnset(t 
 	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, projectconfig.Path)
-	body := `project:
+	body := kindSystemPrefix + `project:
   provider: github
   url: https://github.com/orgs/optivem/projects/20
 `

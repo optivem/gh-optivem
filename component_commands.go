@@ -9,8 +9,9 @@
 // is exactly the taxonomy plan 20260624-1221 establishes.
 //
 // Working-dir contract: every verb runs against the user's cwd and discovers
-// the components from the active gh-optivem.yaml — monolith system.path, or
-// multitier system.backend.path / system.frontend.path. Each component carries
+// the components from the active gh-optivem.yaml — the single component.path
+// on a kind: component project, or monolith system.path / multitier
+// system.backend.path + system.frontend.path on a kind: system one. Each component carries
 // its own component-tests.yaml (by convention, in the component directory),
 // holding its setup / compile / suite commands. An alternate gh-optivem.yaml is
 // selected via --config / -c.
@@ -153,16 +154,28 @@ func discoverComponentsOrExit() ([]componenttest.Component, error) {
 	return discoverComponents(cfg), nil
 }
 
-// discoverComponents maps a project config to its components by architecture
-// shape:
+// discoverComponents maps a project config to its components — by kind first,
+// then (for kind: system) by architecture shape:
+//   - component:     the single declared component: block;
 //   - multitier:     backend + frontend (each its own logical component);
 //   - microservices: each backend service (by name) + the frontend;
 //   - monolith:      the single `monolith` component.
 //
-// Logical names (backend / frontend / <service> / monolith) are stable across
-// languages, so `--component backend` reads the same on every stack. Backend
-// services are emitted in sorted name order for deterministic output.
+// Logical names (the operator-chosen component.name / backend / frontend /
+// <service> / monolith) are stable across languages, so `--component backend`
+// reads the same on every stack. Backend services are emitted in sorted name
+// order for deterministic output.
 func discoverComponents(cfg *projectconfig.Config) []componenttest.Component {
+	if cfg.IsComponent() {
+		// One config, one component (a kind: component project declares
+		// exactly one — Validate requires all four fields and rejects the
+		// system blocks that would imply others).
+		return []componenttest.Component{{
+			Name: cfg.Component.Name,
+			Path: cfg.Component.Path,
+			Lang: cfg.Component.Lang,
+		}}
+	}
 	sys := cfg.System
 	var out []componenttest.Component
 	if sys.Backend.Path != "" || sys.Frontend.Path != "" || len(sys.BackendServices) > 0 {

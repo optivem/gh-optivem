@@ -81,11 +81,29 @@ func newConfigInitCmd() *cobra.Command {
 	var (
 		force bool
 		dir   string
+		kind  string
+		comp  configinit.ComponentFlags
 	)
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Write a fresh gh-optivem.yaml in the current repo",
 		Long: `Write a fresh gh-optivem.yaml from the supplied flags.
+
+--kind selects what the config describes:
+
+  system     (default) a whole system under test — architecture, tiers,
+             system tests, channels. Every gh optivem verb applies.
+  component  one unit of code that belongs to someone else's system —
+             name, path, repo, lang, and nothing else. The verbs that
+             need a booted SUT (system start/stop/build/compile,
+             system-test setup/run, init, implement) refuse it by name;
+             the inner loop (compile, component-test compile/run) works
+             exactly as it does for a system project.
+
+--kind component takes --component-name / --component-path /
+--component-repo / --component-lang and ignores the system flags
+(--owner, --arch, --repo-strategy, the *-lang and *-path flags), which
+describe a system it does not have.
 
 Target path precedence: --config <path> (also honored as $GH_OPTIVEM_CONFIG)
 > --dir <dir> (writes <dir>/gh-optivem.yaml) > current working directory.
@@ -102,10 +120,21 @@ silent overwrite would be a foot-gun.`,
   gh optivem -c ./gh-optivem.monolith-java.yaml config init --owner acme ...
 
   # Overwrite an existing file
-  gh optivem config init --owner acme ... --force`,
+  gh optivem config init --owner acme ... --force
+
+  # A component-only project (no system, no system tests)
+  gh optivem config init --kind component \
+      --component-name backend-clean-java \
+      --component-path system/multitier/backend-clean-java \
+      --component-repo acme/shop --component-lang java`,
 		Run: func(cmd *cobra.Command, args []string) {
 			yamlPath, err := configinit.ResolveTarget(projectConfigPath, dir)
 			exitOnError(err)
+			exitOnError(validateConfigInitKind(kind))
+			if kind == projectconfig.KindComponent {
+				runConfigInitComponent(comp, yamlPath, force)
+				return
+			}
 			// No required YAML flags + TTY → drop into the same Prompt path
 			// EnsureExists uses for missing-file recovery. Non-TTY falls
 			// through to configinit.Run and surfaces the existing
@@ -140,7 +169,62 @@ silent overwrite would be a foot-gun.`,
 	config.BindConfigInitFlags(cmd, f)
 	cmd.Flags().BoolVar(&force, "force", false, "Overwrite an existing gh-optivem.yaml")
 	cmd.Flags().StringVar(&dir, "dir", "", "Directory to write gh-optivem.yaml into (ignored if --config is set; default: current working directory)")
+	cmd.Flags().StringVar(&kind, "kind", projectconfig.KindSystem, "What the config describes: system (a whole SUT) or component (one unit of code, no system)")
+	cmd.Flags().StringVar(&comp.Name, "component-name", "", "Component handle that --component <name> selects on (--kind component)")
+	cmd.Flags().StringVar(&comp.Path, "component-path", "", "Repo-relative path to the component's code (--kind component)")
+	cmd.Flags().StringVar(&comp.Repo, "component-repo", "", "Repo slug the component lives in, e.g. acme/shop (--kind component)")
+	cmd.Flags().StringVar(&comp.Lang, "component-lang", "", "Component language: java, dotnet, typescript (--kind component)")
 	return cmd
+}
+
+// validateConfigInitKind checks the --kind value at the flag layer so an
+// operator who typos it is told before any prompt session or file write,
+// rather than after filling in every field. The enum itself is
+// projectconfig's — this is the same closed set Validate Rule 0a enforces,
+// read from the same constants.
+func validateConfigInitKind(kind string) error {
+	switch kind {
+	case projectconfig.KindSystem, projectconfig.KindComponent:
+		return nil
+	default:
+		return fmt.Errorf("--kind %q must be one of %q, %q", kind, projectconfig.KindSystem, projectconfig.KindComponent)
+	}
+}
+
+// runConfigInitComponent writes a kind: component gh-optivem.yaml. With no
+// component flags on a TTY it drops into PromptComponent, mirroring how the
+// system arm drops into Prompt — the two arms are symmetric in when they ask
+// and in which validators they run, so an operator gets the same accept/reject
+// decision whichever surface they use.
+func runConfigInitComponent(comp configinit.ComponentFlags, yamlPath string, force bool) {
+	comp.Provider = projectconfig.ProviderGitHub
+	if noComponentInitFlagsSet(comp) && isatty.IsTerminal(os.Stdin.Fd()) {
+		// Fail fast before the prompt session for the same reason the system
+		// arm does: filling in four fields only to be refused at the write is
+		// bad UX. RunComponent re-checks, so this is not load-bearing.
+		if _, statErr := os.Stat(yamlPath); statErr == nil && !force {
+			exitOnError(fmt.Errorf("%s already exists; pass --force to overwrite", yamlPath))
+		}
+		if force {
+			fmt.Fprintf(os.Stderr, "Overwriting %s interactively (--force).\n", yamlPath)
+		} else {
+			fmt.Fprintf(os.Stderr, "Creating %s interactively.\n", yamlPath)
+		}
+		prompted, perr := configinit.PromptComponent(os.Stdin, os.Stderr)
+		exitOnError(perr)
+		comp = prompted
+	}
+	written, err := configinit.RunComponent(comp, yamlPath, force)
+	exitOnError(err)
+	fmt.Printf("Wrote %s\n", written)
+}
+
+// noComponentInitFlagsSet reports whether the operator passed none of the four
+// component fields — the trigger for `config init --kind component` to drop
+// into the interactive prompt. Mirrors noRequiredConfigInitFlagsSet on the
+// system arm.
+func noComponentInitFlagsSet(c configinit.ComponentFlags) bool {
+	return c.Name == "" && c.Path == "" && c.Repo == "" && c.Lang == ""
 }
 
 // newConfigValidateCmd implements `gh optivem config validate`. Reads the
@@ -247,6 +331,8 @@ multi-line error block listing every failure otherwise.`,
 // newConfigMigrateCmd implements `gh optivem config migrate`. Idempotently
 // back-fills required fields onto a pre-schema-bump gh-optivem.yaml:
 //
+//   - kind:, written as the explicit `system` every pre-this-field config
+//     already means implicitly, so the default stops being implicit.
 //   - project.provider, inferred from the existing project.url shape
 //     (https://github.com/... → github; everything else → markdown).
 //   - repos:, the project-internal repo path list consumed by the
@@ -266,6 +352,10 @@ func newConfigMigrateCmd() *cobra.Command {
 		Short: "Back-fill required fields onto an existing gh-optivem.yaml",
 		Long: `Migrate gh-optivem.yaml to the current schema. Today:
 
+  • Adds kind: system, the explicit form of the top-level discriminator
+    every config written before the field existed already means. Absent
+    still reads as system, so this is a legibility change, not a
+    behaviour change.
   • Adds project.provider (` + "`github`" + ` or ` + "`markdown`" + `), inferred from the existing
     project.url shape — https://github.com/... → github; everything else
     → markdown.
@@ -298,7 +388,8 @@ keep their context.`,
 
 // runConfigMigrate is the testable core of `gh optivem config migrate`. It
 // reads <path> via yaml.v3 Node round-trip (so comments survive),
-// back-fills the supported migration targets (project.provider, repos:),
+// back-fills the supported migration targets (kind:, project.provider,
+// repos:),
 // and writes the file back when anything changed. Returns (changed,
 // err): changed=false means "no-op, file untouched."
 //
@@ -319,6 +410,9 @@ func runConfigMigrate(path string) (bool, error) {
 	}
 
 	changed := false
+	if backfillKind(doc) {
+		changed = true
+	}
 	if backfillProjectProvider(projectNode) {
 		changed = true
 	}
@@ -377,6 +471,26 @@ func writeConfigMigrateDoc(path string, root *yaml.Node) error {
 		return fmt.Errorf("config migrate: write %s: %w", path, err)
 	}
 	return nil
+}
+
+// backfillKind writes an explicit `kind: system` when the top-level
+// discriminator is absent. Every config that predates the field describes a
+// system — that is exactly why absent defaults to system — so the back-fill is
+// unconditional and lossless.
+//
+// The point is to stop the default from being implicit over time: an operator
+// reading a migrated config sees what kind of project it is without having to
+// know the default, and a later reader is not left wondering whether the
+// absence was a choice. Prepended, so kind: is the first line of the file — it
+// is the discriminator that decides how everything below it is read.
+//
+// Idempotent: a config that already carries kind: (either value) is untouched.
+func backfillKind(doc *yaml.Node) bool {
+	if mappingValue(doc, "kind") != nil {
+		return false
+	}
+	prependMappingEntry(doc, "kind", projectconfig.KindSystem)
+	return true
 }
 
 // backfillProjectProvider adds project.provider, inferred from

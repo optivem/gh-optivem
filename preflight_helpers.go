@@ -84,11 +84,21 @@ func defaultPreflightOptions(cfg *projectconfig.Config, workspace, cwd string) (
 	// MID's read/write scope and the BPMN-required test suites against cfg
 	// before any agent runs. The driver re-loads internally — process-flow.yaml
 	// is small enough that the second read is free.
-	eng, err := process.Load()
-	if err != nil {
-		return preflight.Options{}, fmt.Errorf("preflight: load state machine: %w", err)
+	//
+	// Skipped for kind: component. Both sweeps are about the ATDD flow that
+	// `gh optivem implement` walks, and `implement` refuses a component project
+	// outright — its outer loop is the system loop, which a component has no
+	// access to. Running them anyway reports every Family B testkit layer as
+	// unresolvable, which is exactly the cascade of irrelevant errors the kind
+	// discriminator exists to remove. Options.Engine documents nil as "skip
+	// both sweeps", so this is the supported way to say so.
+	if cfg == nil || !cfg.IsComponent() {
+		eng, err := process.Load()
+		if err != nil {
+			return preflight.Options{}, fmt.Errorf("preflight: load state machine: %w", err)
+		}
+		opts.Engine = eng
 	}
-	opts.Engine = eng
 
 	// Wire the SonarCloud remote checks only when the config declares an org
 	// AND $SONAR_TOKEN is present. A missing token no longer hard-fails here:

@@ -700,6 +700,17 @@ type tierCheck struct {
 // `gh optivem config preflight` time instead of mid-`implement` agent run.
 func collectTiers(cfg *projectconfig.Config) []tierCheck {
 	var out []tierCheck
+	// A kind: component project's single unit of code is the whole layout
+	// there is to check. Its system blocks are empty by construction (Validate
+	// Rule 0a rejects them), so falling through to the architecture switch
+	// would check nothing at all and report a vacuous pass.
+	if cfg.IsComponent() {
+		return append(out, tierCheck{
+			field: "component.path",
+			repo:  cfg.Component.Repo,
+			path:  cfg.Component.Path,
+		})
+	}
 	switch cfg.System.Architecture {
 	case projectconfig.ArchMonolith:
 		if cfg.System.Path != "" || cfg.System.Repo != "" {

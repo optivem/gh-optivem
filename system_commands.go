@@ -17,8 +17,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/build/runner"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 // newSystemCmd builds the `gh optivem system` parent. The parent has no Run,
@@ -51,6 +51,7 @@ func newSystemBuildCmd() *cobra.Command {
 		Short:   "docker compose build for every entry in systems.yaml",
 		Example: `  gh optivem system build --rebuild`,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system build", "there is no compose stack to build")
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolved)
@@ -77,6 +78,7 @@ func newSystemStartCmd() *cobra.Command {
 		Short:   "docker compose up + wait for health",
 		Example: `  gh optivem system start --restart`,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system start", "there is no compose stack to bring up")
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolved)
@@ -102,6 +104,7 @@ func newSystemStatusCmd() *cobra.Command {
 		Short:   "Probe every component URL once and print OK/DOWN per entry",
 		Example: `  gh optivem system status`,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system status", "there are no component URLs to probe")
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolved)
@@ -124,6 +127,7 @@ func newSystemStopCmd() *cobra.Command {
 		Short:   "docker compose down + container cleanup",
 		Example: `  gh optivem system stop`,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system stop", "there is no compose stack to tear down")
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolved)
@@ -144,6 +148,7 @@ func newSystemCleanCmd() *cobra.Command {
 		Short:   "docker compose down -v --rmi local (delete volumes + locally-built images)",
 		Example: `  gh optivem system clean && gh optivem system-test run`,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system clean", "there are no compose volumes or images to remove")
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolved)
@@ -164,6 +169,7 @@ func newSystemCompileCmd() *cobra.Command {
 		Example: `  gh optivem system compile`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system compile", "there is no system tier to compile (use `gh optivem compile` to compile the component)")
 			sum := newCompileSummary()
 			log.PhaseHeader(1, 1, "Compile system")
 			err := compileSystem(loadProjectConfigOrExit(), sum)

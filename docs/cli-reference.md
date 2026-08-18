@@ -18,6 +18,7 @@ gh optivem implement 42      # walk ticket #42 through the ATDD pipeline, agent 
 - [Environment variables](#environment-variables)
 - [Scaffolding (`init`)](#scaffolding-init)
 - [Managing `gh-optivem.yaml`](#managing-gh-optivemyaml)
+- [Project kind (`kind:`)](#project-kind-kind)
 - [Implement a ticket](#implement-a-ticket)
 - [System verbs](#system-verbs)
 - [Tests](#tests)
@@ -170,7 +171,7 @@ Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `in
 gh optivem config init       # write a fresh gh-optivem.yaml from CLI flags (or interactive prompt on a TTY)
 gh optivem config validate   # parse the YAML and validate it against the schema
 gh optivem config preflight  # validate + check every declared repo and tier path exists on disk
-gh optivem config migrate    # idempotently back-fill required fields (project.provider, repos:, system.db-migration-path) on a pre-schema-bump file
+gh optivem config migrate    # idempotently back-fill required fields (kind:, project.provider, repos:, system.db-migration-path) on a pre-schema-bump file
 ```
 
 `config init` accepts the same YAML-affecting flags as `gh optivem init` (`--owner`, `--repo`, `--system-name`, `--arch`, `--repo-strategy`, `--monolith-lang` / `--backend-lang` / `--frontend-lang`, `--test-lang`, `--project-url`, `--license`, `--deploy`, plus the `--system-path` / `--system-test-path` / `--backend-path` / `--frontend-path` tier-path overrides). On a TTY with no required flags set, it drops into the same interactive prompt the `init` command uses. Extra flags: `--force` (overwrite an existing file) and `--dir <dir>` (target directory; ignored when `--config` is set).
@@ -184,6 +185,135 @@ gh optivem config init --owner acme --repo page-turner \
 gh optivem -c ./gh-optivem.myrepo.yaml config validate
 gh optivem config preflight --workspace /abs/path/to/workspace
 ```
+
+## Project kind (`kind:`)
+
+`kind:` is the top-level discriminator in `gh-optivem.yaml`. It answers one question — *what is this project?* — and takes one of two values:
+
+- `system` — a whole system under test: architecture, tiers, system tests, channels. Every verb applies.
+- `component` — one unit of code that belongs to someone else's system. No system to boot, no system tests to drive.
+
+**Absent means `system`.** Every config authored before the field existed describes a system, so the default keeps them working with no edit.
+
+### Why the field exists
+
+Before `kind:`, `system.architecture` was silently doing two jobs: naming the system's shape *and* acting as the "is this a whole SUT?" flag. Setting it triggered a cascade of newly-required fields — `system-test.{path,repo,lang}`, the canonical `system-test.paths.*` keys, `system.db-migration-path`, a driver-adapter path per channel, `sonar.organization`, a per-tier `sonar-project` — none of which a component-only project has. Leaving it unset made `gh optivem system compile` hard-fail. A component-only project was unexpressible in either direction.
+
+`kind:` splits the two jobs apart: `kind:` says what the project is, `system.architecture` says only what shape the system is. One field, one job.
+
+### What each kind may declare
+
+`kind: system` carries `system:`, `system-test:`, `channels:`, and `external-systems:`, and **rejects** a `component:` block — a system's units of code are its tiers (`system.backend`, `system.frontend`, `system.backend-services`), and a second parallel way to declare one would be a drift source.
+
+`kind: component` carries exactly one `component:` block — `name`, `path`, `repo`, `lang`, **all four required**, no defaults and no inference — and **rejects** `system:`, `system-test:`, `channels:`, and `external-systems:`. The rejection message names `kind: system` as where those blocks belong, so an operator who put one in the wrong config is told which kind owns it. Rejecting rather than ignoring is deliberate: a silently-ignored `system:` block would leave the operator believing the tool knows about a system it will never boot.
+
+Both directions are enforced by `projectconfig.Validate` (Rule 0a), so `gh optivem config validate` is the authoritative check.
+
+### Worked examples
+
+A system project (the default, and what every pre-`kind:` config already means) — abridged to the blocks `kind:` selects on; a complete multitier config also carries `channels:`, `sonar:`, `system.db-migration-path`, and the canonical `system-test.paths.*` keys:
+
+```yaml
+kind: system
+project:
+  provider: github
+  url: https://github.com/orgs/optivem/projects/1
+repo-strategy: mono-repo
+system:
+  architecture: multitier
+  backend:
+    path: system/multitier/backend-clean-java
+    repo: optivem/shop
+    lang: java
+  frontend:
+    path: system/multitier/frontend-react
+    repo: optivem/shop
+    lang: typescript
+system-test:
+  path: system-test/java
+  repo: optivem/shop
+  lang: java
+```
+
+A component project — four fields and the tracker identity, nothing else:
+
+```yaml
+kind: component
+project:
+  provider: github
+component:
+  name: backend-clean-java
+  path: system/multitier/backend-clean-java
+  repo: optivem/shop
+  lang: java
+```
+
+### Command behaviour by kind
+
+| Command | `kind: system` | `kind: component` |
+|---|---|---|
+| `compile` | Every tier: system → component-test → system-test | The one component plus its component-test tier; no system-test phase |
+| `component-test compile` / `setup` / `run` | Every discovered component (backend, frontend, services, or the monolith) | The single declared component |
+| `system build` / `start` / `status` / `stop` / `clean` / `compile` | Available | **Refused** — no compose stack, no system tier |
+| `system-test run` / `setup` / `compile` | Available | **Refused** — no system under test to drive, no system-test tier |
+| `test` (the aggregate) | Full pyramid: component tests → system start → system tests → system stop | Component-test suites only, then stops — that is the whole pyramid this kind has |
+| `init` | Scaffolds the project | **Refused, permanently** — see below |
+| `implement` | Walks the process flow for a ticket | **Refused** — see [the process position](#where-this-sits-in-the-process) |
+| `config init` / `validate` / `preflight` / `migrate`, `doctor`, `commit`, `sync`, `actions`, `branch`, `pr` | Same | Same — these verbs are kind-agnostic |
+
+Every refusal comes from one shared guard, so the wording is identical at every site: the verb, the config path that declared `kind: component`, the one-clause reason specific to that verb, and the inner-loop verbs that *do* apply:
+
+```
+gh optivem system start: /path/to/gh-optivem.yaml declares kind: component, so this command does not apply — there is no compose stack to bring up.
+A component project runs its inner loop with `gh optivem compile`, `gh optivem component-test compile`, and `gh optivem component-test run`.
+```
+
+Refusing beats degrading. `gh optivem system start` against a project with no compose file would otherwise fail deep inside the runner with "no systems.yaml", which reads as a misconfiguration rather than as "this verb does not apply to this project."
+
+`init` is refused permanently, not pending a feature: it scaffolds a whole system under test from the template, which is a `kind: system` operation by definition. Use `gh optivem config init --kind component` to author a component config instead.
+
+### Authoring a component config
+
+```bash
+gh optivem config init --kind component \
+    --component-name backend-clean-java \
+    --component-path system/multitier/backend-clean-java \
+    --component-repo optivem/shop \
+    --component-lang java
+```
+
+`--kind` takes `system` (default) or `component`; a typo is rejected at the flag layer, before any prompt session or file write. With `--kind component`, the four `--component-*` flags are the whole input set and the system flags (`--owner`, `--arch`, `--repo-strategy`, the `*-lang` and `*-path` flags) are ignored — they describe a system this project does not have.
+
+On a TTY with none of the four component flags set, `config init --kind component` drops into an interactive prompt, mirroring how the system arm does. It asks four questions, not nine: name, path, repo, language. Both surfaces build and validate through the same code, so a value accepted by one is accepted by the other.
+
+### Migrating an existing config
+
+```bash
+gh optivem config migrate
+```
+
+`migrate` now writes an explicit `kind: system` into a config that has none, prepended as the file's first key. Absent already read as `system`, so this is a legibility change rather than a behaviour change — the default stops being implicit, and a reader can see what kind of project the file describes without knowing that absence was a choice. The step is idempotent: a config that already carries `kind:` (either value) is left untouched, and a run with nothing to back-fill reports `already up to date`. Existing comments and key ordering survive the rewrite.
+
+### Checking a project's kind
+
+`gh optivem doctor` reports the active project's kind together with what it implies, so an operator who ran doctor *because* a verb refused can connect the two:
+
+```
+  Project kind: component (one component, no system under test — the system and system-test verbs, `init`, and `implement` do not apply)
+```
+
+With no readable `gh-optivem.yaml` in scope the line is simply omitted — `doctor` is usable outside a consumer repo.
+
+### Where this sits in the process
+
+ATDD's outer loop *is* the system loop. A team that cannot see the system cannot write acceptance tests against it, so `kind: component` is not a smaller `kind: system` — it describes a different development process.
+
+- The **inner loop** — unit → component → integration tests — is fully available and unchanged. `compile`, `component-test compile`, `component-test setup`, and `component-test run` behave exactly as they do on a system project.
+- The **outer loop is replaced by a contract**. Consumer-driven contract testing is precisely the "I cannot see the system, but I know what I owe it" mechanism.
+
+`kind: component` therefore means *inner loop plus contract boundary, no SUT*.
+
+Designing a contract-driven outer loop as an actual process flow is future work and deliberately out of scope. Today `implement` simply refuses `kind: component`, because refusing is honest where running a half-applicable flow is not.
 
 ## Implement a ticket
 
@@ -253,6 +383,8 @@ Project-stable overrides (`process_flow:`, `task_prompts:`, `node_extras:`, `nod
 
 ## System verbs
 
+Every `system` verb below is `kind: system` only: on a `kind: component` project they are refused by name, since there is no system to build, boot, probe, or compile. See [Project kind (`kind:`)](#project-kind-kind).
+
 ### Compile system
 
 Source-level compile of the system tier (`dotnet build` / `./gradlew compileJava` / `npx tsc --noEmit`), dispatched per-tier by the `lang:` field in `gh-optivem.yaml`.
@@ -312,6 +444,8 @@ Tests are organised as two **levels**, each with its own noun and the same `run`
 - **`system-test`** — the suites declared in `tests.yaml`, run against an already-running system.
 
 The bare verb **`gh optivem test`** is the for-all aggregate: it walks every level cheapest-first, halting on the first failure.
+
+On a `kind: component` project the `component-test` level works unchanged, the `system-test` verbs are refused, and `test` runs the component-test suites and stops. See [Project kind (`kind:`)](#project-kind-kind).
 
 ### Run everything (pyramid order)
 

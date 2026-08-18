@@ -24,8 +24,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
-	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/build/runner"
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
 // newSystemTestCmd builds the `gh optivem system-test` parent. The parent has
@@ -78,6 +78,7 @@ func newTestRunCmd() *cobra.Command {
   gh optivem system-test run --suite smoke --test T1,T2
   gh optivem system-test run --list`,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system-test run", "there is no system under test to drive")
 			resolvedTests, err := resolveTestsPath()
 			exitOnError(err)
 			tests, err := runner.LoadTests(resolvedTests)
@@ -137,6 +138,7 @@ func newTestSetupCmd() *cobra.Command {
 		Short:   "Run setupCommands from tests.yaml (prepare the test harness)",
 		Example: `  gh optivem system-test setup`,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system-test setup", "there is no system-test tier to prepare")
 			resolvedTests, err := resolveTestsPath()
 			exitOnError(err)
 			tests, err := runner.LoadTests(resolvedTests)
@@ -157,6 +159,7 @@ func newTestCompileCmd() *cobra.Command {
 		Example: `  gh optivem system-test compile`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			exitIfComponentKind("gh optivem system-test compile", "there is no system-test tier to compile (use `gh optivem compile` to compile the component)")
 			sum := newCompileSummary()
 			log.PhaseHeader(1, 1, "Compile system-tests")
 			err := compileSystemTests(loadProjectConfigOrExit(), sum)

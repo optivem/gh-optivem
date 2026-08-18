@@ -38,6 +38,9 @@ first failure:
 
   component-test suites  ->  system start  ->  system-test run  ->  system stop
 
+On a "kind: component" project the walk is the component-test suites alone —
+there is no system to start and no system-test level to run.
+
 By default the aggregate manages the system lifecycle itself (start before the
 system tests, stop after). Pass --assume-running to skip the start/stop — CI
 already starts and stops the system explicitly around its acceptance stage, so
@@ -50,10 +53,17 @@ Use the level nouns to narrow to one level:
   gh optivem test --assume-running   # CI: system already started/stopped externally`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			cfg := loadProjectConfigOrExit()
+
 			// Total phase count drives the "N/total" headers: 4 with lifecycle
-			// management, 2 when the caller owns start/stop.
+			// management, 2 when the caller owns start/stop, 1 for a
+			// kind: component project (component tests are the whole pyramid it
+			// has — no system to start, no system tests to run).
 			total := 4
-			if assumeRunning {
+			switch {
+			case cfg.IsComponent():
+				total = 1
+			case assumeRunning:
 				total = 2
 			}
 			phase := 0
@@ -66,7 +76,17 @@ Use the level nouns to narrow to one level:
 			all, err := discoverComponentsOrExit()
 			exitOnError(err)
 			next("Component tests")
-			exitOnError(componenttest.Run(all, componenttest.Options{}))
+			runComponentErr := componenttest.Run(all, componenttest.Options{})
+
+			// A kind: component project stops here. The remaining phases all
+			// need a booted SUT, which this kind does not have; the system
+			// verbs refuse it outright (see requireSystemKind), so the
+			// aggregate skips rather than reaching a guard that would exit.
+			if cfg.IsComponent() {
+				exitOnError(runComponentErr)
+				return
+			}
+			exitOnError(runComponentErr)
 
 			// Resolve the system + system-test config before any lifecycle action
 			// so a wiring error fails before we start a system we'd have to stop.

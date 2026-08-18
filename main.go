@@ -246,6 +246,12 @@ the URL back into gh-optivem.yaml.`,
 		Example: `  gh optivem init`,
 		Args:    cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
+			// `init` scaffolds a whole SUT from the shop template — repos,
+			// compose stack, system-test tier, pipeline workflows. That is
+			// kind: system by definition, permanently; there is no component
+			// shape of this verb to defer. A component config is authored by
+			// `gh optivem config init --kind component` or by hand.
+			exitIfComponentKind("gh optivem init", "it scaffolds a whole system under test from the template, which is a kind: system operation by definition; author a component config with `gh optivem config init --kind component` instead")
 			runInit(cmd, f)
 		},
 	}

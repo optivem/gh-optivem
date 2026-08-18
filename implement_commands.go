@@ -48,18 +48,18 @@ import (
 // required; the on-disk preflight runs before the driver starts.
 func newImplementCmd() *cobra.Command {
 	var (
-		issueArg              string
-		targetArg             string
-		channelArg            string
-		headless              bool
-		autonomousDeprecated  bool
-		manualAgents          bool
-		logFile               string
-		logLevelArg           string
-		verbose               bool
-		workspace             string
-		keepRuns              int
-		showPrompt            bool
+		issueArg             string
+		targetArg            string
+		channelArg           string
+		headless             bool
+		autonomousDeprecated bool
+		manualAgents         bool
+		logFile              string
+		logLevelArg          string
+		verbose              bool
+		workspace            string
+		keepRuns             int
+		showPrompt           bool
 	)
 	cmd := &cobra.Command{
 		Use:   "implement [issue]",
@@ -119,6 +119,15 @@ kill them.`,
   gh optivem --auto implement 42 --headless   # auto-approve every tier below the confirm floor (default: human); run claude -p`,
 		Args: cobra.MaximumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
+			// `implement` walks a process flow whose outer loop IS the system
+			// loop: acceptance tests drive a booted SUT. A kind: component
+			// project cannot see the system, so that loop does not exist for
+			// it. Refusing is honest; running a half-applicable flow is not.
+			// The inner loop (unit → component → integration) is fully
+			// available through the component-test verbs, and the outer loop's
+			// replacement for a component team is a contract, not a system
+			// test — designing that as a process flow is its own work.
+			exitIfComponentKind("gh optivem implement", "it drives an ATDD process flow whose outer loop is the system loop, and a component project has no system to write acceptance tests against; its inner loop runs through `gh optivem component-test run`")
 			issueSource, err := resolveIssueSource(issueArg, args)
 			exitOnError(err)
 			issue, err := parseIssueArg(issueSource)
