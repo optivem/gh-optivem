@@ -194,6 +194,32 @@ doctrine: `init` writes one member per `channels:` entry (via
 `BuildOptivemYAML`); `migrate` does **not** back-fill; the operator owns
 edits afterwards.
 
+### Release ordering: publish the CLI before landing consumer config edits
+
+Renaming a canonical Family B key — or adding a new required one — is a
+**breaking config-schema change**, because Rule 22a hard-errors on a
+config that lacks the key the running binary expects. Consumer
+workflows install the **latest published release**: shop's
+`.github/workflows/drift.yml` uses `optivem/actions/install-gh-optivem@v1`
+with no `ref`, i.e. plain `gh extension install optivem/gh-optivem`,
+deliberately mirroring the student/teacher flow rather than pinning a
+known-good version. So for the whole window between "consumer configs
+renamed" and "release carrying the rename published", every consumer run
+fails validation.
+
+Sequence the two sides accordingly:
+
+1. Land the key change in `gh-optivem` and **publish the release**.
+2. Only then land the matching edits in the consumer configs (shop's
+   twelve `gh-optivem-*.yaml`).
+
+Worked example of the other order: the `domain-value-types` →
+`common-domain` rename landed in shop's configs at 08:47:56Z on
+2026-08-18, but `v1.6.69` — the first release containing it — was not
+published until 08:56:15Z. The scheduled drift run at 08:52:36Z (run
+`32118470425`) installed `v1.6.68` and failed both jobs on
+`system-test.paths.domain-value-types required`.
+
 ## Default values (TypeScript example)
 
 The scaffolder writes a fully-resolved `paths:` block nested under
