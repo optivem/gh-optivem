@@ -71,7 +71,7 @@ key from `CanonicalPathKeys()` in
 | `ct-test` | contract test files |
 | `system-driver-adapter-shared` | shared System Driver adapter foundation (`driver/adapter/shared/**`) — the test-transport wrappers (Playwright/HTTP clients, base `Client`, shared DTOs, serialization, config) consumed by every channel adapter, the API driver, and external adapters |
 | `common` | shared testkit common primitives (`testkit/common/**` — `.NET`: `Common/**`) — the cross-cutting functional types (`Result`, `Converter`, `Closer`, `ResultAssert`) consumed across the whole testkit by test writers, the DSL, and every driver adapter; any testkit-writing agent may extend them in place |
-| `domain-value-types` | the system's **domain value types** (`testkit/domainvaluetypes/**` — `.NET`: `DomainValueTypes/**`) — the business vocabulary the system models and tests assert on (today the `OrderStatus` enum; future `Money` / `Sku` / `Quantity` value objects). A sibling of `common` that **travels with it**: universally readable and writable wherever `common` is, so any agent can extend domain vocabulary (e.g. add a new `OrderStatus` value its test references) without a scope halt. **Not** the harness/infra enums `ChannelMode` / `ExternalSystemMode` — those answer *how the test is run*, not *what the system models*, and stay in the already-writable `dsl-port`. **Not** the C# CLR "value type" (`struct`) or JVM value-class language features — those are a runtime memory concept, unrelated to this scope layer. |
+| `common-domain` | the system's **domain value types** (`testkit/common/domain/**` — `.NET`: `Common/Domain/**`) — the business vocabulary the system models and tests assert on (today the `OrderStatus` enum; future `Money` / `Sku` / `Quantity` value objects). Nested **inside** `common` and **travels with it**: universally readable and writable wherever `common` is, so any agent can extend domain vocabulary (e.g. add a new `OrderStatus` value its test references) without a scope halt. The nesting is deliberate — the rest of `common` (`Result`, `Converter`, `Closer`, `ResultAssert`) is domain-agnostic plumbing, so the domain-specific vocabulary is separated into its own subfolder rather than mixed in flat. **Not** the harness/infra enums `ChannelMode` / `ExternalSystemMode` — those answer *how the test is run*, not *what the system models*, and stay in the already-writable `dsl-port`. **Not** the C# CLR "value type" (`struct`) or JVM value-class language features — those are a runtime memory concept, unrelated to this scope layer. |
 
 Values are **fully-resolved physical paths** set at scaffold time
 (per plan 20260518-1530 item 3). No runtime `${...}` substitution.
@@ -221,7 +221,7 @@ system-test:
     ct-test: system-test/typescript/tests/latest/contract
     system-driver-adapter-shared: system-test/typescript/src/testkit/driver/adapter/shared
     common: system-test/typescript/src/testkit/common
-    domain-value-types: system-test/typescript/src/testkit/domainvaluetypes
+    common-domain: system-test/typescript/src/testkit/common/domain
   channels: [api, ui]
   system-driver-adapter-channels:
     api: system-test/typescript/src/testkit/driver/adapter/api

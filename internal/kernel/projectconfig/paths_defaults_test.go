@@ -27,8 +27,8 @@ func TestDefaultPaths_TypescriptFlatScaffold(t *testing.T) {
 		"dsl-core":                       "system-test/src/testkit/dsl/core",
 		"ct-test":                        "system-test/tests/latest/contract",
 		"system-driver-adapter-shared":   "system-test/src/testkit/driver/adapter/shared",
-		"common":                 "system-test/src/testkit/common",
-		"domain-value-types":     "system-test/src/testkit/domainvaluetypes",
+		"common":                         "system-test/src/testkit/common",
+		"common-domain":                  "system-test/src/testkit/common/domain",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("typescript: got %v, want %v", got, want)
@@ -48,8 +48,8 @@ func TestDefaultPaths_JavaFlatScaffold(t *testing.T) {
 		"dsl-core":                       "system-test/src/main/java/com/mycompany/myshop/testkit/dsl/core",
 		"ct-test":                        "system-test/src/test/java/com/mycompany/myshop/systemtest/latest/contract",
 		"system-driver-adapter-shared":   "system-test/src/main/java/com/mycompany/myshop/testkit/driver/adapter/shared",
-		"common":                 "system-test/src/main/java/com/mycompany/myshop/testkit/common",
-		"domain-value-types":     "system-test/src/main/java/com/mycompany/myshop/testkit/domainvaluetypes",
+		"common":                         "system-test/src/main/java/com/mycompany/myshop/testkit/common",
+		"common-domain":                  "system-test/src/main/java/com/mycompany/myshop/testkit/common/domain",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("java: got %v, want %v", got, want)
@@ -69,8 +69,8 @@ func TestDefaultPaths_DotnetFlatScaffold(t *testing.T) {
 		"dsl-core":                       "system-test/Dsl.Core",
 		"ct-test":                        "system-test/SystemTests/Latest/ExternalSystemContractTests",
 		"system-driver-adapter-shared":   "system-test/Driver.Adapter/Shared",
-		"common":                 "system-test/Common",
-		"domain-value-types":     "system-test/DomainValueTypes",
+		"common":                         "system-test/Common",
+		"common-domain":                  "system-test/Common/Domain",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("dotnet: got %v, want %v", got, want)
@@ -245,7 +245,7 @@ func TestDefaultPaths_KeysMatchPlaceholderDoctrine(t *testing.T) {
 		"ct-test",
 		"system-driver-adapter-shared",
 		"common",
-		"domain-value-types",
+		"common-domain",
 	}
 	for _, key := range want {
 		if _, ok := got[key]; !ok {

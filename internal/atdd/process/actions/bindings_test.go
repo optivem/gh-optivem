@@ -646,7 +646,7 @@ system-test:
     external-system-driver-adapter: driver/typescript/src/external-adapter
     system-driver-adapter-shared: driver/typescript/src/adapter/shared
     common: driver/typescript/src/common
-    domain-value-types: driver/typescript/src/domainvaluetypes
+    common-domain: driver/typescript/src/domainvaluetypes
 `
 	if err := os.WriteFile(filepath.Join(repoPath, "gh-optivem.yaml"), []byte(body), 0o644); err != nil {
 		t.Fatalf("write gh-optivem.yaml: %v", err)
@@ -2749,7 +2749,7 @@ system-test:
     external-system-driver-adapter: driver/typescript/src/external-adapter
     system-driver-adapter-shared: driver/typescript/src/adapter/shared
     common: driver/typescript/src/common
-    domain-value-types: driver/typescript/src/domainvaluetypes
+    common-domain: driver/typescript/src/domainvaluetypes
 
 external-systems:
   warehouse:

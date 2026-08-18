@@ -845,7 +845,7 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	//    registry-projected scope key, plan 20260622-1739 Step 3), NOT the
 	//    consumer testkit driver-adapter, plus the shared test-transport
 	//    foundation (system-driver-adapter-shared), the shared common primitives
-	//    (common), and the shared domain value types (domain-value-types). It
+	//    (common), and the shared domain value types (common-domain). It
 	//    READS the full coupled trio (driver-adapter + simulator + stub) so it
 	//    emits a shape consistent with the consumer DTO and the sibling stub.
 	sim, ok := eng.Processes["implement-external-system-real-simulator"]
@@ -859,11 +859,11 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	if got := ea.Raw.Params["agent"]; got != "external-system-real-simulator-implementer" {
 		t.Errorf("simulator MID agent = %q, want external-system-real-simulator-implementer", got)
 	}
-	wantSimRead := []string{"external-system-driver-adapter", "external-system-simulator", "external-system-stub", "system-driver-adapter-shared", "common", "domain-value-types"}
+	wantSimRead := []string{"external-system-driver-adapter", "external-system-simulator", "external-system-stub", "system-driver-adapter-shared", "common", "common-domain"}
 	if got := ea.Raw.Read; !slices.Equal(got, wantSimRead) {
 		t.Errorf("simulator MID read scope = %v, want %v", got, wantSimRead)
 	}
-	wantSimWrite := []string{"external-system-simulator", "system-driver-adapter-shared", "common", "domain-value-types"}
+	wantSimWrite := []string{"external-system-simulator", "system-driver-adapter-shared", "common", "common-domain"}
 	if got := ea.Raw.Write; !slices.Equal(got, wantSimWrite) {
 		t.Errorf("simulator MID write scope = %v, want %v", got, wantSimWrite)
 	}
@@ -879,11 +879,11 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	if !ok {
 		t.Fatalf("implement-external-system-stubs: EXECUTE_AGENT node missing")
 	}
-	wantStubRead := []string{"external-system-driver-adapter", "external-system-simulator", "external-system-stub", "system-driver-adapter-shared", "common", "domain-value-types"}
+	wantStubRead := []string{"external-system-driver-adapter", "external-system-simulator", "external-system-stub", "system-driver-adapter-shared", "common", "common-domain"}
 	if got := stubEA.Raw.Read; !slices.Equal(got, wantStubRead) {
 		t.Errorf("stub MID read scope = %v, want %v", got, wantStubRead)
 	}
-	wantStubWrite := []string{"external-system-stub", "system-driver-adapter-shared", "common", "domain-value-types"}
+	wantStubWrite := []string{"external-system-stub", "system-driver-adapter-shared", "common", "common-domain"}
 	if got := stubEA.Raw.Write; !slices.Equal(got, wantStubWrite) {
 		t.Errorf("stub MID write scope = %v, want %v", got, wantStubWrite)
 	}

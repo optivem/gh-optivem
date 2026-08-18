@@ -481,9 +481,9 @@ func TestRunConfigPreflight_AllPathsExist(t *testing.T) {
 		// system-test.paths.common — the shared common primitives
 		// (Result/Converter/Closer/ResultAssert) DefaultPaths now emits.
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/common",
-		// system-test.paths.domain-value-types — the domain value types
-		// (OrderStatus enum, future Money/Sku) that travel with common.
-		"system-test/java/src/main/java/com/acme/pageturner/testkit/domainvaluetypes",
+		// system-test.paths.common-domain — the domain value types
+		// (OrderStatus enum, future Money/Sku) nested under common.
+		"system-test/java/src/main/java/com/acme/pageturner/testkit/common/domain",
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/dsl/port",
 		"system-test/java/src/main/java/com/acme/pageturner/testkit/dsl/core",
 		"system-test/java/src/test/java/com/acme/pageturner/systemtest/latest/acceptance",
@@ -810,7 +810,7 @@ system-test:
     ct-test: system-test/src/test/java/shop-tests/latest/contract
     system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop-tests/shared
     common: system-test/src/main/java/testkit/common/shop-tests
-    domain-value-types: system-test/src/main/java/testkit/domainvaluetypes/shop-tests
+    common-domain: system-test/src/main/java/testkit/domainvaluetypes/shop-tests
 `
 
 // multiRepoMultitierBody is a pre-repos:-field config of the canonical
@@ -856,7 +856,7 @@ system-test:
     ct-test: system-test/src/test/java/shop-tests/latest/contract
     system-driver-adapter-shared: system-test/src/main/java/testkit/driver/adapter/shop-tests/shared
     common: system-test/src/main/java/testkit/common/shop-tests
-    domain-value-types: system-test/src/main/java/testkit/domainvaluetypes/shop-tests
+    common-domain: system-test/src/main/java/testkit/domainvaluetypes/shop-tests
 `
 
 // monoRepoMonolithBody is the canonical mono-repo monolith config —
@@ -969,7 +969,7 @@ func TestRunConfigMigrate_SkipsReposForMonoRepo(t *testing.T) {
     ct-test: system-test/java/src/test/java/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shared
     common: system-test/java/src/main/java/testkit/common
-    domain-value-types: system-test/java/src/main/java/testkit/domainvaluetypes
+    common-domain: system-test/java/src/main/java/testkit/domainvaluetypes
 `
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -1106,7 +1106,7 @@ const dbMigrationPathTestBody = monoRepoMonolithBody + `  paths:
     ct-test: system-test/java/src/test/java/latest/contract
     system-driver-adapter-shared: system-test/java/src/main/java/testkit/driver/adapter/shared
     common: system-test/java/src/main/java/testkit/common
-    domain-value-types: system-test/java/src/main/java/testkit/domainvaluetypes
+    common-domain: system-test/java/src/main/java/testkit/domainvaluetypes
 `
 
 func TestRunConfigMigrate_BackfillsDbMigrationPathWhenAbsent(t *testing.T) {

@@ -168,7 +168,7 @@ func CanonicalPathKeys() []string {
 		"ct-test",
 		"system-driver-adapter-shared",
 		"common",
-		"domain-value-types",
+		"common-domain",
 	}
 }
 
@@ -198,7 +198,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			"tests/latest/contract",
 			"src/testkit/driver/adapter/shared",
 			"src/testkit/common",
-			"src/testkit/domainvaluetypes",
+			"src/testkit/common/domain",
 		}, true
 	case LangJava:
 		main := path.Join("src/main/java", javaPackage, "testkit")
@@ -214,7 +214,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			path.Join(test, "latest/contract"),
 			path.Join(main, "driver/adapter/shared"),
 			path.Join(main, "common"),
-			path.Join(main, "domainvaluetypes"),
+			path.Join(main, "common/domain"),
 		}, true
 	case LangDotnet:
 		return []string{
@@ -228,7 +228,7 @@ func pathStems(testLang, javaPackage string) ([]string, bool) {
 			"SystemTests/Latest/ExternalSystemContractTests",
 			"Driver.Adapter/Shared",
 			"Common",
-			"DomainValueTypes",
+			"Common/Domain",
 		}, true
 	default:
 		return nil, false
