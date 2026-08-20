@@ -29,7 +29,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -Command \"(New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\notify.wav').PlaySync()\""
+            "command": "powershell -NoProfile -Command \"$p = New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\Alarm01.wav'; $p.PlaySync()\"",
+            "timeout": 15
           }
         ]
       }
@@ -39,7 +40,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -Command \"(New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\chimes.wav').PlaySync()\""
+            "command": "powershell -NoProfile -Command \"$p = New-Object System.Media.SoundPlayer 'C:\\Windows\\Media\\Ring01.wav'; $p.PlaySync(); Start-Sleep -Milliseconds 250; $p.PlaySync()\"",
+            "timeout": 20
           }
         ]
       }
