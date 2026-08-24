@@ -99,10 +99,25 @@ var licensesWithFillableNotice = map[string]bool{
 }
 ```
 
-**Open question — who is the copyright holder.** `cfg.Owner` (`internal/config/config.go:562`,
-"GitHub username or org (required)") is the only candidate present, but it is a handle, not a
-legal entity: `Copyright (c) 2026 optivem`. Recommend an optional `copyright-holder` config key
-falling back to `cfg.Owner`, so the fallback stays zero-config while a real name is expressible.
+**Decided — the copyright holder gets its own key.** `cfg.Owner`
+(`internal/config/config.go:562`, "GitHub username or org (required)") is the only candidate
+present today, but it is a handle rather than a legal entity, so it yields
+`Copyright (c) 2026 optivem`. Add an optional `copyright-holder` key that falls back to
+`cfg.Owner` when unset — zero-config stays zero-config, and a real name is expressible where it
+matters.
+
+Plumbing, mirroring how `license` itself is threaded:
+
+| Site | Change |
+|---|---|
+| `internal/kernel/projectconfig/config.go` | add a `CopyrightHolder string` field with yaml tag `copyright-holder,omitempty`, beside `License` (:172) |
+| `internal/config/config.go` | `--copyright-holder` flag, default `""`, beside the `--license` flag (:571) |
+| `internal/config/optivemyaml/optivemyaml.go` | carry it through beside `License: cfg.License` (:60) |
+| `internal/scaffolding/steps/finalize.go` | resolve `holder := cfg.CopyrightHolder; if holder == "" { holder = cfg.Owner }` |
+
+Deliberately **not** added to `configinit`'s interactive prompt (`prompt.go:164` region) — it is
+an optional refinement, and one more question in the init flow costs more than it returns. It is
+set in `gh-optivem.yaml` by operators who care.
 
 ## Problem 4 — `mit-0` and `0bsd` cannot be offered at all
 
@@ -132,6 +147,7 @@ change silently.
   others are byte-identical to the bundled asset.
 - Unit test: an unknown or missing asset key fails the step rather than skipping it.
 - Unit test: manifest license field matches `cfg.License` after templating.
+- Unit test: `copyright-holder` wins when set; `cfg.Owner` is used when it is empty.
 - Manual: `gh optivem init --license mit-0` produces a filled MIT-0 LICENSE, a matching
   `package.json` field, and a README badge agreeing with both.
 
