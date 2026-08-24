@@ -77,6 +77,15 @@ type Config struct {
 	Deploy  string // "docker" (default) or "cloud-run"
 	License string
 
+	// CopyrightHolder names the legal entity in the scaffolded LICENSE's
+	// copyright notice, for the licenses whose notice is inline (mit, mit-0,
+	// bsd-2-clause, bsd-3-clause, 0bsd). Empty falls back to Owner — a GitHub
+	// handle is a serviceable default but not a legal name, so operators who
+	// care set this in gh-optivem.yaml. Deliberately absent from `config
+	// init`'s prompt: an optional refinement does not earn a question in the
+	// zero-config flow.
+	CopyrightHolder string
+
 	// ProjectURL is the GitHub Project URL written into gh-optivem.yaml at the
 	// "Write gh-optivem.yaml" step. Empty is allowed — the file is still
 	// generated, just with project.url absent. If left empty here, the
@@ -503,26 +512,27 @@ func ValidateProjectURLFormat(url string) string {
 // to these fields on the Cobra command via BindInitFlags; ParseAndValidate then
 // consumes the populated struct after Cobra has parsed the command line.
 type RawFlags struct {
-	Owner          string
-	SystemName     string
-	Repo           string
-	Arch           string
-	RepoStrategy   string
-	Lang           string
-	TestLang       string
-	BackendLang    string
-	FrontendLang   string
-	License        string
-	VerifyLevel    string
-	Deploy         string
-	WorkDir        string
-	ShopRef        string
-	LogFile        string
-	ProjectURL     string
-	SystemPath     string
-	SystemTestPath string
-	BackendPath    string
-	FrontendPath   string
+	Owner           string
+	SystemName      string
+	Repo            string
+	Arch            string
+	RepoStrategy    string
+	Lang            string
+	TestLang        string
+	BackendLang     string
+	FrontendLang    string
+	License         string
+	CopyrightHolder string
+	VerifyLevel     string
+	Deploy          string
+	WorkDir         string
+	ShopRef         string
+	LogFile         string
+	ProjectURL      string
+	SystemPath      string
+	SystemTestPath  string
+	BackendPath     string
+	FrontendPath    string
 
 	// BackendServices carries the microservices backend-services: map from
 	// the loaded gh-optivem.yaml. Not bound to any CLI flag (no --backend-*
@@ -568,7 +578,8 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.TestLang, "test-lang", "", "System-test language: java, dotnet, typescript (required; independent of --monolith-lang / --backend-lang)")
 	fs.StringVar(&f.BackendLang, "backend-lang", "", "Backend language: java, dotnet, typescript (multitier)")
 	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: typescript (multitier)")
-	fs.StringVar(&f.License, "license", "mit", "License: mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense")
+	fs.StringVar(&f.License, "license", "mit", "License: "+projectconfig.LicenseKeyList())
+	fs.StringVar(&f.CopyrightHolder, "copyright-holder", "", "Copyright holder named in the LICENSE notice (optional; defaults to --owner)")
 	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (optional — init auto-creates a board and writes the URL back when omitted; e.g. https://github.com/orgs/<org>/projects/<n>)")
 	// Tier paths default to the flat scaffold layout — the same layout
@@ -1272,27 +1283,28 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		BackendServices:  f.BackendServices,
 		FrontendRepoSlug: f.FrontendRepoSlug,
 
-		Deploy:         f.Deploy,
-		License:        f.License,
-		ProjectURL:     f.ProjectURL,
-		SystemPath:     f.SystemPath,
-		SystemTestPath: f.SystemTestPath,
-		BackendPath:    f.BackendPath,
-		FrontendPath:   f.FrontendPath,
-		VerifyLevel:    resolvedLevel,
-		NoLegacy:       f.NoLegacy,
-		NoLocalTests:   f.NoLocalTests,
-		NoLocalSonar:   f.NoLocalSonar,
-		NoAtdd:         f.NoAtdd,
-		NoProject:      f.NoProject,
-		KeepLocal:      f.KeepLocal,
-		BugReport:      f.BugReport,
-		Verbose:        f.Verbose,
-		Quiet:          f.Quiet,
-		LogFile:        logFilePath,
-		AssumeYes:      f.AssumeYes,
-		Approval:       resolved,
-		WorkDir:        wd,
+		Deploy:          f.Deploy,
+		License:         f.License,
+		CopyrightHolder: f.CopyrightHolder,
+		ProjectURL:      f.ProjectURL,
+		SystemPath:      f.SystemPath,
+		SystemTestPath:  f.SystemTestPath,
+		BackendPath:     f.BackendPath,
+		FrontendPath:    f.FrontendPath,
+		VerifyLevel:     resolvedLevel,
+		NoLegacy:        f.NoLegacy,
+		NoLocalTests:    f.NoLocalTests,
+		NoLocalSonar:    f.NoLocalSonar,
+		NoAtdd:          f.NoAtdd,
+		NoProject:       f.NoProject,
+		KeepLocal:       f.KeepLocal,
+		BugReport:       f.BugReport,
+		Verbose:         f.Verbose,
+		Quiet:           f.Quiet,
+		LogFile:         logFilePath,
+		AssumeYes:       f.AssumeYes,
+		Approval:        resolved,
+		WorkDir:         wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
 		// from WorkDir so the startup banner can show them before Phase 1. The
 		// Prepare and Apply Template phases clone into these paths directly.
@@ -1418,7 +1430,7 @@ func applyLicenseAndDeployDefaults(f *RawFlags) error {
 		f.License = projectconfig.LicenseMIT
 	}
 	if !projectconfig.IsValidLicense(f.License) {
-		return fmt.Errorf("--license %q must be one of mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense", f.License)
+		return fmt.Errorf("--license %q must be one of %s", f.License, projectconfig.LicenseKeyList())
 	}
 	if f.Deploy == "" {
 		f.Deploy = projectconfig.DeployDocker
@@ -1505,6 +1517,7 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 		FrontendLang:     lc.frontendLang,
 		TestLang:         lc.testLang,
 		License:          f.License,
+		CopyrightHolder:  f.CopyrightHolder,
 		Deploy:           f.Deploy,
 		ProjectURL:       f.ProjectURL,
 		SystemPath:       f.SystemPath,

@@ -48,6 +48,11 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 		// scaffolded LICENSE file gets written. Mirror the flag default.
 		f.License = projectconfig.LicenseMIT
 	}
+	// Left empty when absent, unlike License above: WriteLicense falls back
+	// to the owner handle, so there is no value to commit to here. Setting
+	// gh-optivem.yaml's copyright-holder is the documented way an operator
+	// names a legal entity instead, so it must be hydrated.
+	f.CopyrightHolder = pc.CopyrightHolder
 	f.Deploy = pc.Deploy
 	if f.Deploy == "" {
 		f.Deploy = projectconfig.DeployDocker

@@ -54,11 +54,12 @@ func WriteOptivemYAMLToFilePathWithBanner(cfg *config.Config, yamlPath, banner s
 // writing for a scaffolded repo, shop's worktree, or a hand-rolled layout.
 func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 	pc := &projectconfig.Config{
-		Project:      projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: cfg.ProjectURL},
-		RepoStrategy: mapRepoStrategy(cfg.RepoStrategy),
-		SystemName:   cfg.SystemName,
-		License:      cfg.License,
-		Deploy:       cfg.Deploy,
+		Project:         projectconfig.Project{Provider: projectconfig.ProviderGitHub, URL: cfg.ProjectURL},
+		RepoStrategy:    mapRepoStrategy(cfg.RepoStrategy),
+		SystemName:      cfg.SystemName,
+		License:         cfg.License,
+		CopyrightHolder: cfg.CopyrightHolder,
+		Deploy:          cfg.Deploy,
 	}
 	if cfg.Arch == "" {
 		// Partial config (no architecture chosen yet) — emit just the

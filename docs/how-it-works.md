@@ -45,7 +45,7 @@ Steps are grouped into phases; `executeSteps` prints a header each time the phas
 | Apply template | Replace system name | Substitutes system-name placeholders |
 | Apply template | Update README | Generates the scaffolded project's README |
 | Apply template | Write gh-optivem.yaml | Writes the per-project config the ATDD pipeline reads at runtime |
-| Apply template | Write LICENSE | Writes the `LICENSE` file for the `--license` key |
+| Apply template | Write LICENSE | Writes the `LICENSE` file for the `--license` key from a bundled text (no network call), filling the copyright notice with `--copyright-holder` (default `--owner`) where the license carries one, and sets every scaffolded `package.json`'s `license` field to the matching SPDX id |
 | Apply template | Create SonarCloud projects | Registers projects in SonarCloud |
 | Apply template | Verify push path filters | Fails hard if a scaffolded commit-stage workflow's `on: push: paths:` filter matches nothing in the repo — the filter would silently never fire |
 | Push scaffold | Commit and push | Commits all changes and pushes to remote. Always runs, even after an earlier failure, so a partial scaffold is inspectable on the remote |

@@ -165,10 +165,19 @@ type Config struct {
 	SystemName string `yaml:"system-name,omitempty"`
 
 	// License is the SPDX-like license key used to emit the scaffolded
-	// repo's LICENSE file and README badge (mit, apache-2.0, gpl-3.0,
-	// bsd-2-clause, bsd-3-clause, unlicense). Validated against the known
+	// repo's LICENSE file and README badge. The offered set is
+	// projectconfig.LicenseKeys(); each key has a bundled text under
+	// internal/scaffolding/assets/licenses. Validated against the known
 	// set when set.
 	License string `yaml:"license,omitempty"`
+
+	// CopyrightHolder names the legal entity written into the scaffolded
+	// LICENSE's copyright notice, for the licenses whose notice is inline
+	// (mit, mit-0, bsd-2-clause, bsd-3-clause, 0bsd). Optional: when unset
+	// the scaffolder falls back to the GitHub owner handle, which is a
+	// serviceable default but not a legal name. Apache-2.0, GPL-3.0 and the
+	// Unlicense ignore it — their documents ship verbatim.
+	CopyrightHolder string `yaml:"copyright-holder,omitempty"`
 
 	// Deploy is the deployment target the scaffolded repo's workflows
 	// target (docker | cloud-run). Today only docker is production-ready;
@@ -992,7 +1001,7 @@ func (c *Config) Validate() error {
 	// when reading); a non-empty value must be a known key so the
 	// scaffolded LICENSE file isn't silently wrong.
 	if c.License != "" && !IsValidLicense(c.License) {
-		return fmt.Errorf("config: license %q must be one of mit, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, unlicense", c.License)
+		return fmt.Errorf("config: license %q must be one of %s", c.License, LicenseKeyList())
 	}
 
 	// Rule 16: deploy enum. Empty is accepted (init layers `docker` as

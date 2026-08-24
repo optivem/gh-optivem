@@ -136,7 +136,8 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
   - `--frontend-lang` — frontend language when `--arch multitier` (currently only `typescript`).
 - `--test-lang` — system-test language: `java`, `dotnet`, or `typescript`. Independent of the system language(s).
 - `--project-url` — URL of the GitHub Project board to attach. When omitted, `init` auto-creates the board and writes the URL back into `gh-optivem.yaml`.
-- `--license` — SPDX-like license key: `mit` (default), `apache-2.0`, `gpl-3.0`, `bsd-2-clause`, `bsd-3-clause`, or `unlicense`. Drives the scaffolded `LICENSE` file and README badge.
+- `--license` — SPDX-like license key: `mit` (default), `mit-0`, `apache-2.0`, `gpl-3.0`, `bsd-2-clause`, `bsd-3-clause`, `0bsd`, or `unlicense`. Drives the scaffolded `LICENSE` file, the README badge, and the `license` field of every scaffolded `package.json`. The texts are bundled with the extension, so generation needs no network access.
+- `--copyright-holder` — name written into the `LICENSE` copyright notice (optional; defaults to `--owner`). Applies only to the licenses whose notice is inline (`mit`, `mit-0`, `bsd-2-clause`, `bsd-3-clause`, `0bsd`); Apache-2.0, GPL-3.0 and the Unlicense ship verbatim.
 - `--deploy` — deployment target: `docker` (default). `cloud-run` is in development and not yet usable.
 - Tier paths — `--system-path`, `--system-test-path`, `--backend-path`, `--frontend-path`. Repo-relative paths to the corresponding tier. Pass these only to point the YAML at a non-flat existing repo; the flat scaffold layout `init` itself produces is the default.
 

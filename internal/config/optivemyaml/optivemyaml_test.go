@@ -67,6 +67,39 @@ func TestBuildOptivemYAML_MonolithMonorepo(t *testing.T) {
 	}
 }
 
+// TestBuildOptivemYAML_CopyrightHolderRoundTrips closes the loop on the
+// copyright-holder key: BuildOptivemYAML must emit what an operator set so a
+// re-run of init reads back the same holder, and must omit the field entirely
+// when unset (yaml tag "copyright-holder,omitempty") rather than writing an
+// empty string into every scaffolded config.
+func TestBuildOptivemYAML_CopyrightHolderRoundTrips(t *testing.T) {
+	t.Parallel()
+	sys, sysTest := monolithFlatPaths()
+	base := func() *config.Config {
+		return &config.Config{
+			Arch:           "monolith",
+			RepoStrategy:   "monorepo",
+			Owner:          "x",
+			Repo:           "shop",
+			FullRepo:       "x/shop",
+			Lang:           "java",
+			TestLang:       "java",
+			SystemPath:     sys,
+			SystemTestPath: sysTest,
+		}
+	}
+
+	cfg := base()
+	cfg.CopyrightHolder = "Optivem d.o.o."
+	if got := BuildOptivemYAML(cfg).CopyrightHolder; got != "Optivem d.o.o." {
+		t.Errorf("CopyrightHolder: got %q, want %q", got, "Optivem d.o.o.")
+	}
+
+	if got := BuildOptivemYAML(base()).CopyrightHolder; got != "" {
+		t.Errorf("unset CopyrightHolder should stay empty, got %q", got)
+	}
+}
+
 func TestBuildOptivemYAML_MultitierMultirepo(t *testing.T) {
 	t.Parallel()
 	be, fe, sysTest := multitierFlatPaths()

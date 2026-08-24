@@ -194,6 +194,38 @@ func TestFillRawFlagsFromYAML_DefaultsAbsentLicenseAndDeploy(t *testing.T) {
 	}
 }
 
+// TestFillRawFlagsFromYAML_HydratesCopyrightHolder pins the only way an
+// operator can name a legal entity in the scaffolded LICENSE: gh-optivem.yaml's
+// copyright-holder key. It is deliberately absent from `config init`'s prompt,
+// so if this hydration is dropped the key becomes silently inert.
+func TestFillRawFlagsFromYAML_HydratesCopyrightHolder(t *testing.T) {
+	t.Parallel()
+	pc := validMonolithYAML()
+	pc.CopyrightHolder = "Optivem d.o.o."
+	f := &RawFlags{}
+	if err := FillRawFlagsFromYAML(f, pc); err != nil {
+		t.Fatalf("FillRawFlagsFromYAML: %v", err)
+	}
+	if f.CopyrightHolder != "Optivem d.o.o." {
+		t.Errorf("copyright-holder should hydrate from YAML, got %q", f.CopyrightHolder)
+	}
+}
+
+// TestFillRawFlagsFromYAML_AbsentCopyrightHolderStaysEmpty — unlike license,
+// an absent copyright-holder is not defaulted here. WriteLicense falls back to
+// the owner handle, so there is no value for the loader to commit to.
+func TestFillRawFlagsFromYAML_AbsentCopyrightHolderStaysEmpty(t *testing.T) {
+	t.Parallel()
+	pc := validMonolithYAML()
+	f := &RawFlags{}
+	if err := FillRawFlagsFromYAML(f, pc); err != nil {
+		t.Fatalf("FillRawFlagsFromYAML: %v", err)
+	}
+	if f.CopyrightHolder != "" {
+		t.Errorf("absent copyright-holder should stay empty, got %q", f.CopyrightHolder)
+	}
+}
+
 // TestFillRawFlagsFromYAML_AcceptsEmptyProjectURL pins the contract that
 // yaml-load tolerates an absent project.url. Path A in
 // internal/steps/project.go (EnsureProjectBoard) auto-creates the board
