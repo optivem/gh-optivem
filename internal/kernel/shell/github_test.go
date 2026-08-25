@@ -552,3 +552,144 @@ func TestWaitForRepoVisible_RetriesTransient(t *testing.T) {
 	// Avoid unused-var warning for strings — kept for future test extension.
 	_ = strings.TrimSpace
 }
+
+// createRepoScript is the shared call script for the CreateRepo lost-response
+// tests. Call 1 is the pre-flight `gh repo view` (404 — name is free); call 2
+// is create attempt 1, lost to a transient AFTER GitHub created the repo;
+// call 3 is the retry, which necessarily reports the name as taken. recheck is
+// what the post-name-taken `gh repo view` returns; anything after that is
+// waitForRepoVisible's poll, which is handed viewOK.
+func createRepoScript(recheck func() (string, error)) func(int) (string, error) {
+	const viewOK = `{"name":"myrepo-system"}`
+	return func(n int) (string, error) {
+		switch n {
+		case 1:
+			return "GraphQL: Could not resolve to a Repository with the name 'myorg/myrepo-system'. (repository)",
+				errors.New("exit 1")
+		case 2:
+			return "Post \"https://api.github.com/graphql\": net/http: TLS handshake timeout",
+				errors.New("exit 1")
+		case 3:
+			return "GraphQL: Name already exists on this account (createRepository)", errors.New("exit 1")
+		case 4:
+			return recheck()
+		default:
+			return viewOK, nil
+		}
+	}
+}
+
+// catchFatal runs fn and returns the *log.StepError it aborted with, or nil if
+// it returned normally.
+func catchFatal(t *testing.T, fn func()) *log.StepError {
+	t.Helper()
+	var caught *log.StepError
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				return
+			}
+			var ok bool
+			caught, ok = r.(*log.StepError)
+			if !ok {
+				t.Fatalf("panic value is %T, want *log.StepError", r)
+			}
+		}()
+		fn()
+	}()
+	return caught
+}
+
+// TestCreateRepo_AdoptsRepoCreatedOnLostAttempt is the regression test for
+// acceptance run 32874584907 (job 97898649633). `gh repo create` is a
+// non-idempotent write: when a transient swallows the response of an attempt
+// that already succeeded on GitHub's side, the retry comes back "Name already
+// exists on this account" — wording the shared classifier hard-fails on. That
+// aborted the whole scaffold over a repo that existed and was ours.
+//
+// The exact call script below reproduced the CI failure byte-for-byte against
+// the pre-fix code. CreateRepo must now re-check reality and adopt the repo.
+func TestCreateRepo_AdoptsRepoCreatedOnLostAttempt(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+	withFakeRunFn(t, createRepoScript(func() (string, error) {
+		return `{"name":"myrepo-system"}`, nil // re-check: the repo our lost attempt created
+	}))
+
+	gh := &GitHub{Repo: "myorg/myrepo-system"}
+	if caught := catchFatal(t, gh.CreateRepo); caught != nil {
+		t.Fatalf("CreateRepo aborted on an adoptable lost-response create: %v", caught.Error())
+	}
+	if len(sleeps) == 0 {
+		t.Fatal("expected at least one retry backoff before the name-taken response")
+	}
+}
+
+// TestCreateRepo_IndeterminateRecheckFailsLoud pins the other half of the rule:
+// a name-taken response is only adoptable when the re-check gives a definitive
+// "yes, it exists". An indeterminate re-check (403 — couldn't tell) must abort
+// naming the repo, never be coerced into success. Same rule the check-* probes
+// follow: returning success on an indeterminate result is a lie.
+func TestCreateRepo_IndeterminateRecheckFailsLoud(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+	withFakeRunFn(t, createRepoScript(func() (string, error) {
+		return "HTTP 403: Forbidden", errors.New("exit 1") // re-check: couldn't tell
+	}))
+
+	caught := catchFatal(t, (&GitHub{Repo: "myorg/myrepo-system"}).CreateRepo)
+	if caught == nil {
+		t.Fatal("want a fatal abort when the existence re-check is indeterminate, got none")
+	}
+	for _, want := range []string{"myorg/myrepo-system", "already taken"} {
+		if !strings.Contains(caught.Error(), want) {
+			t.Fatalf("error %q does not mention %q", caught.Error(), want)
+		}
+	}
+}
+
+// TestCreateRepo_NameTakenButNotVisibleFailsLoud covers the contradiction case:
+// gh says the name is taken, but the re-check definitively 404s. The two
+// answers disagree, so there is no definitive verdict — abort rather than
+// adopt a repo we cannot see.
+func TestCreateRepo_NameTakenButNotVisibleFailsLoud(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+	withFakeRunFn(t, createRepoScript(func() (string, error) {
+		return "GraphQL: Could not resolve to a Repository with the name 'myorg/myrepo-system'. (repository)",
+			errors.New("exit 1")
+	}))
+
+	caught := catchFatal(t, (&GitHub{Repo: "myorg/myrepo-system"}).CreateRepo)
+	if caught == nil {
+		t.Fatal("want a fatal abort when gh says name-taken but the repo is not visible, got none")
+	}
+	for _, want := range []string{"myorg/myrepo-system", "not visible"} {
+		if !strings.Contains(caught.Error(), want) {
+			t.Fatalf("error %q does not mention %q", caught.Error(), want)
+		}
+	}
+}
+
+// TestCreateRepo_NonNameTakenFailureStillFatals guards the narrowness of the
+// adoption path: only the name-taken wording routes through the re-check.
+// Any other create failure aborts on the spot, as before.
+func TestCreateRepo_NonNameTakenFailureStillFatals(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+	withFakeRunFn(t, func(n int) (string, error) {
+		if n == 1 {
+			return "GraphQL: Could not resolve to a Repository (repository)", errors.New("exit 1")
+		}
+		return "HTTP 403: Forbidden -- token lacks the repo scope", errors.New("exit 1")
+	})
+
+	caught := catchFatal(t, (&GitHub{Repo: "myorg/myrepo-system"}).CreateRepo)
+	if caught == nil {
+		t.Fatal("want a fatal abort on a non-name-taken create failure, got none")
+	}
+	if strings.Contains(caught.Error(), "already taken") {
+		t.Fatalf("a 403 must not be routed through the adoption path: %v", caught.Error())
+	}
+}

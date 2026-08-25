@@ -62,8 +62,14 @@ var statusOptionColors = map[string]string{
 // projectRun uses RunWithRetry so the gh project link call is transient-
 // resilient. RunWithRetry shares Run's signature, so the seam swap is a
 // one-line change with no caller updates.
+//
+// projectCreateCapture is deliberately the NON-retrying RunCapture. It exists
+// only for `gh project create`, whose retry must re-list by title first or it
+// duplicates the board — findOrCreateProject owns that loop, and a retrying
+// seam here would nest a second, unsafe one inside it.
 var (
 	projectRunCapture        = shell.RunCaptureWithRetry
+	projectCreateCapture     = shell.RunCapture
 	projectRunStdin          = shell.MustRunStdinWithRetry
 	projectRun               = shell.RunWithRetry
 	projectConfirmFn         = readProjectConfirmation
@@ -265,42 +271,101 @@ func reposToLink(cfg *config.Config) []string {
 	return []string{cfg.SystemFullRepo}
 }
 
-// findOrCreateProject reuses an existing project under owner whose title
-// matches systemName (case-sensitive — matches CreateRepo's identity check),
-// or creates a new one. Returns the resolved project and whether it was
-// freshly created.
-func findOrCreateProject(owner, systemName string) (*ghProject, bool, error) {
+// findProjectByTitle returns the project under owner whose title matches
+// systemName (case-sensitive — matches CreateRepo's identity check), or
+// (nil, nil) when no project carries that title. The list call is a read, so
+// it keeps the ordinary retrying seam.
+func findProjectByTitle(owner, systemName string) (*ghProject, error) {
 	listOut, err := projectRunCapture(
 		fmt.Sprintf("gh project list --owner %s --format json --limit 200", owner), "")
 	if err != nil {
-		return nil, false, fmt.Errorf("list projects: %w", err)
+		return nil, fmt.Errorf("list projects: %w", err)
 	}
 	var listResp projectListResponse
 	if err := json.Unmarshal([]byte(listOut), &listResp); err != nil {
-		return nil, false, fmt.Errorf("parse project list: %w; raw=%q", err, listOut)
+		return nil, fmt.Errorf("parse project list: %w; raw=%q", err, listOut)
 	}
 	for i := range listResp.Projects {
 		if listResp.Projects[i].Title == systemName {
 			pr := listResp.Projects[i]
 			pr.Owner = owner
-			return &pr, false, nil
+			return &pr, nil
 		}
 	}
+	return nil, nil
+}
 
-	createOut, err := projectRunCapture(
+// createProject issues a single, non-retried `gh project create`. Retrying is
+// the caller's job precisely because it must re-list first — see
+// findOrCreateProject.
+func createProject(owner, systemName string) (*ghProject, error) {
+	createOut, err := projectCreateCapture(
 		fmt.Sprintf("gh project create --owner %s --title %q --format json", owner, systemName), "")
 	if err != nil {
-		return nil, false, fmt.Errorf("create project: %w", err)
+		return nil, fmt.Errorf("create project: %w", err)
 	}
 	var pr ghProject
 	if err := json.Unmarshal([]byte(createOut), &pr); err != nil {
-		return nil, false, fmt.Errorf("parse project create: %w; raw=%q", err, createOut)
+		return nil, fmt.Errorf("parse project create: %w; raw=%q", err, createOut)
 	}
 	if pr.URL == "" {
-		return nil, false, fmt.Errorf("create project returned empty URL; raw=%q", createOut)
+		return nil, fmt.Errorf("create project returned empty URL; raw=%q", createOut)
 	}
 	pr.Owner = owner
-	return &pr, true, nil
+	return &pr, nil
+}
+
+// findOrCreateProject reuses an existing project under owner whose title
+// matches systemName, or creates a new one. Returns the resolved project and
+// whether it was freshly created.
+//
+// Every attempt re-lists before creating, and that is what makes the create
+// safe to retry. `gh project create` is a NON-idempotent write, and — unlike
+// `gh repo create` — project titles are NOT unique, so GitHub happily accepts
+// a second board with the same title. A blind retry after a transient
+// swallowed a successful create therefore does not error; it silently leaves
+// the operator with two boards, and the scaffold wires up whichever one the
+// retry returned. Looking the title up at the top of each attempt turns that
+// into an adoption: the board our lost attempt created is found and reused.
+//
+// Sibling of createRepoAdoptingLostAttempt in internal/kernel/shell/github.go
+// — same at-least-once hazard, caught the same way (re-check reality between
+// attempts), differing only in that the repo case is loud and this one was
+// silent.
+func findOrCreateProject(owner, systemName string) (*ghProject, bool, error) {
+	var found *ghProject
+	var created bool
+
+	_, err := shell.RetryWithPolicy(
+		shell.RetryTransient(), shell.RetryHardFail(), "retry",
+		func() (string, error) {
+			existing, err := findProjectByTitle(owner, systemName)
+			if err != nil {
+				return err.Error(), err
+			}
+			if existing != nil {
+				// Either a board that predates this run, or the one a lost
+				// create attempt made. Both are reuse, not a fresh create.
+				found, created = existing, false
+				return "", nil
+			}
+			pr, err := createProject(owner, systemName)
+			if err != nil {
+				// Classification matches against the returned string, and
+				// RunCapture leaves stdout empty on failure (it builds the
+				// message from stderr). Surface err.Error() the way
+				// RunCaptureWithRetry does, or every create failure would look
+				// non-transient and skip the re-list entirely.
+				return err.Error(), err
+			}
+			found, created = pr, true
+			return "", nil
+		},
+	)
+	if err != nil {
+		return nil, false, err
+	}
+	return found, created, nil
 }
 
 // loadStatusField fetches the project's field list and returns the built-in

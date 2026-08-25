@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -432,8 +433,64 @@ func (g *GitHub) CreateRepo() {
 	if exists {
 		log.Fatalf("Repository %s already exists -- re-scaffolding an existing repo is not supported", g.Repo)
 	}
-	MustRunWithRetry("gh repo create "+g.Repo+" --public", "")
+	g.createRepoAdoptingLostAttempt()
 	g.waitForRepoVisible()
+}
+
+// repoCreateNameTaken matches the response `gh repo create` returns when the
+// name is already taken on the target account:
+//
+//	GraphQL: Name already exists on this account (createRepository)
+//
+// Pinned by TestCreateRepo_AdoptsRepoCreatedOnLostAttempt in github_test.go —
+// if GitHub changes the wording, that test fails and we update the regex
+// deliberately, instead of silently reverting to an abort.
+var repoCreateNameTaken = regexp.MustCompile(`(?i)name already exists`)
+
+// createRepoAdoptingLostAttempt shells out to `gh repo create`, retrying on the
+// shared transient policy, and adopts a repo that a lost attempt already made.
+//
+// `gh repo create` is a NON-idempotent write. When a transient swallows the
+// response of an attempt that actually succeeded on GitHub's side, the retry
+// necessarily comes back "Name already exists on this account" — wording that
+// matches neither retryTransient nor retryHardFail, so the shared classifier
+// hard-fails and the whole scaffold aborts over a repo that exists and is
+// ours. That is exactly what killed acceptance run 32874584907 (job
+// 97898649633): the `-system` repo's create retried once, then fatalled.
+//
+// So a name-taken response is not a verdict on its own — re-check reality.
+// CreateRepo's pre-flight established the name was free moments ago, so a repo
+// visible NOW is the one our lost attempt created: adopt it and let
+// waitForRepoVisible take over. Deliberately NOT fixed by widening
+// retryTransient — for a genuine collision against a real pre-existing repo
+// this must still fail loud, and reclassifying the phrase globally would make
+// every other caller swallow it too.
+//
+// Neither indeterminate outcome is coerced into success, per the fail-loud rule
+// for existence probes: a re-check that couldn't tell (auth, network,
+// unexpected status) and a re-check that definitively 404s while gh insists the
+// name is taken both abort, each naming the repo and what was contradictory.
+func (g *GitHub) createRepoAdoptingLostAttempt() {
+	out, err := RunWithRetry("gh repo create "+g.Repo+" --public", true, "")
+	if err == nil {
+		return
+	}
+	if !repoCreateNameTaken.MatchString(out) {
+		log.Fatalf("%v", err)
+	}
+
+	exists, checkErr := RepoExists(g.Repo)
+	if checkErr != nil {
+		log.Fatalf("gh reports the name %s is already taken, but re-checking whether it exists failed: %v",
+			g.Repo, checkErr)
+	}
+	if !exists {
+		log.Fatalf("gh reports the name %s is already taken, but the repository is not visible -- "+
+			"the name may be reserved or held by an account this token cannot see: %v\n%s",
+			g.Repo, err, out)
+	}
+	log.Warnf("Adopting %s: a create attempt succeeded but its response was lost to a transient "+
+		"(the pre-flight check found the name free, and the repository exists now)", g.Repo)
 }
 
 // waitForRepoVisible polls gh repo view until the repo resolves via GraphQL.

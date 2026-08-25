@@ -2,15 +2,18 @@ package steps
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
+	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
 // runRecord captures one shell invocation observed by a test.
@@ -46,6 +49,7 @@ func newStubRunner(t *testing.T) *stubRunner {
 // remainder of t. Cleans up automatically via t.Cleanup.
 func (s *stubRunner) install() {
 	prevCapture := projectRunCapture
+	prevCreateCapture := projectCreateCapture
 	prevStdin := projectRunStdin
 	prevRun := projectRun
 	prevConfirm := projectConfirmFn
@@ -58,6 +62,10 @@ func (s *stubRunner) install() {
 		}
 		return "", fmt.Errorf("stub: unmatched RunCapture %q", cmd)
 	}
+	// projectCreateCapture is the non-retrying seam `gh project create` uses.
+	// Recorded as "RunCapture" so assertions don't have to care which seam
+	// carried the call — what matters is how many creates were issued.
+	projectCreateCapture = projectRunCapture
 	projectRunStdin = func(cmd, stdin, _ string) string {
 		s.calls = append(s.calls, runRecord{cmd: cmd, stdin: stdin, via: "RunStdin"})
 		return ""
@@ -80,6 +88,7 @@ func (s *stubRunner) install() {
 	}
 	s.t.Cleanup(func() {
 		projectRunCapture = prevCapture
+		projectCreateCapture = prevCreateCapture
 		projectRunStdin = prevStdin
 		projectRun = prevRun
 		projectConfirmFn = prevConfirm
@@ -775,4 +784,106 @@ func TestEnsureProjectBoard_PathB_LeavesSourceUntouched(t *testing.T) {
 	if string(got) != string(originalBytes) {
 		t.Errorf("Path B mutated source yaml")
 	}
+}
+
+// TestEnsureProjectBoard_PathA_LostCreateResponseAdoptsBoard is the sibling
+// regression test to TestCreateRepo_AdoptsRepoCreatedOnLostAttempt in
+// internal/kernel/shell. `gh project create` is a non-idempotent write, and
+// project titles are NOT unique, so a transient that swallows the response of
+// a create that actually succeeded used to be "recovered" by a blind retry
+// that silently produced a SECOND board.
+//
+// Here the create succeeds on GitHub's side (the board appears in the next
+// list) but returns a transient to the caller. The retry must re-list, find
+// the board its own lost attempt made, and adopt it -- issuing exactly one
+// create, never two.
+func TestEnsureProjectBoard_PathA_LostCreateResponseAdoptsBoard(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) {})()
+
+	stub := newStubRunner(t)
+	stub.captureResp["project list"] = `{"projects":[]}`
+	stub.captureResp["project field-list"] = `{"fields":[{"id":"PVTSSF_S","name":"Status","type":"ProjectV2SingleSelectField","options":[{"id":"o1","name":"Todo"}]}]}`
+	stub.install()
+
+	// Wrap the (already-installed) create seam so the world changes underneath
+	// the retry: the board exists from now on, but this attempt reports a
+	// transient. prevCreate still records the call for the count assertion.
+	prevCreate := projectCreateCapture
+	projectCreateCapture = func(cmd, cwd string) (string, error) {
+		_, _ = prevCreate(cmd, cwd)
+		stub.captureResp["project list"] = `{"projects":[{"id":"PVT_L","number":9,"title":"Page Turner","url":"https://github.com/users/acme/projects/9"}]}`
+		return "", errors.New("Post \"https://api.github.com/graphql\": net/http: TLS handshake timeout")
+	}
+	t.Cleanup(func() { projectCreateCapture = prevCreate })
+
+	cfg := &config.Config{
+		Owner:        "acme",
+		FullRepo:     "acme/page-turner",
+		SystemName:   "Page Turner",
+		RepoStrategy: "monorepo",
+		Arch:         "monolith",
+	}
+	EnsureProjectBoard(cfg, nil)
+
+	if got := stub.calledViaContaining("RunCapture", "project create"); len(got) != 1 {
+		t.Errorf("expected exactly 1 project create call (a second one duplicates the board), got %d", len(got))
+	}
+	if got := stub.calledViaContaining("RunCapture", "project list"); len(got) != 2 {
+		t.Errorf("expected 2 project list calls (the re-list is what makes the retry safe), got %d", len(got))
+	}
+	if cfg.ProjectURL != "https://github.com/users/acme/projects/9" {
+		t.Errorf("expected the adopted board's URL, got %q", cfg.ProjectURL)
+	}
+}
+
+// TestEnsureProjectBoard_PathA_CreateFailsWithNothingCreatedStillErrors is the
+// other half: when the create genuinely fails and no board was made, the
+// re-list finds nothing and the failure must surface rather than be adopted
+// away. Retries still happen (the wording is transient), but they end in an
+// abort, not a silent success.
+func TestEnsureProjectBoard_PathA_CreateFailsWithNothingCreatedStillErrors(t *testing.T) {
+	defer shell.SetSleepForTest(func(time.Duration) {})()
+
+	stub := newStubRunner(t)
+	stub.captureResp["project list"] = `{"projects":[]}`
+	stub.captureErr["project create"] = errors.New("net/http: TLS handshake timeout")
+	stub.captureResp["project create"] = ""
+	stub.install()
+
+	cfg := &config.Config{
+		Owner:        "acme",
+		FullRepo:     "acme/page-turner",
+		SystemName:   "Page Turner",
+		RepoStrategy: "monorepo",
+		Arch:         "monolith",
+	}
+	caught := catchProjectFatal(t, func() { EnsureProjectBoard(cfg, nil) })
+	if caught == nil {
+		t.Fatal("want a fatal abort when the create fails and no board exists, got none")
+	}
+	if got := stub.calledViaContaining("RunCapture", "project create"); len(got) == 0 {
+		t.Error("expected the create to have been attempted")
+	}
+}
+
+// catchProjectFatal runs fn and returns the *log.StepError it aborted with,
+// or nil if it returned normally.
+func catchProjectFatal(t *testing.T, fn func()) *log.StepError {
+	t.Helper()
+	var caught *log.StepError
+	func() {
+		defer func() {
+			r := recover()
+			if r == nil {
+				return
+			}
+			var ok bool
+			caught, ok = r.(*log.StepError)
+			if !ok {
+				t.Fatalf("panic value is %T, want *log.StepError", r)
+			}
+		}()
+		fn()
+	}()
+	return caught
 }
