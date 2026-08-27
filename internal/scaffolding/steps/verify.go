@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/build/compiler"
+	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
-	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 	"gopkg.in/yaml.v3"
 )
@@ -338,7 +338,7 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 	go func() {
 		defer wg.Done()
 		shell.CheckRateLimit()
-		latestErr = gh.RunWatchWorkflow("acceptance-stage.yml", watchIntervalSecs)
+		latestErr = gh.RunWatchWorkflow("acceptance-stage.yml", nil, watchIntervalSecs)
 	}()
 
 	if includeLegacy {
@@ -346,7 +346,7 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 		go func() {
 			defer wg.Done()
 			shell.CheckRateLimit()
-			legacyErr = gh.RunWatchWorkflow("acceptance-stage-legacy.yml", watchIntervalSecs)
+			legacyErr = gh.RunWatchWorkflow("acceptance-stage-legacy.yml", nil, watchIntervalSecs)
 		}()
 	}
 
@@ -445,6 +445,10 @@ func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalS
 	handleWorkflowResult(err, label, gh.Repo)
 }
 
+// verifyWorkflow dispatches a workflow and watches its run. fields is handed to
+// the watcher as well as the dispatch: a startup_failure recovery re-dispatches
+// with those same inputs, and dropping them would re-fire cleanup.yml without
+// its `dry-run=true`.
 func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[string]string, intervalSecs int) {
 	shell.CheckRateLimit()
 	if triggerWorkflow != "" {
@@ -453,7 +457,7 @@ func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[
 	}
 
 	shell.CheckRateLimit()
-	err := gh.RunWatchWorkflow(triggerWorkflow, intervalSecs)
+	err := gh.RunWatchWorkflow(triggerWorkflow, fields, intervalSecs)
 	handleWorkflowResult(err, label, gh.Repo)
 }
 
@@ -666,5 +670,3 @@ func sonarComponent(label, dir string) {
 	}
 	log.Successf("SonarCloud scanned %s", label)
 }
-
-

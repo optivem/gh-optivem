@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,12 +34,10 @@ const (
 	// object flips. Without a bound the CLI waits on GitHub's bookkeeping
 	// rather than on the work, silently, until an outer timeout kills it.
 	//
-	// Arithmetic against that outer backstop: the scaffold verifier runs under
-	// `go test -timeout 2h` (.github/actions/acceptance-test/action.yml). A
-	// stalled run costs at most watchMaxDuration + pollMaxDuration =
-	// 30m + 60m = 90m, leaving 30m of headroom. Only one run can ever spend
-	// that budget — when both phases expire watchRunID returns an error and
-	// handleWorkflowResult fatals, so the cost cannot accumulate across stages.
+	// These two per-phase bounds are necessary but NOT sufficient on their own.
+	// They are relative to when each phase starts, so they say nothing about
+	// when the process as a whole runs out of time. That gap is what
+	// hardDeadline closes — see its doc for the failure it was written for.
 	watchMaxDuration = 30 * time.Minute
 
 	// watchHeartbeatInterval is how often a live watch prints a progress line.
@@ -59,6 +58,78 @@ const (
 // elapsed-time reporting). Package-level so tests can install a fake clock and
 // reach a 60-minute deadline in microseconds instead of 60 real minutes.
 var nowFn = time.Now
+
+// hardDeadlineEnv names the wall-clock budget, in whole minutes, that the
+// harness running gh-optivem gives this process before killing it outright.
+// The scaffold verifier's harness is `go test -timeout 2h`
+// (.github/actions/acceptance-test/action.yml), which exports this var derived
+// from that same timeout so the two cannot drift apart.
+const hardDeadlineEnv = "GH_OPTIVEM_HARD_DEADLINE_MINUTES"
+
+// processStart anchors the hard deadline. Package init is the closest
+// observable moment to process start for both entrypoints that matter: the
+// `gh optivem` binary and the scaffold verifier, which drives this same code
+// under `go test`. Anchoring at first *use* instead would restart the budget
+// partway through a run — reintroducing the exact overrun hardDeadline exists
+// to prevent.
+var processStart = time.Now()
+
+var (
+	hardDeadlineOnce sync.Once
+	hardDeadlineAt   time.Time // zero when no hard deadline is configured
+)
+
+// hardDeadlineFn is the seam tests swap to pin a deadline without touching the
+// environment. It exists because a sync.Once cannot be reset without copying a
+// lock, so the resolution — not the cached value — is what has to be swappable.
+var hardDeadlineFn = resolveHardDeadline
+
+// hardDeadline reports the instant by which this process must already have
+// reported its own failure, and whether such a deadline is configured at all.
+//
+// Why a process-wide bound is needed on top of the per-phase ones: each phase
+// bound is measured from when that phase starts, so the worst case is not
+// watchMaxDuration + pollMaxDuration — it is that sum plus however far into the
+// run the stall began. On 2026-08-26 (run 32976603425, job 98212141832) a
+// cleanup watch started 42m25s into a `go test -timeout 2h`; watch expired
+// correctly at 30m, polling would have raised its loud, actionable error at
+// 16:33, and `go test` panicked at 16:20 — twelve minutes early. The operator
+// got `panic: test timed out after 2h0m0s` and a goroutine dump instead of the
+// run URL and the elapsed time. The bounds were right; the origin was wrong.
+//
+// Clamping every phase to this deadline restores the invariant the per-phase
+// bounds were meant to give: gh-optivem always speaks before the harness kills
+// it, from any start offset. Unset (local dev, end-user `gh optivem` runs)
+// means no clamp and today's behaviour verbatim.
+func hardDeadline() (time.Time, bool) { return hardDeadlineFn() }
+
+func resolveHardDeadline() (time.Time, bool) {
+	hardDeadlineOnce.Do(func() {
+		raw := strings.TrimSpace(os.Getenv(hardDeadlineEnv))
+		if raw == "" {
+			return
+		}
+		mins, err := strconv.Atoi(raw)
+		if err != nil || mins <= 0 {
+			log.Warnf("Ignoring %s=%q: want a positive whole number of minutes; continuing with per-phase bounds only", hardDeadlineEnv, raw)
+			return
+		}
+		hardDeadlineAt = processStart.Add(time.Duration(mins) * time.Minute)
+	})
+	return hardDeadlineAt, !hardDeadlineAt.IsZero()
+}
+
+// boundedDeadline clamps one phase's own deadline to the process-wide hard
+// deadline, so no single wait can outlive the harness timing us. The result can
+// be in the past when the budget is already spent; callers treat that as an
+// immediately-expired phase, which is correct — it routes straight to the loud
+// error rather than starting a wait that can never finish in time.
+func boundedDeadline(own time.Time) time.Time {
+	if hard, ok := hardDeadline(); ok && hard.Before(own) {
+		return hard
+	}
+	return own
+}
 
 // ErrCommandDeadlineExceeded is wrapped into the error RunWithDeadline returns
 // when a command is killed for outrunning its wall-clock bound. Callers use
@@ -667,9 +738,11 @@ func isTransientBadCredentials(out string) bool {
 func (g *GitHub) watchRunID(runID string, intervalSecs int) error {
 	runURL := g.runURL(runID)
 	started := nowFn()
-	log.Successf("Watching workflow run (polling every %ds, %s watch deadline): %s", intervalSecs, watchMaxDuration, runURL)
+	deadline := boundedDeadline(started.Add(watchMaxDuration))
+	budget := deadline.Sub(started).Round(time.Second)
+	log.Successf("Watching workflow run (polling every %ds, %s watch deadline): %s", intervalSecs, budget, runURL)
 
-	err := g.runBoundedWatch(runID, runURL, intervalSecs, started)
+	err := g.runBoundedWatch(runID, runURL, intervalSecs, started, deadline, budget)
 	if err == nil {
 		return nil
 	}
@@ -681,7 +754,7 @@ func (g *GitHub) watchRunID(runID string, intervalSecs int) error {
 			fmt.Sprintf("rate limit hit while watching run %s", runID))
 	case errors.Is(err, ErrCommandDeadlineExceeded):
 		return g.pollAfterWatch(runID, runURL, started,
-			fmt.Sprintf("watch deadline of %s expired for run %s without GitHub reporting a terminal state", watchMaxDuration, runID))
+			fmt.Sprintf("watch deadline of %s expired for run %s without GitHub reporting a terminal state", budget, runID))
 	default:
 		return err
 	}
@@ -699,24 +772,25 @@ func (g *GitHub) runURL(runID string) string {
 // subprocess (see SetWatchRunFnForTest).
 var watchRunFn = RunWithDeadline
 
-// runBoundedWatch runs `gh run watch` under watchMaxDuration, with a heartbeat
-// so the wait is visible while it happens. The deadline spans the whole retry
-// loop, not each attempt: the budget is "how long we are willing to wait for
-// this run", and a 401 retry spends the same budget rather than resetting it.
-func (g *GitHub) runBoundedWatch(runID, runURL string, intervalSecs int, started time.Time) error {
+// runBoundedWatch runs `gh run watch` under the effective watch budget, with a
+// heartbeat so the wait is visible while it happens. The deadline spans the
+// whole retry loop, not each attempt: the budget is "how long we are willing to
+// wait for this run", and a 401 retry spends the same budget rather than
+// resetting it. deadline is already clamped to the process-wide hard deadline
+// by the caller; budget is that deadline expressed as a duration, for messages.
+func (g *GitHub) runBoundedWatch(runID, runURL string, intervalSecs int, started, deadline time.Time, budget time.Duration) error {
 	watchCmd := fmt.Sprintf("gh run watch %s --repo %s --exit-status --interval %d", runID, g.Repo, intervalSecs)
-	deadline := started.Add(watchMaxDuration)
 
 	sp := spinner.Start(fmt.Sprintf("Watching workflow run %s", runID))
 	defer sp.Stop()
-	stopHeartbeat := startWatchHeartbeat(sp, runURL, started)
+	stopHeartbeat := startWatchHeartbeat(sp, runURL, started, budget)
 	defer stopHeartbeat()
 
 	_, err := runWithRetryLoop(
 		func() (string, error) {
 			remaining := deadline.Sub(nowFn())
 			if remaining <= 0 {
-				return "", fmt.Errorf("%w: gh run watch for run %s exceeded %s", ErrCommandDeadlineExceeded, runID, watchMaxDuration)
+				return "", fmt.Errorf("%w: gh run watch for run %s exceeded %s", ErrCommandDeadlineExceeded, runID, budget)
 			}
 			return watchRunFn(watchCmd, true, "", remaining)
 		},
@@ -738,15 +812,33 @@ func (g *GitHub) runBoundedWatch(runID, runURL string, intervalSecs int, started
 	return err
 }
 
-// startWatchHeartbeat prints a periodic progress line for a watch in flight and
-// returns an idempotent stop func.
+// logStillWaiting emits the one progress line that makes an in-flight stall
+// visible, and returns the elapsed time so the caller can also update its
+// spinner. Shared by both waiting phases so their output cannot drift.
 //
-// The spinner alone is not enough here: GitHub Actions logs are non-TTY, so the
-// animated line never renders and the whole watch window reads as a blank
-// stretch — exactly the silence that hid a 49-minute GitHub-side stall
-// (zero log output from 14:27:45 to 15:18:00 on 2026-08-11). The log line is
-// what makes a stall visible as it happens; the spinner update is for TTY.
-func startWatchHeartbeat(sp *spinner.Spinner, runURL string, started time.Time) func() {
+// The spinner alone is not enough: GitHub Actions logs are non-TTY, so the
+// animated line never renders and the whole wait reads as a blank stretch —
+// exactly the silence that hid a 49-minute GitHub-side stall (zero log output
+// from 14:27:45 to 15:18:00 on 2026-08-11) and then a 47m47s one in the poll
+// phase, which had no heartbeat at all (15:33:00 to 16:20:48 on 2026-08-26).
+// The log line is what makes a stall visible as it happens; the spinner update
+// is for TTY.
+func logStillWaiting(gerund, boundName, runURL string, started time.Time, budget time.Duration) time.Duration {
+	el := elapsedSince(started)
+	log.Infof("Still %s %s — %s elapsed of a %s %s", gerund, runURL, el, budget, boundName)
+	return el
+}
+
+// stillWaitingFn is the seam the heartbeat writes through, so a test can assert
+// that a stall is actually being reported without capturing stdout. Same shape
+// as the nowFn / sleepFn / watchRunFn seams above.
+var stillWaitingFn = logStillWaiting
+
+// startWatchHeartbeat prints a periodic progress line for a watch in flight and
+// returns an idempotent stop func. The watch blocks in a subprocess, so its
+// heartbeat has to run on a real ticker in its own goroutine; the poll phase is
+// a loop and beats inline on the nowFn/sleepFn seams instead.
+func startWatchHeartbeat(sp *spinner.Spinner, runURL string, started time.Time, budget time.Duration) func() {
 	done := make(chan struct{})
 	finished := make(chan struct{})
 
@@ -759,9 +851,7 @@ func startWatchHeartbeat(sp *spinner.Spinner, runURL string, started time.Time) 
 			case <-done:
 				return
 			case <-t.C:
-				el := elapsedSince(started)
-				sp.Update(fmt.Sprintf("%s elapsed", el))
-				log.Infof("Still watching %s — %s elapsed of a %s watch deadline", runURL, el, watchMaxDuration)
+				sp.Update(fmt.Sprintf("%s elapsed", stillWaitingFn("watching", "watch deadline", runURL, started, budget)))
 			}
 		}
 	}()
@@ -797,17 +887,18 @@ func elapsedSince(t time.Time) time.Duration {
 	return nowFn().Sub(t).Round(time.Second)
 }
 
-// RunWatchWorkflow watches the latest run for a specific workflow name.
-// If workflow is empty, watches the overall latest run.
-// Waits up to (runAppearAttempts × runAppearPollSecs) for the run to appear.
-// intervalSecs controls the polling frequency for gh run watch.
-// If gh run watch hits a rate limit mid-stream, falls back to manual polling.
-func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
-	runID, found := g.waitForRunToAppear(workflow)
-	if !found {
-		return fmt.Errorf("no workflow runs found for %s (workflow: %s) after %d attempts", g.Repo, workflow, runAppearAttempts)
-	}
-	return g.watchRunID(runID, intervalSecs)
+// RunWatchWorkflow watches the latest run of a workflow the caller has already
+// dispatched via workflow_dispatch. Waits up to
+// (runAppearAttempts × runAppearPollSecs) for the run to appear; intervalSecs
+// controls `gh run watch`'s polling frequency. If the watch hits a rate limit
+// mid-stream it falls back to manual polling.
+//
+// fields must be the same inputs the caller dispatched with, because a recovery
+// re-dispatch replays them verbatim. Passing nil where the original dispatch
+// had inputs would re-fire the workflow with its defaults — for cleanup.yml
+// that turns a `dry-run=true` probe into a real cleanup.
+func (g *GitHub) RunWatchWorkflow(workflow string, fields map[string]string, intervalSecs int) error {
+	return g.watchWithReDispatch(workflow, fields, intervalSecs, false)
 }
 
 // RunWatchPushWorkflow watches a workflow whose run is triggered by a push
@@ -826,25 +917,91 @@ func (g *GitHub) RunWatchWorkflow(workflow string, intervalSecs int) error {
 // Actions-side analogue of MustRunPostCreatePush, which retries the ref-store
 // replica lag seen on the same fresh-repo first-push window.
 func (g *GitHub) RunWatchPushWorkflow(workflow string, intervalSecs int) error {
+	return g.watchWithReDispatch(workflow, nil, intervalSecs, true)
+}
+
+// watchWithReDispatch is the appear → watch → recover loop shared by both watch
+// entrypoints. Two GitHub-side failures are recoverable here, and both end in
+// the same move — re-fire via workflow_dispatch, bounded to maxReDispatches:
+//
+//   - The run never appears. On a fresh repo's first push GitHub can fail to
+//     build the run graph, emitting a synthetic startup_failure or dropping the
+//     trigger silently (hasRecentStartupFailure tells the two apart, for the
+//     message only). A dispatched run can go missing the same way.
+//   - The run appears but GitHub stamps it startup_failure — the run object
+//     exists, the workflow never started, and `gh run watch --exit-status`
+//     exits 1. Without this branch that surfaces as "<stage> workflow failed",
+//     sending the operator to hunt a bug in a scaffolded app whose workflow
+//     never ran. Observed 2026-08-26 on runs 32983779814 and 32983833982; the
+//     latter was stamped startup_failure at 15:04:47 and then had its job run
+//     and succeed at 15:07:20, so the run-level conclusion is not a verdict on
+//     the workflow.
+//
+// Recovery stays fail-loud per the repo's probe convention: once the
+// re-dispatch budget is spent this returns an error, never a silent pass. Only
+// a definitive startup_failure triggers the second branch — if the conclusion
+// can't be read, the original watch error stands rather than being retried into
+// an indeterminate loop.
+//
+// fields is replayed on every re-dispatch, so it must match what the caller
+// originally dispatched with; push-triggered workflows have no inputs and pass
+// nil. The on.push.paths filter is validated statically before push
+// (VerifyPushPathsFilter), so re-dispatching a push workflow is safe.
+func (g *GitHub) watchWithReDispatch(workflow string, fields map[string]string, intervalSecs int, pushTriggered bool) error {
 	for dispatched := 0; ; dispatched++ {
-		if runID, found := g.waitForRunToAppear(workflow); found {
-			return g.watchRunID(runID, intervalSecs)
-		}
+		runID, found := g.waitForRunToAppear(workflow)
 
-		if dispatched >= maxReDispatches {
-			return fmt.Errorf("no workflow runs found for %s (workflow: %s) after %d re-dispatch attempts", g.Repo, workflow, maxReDispatches)
-		}
-
-		if g.hasRecentStartupFailure() {
-			log.Warnf("GitHub emitted a startup_failure and dropped the push trigger for %s — re-dispatching via workflow_dispatch (attempt %d/%d)", workflow, dispatched+1, maxReDispatches)
+		if found {
+			err := g.watchRunID(runID, intervalSecs)
+			if err == nil || !g.isStartupFailure(runID) {
+				return err
+			}
+			if dispatched >= maxReDispatches {
+				return fmt.Errorf("GitHub stamped every run of %s in %s startup_failure across %d re-dispatch attempts; the workflow never started: %w",
+					workflow, g.Repo, maxReDispatches, err)
+			}
+			log.Warnf("GitHub stamped run %s (%s) startup_failure — the workflow never started; re-dispatching via workflow_dispatch (attempt %d/%d)",
+				runID, workflow, dispatched+1, maxReDispatches)
 		} else {
-			log.Warnf("Push-triggered run did not appear for %s (workflow: %s) — re-dispatching via workflow_dispatch (attempt %d/%d); on.push.paths filter was validated before push", workflow, g.Repo, dispatched+1, maxReDispatches)
+			if dispatched >= maxReDispatches {
+				return fmt.Errorf("no workflow runs found for %s (workflow: %s) after %d re-dispatch attempts", g.Repo, workflow, maxReDispatches)
+			}
+			g.warnRunMissing(workflow, pushTriggered, dispatched)
 		}
-		g.WorkflowRun(workflow, nil)
+
+		g.WorkflowRun(workflow, fields)
 		// Give GitHub a moment to register the dispatched run before the next
 		// appear-poll, mirroring verifyWorkflow's post-dispatch settle.
 		sleepFn(5 * time.Second)
 	}
+}
+
+// warnRunMissing explains, in the message, why a run that should exist doesn't
+// — the operator's next move differs depending on whether GitHub left a
+// startup_failure behind or dropped the trigger without a trace.
+func (g *GitHub) warnRunMissing(workflow string, pushTriggered bool, dispatched int) {
+	switch {
+	case g.hasRecentStartupFailure():
+		log.Warnf("GitHub emitted a startup_failure and dropped the trigger for %s — re-dispatching via workflow_dispatch (attempt %d/%d)", workflow, dispatched+1, maxReDispatches)
+	case pushTriggered:
+		log.Warnf("Push-triggered run did not appear for %s (workflow: %s) — re-dispatching via workflow_dispatch (attempt %d/%d); on.push.paths filter was validated before push", workflow, g.Repo, dispatched+1, maxReDispatches)
+	default:
+		log.Warnf("Dispatched run did not appear for %s (workflow: %s) — re-dispatching via workflow_dispatch (attempt %d/%d)", workflow, g.Repo, dispatched+1, maxReDispatches)
+	}
+}
+
+// isStartupFailure reports whether GitHub stamped this specific run
+// startup_failure. Deliberately narrower than hasRecentStartupFailure, which
+// answers "is there any recent phantom run in this repo" and is only usable
+// when the run we wanted never appeared at all.
+//
+// An unreadable conclusion returns false, which is the fail-loud choice here:
+// the caller then surfaces the real watch error instead of re-dispatching on a
+// guess.
+func (g *GitHub) isStartupFailure(runID string) bool {
+	cmd := fmt.Sprintf("gh run view %s --repo %s --json conclusion --jq .conclusion", runID, g.Repo)
+	out, err := RunCaptureWithRetry(cmd, "")
+	return err == nil && strings.TrimSpace(out) == "startup_failure"
 }
 
 // pollRunUntilComplete polls gh run view until the run is no longer in_progress/queued.
@@ -854,15 +1011,28 @@ func (g *GitHub) RunWatchPushWorkflow(workflow string, intervalSecs int) error {
 // Runs on the nowFn/sleepFn clock seams so the 60-minute bound is reachable in
 // a test without waiting 60 real minutes.
 func (g *GitHub) pollRunUntilComplete(runID string) error {
-	deadline := nowFn().Add(pollMaxDuration)
+	runURL := g.runURL(runID)
+	started := nowFn()
+	deadline := boundedDeadline(started.Add(pollMaxDuration))
+	budget := deadline.Sub(started).Round(time.Second)
 	viewCmd := fmt.Sprintf("gh run view %s --repo %s --json status,conclusion --jq '[.status,.conclusion] | join(\",\")'", runID, g.Repo)
 
 	sp := spinner.Start(fmt.Sprintf("Polling workflow run %s (every 60s)", runID))
 	defer sp.Stop()
 
+	// Beat inline on the clock seams rather than from a ticker goroutine: this
+	// phase is a loop, so the seams make the heartbeat both deterministic in
+	// tests and exact in production.
+	lastBeat := started
+
 	for {
 		if nowFn().After(deadline) {
-			return fmt.Errorf("polling run %s timed out after %s", runID, pollMaxDuration)
+			return fmt.Errorf("polling run %s timed out after %s", runID, budget)
+		}
+
+		if nowFn().Sub(lastBeat) >= watchHeartbeatInterval {
+			lastBeat = nowFn()
+			sp.Update(fmt.Sprintf("%s elapsed", stillWaitingFn("polling", "poll deadline", runURL, started, budget)))
 		}
 
 		CheckRateLimit()

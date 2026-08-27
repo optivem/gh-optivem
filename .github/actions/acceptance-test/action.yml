@@ -171,7 +171,18 @@ runs:
       shell: bash
       run: |
         set +e
-        go test -tags=system ./internal/config/ -v -timeout 2h -run "${{ steps.test.outputs.name }}" 2>&1 | tee test.log
+        # One source of truth for the wall-clock budget. TEST_TIMEOUT_MINUTES
+        # is the hard kill; GH_OPTIVEM_HARD_DEADLINE_MINUTES is what the CLI
+        # clamps its watch/poll waits to, leaving HARD_DEADLINE_MARGIN_MINUTES
+        # for it to print its own loud error, render the bug-report prompt and
+        # flush cleanup output first. Deriving both from one number is the
+        # point: a stalled GitHub run must surface as gh-optivem's error with
+        # the run URL, never as `panic: test timed out` and a goroutine dump.
+        TEST_TIMEOUT_MINUTES=120
+        HARD_DEADLINE_MARGIN_MINUTES=15
+        export GH_OPTIVEM_HARD_DEADLINE_MINUTES=$((TEST_TIMEOUT_MINUTES - HARD_DEADLINE_MARGIN_MINUTES))
+        echo "Test timeout: ${TEST_TIMEOUT_MINUTES}m; gh-optivem hard deadline: ${GH_OPTIVEM_HARD_DEADLINE_MINUTES}m"
+        go test -tags=system ./internal/config/ -v -timeout "${TEST_TIMEOUT_MINUTES}m" -run "${{ steps.test.outputs.name }}" 2>&1 | tee test.log
         EXIT_CODE=${PIPESTATUS[0]}
         # `go test -run <pattern>` exits 0 with "[no tests to run]" when the
         # pattern matches no subtest — a silent pass. Catch it explicitly so

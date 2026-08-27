@@ -158,6 +158,23 @@ func (c *fakeClock) sleeps() int {
 	return len(c.slept)
 }
 
+// advance moves the virtual clock without recording a sleep — for time spent
+// inside a stubbed subprocess, or for placing a test's start offset.
+func (c *fakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = c.now.Add(d)
+}
+
+// withHardDeadline pins the process-wide hard deadline for one test, bypassing
+// the environment read so the test doesn't depend on GH_OPTIVEM_HARD_DEADLINE_MINUTES.
+func withHardDeadline(t *testing.T, at time.Time) {
+	t.Helper()
+	orig := hardDeadlineFn
+	hardDeadlineFn = func() (time.Time, bool) { return at, true }
+	t.Cleanup(func() { hardDeadlineFn = orig })
+}
+
 // withFakeRateLimitOK stubs runCaptureFn so the CheckRateLimit call inside each
 // poll iteration reports ample budget instead of shelling out to a real
 // `gh api rate_limit`.
@@ -426,7 +443,7 @@ func TestRunWatchWorkflow_AppearPollRetries504OnFirstAttempt(t *testing.T) {
 	t.Cleanup(func() { runCaptureFn = orig })
 
 	gh := &GitHub{Repo: "myorg/myrepo"}
-	_ = gh.RunWatchWorkflow("ci.yml", 1) // outer outcome irrelevant; see comment above.
+	_ = gh.RunWatchWorkflow("ci.yml", nil, 1) // outer outcome irrelevant; see comment above.
 	if got := atomic.LoadInt32(&captureCalls); got < 2 {
 		t.Fatalf("runCaptureFn calls = %d, want >= 2 (proves RunCaptureWithRetry retried after 504)", got)
 	}
@@ -691,5 +708,189 @@ func TestCreateRepo_NonNameTakenFailureStillFatals(t *testing.T) {
 	}
 	if strings.Contains(caught.Error(), "already taken") {
 		t.Fatalf("a 403 must not be routed through the adoption path: %v", caught.Error())
+	}
+}
+
+// TestWatchRunID_HardDeadlineKeepsBothPhasesInsideTheHarnessBudget reproduces
+// gh-acceptance-stage run 32976603425 (job 98212141832), where the per-phase
+// bounds were individually correct and the process still died the wrong way.
+// The watch began 42m25s into a 2h `go test`, expired correctly at 30m, and the
+// poll phase then started a fresh 60m budget — putting its loud, actionable
+// error 12 minutes past the harness's kill time. The operator got
+// "panic: test timed out after 2h0m0s" and a goroutine dump instead of the run
+// URL. Both phases now clamp to the process-wide hard deadline, so the error
+// lands first from any start offset.
+func TestWatchRunID_HardDeadlineKeepsBothPhasesInsideTheHarnessBudget(t *testing.T) {
+	c := withFakeClock(t)
+	withFakeRateLimitOK(t)
+
+	const (
+		processBudget = 105 * time.Minute               // what CI exports
+		startOffset   = 42*time.Minute + 25*time.Second // where the real stall began
+		pollSlop      = 60 * time.Second                // the loop sleeps, then re-checks
+	)
+	origin := nowFn()
+	hard := origin.Add(processBudget)
+	withHardDeadline(t, hard)
+	c.advance(startOffset)
+
+	// A stalled `gh run watch` burns its whole allotted budget before reporting
+	// the deadline — the stub has to spend that time too, or the clamp is never
+	// under any pressure and the test proves nothing.
+	origWatch := watchRunFn
+	watchRunFn = func(_ string, _ bool, _ string, timeout time.Duration) (string, error) {
+		c.advance(timeout)
+		return "", fmt.Errorf("%w: gh run watch stalled", ErrCommandDeadlineExceeded)
+	}
+	t.Cleanup(func() { watchRunFn = origWatch })
+
+	// The run never leaves in_progress, so the fallback polls until a bound stops it.
+	withFakeRunFn(t, func(int) (string, error) { return "in_progress,", nil })
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	err := gh.watchRunID("12345", 1)
+	if err == nil {
+		t.Fatal("watchRunID: want an error when the run never reports a terminal state, got nil")
+	}
+
+	gaveUp := nowFn()
+	if latest := hard.Add(pollSlop); gaveUp.After(latest) {
+		t.Fatalf("gave up %s in, past the %s hard deadline — the harness would have killed the process first, replacing this error with a goroutine dump",
+			gaveUp.Sub(origin), processBudget)
+	}
+	// Without the clamp the poll phase runs its full pollMaxDuration from
+	// wherever the watch left off. That is the overrun this test exists for.
+	unclamped := origin.Add(startOffset).Add(watchMaxDuration).Add(pollMaxDuration)
+	if !gaveUp.Before(unclamped) {
+		t.Fatalf("gave up %s in, no earlier than the unclamped %s — the hard deadline did not bite",
+			gaveUp.Sub(origin), unclamped.Sub(origin))
+	}
+	if !strings.Contains(err.Error(), "https://github.com/myorg/myrepo/actions/runs/12345") {
+		t.Fatalf("error %q must carry the run URL — it is the one thing the operator needs", err)
+	}
+}
+
+// TestPollRunUntilComplete_HeartbeatsSoAStallIsVisible pins the poll phase's
+// progress line. GitHub Actions logs are non-TTY, so the spinner renders as
+// nothing: on 2026-08-26 the poll fallback emitted zero output between 15:33:00
+// and 16:20:48 — 47m47s of dead log while the process was very much alive. The
+// watch phase had a heartbeat for exactly this reason; the poll phase did not.
+func TestPollRunUntilComplete_HeartbeatsSoAStallIsVisible(t *testing.T) {
+	withFakeClock(t)
+	withFakeRateLimitOK(t)
+	withFakeRunFn(t, func(int) (string, error) { return "in_progress,", nil })
+
+	type beat struct {
+		gerund, boundName, runURL string
+		elapsed                   time.Duration
+	}
+	var beats []beat
+	orig := stillWaitingFn
+	stillWaitingFn = func(gerund, boundName, runURL string, started time.Time, _ time.Duration) time.Duration {
+		el := elapsedSince(started)
+		beats = append(beats, beat{gerund, boundName, runURL, el})
+		return el
+	}
+	t.Cleanup(func() { stillWaitingFn = orig })
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	if err := gh.pollRunUntilComplete("12345"); err == nil {
+		t.Fatal("pollRunUntilComplete: want an error when the run never completes, got nil")
+	}
+
+	wantBeats := int(pollMaxDuration / watchHeartbeatInterval)
+	if len(beats) != wantBeats {
+		t.Fatalf("heartbeats = %d, want %d (one every %s across a %s poll) — a silent poll is what left 47m47s of dead CI log",
+			len(beats), wantBeats, watchHeartbeatInterval, pollMaxDuration)
+	}
+	if got := beats[0].elapsed; got != watchHeartbeatInterval {
+		t.Fatalf("first heartbeat at %s, want %s", got, watchHeartbeatInterval)
+	}
+	if beats[0].gerund != "polling" || beats[0].boundName != "poll deadline" {
+		t.Fatalf("heartbeat = %+v, want it to name the polling phase and its own bound", beats[0])
+	}
+	if wantURL := "https://github.com/myorg/myrepo/actions/runs/12345"; beats[0].runURL != wantURL {
+		t.Fatalf("heartbeat URL = %q, want %q — a progress line without the link is not actionable", beats[0].runURL, wantURL)
+	}
+}
+
+// TestRunWatchWorkflow_ReDispatchesOnStartupFailureThenFailsLoud covers the
+// dispatch path's half of the startup_failure recovery, which until now existed
+// only for push-triggered runs. When GitHub stamps a dispatched run
+// startup_failure the run object exists but the workflow never started, and
+// `gh run watch --exit-status` exits 1 — surfacing as "<stage> workflow failed"
+// and sending the operator to hunt a bug in a scaffolded app that never ran a
+// line. Observed 2026-08-26 on runs 32983779814 and 32983833982. Recovery is
+// bounded and still fails loud: never a silent pass.
+func TestRunWatchWorkflow_ReDispatchesOnStartupFailureThenFailsLoud(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	// The run appears every time, and GitHub calls it startup_failure every time.
+	orig := runCaptureFn
+	runCaptureFn = func(cmd, _ string) (string, error) {
+		if strings.Contains(cmd, "--json conclusion") {
+			return "startup_failure", nil
+		}
+		return "12345", nil
+	}
+	t.Cleanup(func() { runCaptureFn = orig })
+
+	withFakeWatchFn(t, func(int) (string, error) {
+		return "", errors.New("command failed: gh run watch 12345 --exit-status: exit status 1")
+	})
+
+	var dispatched int32
+	withFakeRunFn(t, func(int) (string, error) {
+		atomic.AddInt32(&dispatched, 1)
+		return "", nil
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	err := gh.RunWatchWorkflow("prod-stage.yml", nil, 1)
+	if err == nil {
+		t.Fatal("RunWatchWorkflow: want an error once the re-dispatch budget is spent — recovery must never coerce startup_failure into a pass")
+	}
+	if !strings.Contains(err.Error(), "startup_failure") {
+		t.Fatalf("error %q must name startup_failure — otherwise the operator hunts a bug in a workflow that never started", err)
+	}
+	if got := atomic.LoadInt32(&dispatched); got != int32(maxReDispatches) {
+		t.Fatalf("dispatch calls = %d, want %d (one per re-dispatch)", got, maxReDispatches)
+	}
+}
+
+// TestRunWatchWorkflow_NonStartupFailureIsNotReDispatched is the other half of
+// the contract: a workflow that genuinely failed must surface immediately. Only
+// a definitive startup_failure buys a retry — an indeterminate or ordinary
+// failure returns the real error, unretried.
+func TestRunWatchWorkflow_NonStartupFailureIsNotReDispatched(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	orig := runCaptureFn
+	runCaptureFn = func(cmd, _ string) (string, error) {
+		if strings.Contains(cmd, "--json conclusion") {
+			return "failure", nil
+		}
+		return "12345", nil
+	}
+	t.Cleanup(func() { runCaptureFn = orig })
+
+	withFakeWatchFn(t, func(int) (string, error) {
+		return "", errors.New("command failed: gh run watch 12345 --exit-status: exit status 1")
+	})
+
+	var dispatched int32
+	withFakeRunFn(t, func(int) (string, error) {
+		atomic.AddInt32(&dispatched, 1)
+		return "", nil
+	})
+
+	gh := &GitHub{Repo: "myorg/myrepo"}
+	if err := gh.RunWatchWorkflow("prod-stage.yml", nil, 1); err == nil {
+		t.Fatal("RunWatchWorkflow: want the underlying watch error for a genuine failure, got nil")
+	}
+	if got := atomic.LoadInt32(&dispatched); got != 0 {
+		t.Fatalf("dispatch calls = %d, want 0 — a real workflow failure must not be re-fired", got)
 	}
 }
