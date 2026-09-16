@@ -253,6 +253,11 @@ func applyMonolithMonorepo(cfg *config.Config) {
 		filepath.Join(shop, Expand(Names.ShopSystemMonolithDir, vars)),
 		filepath.Join(repoDir, Names.TargetSystemDir),
 	)
+	// Monolith scaffolds collapse to one root VERSION (via CopyVersion in
+	// copySystemTests below); the per-flavor VERSION dragged in by the CopyDir
+	// above has no corresponding entry in the scaffolded bump-patch-version.yml
+	// and would sit stale forever, so drop it.
+	os.Remove(filepath.Join(repoDir, Names.TargetSystemDir, "VERSION"))
 
 	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
@@ -360,6 +365,10 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	log.Info("Copying system code to system repo...")
 	systemSrc := filepath.Join(shop, Expand(Names.ShopSystemMonolithDir, vars))
 	files.CopyDir(systemSrc, filepath.Join(sysDir, Names.TargetSystemDir))
+	// Same stray-VERSION cleanup as applyMonolithMonorepo: the system repo
+	// collapses to one root VERSION (CopyVersion below), so the per-flavor
+	// VERSION dragged in by CopyDir has no reference and would go stale.
+	os.Remove(filepath.Join(sysDir, Names.TargetSystemDir, "VERSION"))
 	templates.CopyVersion(shop, sysDir, "monolith", lang)
 
 	// Flyway migrations also land in the system repo so the Java
