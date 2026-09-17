@@ -175,3 +175,83 @@ func mustGit(t *testing.T, dir string, args ...string) {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
+
+// writeTsFile writes a .ts file (creating parent dirs) under dir.
+func writeTsFile(t *testing.T, dir, rel, body string) {
+	t.Helper()
+	p := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", rel, err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatalf("write %s: %v", rel, err)
+	}
+}
+
+func migrationsDirLine(rel string) string {
+	return "const MIGRATIONS_DIR = path.resolve(__dirname, '" + rel + "');\n"
+}
+
+// TestFindMigrationsPathViolations exercises the drift guard behind
+// VerifyMigrationsPaths against a scaffold-shaped temp repo: the rewritten
+// (correct) literal passes, the un-rewritten one that escapes the repo is
+// reported with its file and resolved path, and a repo with no such literal
+// (Java / .NET flavors) is clean.
+func TestFindMigrationsPathViolations(t *testing.T) {
+	t.Run("rewritten literal resolves to repo-root db/migrations", func(t *testing.T) {
+		repo := t.TempDir()
+		// backend/test/support -> up 3 -> repo root.
+		writeTsFile(t, repo, "backend/test/support/migrations.ts", migrationsDirLine("../../../db/migrations"))
+		// system/src/__tests__ -> up 3 -> repo root (monolith).
+		writeTsFile(t, repo, "system/src/__tests__/db.integration.spec.ts", migrationsDirLine("../../../db/migrations"))
+
+		violations, _, err := findMigrationsPathViolations(repo)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(violations) != 0 {
+			t.Errorf("want no violations, got %+v", violations)
+		}
+	})
+
+	t.Run("un-rewritten literal escapes the repo", func(t *testing.T) {
+		repo := t.TempDir()
+		// The exact shop literal, left unrewritten: up 4 from
+		// backend/test/support lands one level above the repo root — the
+		// multitier/monorepo/typescript smoke failure.
+		writeTsFile(t, repo, "backend/test/support/migrations.ts", migrationsDirLine("../../../../db/migrations"))
+
+		violations, want, err := findMigrationsPathViolations(repo)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(violations) != 1 {
+			t.Fatalf("want 1 violation, got %d: %+v", len(violations), violations)
+		}
+		v := violations[0]
+		if filepath.Base(v.File) != "migrations.ts" {
+			t.Errorf("violation names %s, want the migrations helper", v.File)
+		}
+		if v.Literal != "../../../../db/migrations" {
+			t.Errorf("literal = %q, want the un-rewritten 4-up path", v.Literal)
+		}
+		if v.Resolved == want {
+			t.Errorf("resolved path %s should differ from the expected %s", v.Resolved, want)
+		}
+	})
+
+	t.Run("no TypeScript migrations literal is clean", func(t *testing.T) {
+		repo := t.TempDir()
+		writeTsFile(t, repo, "backend/src/app.ts", "export const x = 1;\n")
+		// node_modules is skipped even when it carries a bad literal.
+		writeTsFile(t, repo, "backend/node_modules/pkg/index.ts", migrationsDirLine("../../../../../db/migrations"))
+
+		violations, _, err := findMigrationsPathViolations(repo)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(violations) != 0 {
+			t.Errorf("want no violations, got %+v", violations)
+		}
+	})
+}

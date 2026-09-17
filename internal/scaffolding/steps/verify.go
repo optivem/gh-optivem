@@ -3,10 +3,12 @@ package steps
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -152,6 +154,115 @@ func scaffoldRepoDirs(cfg *config.Config) []string {
 		dirs = append(dirs, cfg.FrontendRepoDir)
 	}
 	return dirs
+}
+
+// tsMigrationsDirPattern matches the TypeScript migrations-helper literal
+// `path.resolve(__dirname, '<rel>/db/migrations')`, capturing <rel> so the
+// target can be resolved against the file that carries it. Both quote styles
+// are accepted because Prettier config, not gh-optivem, decides which one the
+// scaffolded source ends up with.
+var tsMigrationsDirPattern = regexp.MustCompile(`path\.resolve\(__dirname,\s*['"]([^'"]*?/db/migrations)['"]\)`)
+
+// VerifyMigrationsPaths checks that every TypeScript MIGRATIONS_DIR literal in
+// the scaffolded repos resolves to that repo's own db/migrations directory —
+// the one copyDbMigrations lands at the repo root.
+//
+// This is a drift guard on tsMigrationsPathReplacements. That rewrite is a
+// literal string replacement against shop's source, so a shop refactor that
+// moves the helper (changing its `../` depth) makes the rule match nothing and
+// silently ship a repo whose narrow-integration tests scandir a path outside
+// the checkout. That is exactly how shop's move of the multitier helper into
+// test/support/migrations.ts broke the multitier/monorepo/typescript smoke:
+// ENOENT on <parent-of-repo>/db/migrations, four scaffold steps and one CI
+// round-trip away from the actual cause.
+//
+// Runs before commit+push so the drift surfaces as a scaffold-time error
+// naming the file and the resolved path, not as a red commit stage in a repo
+// the user already owns. No-op on Java / .NET, which reach migrations through
+// Flyway's filesystem: locations (see flywayPathReplacements) instead.
+func VerifyMigrationsPaths(cfg *config.Config) {
+	log.Info("Verifying TypeScript migrations paths...")
+	for _, repoDir := range scaffoldRepoDirs(cfg) {
+		if repoDir == "" {
+			continue
+		}
+		checkMigrationsPaths(repoDir)
+	}
+	log.Success("TypeScript migrations paths resolve to db/migrations")
+}
+
+// migrationsPathViolation is one TypeScript MIGRATIONS_DIR literal that does
+// not resolve to the scaffolded repo's db/migrations directory.
+type migrationsPathViolation struct {
+	File     string // path to the .ts file carrying the literal
+	Literal  string // the literal as written, e.g. ../../../../db/migrations
+	Resolved string // where it actually points
+}
+
+// checkMigrationsPaths walks one scaffolded repo's .ts sources and fails hard
+// on any literal that does not resolve to <repoDir>/db/migrations. A repo with
+// no such literal passes: only the TypeScript flavors carry one.
+func checkMigrationsPaths(repoDir string) {
+	violations, want, err := findMigrationsPathViolations(repoDir)
+	if err != nil {
+		log.Fatalf("cannot verify migrations paths in %s: %v", repoDir, err)
+	}
+	if len(violations) == 0 {
+		return
+	}
+	for _, v := range violations {
+		log.Errorf("MIGRATIONS_DIR %q in %s points at %s", v.Literal, v.File, v.Resolved)
+	}
+	log.Errorf("  expected: %s", want)
+	log.Fatalf("Scaffolded migrations path does not resolve to the repo's db/migrations -- " +
+		"shop likely moved the TypeScript migrations helper, so tsMigrationsPathReplacements " +
+		"(internal/scaffolding/steps/apply_template.go) no longer matches its literal.")
+}
+
+// findMigrationsPathViolations is checkMigrationsPaths' pure core: it returns
+// every offending literal plus the directory they were all expected to resolve
+// to, and reports I/O problems as an error instead of exiting, so the guard is
+// testable without a subprocess.
+func findMigrationsPathViolations(repoDir string) ([]migrationsPathViolation, string, error) {
+	want, err := filepath.Abs(filepath.Join(repoDir, "db", "migrations"))
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot resolve db/migrations under %s: %w", repoDir, err)
+	}
+
+	var violations []migrationsPathViolation
+	walkErr := filepath.WalkDir(repoDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" || d.Name() == "node_modules" {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(p) != ".ts" {
+			return nil
+		}
+		data, readErr := os.ReadFile(p)
+		if readErr != nil {
+			return fmt.Errorf("cannot read %s: %w", p, readErr)
+		}
+		for _, m := range tsMigrationsDirPattern.FindAllStringSubmatch(string(data), -1) {
+			got, absErr := filepath.Abs(filepath.Join(filepath.Dir(p), filepath.FromSlash(m[1])))
+			if absErr != nil {
+				return fmt.Errorf("cannot resolve %q from %s: %w", m[1], p, absErr)
+			}
+			if got == want {
+				continue
+			}
+			violations = append(violations, migrationsPathViolation{File: p, Literal: m[1], Resolved: got})
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return nil, want, walkErr
+	}
+	return violations, want, nil
 }
 
 // VerifyPushPathsFilter checks that every commit-stage workflow in each

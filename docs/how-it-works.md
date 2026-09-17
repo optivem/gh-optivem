@@ -48,6 +48,7 @@ Steps are grouped into phases; `executeSteps` prints a header each time the phas
 | Apply template | Write LICENSE | Writes the `LICENSE` file for the `--license` key from a bundled text (no network call), filling the copyright notice with `--copyright-holder` (default `--owner`) where the license carries one, and sets every scaffolded `package.json`'s `license` field to the matching SPDX id |
 | Apply template | Create SonarCloud projects | Registers projects in SonarCloud |
 | Apply template | Verify push path filters | Fails hard if a scaffolded commit-stage workflow's `on: push: paths:` filter matches nothing in the repo — the filter would silently never fire |
+| Apply template | Verify migrations paths | Fails hard if a scaffolded TypeScript `MIGRATIONS_DIR` literal resolves outside the repo's own `db/migrations` — a shop move that outdates the path rewrite would otherwise only surface as an `ENOENT` in the scaffolded repo's commit stage |
 | Push scaffold | Commit and push | Commits all changes and pushes to remote. Always runs, even after an earlier failure, so a partial scaffold is inspectable on the remote |
 | Lint scaffold | Verify scaffolded workflows | Runs `actionlint` over the scaffolded workflows. Runs *after* push (so broken output is visible remotely) and fails hard, skipping the verify phases. Runs at every `--verify-level`, including `none` |
 | Finalize | Print project registration | Prints the registration info for the new project |

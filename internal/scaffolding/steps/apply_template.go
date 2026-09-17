@@ -285,8 +285,8 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	// layout (system → ../db/migrations). No-op on .NET / TS.
 	templates.FixupAllTextFiles(repoDir, flywayPathReplacements())
 
-	// TS: rewrite the integration spec's MIGRATIONS_DIR (monolith 4→3 up).
-	templates.FixupSourceFiles(repoDir, tsMigrationsPathReplacements("monolith"))
+	// TS: rewrite the integration spec's MIGRATIONS_DIR (4→3 up).
+	templates.FixupSourceFiles(repoDir, tsMigrationsPathReplacements())
 
 	if cfg.Deploy == deployCloudRun {
 		log.Info(infoCopyingCloudRun)
@@ -403,8 +403,8 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(sysDir, monolithSonarKeyReplacements(lang))
 	templates.FixupAllTextFiles(sysDir, systemTestSonarKeyReplacements())
 	templates.FixupAllTextFiles(sysDir, flywayPathReplacements())
-	// TS: rewrite the integration spec's MIGRATIONS_DIR (monolith 4→3 up).
-	templates.FixupSourceFiles(sysDir, tsMigrationsPathReplacements("monolith"))
+	// TS: rewrite the integration spec's MIGRATIONS_DIR (4→3 up).
+	templates.FixupSourceFiles(sysDir, tsMigrationsPathReplacements())
 	log.Success("Applied system repo template (monolith multirepo)")
 }
 
@@ -481,8 +481,8 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	// External-simulator docker context path rewrite for Java backend build.gradle (no-op on TS/.NET).
 	templates.FixupAllTextFiles(repoDir, simulatorContextPathReplacements())
 
-	// TS: rewrite the backend integration spec's MIGRATIONS_DIR (multitier 5→4 up).
-	templates.FixupSourceFiles(repoDir, tsMigrationsPathReplacements("multitier"))
+	// TS: rewrite the backend migrations helper's MIGRATIONS_DIR (4→3 up).
+	templates.FixupSourceFiles(repoDir, tsMigrationsPathReplacements())
 
 	// Pact contracts-folder path rewrite (flattened backend/ + frontend/).
 	// Targets source files (.java/.tsx) — the path lives in @PactFolder and the
@@ -634,8 +634,8 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupSourceFiles(bDir, contractsPathReplacements())
 	// .NET backend provider verification: deeper path, .cs-scoped (7→5 `../`).
 	templates.FixupDotnetSourceFiles(bDir, dotnetContractsPathReplacements())
-	// TS: rewrite the backend integration spec's MIGRATIONS_DIR (multitier 5→4 up).
-	templates.FixupSourceFiles(bDir, tsMigrationsPathReplacements("multitier"))
+	// TS: rewrite the backend migrations helper's MIGRATIONS_DIR (4→3 up).
+	templates.FixupSourceFiles(bDir, tsMigrationsPathReplacements())
 	log.Success("Applied backend repo template")
 
 	// Frontend repo: code + commit stage
@@ -974,28 +974,26 @@ func simulatorContextPathReplacements() [][2]string {
 	}
 }
 
-// tsMigrationsPathReplacements rewrites the TypeScript integration spec's
-// MIGRATIONS_DIR relative path from shop's deep tree to the flattened scaffold,
-// where copyDbMigrations lands the migrations at the repo root (db/migrations).
-// Multitier: shop's backend-typescript/src/core/repositories sits 5 levels up
-// from system/db/migrations; the scaffold flattens backend → backend/ so the
-// repo root is only 4 up. Monolith: shop's monolith/typescript/src/__tests__
-// sits 4 up; the scaffold flattens to 3 up. Per-arch (not a global rule)
-// because the 4-up monolith string is a suffix substring of the 5-up multitier
-// string — a global replace would shorten multitier's path twice. Applied via
-// FixupSourceFiles, which covers .ts. No-op on .NET / Java.
-func tsMigrationsPathReplacements(arch string) [][2]string {
-	switch arch {
-	case "multitier":
-		return [][2]string{
-			{"'../../../../../db/migrations'", "'../../../../db/migrations'"},
-		}
-	case "monolith":
-		return [][2]string{
-			{"'../../../../db/migrations'", "'../../../db/migrations'"},
-		}
-	default:
-		return nil
+// tsMigrationsPathReplacements rewrites the TypeScript MIGRATIONS_DIR relative
+// path from shop's deep tree to the flattened scaffold, where copyDbMigrations
+// lands the migrations at the repo root (db/migrations). Both shop helpers sit
+// 4 levels up from system/db/migrations and both scaffold targets need 3:
+//
+//	multitier: system/multitier/backend-typescript/test/support → backend/test/support
+//	monolith:  system/monolith/typescript/src/__tests__         → system/src/__tests__
+//
+// Arch-independent: the per-arch split existed only to stop a global replace
+// from double-shortening multitier's then-5-up literal, which shop retired when
+// it moved the helper into test/support/migrations.ts. Quote-anchored, so the
+// rewrite is idempotent and leaves unrelated db/migrations paths (the compose
+// mount's ../db/migrations) alone. Applied via FixupSourceFiles, which covers
+// .ts. No-op on .NET / Java.
+//
+// Drift guard: VerifyMigrationsPaths fails the scaffold if a shop move ever
+// leaves this literal unmatched again.
+func tsMigrationsPathReplacements() [][2]string {
+	return [][2]string{
+		{"'../../../../db/migrations'", "'../../../db/migrations'"},
 	}
 }
 

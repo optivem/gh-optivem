@@ -1075,53 +1075,52 @@ func applyPairs(s string, pairs [][2]string) string {
 	return s
 }
 
-// TestTsMigrationsPathReplacementsRewritePerArch asserts that the TypeScript
-// integration spec's MIGRATIONS_DIR is shortened by exactly one ../ level per
-// architecture (multitier 5→4, monolith 4→3) so it resolves to the scaffold's
-// repo-root db/migrations, that each rewrite is idempotent, and that applying
-// one arch's helper to the other arch's string is a no-op — so the arch paths
-// can never corrupt each other's spec even though one path is a near-substring
-// of the other.
-func TestTsMigrationsPathReplacementsRewritePerArch(t *testing.T) {
+// TestTsMigrationsPathRewriteFlattensToRepoRoot asserts that the TypeScript
+// MIGRATIONS_DIR literal both shop helpers carry today (4 `../` up to
+// system/db/migrations) is shortened to 3, which is what the flattened scaffold
+// needs to reach its repo-root db/migrations. Both arches share one literal
+// since shop moved the multitier helper into test/support/migrations.ts, so one
+// rule covers both. The strings below are copied verbatim from shop:
+//
+//	system/multitier/backend-typescript/test/support/migrations.ts
+//	system/monolith/typescript/src/__tests__/db.integration.spec.ts
+//
+// Regression guard for the scaffold shipping backend/test/support/migrations.ts
+// pointing one level above the repo root, which failed the multitier/monorepo/
+// typescript smoke with ENOENT on scandir db/migrations.
+func TestTsMigrationsPathRewriteFlattensToRepoRoot(t *testing.T) {
 	const (
-		multitierIn  = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../../db/migrations');\n"
-		multitierOut = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../db/migrations');\n"
-		monolithIn   = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../db/migrations');\n"
-		monolithOut  = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations');\n"
+		multitierIn = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../db/migrations');\n"
+		monolithIn  = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../../db/migrations');\n"
+		want        = "const MIGRATIONS_DIR = path.resolve(__dirname, '../../../db/migrations');\n"
 	)
 
-	mt := tsMigrationsPathReplacements("multitier")
-	mn := tsMigrationsPathReplacements("monolith")
+	r := tsMigrationsPathReplacements()
 
-	// Multitier: 5→4 up, and a second pass is a no-op.
-	if got := applyPairs(multitierIn, mt); got != multitierOut {
-		t.Errorf("multitier rewrite got  %q\nwant %q", got, multitierOut)
+	// Both shop helpers: 4→3 up.
+	if got := applyPairs(multitierIn, r); got != want {
+		t.Errorf("multitier rewrite got  %q\nwant %q", got, want)
 	}
-	if got := applyPairs(multitierOut, mt); got != multitierOut {
-		t.Errorf("multitier rewrite not idempotent: %q", got)
-	}
-
-	// Monolith: 4→3 up, and a second pass is a no-op.
-	if got := applyPairs(monolithIn, mn); got != monolithOut {
-		t.Errorf("monolith rewrite got  %q\nwant %q", got, monolithOut)
-	}
-	if got := applyPairs(monolithOut, mn); got != monolithOut {
-		t.Errorf("monolith rewrite not idempotent: %q", got)
+	if got := applyPairs(monolithIn, r); got != want {
+		t.Errorf("monolith rewrite got  %q\nwant %q", got, want)
 	}
 
-	// Cross-arch no-op: the monolith helper must not touch the multitier 5-up
-	// string (and vice versa). The quote-anchored patterns don't collide, so an
-	// arch path running only its own helper can never double-shorten the other.
-	if got := applyPairs(multitierIn, mn); got != multitierIn {
-		t.Errorf("monolith helper corrupted multitier string: %q", got)
-	}
-	if got := applyPairs(monolithIn, mt); got != monolithIn {
-		t.Errorf("multitier helper corrupted monolith string: %q", got)
+	// Idempotent: the quote-anchored pattern no longer matches after one pass,
+	// so repeated application (monorepo repoDir, multirepo bDir) can't
+	// double-shorten the path.
+	if got := applyPairs(want, r); got != want {
+		t.Errorf("rewrite not idempotent: %q", got)
 	}
 
-	// Unknown arch yields no replacements.
-	if got := tsMigrationsPathReplacements("nope"); got != nil {
-		t.Errorf("unknown arch returned %v, want nil", got)
+	// Unrelated db/migrations paths stay untouched: the compose sidecar mount
+	// and the Flyway locations are rewritten by their own rules.
+	const composeMount = "      - ../db/migrations:/migrations:ro\n"
+	if got := applyPairs(composeMount, r); got != composeMount {
+		t.Errorf("compose mount corrupted: %q", got)
+	}
+	const flyway = "    locations: filesystem:../db/migrations\n"
+	if got := applyPairs(flyway, r); got != flyway {
+		t.Errorf("flyway locations corrupted: %q", got)
 	}
 }
 

@@ -450,6 +450,15 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 		fn:       func() { steps.VerifyPushPathsFilter(cfg) },
 	})
 
+	// Drift guard on the TypeScript migrations-path rewrite: fails before push
+	// if a shop move left a MIGRATIONS_DIR pointing outside the scaffolded repo.
+	allSteps = append(allSteps, stepDef{
+		name:     "Verify migrations paths",
+		phase:    phaseApplyTemplate,
+		failHard: true,
+		fn:       func() { steps.VerifyMigrationsPaths(cfg) },
+	})
+
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",
 		phase:     phasePushScaffold,
