@@ -33,9 +33,16 @@ var (
 			`TLS handshake|tls:.*handshake|server certificate verification failed|` +
 			`temporary failure in name resolution|no such host|Could not resolve host|unable to access`)
 
+	// `Error 4\d\d on https://` mirrors the transient `Error 5\d\d on https://`
+	// above: it is the Sonar scanner engine's own phrasing, which `HTTP 4\d\d`
+	// does not cover. Added alongside the bash fix for gh-optivem run
+	// 35261501113 to keep this mirror honest — no Go caller currently feeds
+	// scanner output through the classifier (they all classify short
+	// `HTTP <code>\n<body>` summaries or gh CLI output), so the stack-frame
+	// stripping that fix also added to retry-core.sh has no Go counterpart.
 	retryHardFail = regexp.MustCompile(
 		`(?i)` +
-			`HTTP 4\d\d|HTTP 403.*rate limit|` +
+			`HTTP 4\d\d|Error 4\d\d on https://|HTTP 403.*rate limit|` +
 			`unauthorized|forbidden|not authorized|` +
 			`permission denied|denied: permission|denied: requested access|` +
 			`requested access to the resource is denied|insufficient_scope|` +

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # GENERATED — DO NOT EDIT.
-# Source: optivem/actions/shared/retry-core.sh @ b746f07b824242b2329a725d140ba0869c4d095d
+# Source: optivem/actions/shared/retry-core.sh @ a73d803233b1b3f862e5530a8f6814cb3e20049d
 # Sync via: bash optivem/actions/scripts/sync-shared.sh
 # retry-core.sh — generic retry engine shared by tool-specific wrappers
 # (gh-retry.sh, docker-retry.sh, sonar-retry.sh).
@@ -35,6 +35,10 @@
 # its `[ERROR] Bootstrapper: ...` lines to stdout), so a stderr-only match
 # would miss them and never retry a genuinely transient failure.
 #
+# Classification reads failure *messages*, not stack frames — Java/JVM frame
+# lines are stripped first (see `_retry_strip_stack_frames`). The caller always
+# receives the complete unfiltered output regardless.
+#
 # stdin caveat: the retry loop calls "$@" once per attempt. If the caller
 # pipes stdin to `retry_run` (e.g. `printf '%s' "$pw" | retry_run docker
 # login --password-stdin`), stdin is consumed on attempt 1 and empty on
@@ -47,6 +51,34 @@
 
 _RETRY_CORE_ATTEMPTS=4
 _RETRY_CORE_DELAYS=(5 15 45)
+
+# Drop Java/JVM stack-frame lines from the classification input. A frame is a
+# code identifier, not a failure message: the frame
+#
+#   at org.sonar.scanner.http.DefaultScannerWsClient.failIfUnauthorized(DefaultScannerWsClient.java:88)
+#
+# carries the word `Unauthorized` while saying nothing about why the call
+# failed. Since the hard-fail check runs before the transient one, such an
+# identifier silently hijacks the verdict: a transient SonarCloud 500 was
+# classified as an auth hard-fail and never retried (gh-optivem run
+# 35261501113). That frame sits on `DefaultScannerWsClient.call`, the path
+# every scanner web-service call takes, so the retry envelope around
+# sonar-scanner-cli was dead for *every* HTTP failure it raised — not just
+# 500s. The same trap is latent for any identifier containing a policy keyword
+# (`PermissionDenied`, `NotFoundException`, …), so this filters the whole class
+# rather than special-casing one phrase.
+#
+# Only the classification input is filtered. Every pass-through and exhaustion
+# branch below still cats the unfiltered stdout/stderr, so the operator keeps
+# the complete trace.
+#
+# `|| true`: grep -Ev exits 1 when it filters every line (an all-frames trace).
+# Under the callers' inherited `set -e` that would abort the retry loop, so the
+# status is swallowed; an empty result then correctly classifies as "matches
+# neither" and passes through.
+_retry_strip_stack_frames() {
+    grep -Ev '^[[:space:]]*(at [A-Za-z_$][A-Za-z0-9_.$/]*\(|\.\.\.[[:space:]]+[0-9]+[[:space:]]+(common frames omitted|more)[[:space:]]*$)' || true
+}
 
 retry_with_policy() {
     local transient_re="$1"; shift
@@ -82,9 +114,11 @@ retry_with_policy() {
             return 0
         fi
 
-        # Classify against both streams — see header note on stdout-logging tools.
+        # Classify against both streams — see header note on stdout-logging
+        # tools — minus stack frames, which are identifiers rather than
+        # messages (see _retry_strip_stack_frames).
         local match_content
-        match_content=$(cat "$stdout_file" "$stderr_file")
+        match_content=$(cat "$stdout_file" "$stderr_file" | _retry_strip_stack_frames)
 
         # Force-retry override: known-transient infra calls whose output looks
         # like a hard-fail (e.g. SonarCloud JRE provisioning printing `HTTP 403

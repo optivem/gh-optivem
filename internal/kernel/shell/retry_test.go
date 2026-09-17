@@ -43,6 +43,11 @@ func TestClassifyError(t *testing.T) {
 		{"git remote rejected", "! [remote rejected] main -> main (pre-receive hook declined)", err, false},
 		{"git fatal protocol", "fatal: protocol error: bad pack header", err, false},
 		{"unauthorized", "unauthorized: authentication required", err, false},
+		// Scanner-engine 4xx phrasing: `HTTP 4\d\d` does not match it, so
+		// without the `Error 4\d\d on https://` clause this classified as
+		// neither transient nor hard-fail. Mirror of the bash fix for
+		// gh-optivem run 35261501113.
+		{"sonar 4xx wording", "Error 401 on https://sonarcloud.io/batch/project.protobuf?key=x", err, false},
 		{"RateLimitExceeded typed", "", &RateLimitExceeded{Msg: "rl"}, false},
 		{"unknown error", "some unrelated failure", err, false},
 	}
