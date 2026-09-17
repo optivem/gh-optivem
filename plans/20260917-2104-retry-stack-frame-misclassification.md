@@ -39,20 +39,9 @@ Hard-fail is checked at `retry-core.sh:97`, *before* the transient check at `:10
 
 ## ▶ Next executable step (resume here)
 
-**All code changes are done, committed locally, and green.** The only remaining work is the release, and it is an **operator decision, not a mechanical edit**.
+**Everything in this plan is executed and released.** `optivem/actions` `cd0432c` is on `main`, the floating `v1` tag has been force-moved to it by `update-v1.yml`, and `gh-optivem` `5ce16121` (vendored re-sync + Go parity) is on `main`. Every consumer (`shop`, `gh-optivem`, `optivem-testing`) now resolves `retry@v1` to the fixed classifier.
 
-Push the `optivem/actions` repo to `main`. That push triggers `.github/workflows/update-v1.yml`, which force-moves the floating `v1` tag to the new commit — so the fix reaches **every** consumer (`shop`, `gh-optivem`, `optivem-testing`) the moment it lands. There is no separate tagging step.
-
-Then:
-1. Confirm the `update-v1` workflow succeeded and `v1` advanced (`gh run list --repo optivem/actions --workflow update-v1`).
-2. Push `gh-optivem` (vendored re-sync + Go parity).
-3. Watch for a green `gh-commit-stage` on `gh-optivem` `main` — the final proof.
-
-Until this push happens, gh-optivem CI still runs the broken classifier and any transient SonarCloud 5xx keeps failing the commit stage on its first attempt.
-
-## Steps
-
-- [ ] **Step 4 — Push `optivem/actions` to `main`, advancing `v1`.** The repo's `.github/workflows/update-v1.yml` fires on every push to `main` and force-moves the floating `v1` tag to the new commit, so there is no manual re-tag. `.github/workflows/gh-commit-stage.yml:70` pins `uses: optivem/actions/retry@v1`, and so do shop and optivem-testing — the push changes retry behaviour for all of them at once. **Operator gate:** this is the outward-facing step; confirm before pushing. Afterwards verify the `update-v1` run went green and `v1` moved, then push `gh-optivem`.
+The only thing left is to observe the final proof run: a green `gh-commit-stage` on `gh-optivem` `main` at `5ce16121`. That is a CI outcome to watch, not an edit to make — once it is green, delete this plan file.
 
 ## Out of scope (flag, do not fix here)
 
