@@ -2,6 +2,10 @@ package shell
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,6 +36,11 @@ func TestClassifyError(t *testing.T) {
 		{"git RPC 5xx", "RPC failed; HTTP 502 curl 22", err, true},
 		{"git could not resolve host", "fatal: unable to access 'https://...': Could not resolve host: github.com", err, true},
 		{"http2 GOAWAY", "http2: server sent GOAWAY and closed the connection", err, true},
+		// gh-optivem run 35614000906: empty API response body on env PUT.
+		{"gh empty JSON body", "command failed: gh api repos/o/r/environments/production -X PUT: exit status 1\nunexpected end of JSON input", err, true},
+		{"sonar bootstrapper 5xx", "Request failed with status code 502", err, true},
+		{"sonar bootstrapper error", "Bootstrapper: An error occurred: Request failed with status code 403", err, true},
+		{"docker daemon get unknown", `Error response from daemon: Get "https://ghcr.io/v2/": unknown`, err, true},
 
 		// Hard-fail
 		{"HTTP 404", "HTTP 404: Not Found", err, false},
@@ -297,4 +306,75 @@ func TestRunWithRetryLoop_RateLimitPassthrough(t *testing.T) {
 	if len(sleeps) != 0 {
 		t.Fatalf("sleeps = %v, want zero", sleeps)
 	}
+}
+
+// intentionalRetryShDifferences lists retry.sh alternatives that have no
+// literal twin in the Go regexes because Go already covers them another way.
+// Go compiles both regexes with (?i), so case-only variants live here.
+var intentionalRetryShDifferences = map[string]string{
+	`Connection reset by peer`: "covered by case-insensitive `connection reset`",
+	`[Uu]nauthorized`:          "covered by case-insensitive `unauthorized`",
+}
+
+// TestRetryPatternsMatchVendoredRetrySh pins the Go transient/hard-fail lists
+// to the vendored .github/scripts/retry.sh, so a pattern added on the bash
+// side (e.g. `unexpected end of JSON input`, gh-optivem run 35614000906) can't
+// silently go missing in Go again.
+func TestRetryPatternsMatchVendoredRetrySh(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", ".github", "scripts", "retry.sh"))
+	if err != nil {
+		t.Fatalf("read vendored retry.sh: %v", err)
+	}
+	for _, tc := range []struct {
+		bashVar string
+		goRe    *regexp.Regexp
+	}{
+		{"_RETRY_RETRYABLE", retryTransient},
+		{"_RETRY_HARD_FAIL", retryHardFail},
+	} {
+		m := regexp.MustCompile(tc.bashVar + `='([^']*)'`).FindSubmatch(src)
+		if m == nil {
+			t.Fatalf("%s='...' not found in retry.sh — was it renamed?", tc.bashVar)
+		}
+		goAlts := map[string]bool{}
+		for _, a := range splitAlternation(strings.TrimPrefix(tc.goRe.String(), "(?i)")) {
+			goAlts[strings.ToLower(a)] = true
+		}
+		for _, alt := range splitAlternation(string(m[1])) {
+			if _, ok := intentionalRetryShDifferences[alt]; ok {
+				continue
+			}
+			norm := strings.ReplaceAll(alt, "[0-9]", `\d`)
+			if !goAlts[strings.ToLower(norm)] {
+				t.Errorf("retry.sh %s has %q with no Go twin in retry.go; add it to the Go regex, or to intentionalRetryShDifferences with a reason", tc.bashVar, alt)
+			}
+		}
+	}
+}
+
+// splitAlternation splits a regex on top-level `|`, ignoring pipes inside
+// (...) groups and [...] classes.
+func splitAlternation(re string) []string {
+	var parts []string
+	depth, inClass, start := 0, false, 0
+	for i := 0; i < len(re); i++ {
+		switch c := re[i]; {
+		case c == '\\':
+			i++
+		case inClass:
+			if c == ']' {
+				inClass = false
+			}
+		case c == '[':
+			inClass = true
+		case c == '(':
+			depth++
+		case c == ')':
+			depth--
+		case c == '|' && depth == 0:
+			parts = append(parts, re[start:i])
+			start = i + 1
+		}
+	}
+	return append(parts, re[start:])
 }

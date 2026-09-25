@@ -17,6 +17,12 @@ import (
 // phrases across gh/docker/sonar/git wording. Passes 4xx through immediately
 // so callers using exit code as a probe (rc-as-truth-value) keep working, and
 // surfaces auth/config errors as themselves rather than as a retried failure.
+//
+// Drift between this file and retry.sh is pinned by
+// TestRetryPatternsMatchVendoredRetrySh. `unexpected end of JSON input` (gh's
+// report of an empty/truncated API response body) was missing here while
+// retry.sh already retried it: gh-optivem run 35614000906 fataled on the first
+// attempt of `gh api .../environments/production -X PUT` (CreateEnvironment).
 var (
 	retryTransient = regexp.MustCompile(
 		`(?i)` +
@@ -24,6 +30,7 @@ var (
 			`Error 5\d\d on https://|` +
 			`received unexpected HTTP status:? 5\d\d|` +
 			`RPC failed.*HTTP 5\d\d|` +
+			`Request failed with status code 5\d\d|Bootstrapper: An error occurred|` +
 			`Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout|server error|` +
 			`Something went wrong while executing your query|` +
 			`Endpoint request timed out|context deadline exceeded|Client\.Timeout|Operation timed out|` +
@@ -31,7 +38,8 @@ var (
 			`connection reset|connection refused|` +
 			`\bEOF\b|unexpected EOF|was closed|http2: server sent GOAWAY|` +
 			`TLS handshake|tls:.*handshake|server certificate verification failed|` +
-			`temporary failure in name resolution|no such host|Could not resolve host|unable to access`)
+			`temporary failure in name resolution|no such host|Could not resolve host|unable to access|` +
+			`Error response from daemon: Get "[^"]+": unknown|unexpected end of JSON input`)
 
 	// `Error 4\d\d on https://` mirrors the transient `Error 5\d\d on https://`
 	// above: it is the Sonar scanner engine's own phrasing, which `HTTP 4\d\d`
