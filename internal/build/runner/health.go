@@ -72,16 +72,16 @@ func WaitForSystem(sys SystemEntry, opts HealthOptions) error {
 	defer sp.Stop()
 	for _, ext := range sys.ExternalSystems {
 		sp.Update(fmt.Sprintf("checking %s", ext.Name))
-		if err := WaitForURL(ext.URL, opts); err != nil {
+		if err := WaitForURL(ext.probeURL(), opts); err != nil {
 			return fmt.Errorf("%s: %w", ext.Name, err)
 		}
 	}
 	for _, comp := range sys.Components {
-		if comp.URL == "" {
+		if comp.probeURL() == "" {
 			continue
 		}
 		sp.Update(fmt.Sprintf("checking %s", comp.Name))
-		if err := WaitForURL(comp.URL, opts); err != nil {
+		if err := WaitForURL(comp.probeURL(), opts); err != nil {
 			return fmt.Errorf("%s: %w", comp.Name, err)
 		}
 	}
@@ -105,12 +105,12 @@ func IsAnyURLUp(sys SystemEntry, opts HealthOptions) bool {
 		return resp.StatusCode == http.StatusOK
 	}
 	for _, ext := range sys.ExternalSystems {
-		if check(ext.URL) {
+		if check(ext.probeURL()) {
 			return true
 		}
 	}
 	for _, comp := range sys.Components {
-		if check(comp.URL) {
+		if check(comp.probeURL()) {
 			return true
 		}
 	}

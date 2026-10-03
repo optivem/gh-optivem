@@ -101,6 +101,30 @@ func TestWaitForSystemProbesAllUrls(t *testing.T) {
 	}
 }
 
+func TestWaitForSystemPrefersHealthURLOverURL(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusFound) // login-protected root
+	}))
+	defer ts.Close()
+
+	sys := SystemEntry{
+		Components: []Component{
+			{Name: "UI", URL: ts.URL + "/", HealthURL: ts.URL + "/health"},
+		},
+	}
+	noRedirect := HealthOptions{Attempts: 2, Interval: 1 * time.Millisecond, Timeout: 1 * time.Second}
+	if err := WaitForSystem(sys, noRedirect); err != nil {
+		t.Fatalf("want success via healthUrl, got %v", err)
+	}
+	if !IsAnyURLUp(sys, noRedirect) {
+		t.Error("IsAnyURLUp should use healthUrl")
+	}
+}
+
 func TestWaitForSystemReturnsFirstFailureWithComponentName(t *testing.T) {
 	good := newOKServer(t)
 	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

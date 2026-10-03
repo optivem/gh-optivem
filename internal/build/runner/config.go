@@ -54,10 +54,21 @@ type SystemEntry struct {
 
 // Component is one service within a system (a SUT component or external sim).
 // URL is optional — components without one are skipped during health probes.
+// HealthURL is optional — when set, health probes poll it instead of URL (for
+// components whose URL is not a plain 200, e.g. a login-protected UI root).
 type Component struct {
 	Name          string `json:"name" yaml:"name"`
 	URL           string `json:"url" yaml:"url"`
+	HealthURL     string `json:"healthUrl,omitempty" yaml:"healthUrl,omitempty"`
 	ContainerName string `json:"containerName" yaml:"containerName"`
+}
+
+// probeURL returns the URL health probes should poll for c.
+func (c Component) probeURL() string {
+	if c.HealthURL != "" {
+		return c.HealthURL
+	}
+	return c.URL
 }
 
 // TestsConfig describes test-runner setup + suites. Loaded from tests.{yaml,json}.
