@@ -14,12 +14,11 @@
 
 ## ▶ Next executable step (resume here)
 
-Steps 1-5 are implemented, tested (`go test ./...` green) and committed. Remaining is author-gated: ask the author before re-dispatching `gh-acceptance-stage` (Step 6), then release (Step 7, needs author approval).
+Steps 1-6 are done: `gh-acceptance-stage` run 37290144876 (`debug-shop-head`) is fully green after three fixes (realm copy + mount rewrite 2c67722c; runner exports `KEYCLOAK_URL_<label>` 44dcc8fe; shop backend-typescript problem-type URIs from one base constant d0cee415). Remaining: Step 7, the gh-optivem release, which needs explicit author approval.
 
 ## Steps
 
-- [ ] Step 6: Ask the author before re-dispatching `gh-acceptance-stage`. If Keycloak still exits 1, read `docker logs sky-travel-stub-keycloak-1` for secondary causes (`KC_HOSTNAME`, healthcheck port 9000).
-- [ ] Step 7: Release of gh-optivem needs author approval. Finding already made: `gh-acceptance-stage` is dispatched by shop `meta-release-stage.yml` with `shop-tag=<release_tag>` (empty = latest `meta-v*` release), so it tests a pinned shop release. Option A changes only the scaffolder and shop's compose is untouched, so no shop-side change is needed.
+- [ ] Step 7: Release of gh-optivem needs author approval. Before it, note that the green run tested shop `main`, not a pinned release: the pinned `meta-v*` release (what shop's `meta-release-stage.yml` dispatches via `shop-tag`) predates shop fix d0cee415, so multitier/typescript scaffold lint may fail there until shop cuts a new `meta-v*`. Consider a normal (no `debug-shop-head`) dispatch after the next shop release.
 
 ## Open questions
 
