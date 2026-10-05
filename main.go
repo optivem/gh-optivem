@@ -459,6 +459,15 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 		fn:       func() { steps.VerifyMigrationsPaths(cfg) },
 	})
 
+	// Drift guard on the Keycloak realm mount rewrite + docker/keycloak copy:
+	// fails before push if a compose file mounts a realm file the repo lacks.
+	allSteps = append(allSteps, stepDef{
+		name:     "Verify Keycloak realm mounts",
+		phase:    phaseApplyTemplate,
+		failHard: true,
+		fn:       func() { steps.VerifyKeycloakRealmMounts(cfg) },
+	})
+
 	allSteps = append(allSteps, stepDef{
 		name:      "Commit and push",
 		phase:     phasePushScaffold,

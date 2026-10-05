@@ -151,6 +151,15 @@ func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string)
 	dockerDst := filepath.Join(repoDir, Names.TargetDockerDir)
 	files.CopyDir(filepath.Join(shop, Expand(Names.ShopDockerDir, vars)), dockerDst)
 
+	// Shared Keycloak realm import: lives beside the per-lang/arch dirs in shop
+	// (docker/keycloak/), so the dir copy above does not carry it. Land it at
+	// docker/keycloak/ so keycloakRealmPathReplacements' ./keycloak mount resolves.
+	// The os.Stat guard skips shop refs that predate Keycloak; VerifyKeycloakRealmMounts
+	// still fails hard if a compose file references a realm that was not copied.
+	if src := filepath.Join(shop, Names.ShopKeycloakDir); dirExists(src) {
+		files.CopyDir(src, filepath.Join(dockerDst, "keycloak"))
+	}
+
 	templates.CopyVersion(shop, repoDir, arch, systemLang)
 
 	// Regenerate ChannelType from the declared channel set (the SSoT), replacing
@@ -834,6 +843,7 @@ func monolithDockerComposeReplacements(lang, testLang string) [][2]string {
 		// so the mount becomes ../db/migrations.
 		{shopSystemPrefix + "db/migrations", "../db/migrations"},
 	}
+	r = append(r, keycloakRealmPathReplacements()...)
 	if lang != testLang {
 		r = append(r, [2]string{shopSystemPrefix + "monolith/" + testLang, "../system"})
 		r = append(r, [2]string{prefixMonolithSystem + testLang, "system"})
@@ -938,6 +948,7 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 		// mount becomes ../db/migrations.
 		{shopSystemPrefix + "db/migrations", "../db/migrations"},
 	}
+	r = append(r, keycloakRealmPathReplacements()...)
 	// Docker build contexts always reference the test-lang backend and the frontend lang in the
 	// shop layout (e.g. backend-typescript, frontend-react). After scaffolding these become
 	// ../backend and ../frontend respectively, so we always need both replacements.
@@ -946,6 +957,18 @@ func multitierDockerComposeReplacements(backendLang, frontendLang, testLang stri
 	r = append(r, [2]string{shopSystemPrefix + "multitier/frontend-" + frontendLang, "../frontend"})
 	r = append(r, [2]string{prefixMultitierFrontend + frontendLang, "frontend"})
 	return r
+}
+
+// keycloakRealmPathReplacements rewrites the Keycloak realm bind mount. Shop's
+// compose at docker/<lang>/<arch>/ reaches the shared realm via
+// ../../keycloak/shop-realm.json (docker/keycloak/); the scaffold flattens
+// compose to docker/ and copies the realm to docker/keycloak/ (copySystemTests),
+// so the mount becomes ./keycloak/shop-realm.json. Drift guard:
+// VerifyKeycloakRealmMounts.
+func keycloakRealmPathReplacements() [][2]string {
+	return [][2]string{
+		{"../../keycloak/shop-realm.json", "./keycloak/shop-realm.json"},
+	}
 }
 
 // flywayPathReplacements rewrites Spring's filesystem:../../db/migrations
@@ -1192,4 +1215,9 @@ func checkNoTemplateRefs(repoDir string, refs []string) {
 	if failed {
 		log.Fatalf("Template replacement incomplete in %s: leftover template references found.", repoDir)
 	}
+}
+
+func dirExists(p string) bool {
+	info, err := os.Stat(p)
+	return err == nil && info.IsDir()
 }

@@ -156,6 +156,88 @@ func scaffoldRepoDirs(cfg *config.Config) []string {
 	return dirs
 }
 
+// keycloakRealmMountPattern matches a compose bind mount into Keycloak's
+// realm-import directory, capturing the host-side path so it can be resolved
+// against the compose file that carries it.
+var keycloakRealmMountPattern = regexp.MustCompile(`-\s*['"]?([^\s:'"]+):/opt/keycloak/data/import/`)
+
+// VerifyKeycloakRealmMounts checks that every Keycloak realm bind mount in the
+// scaffolded docker-compose files resolves to a file that exists in the
+// generated repo.
+//
+// This is a drift guard on keycloakRealmPathReplacements and the
+// docker/keycloak copy in copySystemTests. Shop's mount is a relative path that
+// only resolves inside shop; if shop moves it, the rewrite matches nothing and
+// the scaffold ships a compose file whose Keycloak container exits 1 on a
+// missing realm -- surfaced only as a red Smoke job after a CI round-trip.
+// Runs before commit+push so the drift fails at scaffold time instead.
+func VerifyKeycloakRealmMounts(cfg *config.Config) {
+	log.Info("Verifying Keycloak realm mounts...")
+	for _, repoDir := range scaffoldRepoDirs(cfg) {
+		if repoDir == "" {
+			continue
+		}
+		violations, err := findKeycloakRealmMountViolations(repoDir)
+		if err != nil {
+			log.Fatalf("cannot verify Keycloak realm mounts in %s: %v", repoDir, err)
+		}
+		if len(violations) == 0 {
+			continue
+		}
+		for _, v := range violations {
+			log.Errorf("Keycloak realm mount %q in %s resolves to %s, which does not exist", v.Literal, v.File, v.Resolved)
+		}
+		log.Errorf("  expected: %s", filepath.Join(repoDir, dockerDir_name, "keycloak", "shop-realm.json"))
+		log.Fatalf("Scaffolded Keycloak realm mount does not resolve to a file in the repo -- " +
+			"shop likely moved the realm file or its mount line, so keycloakRealmPathReplacements " +
+			"/ copySystemTests (internal/scaffolding/steps/apply_template.go) no longer match.")
+	}
+	log.Success("Keycloak realm mounts resolve to existing files")
+}
+
+// keycloakMountViolation is one realm bind mount whose host path is missing.
+type keycloakMountViolation struct {
+	File     string // compose file carrying the mount
+	Literal  string // host path as written
+	Resolved string // where it actually points
+}
+
+// findKeycloakRealmMountViolations is VerifyKeycloakRealmMounts' pure core. A
+// repo with no Keycloak mount passes.
+func findKeycloakRealmMountViolations(repoDir string) ([]keycloakMountViolation, error) {
+	var violations []keycloakMountViolation
+	walkErr := filepath.WalkDir(repoDir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" || d.Name() == "node_modules" {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasPrefix(d.Name(), "docker-compose") || filepath.Ext(p) != ".yml" {
+			return nil
+		}
+		data, readErr := os.ReadFile(p)
+		if readErr != nil {
+			return fmt.Errorf("cannot read %s: %w", p, readErr)
+		}
+		for _, m := range keycloakRealmMountPattern.FindAllStringSubmatch(string(data), -1) {
+			got, absErr := filepath.Abs(filepath.Join(filepath.Dir(p), filepath.FromSlash(m[1])))
+			if absErr != nil {
+				return fmt.Errorf("cannot resolve %q from %s: %w", m[1], p, absErr)
+			}
+			if info, statErr := os.Stat(got); statErr == nil && !info.IsDir() {
+				continue
+			}
+			violations = append(violations, keycloakMountViolation{File: p, Literal: m[1], Resolved: got})
+		}
+		return nil
+	})
+	return violations, walkErr
+}
+
 // tsMigrationsDirPattern matches the TypeScript migrations-helper literal
 // `path.resolve(__dirname, '<rel>/db/migrations')`, capturing <rel> so the
 // target can be resolved against the file that carries it. Both quote styles

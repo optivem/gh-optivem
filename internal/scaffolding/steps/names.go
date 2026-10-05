@@ -68,6 +68,7 @@ var Names = struct {
 	ShopSystemMultitierFrontend string
 	ShopSystemTestDir           string
 	ShopDockerDir               string
+	ShopKeycloakDir             string
 	ShopDocsArchDir             string
 	ShopDocsSharedDir           string
 	ShopVersionFile             string
@@ -120,6 +121,7 @@ var Names = struct {
 	ShopSystemMultitierFrontend: "system/multitier/frontend-${frontendLang}",
 	ShopSystemTestDir:           "system-test/${testLang}",
 	ShopDockerDir:               "docker/${testLang}/${arch}",
+	ShopKeycloakDir:             "docker/keycloak",
 	ShopDocsArchDir:             "docs/design/${arch}",
 	ShopDocsSharedDir:           "docs/design/shared",
 	ShopVersionFile:             "system/${arch}/${lang}/VERSION",

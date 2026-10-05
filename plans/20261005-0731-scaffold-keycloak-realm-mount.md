@@ -14,19 +14,14 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 1: read `internal/scaffolding/steps/apply_template.go` (`copySystemTests` ~141-152, docker-dir handling ~747 and ~876), `names.go`, `verify.go`, `replacements_test.go`; then implement Steps 1-3 following precedents c3054718 (`simulatorContextPathReplacements`) and e220eed9 (`VerifyMigrationsPaths`). Gate: `go test ./...` green before anything is committed or dispatched.
+Steps 1-5 are implemented, tested (`go test ./...` green) and committed. Remaining is author-gated: ask the author before re-dispatching `gh-acceptance-stage` (Step 6), then release (Step 7, needs author approval).
 
 ## Steps
 
-- [ ] Step 1: In `copySystemTests` also copy shop `docker/keycloak` to `<repo>/docker/keycloak`; add `Names.ShopKeycloakDir` in `names.go`. Check the multirepo/monorepo paths (~747, ~876) so every layout gets it.
-- [ ] Step 2: Add `keycloakRealmPathReplacements()` rewriting `../../keycloak/shop-realm.json` to `./keycloak/shop-realm.json` in scaffolded `docker-compose.*.yml` (local/pipeline/stub/real variants). Wire it into every apply path (monolith + multitier, monorepo + multirepo).
-- [ ] Step 3: Add a fail-hard verify step (like `VerifyMigrationsPaths` in `verify.go`, wired in `main.go` before commit/push): every scaffolded compose file's keycloak realm bind mount must resolve to an existing file in the generated repo; fail naming file, resolved path, expected path.
-- [ ] Step 4: Tests in `replacements_test.go` / `verify_test.go` using shop's real compose line text from the shop checkout, not synthetic strings.
-- [ ] Step 5: Update `docs/how-it-works.md`.
-- [ ] Step 6: Run `go test ./...`. Then ask the author before re-dispatching `gh-acceptance-stage`. If Keycloak still exits 1, read `docker logs sky-travel-stub-keycloak-1` for secondary causes (`KC_HOSTNAME`, healthcheck port 9000).
-- [ ] Step 7: Before any release, read shop `meta-release-stage.yml` and check whether `gh-acceptance-stage` uses shop `main` or a pinned shop version (decides whether a shop-side change is also needed). Release actions need author approval.
+- [ ] Step 6: Ask the author before re-dispatching `gh-acceptance-stage`. If Keycloak still exits 1, read `docker logs sky-travel-stub-keycloak-1` for secondary causes (`KC_HOSTNAME`, healthcheck port 9000).
+- [ ] Step 7: Release of gh-optivem needs author approval. Finding already made: `gh-acceptance-stage` is dispatched by shop `meta-release-stage.yml` with `shop-tag=<release_tag>` (empty = latest `meta-v*` release), so it tests a pinned shop release. Option A changes only the scaffolder and shop's compose is untouched, so no shop-side change is needed.
 
 ## Open questions
 
 - Option B (shop-side layout change so one relative path works in both shop and scaffolds) is deferred as a follow-up. Recommendation: do Option A now, revisit B later.
-- Does `docker-compose.pipeline.stub.yml` (or any workflow) use the same relative path? Step 2 must confirm.
+- Resolved: only `docker-compose.*.yml` files carry the `../../keycloak/shop-realm.json` mount (24 occurrences across all lang/arch/variants); no workflow uses it.
