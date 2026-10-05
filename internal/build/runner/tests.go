@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,6 +83,7 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 				return fmt.Errorf("system %s is not running — start it first with `gh optivem system start`", s.Label)
 			}
 		}
+		exportKeycloakURLs(sys)
 	}
 
 	suites, err := selectSuites(tests, opts.Suite)
@@ -687,3 +689,29 @@ func splitCommand(s string) ([]string, error) {
 	flush()
 	return parts, nil
 }
+
+// exportKeycloakURLs sets KEYCLOAK_URL_<LABEL> for every system that declares a
+// Keycloak component, so system tests acquire tokens exactly as they do under
+// the pipeline workflows (which set the same variables on the job). Token
+// acquisition is opt-in on this variable: without it the tests call the
+// authenticated API anonymously and fail with 401. A value already present in
+// the environment wins, so CI and manual overrides are respected.
+func exportKeycloakURLs(sys *SystemConfig) {
+	for _, s := range sys.Systems {
+		for _, c := range s.Components {
+			if !strings.EqualFold(c.Name, "keycloak") || c.URL == "" {
+				continue
+			}
+			u, err := url.Parse(c.URL)
+			if err != nil || u.Scheme == "" || u.Host == "" {
+				continue
+			}
+			key := "KEYCLOAK_URL_" + strings.ToUpper(nonAlnum.ReplaceAllString(s.Label, "_"))
+			if os.Getenv(key) == "" {
+				os.Setenv(key, u.Scheme+"://"+u.Host)
+			}
+		}
+	}
+}
+
+var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]+`)
