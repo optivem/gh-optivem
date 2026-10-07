@@ -1,4 +1,4 @@
-Execute a plan file item by item, either step-by-step (with per-item approval gates) or batch-then-review (execute everything, then one review-and-commit gate at the end).
+Execute a plan file item by item. Default is autonomous (ask questions upfront, work via subagents with incremental commits, hand back at the end); step-by-step (per-item approval gates) and batch-then-review (one review-and-commit gate at the end) are available on request.
 
 ## Always surface a recommended answer (applies to every question)
 
@@ -38,11 +38,11 @@ This gate exists because plans are often drafted in one session and executed in 
 
 ## Token-efficient advice (always surface)
 
-Before picking a mode, **always advise the user which option is most token-efficient for this specific plan and situation**, and recommend one. Don't just list the options — make a recommendation with one sentence of why.
+The default (Autonomous) already applies these: subagents per item, scoped work, read-once. Mention a deviation only if the plan is large enough to warrant splitting across sessions. When the user asks for a non-default mode, **advise which option is most token-efficient for this specific plan**, recommend one, and give one sentence of why.
 
 The dimensions to consider:
 
-- **Mode.** Batch-then-review is almost always cheaper than step-by-step: each per-item gate replays the prefix from the start of the conversation, so 10 gates = 10× the cached-prefix replay. Recommend step-by-step only when items are genuinely high-risk or high-ambiguity (the user's judgment is needed mid-flow, not just at the end).
+- **Mode.** Autonomous (subagents, no gates) is cheapest in main-session tokens and user time. Batch-then-review is almost always cheaper than step-by-step: each per-item gate replays the prefix from the start of the conversation, so 10 gates = 10× the cached-prefix replay. Recommend step-by-step only when items are genuinely high-risk or high-ambiguity (the user's judgment is needed mid-flow, not just at the end).
 - **Scope.** If the plan is large, recommend executing only one natural seam this session and finishing the rest in a fresh `/clear`-ed session. Cached prefixes grow with every read/edit; splitting on natural seams (engine → integration → driver → docs, or one repo at a time) keeps each session's prefix small. Look for explicit chunking guidance inside the plan first — many plans pre-declare "execute in N separate sessions"; respect that.
 - **Parallelization.** When items are independent (e.g. "edit 9 different files, no cross-cutting changes"), recommend dispatching subagents in parallel rather than doing them sequentially in the main session. Subagent context is isolated from the main conversation, so the main session stays small while the work fans out.
 - **Re-read budget.** Read each file once; use `Edit` afterward instead of re-reading. If the plan demands repeatedly re-checking the same large file, flag that as a token cost and propose either splitting the work or having a subagent own that file.
@@ -67,17 +67,41 @@ The hand-off block goes at the very end of the final response, after the per-rep
 
 ## Execution modes
 
-Three possible modes. **Before starting work, pick a mode** (after surfacing the token-efficient advice above):
+Four possible modes. **Autonomous is the default** — try it first unless the user asks otherwise or the plan makes it unsuitable.
 
 1. **Auto-detect "Execute approved" first.** Scan the plan for decision annotations (`⏭️ Skipped`, `❌ Rejected`, `✏️ Modified`, `⏳ Deferred`). If any exist, assume a prior review pass happened and switch to **Mode: Execute approved** (see below). Do not ask the user in this case.
 
-2. **Otherwise, ask the user which mode** — but lead with the recommendation, not a neutral menu:
+2. **Otherwise, use Mode: Autonomous** without asking which mode. Only switch when:
+   - The user explicitly asks for another mode ("step", "step-by-step", "one by one" → **Step-by-step**; "batch", "batch-then-review" → **Batch-then-review**).
+   - The plan itself says to use another mode, or its items are so high-risk/ambiguous that the user's judgment is needed mid-flow — in that case state the reason in one sentence and recommend the alternative.
 
-   > For this plan, batch-then-review is most token-efficient because <one-sentence reason>. Sound good, or do you want step-by-step?
+3. Respect **pre-approved items** in every mode (see below).
 
-   Accept short answers: "step", "step-by-step", "one by one" → **Step-by-step**. "batch", "all", "everything", "batch-then-review", "yes", "sounds good" → **Batch-then-review**. If the user has already indicated a preference in their invocation message (e.g. "execute everything and ask me to review at the end", "whatever is most token efficient"), treat that as the answer and don't re-ask.
+---
 
-3. Respect **pre-approved items** in either mode (see below).
+## Mode: Autonomous (default)
+
+Goal: the user is not needed between the start and the end of the run, and the main session stays small. This mode replaces per-item approval gates with up-front questions, delegated work, and one hand-back at the end.
+
+### 1. Ask everything upfront
+Run the pre-flight gate (open questions) and also ask any other clarifying question you can foresee from reading the plan (scope, ambiguous items, which repos, anything you would otherwise have to ask mid-run). Batch them into **one** round of questions with recommendations, get the answers, then go. After this point the user is assumed to be away.
+
+### 2. Work autonomously via subagents
+- Orchestrate from the main session; do the actual item work in subagents (`Agent` tool, default non-worktree isolation) so the main context stays small and the user never needs `/clear` mid-run. Each subagent gets only: the plan path, its item, relevant constraints from the plan, and an allowed-files hint. It returns a short result (what changed, test outcome), not its transcript.
+- Dependent items run sequentially; independent items touching disjoint files may run in parallel subagents.
+- Subagents re-read the plan and file state themselves — never trust an earlier worker's claim; verify via build/tests before marking an item done.
+- Delete each item from the plan file and refresh the `▶ Next executable step` block as soon as it is verified done (same rules as other modes), so the plan is always resumable.
+- **Commit incrementally** — one commit per completed item (or small coherent group), per repo, using the commit script/skill with `--repo` as in the other modes. Never push partial or failing work: commit only after the item's checks pass.
+- Fix test/build failures within the item's scope (up to 2 retries). If still failing, record the blocker in the plan, skip to unblocked items, and report it at the end.
+
+### 3. The only reasons to stop and ask mid-run
+Stop and ask the user **only** for a decision that is genuinely important **and** expensive to reverse later (architecture/API/schema forks, data loss, releases, force-push, actions visible to third parties, spending money). Everything else — naming, minor design choices, style, small ambiguities — decide using your best judgment (follow the recommendation you'd have given), note the choice in the final report, and continue. Explicit "stop and ask user" markers in the plan are still honored.
+
+### 4. Hand back at the end
+When all items in scope are done (or only blocked/deferred ones remain):
+1. Summarize per repo: items completed, files changed, test/build results, commits made, decisions you made on the user's behalf, and anything blocked or deferred (with output for failures). Don't claim "all done" without evidence.
+2. **If human verification is needed** (UI behaviour, manual testing, a judgment call on the result, reviewing risky diffs), ask the user to test/review and say exactly what to check. Otherwise just report completion.
+3. Include the hand-off block (see above) if items remain.
 
 ---
 

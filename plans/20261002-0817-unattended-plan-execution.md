@@ -3,7 +3,7 @@
 ## TL;DR
 
 **Why:** Executing a plan with `/execute-plan` currently needs the user online to `/clear` and re-run whenever context fills up. That is manual babysitting and wastes the user's time.
-**End result:** `/execute-plan --unattended` runs a whole plan without the user present: each item is done in a fresh, minimal context, progress is persisted in the plan file, and the user only returns for real decisions or the final result.
+**End result:** `/execute-plan` (autonomous by default) runs a whole plan without the user present: each item is done in a fresh, minimal context, progress is persisted in the plan file, and the user only returns for real decisions or the final result.
 
 ## Outcomes
 
@@ -11,17 +11,17 @@
 - Each item runs in a fresh context (no accumulated history), so token cost per item stays flat instead of growing.
 - Progress survives interruption: the plan file is the single source of truth (items removed as done, `▶ Next executable step` kept current), so a crash or stop resumes cleanly.
 - Genuine blockers/decisions are surfaced (recorded in the plan and reported at the end), not silently guessed or swallowed.
-- Commits still go through `/commit` only, once at the end; no raw git.
+- Commits go through the commit skill/script only, incrementally per verified item; no raw git.
 
 ## Decisions
 
-- Unattended is an **explicit flag** (`--unattended`) on `/execute-plan`; step-by-step and current batch modes stay the default. Promote later once proven.
+- Autonomous execution is the **default** mode of `/execute-plan` (no flag needed): ask all questions upfront, work via subagents, commit incrementally, stop mid-run only for important decisions that are expensive to reverse, hand back at the end (asking for test/review if needed). Step-by-step and batch-then-review remain available on request. The skill text for this is already written; the remaining steps harden it.
 - Permissions: pre-allow a **narrow** set (Read/Grep/Glob, Edit/Write in the repo, repo build/test commands, `/commit`) via project settings (e.g. `/fewer-permission-prompts`); no blanket bypass. Anything outside the set halts the run and is recorded in the plan (fail loud, no guessing).
-- Commit: **one `/commit` at the end** of the run, never per item, so an unattended run cannot push partial work.
+- Commit: **incrementally, one commit per verified item** (per repo), and only after the item's checks pass, so an unattended run never pushes partial or failing work.
 
 ## ▶ Next executable step (resume here)
 
-Design-only: evaluate the options under Step 1 (read the `execute-plan` skill and how it handles per-item gates and the resume block), pick one, and record the choice under Decisions. Do not edit the skill until the approach is settled — use `/refine-plan` on this file.
+Design-only: evaluate the options under Step 1 (read the `execute-plan` skill and how it handles per-item gates and the resume block), pick one, and record the choice under Decisions. A first version of the default Autonomous mode is already in the skill (orchestrator + subagent per item); validate or adjust it against the chosen approach. Use `/refine-plan` on this file.
 
 ## Steps
 
@@ -31,11 +31,11 @@ Design-only: evaluate the options under Step 1 (read the `execute-plan` skill an
   - C. **Scheduled/looped self-resume** (`/loop` or cron wakeups calling `/execute-plan`): hands-off but polling cost and cache considerations.
   - D. **Workflow tool** orchestration (deterministic script, parallel for independent items): best for large plans but heavier and requires explicit opt-in.
 - [ ] Step 2: Choose the default mode (likely A, with B as the escape hatch for very long plans) and define the contract: what a worker receives, what it must write back to the plan file, and the stop conditions (blocker, ambiguous decision, failing gate, out-of-allowlist tool).
-- [ ] Step 3: Add an explicit `--unattended` flag/mode to `execute-plan` implementing the chosen approach; leave step-by-step and existing batch modes unchanged.
+- [ ] Step 3: Align the already-added default Autonomous mode in `execute-plan` with the approach chosen in Step 2 (it currently uses orchestrator + one subagent per item); leave step-by-step and existing batch modes unchanged.
 - [ ] Step 4: Handle independence: dependent items run sequentially; independent items may run in parallel subagents only if they touch disjoint files.
 - [ ] Step 5: Configure the narrow pre-allow list in project settings and verify an out-of-set tool call halts the run with a recorded reason.
 - [ ] Step 6: Failure handling: a worker that hits a blocker records it in the plan and stops; the orchestrator continues with unblocked items or halts and reports.
-- [ ] Step 7: Single `/commit` at the end of the run.
+- [ ] Step 7: Incremental commits: one per verified item, per repo, never on failing checks (replaces the earlier single end-of-run commit).
 - [ ] Step 8: Safety rails for unattended runs (all fail loud):
   - Verifiable gate per item: a worker may mark an item done only after an external check passes (build/tests/lint), never on its own say-so.
   - Independent verification: a separate fresh-context reviewer subagent checks each diff against the item text.
