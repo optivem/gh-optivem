@@ -1,5 +1,7 @@
 # 2026-10-15 21:08 — Position gh-optivem as a spec-driven starter kit (spec-as-test)
 
+> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-10-15T19:10:23Z`
+
 ## TL;DR
 
 **Why:** "Spec-driven development" is the term developers search for when they look at AI-assisted coding (GitHub Spec Kit, AWS Kiro, Tessl, OpenSpec, BMAD). gh-optivem fits the category but out-ATDDs all of them: its specs are executable acceptance tests that must fail first and then pass. None of the existing tools checks that the code meets the spec. Today gh-optivem is presented as an academy/teaching tool, not as something a standalone developer would install.
@@ -9,7 +11,7 @@
 
 - **Audience:** standalone developers who install the tool themselves (not only academy students).
 - **Keep the binary name `gh-optivem`.** It names the install route (a `gh` CLI extension), not the brand. Renaming it would break scaffolded repos and course references.
-- **Brand:** "Optivem", with the category descriptor. No separate product name for now (fallback if one is ever wanted: "Assay", which is unchecked for trademark/domain).
+- **Brand:** reopened, see `## Resolved decisions` → *Product name*.
 - **Category we claim:** **Spec-as-Test**. It adds a fourth entry to Böckeler's (Thoughtworks) list of spec-first / spec-anchored / spec-as-source.
 - **Tagline:** "Specs that fail first." Alternatives: "Spec-driven, test-proven." / "The spec is the test."
 - **Product story (three steps):**
@@ -23,6 +25,10 @@
   - **A defined process, not a chain of prompts:** the BPMN orchestrator decides which agent runs, which checks it must pass, and where it loops back on failure.
   - **Works on existing apps:** most SDD tools are strongest on new projects.
 - **Business angle:** the free/open tool brings people to paid academy, workshop and consulting work, which is mostly help with the manual adapt step.
+
+## Resolved decisions
+
+- **Product name (2026-10-15, /refine-plan):** don't settle it from intuition. Brainstorm 5–10 candidates (including "Assay" and plain "Optivem"), check their availability (item 7, run first), then the user picks one before any copy is written (items 1–3). Independent of this, the install/command name stays `gh-optivem` (see "Decisions already made"), so a new product name means "<Name> by Optivem", installed via `gh optivem`, unless the user explicitly decides to rename the command later.
 
 ## Items
 
@@ -41,7 +47,10 @@
   - whether a local-only mode with no GitHub org setup is feasible
 
   Cross-reference existing work (clean-room VM loop, plan for the `project` scope, issue #58) instead of duplicating it. If it's large, write the result as a separate plan.
-- [ ] **7. Check name availability** for "Optivem" in the SDD context and for the fallback "Assay": domains, GitHub orgs, obvious trademark conflicts. Report the findings and don't register anything.
+- [ ] **7. Brainstorm and check product names. Do this FIRST: items 1–3 depend on the chosen name.**
+  - Brainstorm 5–10 candidate product names that fit "Spec-as-Test" / "specs that fail first", including "Assay" and plain "Optivem" as the baseline.
+  - For each candidate, check availability: domains, GitHub orgs/repos, `gh-<name>` extension name, obvious trademark conflicts, and collisions with existing SDD tools. Report findings in a table and don't register anything.
+  - The user picks the name. Record it in `## Resolved decisions` → *Product name* before starting items 1–3.
 
 ## Verification (user-driven)
 
