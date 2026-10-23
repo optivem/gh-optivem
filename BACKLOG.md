@@ -2,7 +2,7 @@
 
 ## Context
 
-Analysis of the [sandbox project setup page](https://github.com/optivem/academy/blob/main/courses/02-atdd/accelerator/course/01-getting-started/04-sandbox-project.md) to identify manual tasks that could be automated by `gh-optivem`, reducing human effort during project setup.
+Analysis of the [sandbox project setup page](https://github.com/optivem/academy/blob/main/courses/02-atdd-accelerator/course/01-getting-started/04-sandbox-project.md) to identify manual tasks that could be automated by `gh-optivem`, reducing human effort during project setup.
 
 ## All Issues
 
