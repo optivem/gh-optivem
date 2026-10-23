@@ -38,6 +38,146 @@ agent, exists for teaching.
   point on Böckeler's open question: does the inner loop pay back on long-lived
   code?
 
+## Workflow (proposed)
+
+The existing outer loop is unchanged. The inner loop runs inside "Implement
+System", and the component's mode picks which branch runs. Dashed boxes are new.
+
+```mermaid
+flowchart TD
+    A["Write failing acceptance tests<br/>(outer RED)"] --> G{"Component's<br/>inner-loop mode?"}
+
+    G -- "none (default)" --> N["Implement system<br/>(today's behaviour)"]
+
+    G -- "unit-tests" --> U1["Design upfront, then write domain code<br/>+ unit tests via domain API / ports"]
+    U1 --> U2["Run unit tests<br/>+ mutation test on CHANGED domain classes only"]
+    U2 -- "survivors / failures" --> U3["Fix loop<br/>(gets the short survivor list)"]
+    U3 --> U2
+
+    G -- "tdd" --> T0["Design the change<br/>→ design note: types, edge cases,<br/>ordered list of behaviours"]
+    T0 --> T1["Unit-test writer agent (fresh context)<br/>writes failing test for next behaviour"]
+    T1 --> T2["Verify unit test RED"]
+    T2 --> T3["Implementer agent (fresh context)<br/>makes it pass"]
+    T3 --> T4["Verify unit test GREEN"]
+    T4 --> T5["Refactor (optional)"]
+    T5 --> T6{"More behaviours<br/>in design note?"}
+    T6 -- yes --> T1
+    T6 -- no --> T7["Mutation test on changed domain classes"]
+
+    N --> V["Verify acceptance tests<br/>(outer GREEN)"]
+    U2 -- "pass + threshold met" --> V
+    T7 --> V
+    V --> R["Opportunistic refactor<br/>(outer REFACTOR)"]
+
+    NIGHT["Nightly CI: full domain-core mutation run<br/>(outside agent loop; sets the threshold baseline)"]
+
+    classDef new stroke-dasharray: 5 5;
+    class G,U1,U2,U3,T0,T1,T2,T3,T4,T5,T6,T7,NIGHT new;
+```
+
+## Modes compared: `unit-tests` vs `tdd`
+
+Both modes produce unit tests on the domain core and pass the same mutation
+gate. What differs is **order and step size**: when the tests are written
+relative to the code, and how much code is written between test runs.
+
+| | `unit-tests` | `tdd` |
+|---|---|---|
+| Order | Design → write code **and** tests together → run | Design note → for each behaviour: test first → see it fail → code → see it pass → refactor |
+| Step size | One large change for the whole ticket | One behaviour at a time (~10 lines) |
+| Who writes the tests | The implementer, alongside the code | A separate unit-test-writer agent; the implementer only makes them pass |
+| Is the red proven? | No; tests are never seen failing | Yes; each test is verified red before the code exists, by an independent agent |
+| How test quality is checked | Mutation score only | Mutation score + the verified red |
+| When it catches bugs | After the whole change, as one test run | Right after the ~10 lines that caused it |
+| Main benefit | Regression net for **later** tickets | Regression net + help within the **current** ticket on complex logic |
+| Token cost | Modestly above `none` | Several times `none` (3–8.5× measured for a single agent) |
+| Best for | Normal opt-in for domain cores | Rule-heavy logic; teaching and demos of the double loop |
+
+In one line: `unit-tests` checks the **result** (good tests exist, measured by
+mutation testing). `tdd` also enforces the **process** (test first, in small
+verified steps).
+
+## End result: proposed configuration
+
+### Tier config (`kind: system`, multitier)
+
+Each tier gets an optional `inner-loop:` block. If the block is absent, the
+mode is `none`, and existing configs keep working unchanged. Shown here as the
+pilot would look once clean-java is a system backend (see open question 7):
+
+```yaml
+kind: system
+system:
+    architecture: multitier
+    config: docker/java/multitier/systems.yaml
+    backend:
+        path: system/multitier/backend-clean-java
+        repo: optivem/shop
+        lang: java
+        sonar-project: optivem_shop-multitier-backend-clean-java
+        inner-loop:                       # NEW: optional; absent = none
+            mode: unit-tests              # none | unit-tests | tdd
+            mutation-threshold: 80        # % killed, applies to changed domain classes;
+                                          # starting value set from the nightly baseline
+        paths:                            # NEW on backend/frontend tiers (today: system-test only)
+            domain: system/multitier/backend-clean-java/src/main/java/com/mycompany/myshop/backend/domain
+            use-cases: system/multitier/backend-clean-java/src/main/java/com/mycompany/myshop/backend/usecases
+            domain-test: system/multitier/backend-clean-java/src/test/java/com/mycompany/myshop/backend/domain
+            use-cases-test: system/multitier/backend-clean-java/src/test/java/com/mycompany/myshop/backend/usecases
+    frontend:
+        path: system/multitier/frontend-react
+        repo: optivem/shop
+        lang: typescript
+        sonar-project: optivem_shop-multitier-frontend-react
+        # no inner-loop block → none (thin UI; acceptance tests cover it)
+```
+
+### The same block on other shapes
+
+```yaml
+# monolith: sibling of System.path (open question 1)
+system:
+    architecture: monolith
+    path: system/monolith/java
+    inner-loop: { mode: unit-tests }
+
+# microservices: per service, because each service is a TierSpec
+system:
+    backend-services:
+        orders:  { path: ..., inner-loop: { mode: tdd } }       # rule-heavy
+        catalog: { path: ... }                                   # CRUD → none
+
+# kind: component: same block, used once the contract-driven outer loop lands
+# (plans/20260818-1658)
+component:
+    name: backend-clean-java
+    inner-loop: { mode: unit-tests }
+```
+
+### Schema and validation changes this implies
+
+- **New `InnerLoop` struct** with `Mode` (enum, default `none`) and
+  `MutationThreshold` (0–100, optional). The struct is added to `TierSpec`,
+  `System` (monolith only) and `Component`. Both fields earn their slot: the
+  flow gateway branches on `Mode`, and the mutation gate reads
+  `MutationThreshold`.
+- **`Validate` rules:**
+  - `mode` must be in the enum.
+  - `mutation-threshold` requires a mode other than `none`, and must be 0–100.
+  - A mode other than `none` requires the tier's `paths:` to contain at least
+    one core key (`domain` or `use-cases`) plus its matching `-test` key.
+  - The existing rule that rejects `paths:` on backend/frontend tiers is relaxed
+    to allow exactly these four keys. All other keys stay rejected there.
+- **New path placeholders:**
+  - `${domain}`, `${use-cases}`, `${domain-test}`, `${use-cases-test}`;
+  - each is pinned in `phase-scopes.yaml` for the inner-loop phases only.
+
+  They are deterministically constructed per language by `gh optivem init`, from
+  the shop template, with no guessing ladder. Plain names, no ATDD jargon: they
+  appear in configs students read.
+- **Prompts:** `gh optivem init` / `config` prompts ask for the mode per tier.
+  They default to `none` and run the same validator as the flag.
+
 ## ▶ Next executable step (resume here)
 
 Design only. Nothing mechanical is ready yet. Resolve the Open questions below
@@ -62,10 +202,23 @@ shape depend on them.
   mode. For `unit-tests`, the implementer prompt gains a "design upfront, then
   domain code + unit tests through the domain API/ports, no mocking inside the
   domain" section. A new verify step runs the unit suite plus mutation testing,
-  scoped to the domain core.
+  scoped to the domain core. The mutation gate runs **once per ticket, at inner
+  green**, never on every edit (the edit-run cycles use only the fast unit
+  tests), and it mutates **only the domain classes changed by this ticket**.
+  Only the surviving mutants (a short list, not the full report) go back to the
+  fix loop.
 - [ ] Step 4: Wire PIT into shop `backend-clean-java` (domain-core target only).
   Add a `gh optivem` runner command/suite for it that local users run the same
-  way CI does.
+  way CI does. Use PIT's changed-code mode (`scmMutationCoverage`, or an
+  explicit `targetClasses` list) for the inner gate. Run the full domain core
+  nightly in CI, outside the agent loop. That run catches the cross-class decline
+  the changed-only gate misses, and supplies the baseline for the threshold.
+  Verify the exact flag names against the current PIT version; the same applies
+  later to Stryker.NET `--since` and StrykerJS `--incremental`.
+- [ ] Step 4b: Tag each run's `summary.jsonl` with the component's inner-loop
+  mode and the ticket id. Add an aggregation command or script that compares
+  modes across runs: tokens split into fresh vs cached, cost, fix-loop attempts,
+  and elapsed time. These are the prerequisites for the experiments.
 - [ ] Step 5: Tests:
   - statemachine/transition tests for the new gateway (audit loopback edges for
     the deadlock hazard first);
@@ -153,6 +306,163 @@ https://martinfowler.com/articles/exploring-gen-ai/tdd-in-the-agent-loop.html
   - fix-loop iterations;
   - files touched per change over time.
 
+### Token cost by mode (why TDD costs more)
+
+TDD costs more mainly because:
+- it takes more turns (about 3 per behaviour: red, green, refactor);
+- in a long session, every turn re-reads the whole growing context;
+- test output is read back 2–3 times per behaviour.
+
+Prompt caching lowers the dollar cost but not the token count. Expected
+ranking, cheapest first (only the 3–8.5× figure is measured; the others are
+estimates):
+
+1. `none`: baseline.
+2. `unit-tests`: modestly more. Tests are written alongside the code in a few
+   large edits, plus usually one round of feedback on surviving mutants.
+3. `tdd` as fresh agents per behaviour (see below): likely at or below the next
+   row, if handoffs stay small.
+4. `tdd` inside one long agent session: 3–8.5× (Böckeler).
+
+### `tdd` mode design: fresh context per step, with a design note
+
+gh-optivem already starts a fresh agent at every BPMN node. Fresh contexts turn
+the growing-context cost into a cost that grows in a straight line with the
+number of steps. They add two risks:
+- **Cold start:** each agent re-reads its prompt and files.
+- **Lost design intent:** each step makes an even more local decision. This
+  would make Böckeler's design lock-in finding worse.
+
+The mitigations below become requirements of `tdd` mode:
+
+- A **"design the change" step opens the inner loop.** It writes a short design
+  note: domain types, edge cases, and the ordered list of behaviours to drive.
+  Every later writer and implementer step receives the note. This keeps the
+  upfront design that Böckeler's non-TDD runs did well.
+- **Small explicit handoffs.** Each step gets the design note, the current test,
+  and the target file(s) only, within the pinned domain-core scope.
+- **A stable prompt prefix.** The agent prompt and scope rules are identical
+  across dispatches, so prompt caching applies and only the per-step tail is
+  paid at full price.
+
+This makes per-behaviour BPMN steps the leaning answer to Q4. It is still clearly
+more expensive than `unit-tests` mode.
+
+### Where TDD might save tokens (the hypothesis)
+
+TDD can only pay back by preventing **debugging spirals**. In gh-optivem a
+spiral shows up as the fix loop: repeated fresh dispatches, possibly running out
+of the retry budget. Böckeler's tasks made spirals unlikely:
+- the code was small and fit in context;
+- the agent had just written it;
+- it was pure logic with no layers.
+
+Spirals become likely when:
+- the relevant code isn't in context;
+- the failure shows up far from its cause;
+- rules interact;
+- the code is legacy;
+- feedback is slow.
+
+Long-lived systems have all of these.
+
+TDD prevents spirals through two separate mechanisms:
+- **Pinpointing:** a red unit test names the broken rule. `unit-tests` mode
+  gives this too.
+- **Small steps from a known green:** the bug is in the last ~10 lines. Only
+  `tdd` mode gives this.
+
+So `unit-tests` mode is expected to capture most of the long-term regression
+benefit. `tdd` adds a benefit within the current ticket that matters only for
+complex logic.
+
+TDD pays back only if (how often spirals happen × what a spiral costs) is
+greater than the fixed extra cost per ticket.
+
+Evidence so far: the fix-loop exhaustions seen in rehearsals (e.g. the
+"no X persisted" absence assertions) were DSL/scope problems, not domain logic
+bugs. TDD would not have prevented them.
+
+## Testing the theory (experiment design)
+
+**Measurement is mostly there already.** Every run writes
+`.gh-optivem/runs/<run-ts>/summary.jsonl`, with one row per dispatch recording:
+- the agent, model and effort;
+- elapsed time;
+- token usage, including cache reads;
+- cost;
+- the attempt number out of the attempt maximum.
+
+What's missing is tagging each run with the component's inner-loop mode and the
+ticket, plus a script that aggregates across runs.
+
+### Experiments, cheapest first
+
+1. **Same ticket, every mode (A/B/C).** Start from one pinned commit of
+   `backend-clean-java`. Run the same ticket in `none`, `unit-tests` and `tdd`,
+   3–5 times per mode, because LLM runs vary. Use a mix of tickets:
+   - CRUD-shaped (expect `none` to win);
+   - rule-heavy (pricing, discounts, state transitions), where TDD should have
+     its best case.
+
+   This answers the question "what does each mode cost per ticket?"
+2. **Seeded-spiral test.** Give each mode a ticket deliberately designed to
+   cause interacting rules: a new rule that breaks an existing rule only in one
+   combination. Measure:
+   - fix-loop iterations;
+   - tokens spent in the fix loop versus the implement step;
+   - edits to files outside the eventual fix (the "fixed the wrong layer"
+     signal).
+
+   This answers the question "does the inner loop prevent spirals?"
+3. **Fault-injection on aged code.** Build three codebases, one per mode, then
+   inject known faults into domain classes written several tickets earlier.
+   Measure:
+   - which faults the unit tests catch;
+   - which only the acceptance tests catch;
+   - which escape both.
+
+   This answers the question "does the regression net work?" It is also cheap
+   to run, because no AI is needed beyond building the codebases.
+4. **Aging curve ("feature 50").** Replay the same sequence of ~15–20 tickets
+   from one starting commit, separately in each mode, producing three diverging
+   codebases. Plot per ticket:
+   - tokens;
+   - fix-loop iterations;
+   - files touched per change;
+   - full-domain mutation score;
+   - Sonar complexity/duplication.
+
+   If `none` grows more expensive over time while `unit-tests`/`tdd` stay flat,
+   that confirms the long-lived-code argument. This is the most expensive
+   experiment, so run it last and only if experiments 1–3 point that way.
+
+### Quality measures (shared by all experiments)
+
+- Full-domain mutation score (the nightly run).
+- Sonar metrics, already wired in CI.
+- Files touched per change.
+- Regression rate: earlier acceptance tests broken by a later ticket.
+- A blind human review of a sample. This avoids relying only on an LLM judge,
+  which was a weakness of Böckeler's setup.
+
+### Controls
+
+- Same model, effort and prompt versions across modes.
+- Same starting commit.
+- Multiple runs per cell, reporting the median and spread.
+- Report tokens split into fresh vs cached, as well as dollars.
+
+### What would change the plan
+
+- **`unit-tests` captures most of `tdd`'s savings at a fraction of the cost:**
+  confirms the design (`unit-tests` = normal opt-in, `tdd` = teaching).
+- **`tdd` wins on rule-heavy or aged code:** promote `tdd` to the recommended
+  mode for domain cores.
+- **Neither mode beats `none` on any measure:** keep the feature for teaching
+  only, and say so publicly. That would extend Böckeler's finding to long-lived
+  code, a result worth publishing either way.
+
 ## Related
 
 - `plans/20260818-1658-contract-driven-outer-loop-for-kind-component.md`: that
@@ -181,5 +491,24 @@ https://martinfowler.com/articles/exploring-gen-ai/tdd-in-the-agent-loop.html
    agent-internal loop is cheaper but becomes the "theater" Böckeler criticises.
 5. **Does `implement --target` gain a `unit-test` slice** for team handoff?
    Lean: no in Slice 1.
+7. **BLOCKER for the pilot target: `backend-clean-java` is `kind: component`
+   in shop today.** `shop/gh-optivem-multitier-clean-java.yaml` declares it as a
+   component, because it has no compose stack and no acceptance suite driving
+   it. `implement` refuses that kind. Options:
+   - **(a)** Promote clean-java to the backend tier of a `kind: system`
+     multitier config. This needs a compose stack, and the backend must serve
+     the API the Java system tests drive. It is the most work, and gives the
+     pilot you want.
+   - **(b)** Run Slice 1 on `backend-java` in `gh-optivem-multitier-java.yaml`,
+     which is `kind: system` today. Point its `domain` path at its `core/`
+     package. This works now, but the domain is thinner, so it is a weaker test
+     of the theory.
+   - **(c)** Wait for the contract-driven outer loop for `kind: component`
+     (`plans/20260818-1658`). That plan is still unresolved design, so this
+     blocks indefinitely.
+
+   Lean: **(b) to prove the mechanism, then (a) for the experiments.** The
+   experiments need a real domain core, and (a) is a prerequisite that belongs
+   in shop, as its own plan.
 6. **Is the field name `inner-loop`?** It must avoid "ATDD"/internal jargon,
    because the name leaks into configs that students read.
