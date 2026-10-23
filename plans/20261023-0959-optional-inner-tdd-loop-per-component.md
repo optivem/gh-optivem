@@ -93,6 +93,11 @@ relative to the code, and how much code is written between test runs.
 | Token cost | Modestly above `none` | Several times `none` (3–8.5× measured for a single agent) |
 | Best for | Normal opt-in for domain cores | Rule-heavy logic; teaching and demos of the double loop |
 
+Despite its name, `unit-tests` is a mode, not a level: both modes can run at
+either level (`level: component` or `level: unit`). In restructuring tickets
+(`redesign-*` / `refactor-*`), both modes reduce to "the existing inner tests
+must pass": no test-first, no mutation check.
+
 In one line: `unit-tests` checks the **result** (good tests exist, measured by
 mutation testing). `tdd` also enforces the **process** (test first, in small
 verified steps).
@@ -102,8 +107,9 @@ verified steps).
 ### Tier config (`kind: system`, multitier)
 
 Each tier gets an optional `inner-loop:` block. If the block is absent, the
-mode is `none`, and existing configs keep working unchanged. Shown here as the
-pilot would look once clean-java is a system backend (see open question 7):
+mode is `none`, and existing configs keep working unchanged. This first example
+is the **final state after Slice 3** (unit level on clean-java). Slices 1–2 use
+the simpler component-level shape in the next example, which has no `level` key.
 
 ```yaml
 kind: system
@@ -117,9 +123,11 @@ system:
         sonar-project: optivem_shop-multitier-backend-clean-java
         inner-loop:                       # NEW: optional; absent = none
             mode: unit-tests              # none | unit-tests | tdd
+            level: unit                   # component | unit (unit requires hexagonal/clean)
             mutation-threshold: 80        # % killed, applies to changed domain classes;
                                           # starting value set from the nightly baseline
         paths:                            # NEW on backend/frontend tiers (today: system-test only)
+                                          # level: unit needs these four
             domain: system/multitier/backend-clean-java/src/main/java/com/mycompany/myshop/backend/domain
             use-cases: system/multitier/backend-clean-java/src/main/java/com/mycompany/myshop/backend/usecases
             domain-test: system/multitier/backend-clean-java/src/test/java/com/mycompany/myshop/backend/domain
@@ -130,6 +138,21 @@ system:
         lang: typescript
         sonar-project: optivem_shop-multitier-frontend-react
         # no inner-loop block → none (thin UI; acceptance tests cover it)
+```
+
+### Slice 1 pilot: component level on a layered backend (works today)
+
+```yaml
+    backend:
+        path: system/multitier/backend-java
+        repo: optivem/shop
+        lang: java
+        sonar-project: optivem_shop-multitier-backend-java
+        inner-loop:
+            mode: unit-tests              # component level implied until Slice 3 adds `level`
+            mutation-threshold: 70        # any architecture; tests drive the backend via its API/ports
+        paths:
+            component-test: system/multitier/backend-java/src/componentTest/java/com/mycompany/myshop/backend
 ```
 
 ### The same block on other shapes
@@ -156,20 +179,24 @@ component:
 
 ### Schema and validation changes this implies
 
-- **New `InnerLoop` struct** with `Mode` (enum, default `none`) and
-  `MutationThreshold` (0–100, optional). The struct is added to `TierSpec`,
+- **New `InnerLoop` struct** with three fields:
+  - `Mode`: enum, default `none`;
+  - `Level`: `component|unit`, required when the mode is not `none`;
+  - `MutationThreshold`: 0–100, optional. The struct is added to `TierSpec`,
   `System` (monolith only) and `Component`. Both fields earn their slot: the
   flow gateway branches on `Mode`, and the mutation gate reads
   `MutationThreshold`.
 - **`Validate` rules:**
   - `mode` must be in the enum.
   - `mutation-threshold` requires a mode other than `none`, and must be 0–100.
-  - A mode other than `none` requires the tier's `paths:` to contain at least
-    one core key (`domain` or `use-cases`) plus its matching `-test` key.
+  - `level: component` requires a `component-test` path.
+  - `level: unit` requires at least one core key (`domain` or `use-cases`) plus
+    its matching `-test` key.
   - The existing rule that rejects `paths:` on backend/frontend tiers is relaxed
-    to allow exactly these four keys. All other keys stay rejected there.
+    to allow exactly these five keys. All other keys stay rejected there.
 - **New path placeholders:**
-  - `${domain}`, `${use-cases}`, `${domain-test}`, `${use-cases-test}`;
+  - `${component-test}`, `${domain}`, `${use-cases}`, `${domain-test}`,
+    `${use-cases-test}`;
   - each is pinned in `phase-scopes.yaml` for the inner-loop phases only.
 
   They are deterministically constructed per language by `gh optivem init`, from
@@ -180,15 +207,28 @@ component:
 
 ## ▶ Next executable step (resume here)
 
-Design only. Nothing mechanical is ready yet. Resolve the Open questions below
-with `/refine-plan` on this file before running `/execute-plan`. The questions
-that most need answers first are Q1 (monolith placement), Q3 (gate strictness)
-and Q4 (`tdd` iteration shape), because Step 1's schema shape and Step 3's BPMN
-shape depend on them.
+All design questions are resolved (see Decisions) except the mode name
+(open question below). Start Step 1 (component level only, Decision 8): add the
+`InnerLoop` struct to the schema with two fields:
+- `Mode`: `none|unit-tests|tdd`, default `none`;
+- `MutationThreshold`: 0–100.
+
+There is no `Level` field yet. Add the struct to `TierSpec`, `System`
+(monolith) and `Component`, in
+`internal/kernel/projectconfig/config.go`. Add the Validate rules listed under
+"Schema and validation changes", and their tests. Stop when the schema and
+validation tests pass with `-p 2`. This unblocks Step 2 (path placeholders).
 
 ## Steps
 
-### Slice 1 — schema + `unit-tests` mode, Java only, pilot on backend-clean-java
+### Slice 1 — component level, `unit-tests` mode, Java only, pilot on backend-java (FIRST PRIORITY)
+
+Slice 1 pilots **component level only**, with no unit tests at all, on
+`backend-java` (`gh-optivem-multitier-java.yaml`). It uses that backend's
+existing `componentTest` source set, so any architecture works and no shop
+prerequisite is needed. Slices 1–2 are component level only. In their steps,
+"domain core" means the component's main source, and the inner tests are the
+component tests.
 
 - [ ] Step 1: Add the inner-loop mode field to `TierSpec`
   (`internal/kernel/projectconfig/config.go`). Use an enum `none|unit-tests|tdd`,
@@ -230,7 +270,14 @@ shape depend on them.
   sequence in BPMN, with `tdd-stage` styling. Reuse
   `expected-test-result: failure` for the unit-level red.
 
-### Slice 3 — other languages and tiers
+### Slice 3 — unit level (hexagonal/clean only)
+
+- [ ] Step 6b: Add `Level` (`component|unit`, default `component`) to
+  `InnerLoop`. Add the `domain`/`use-cases`/`-test` path keys, their Validate
+  rules, and phase-scope pins. Pilot on `backend-clean-java`, once the shop
+  plan has made it a `kind: system` backend (Decision 7).
+
+### Slice 4 — other languages and tiers
 
 - [ ] Step 7: Stryker.NET for `backend-dotnet` and StrykerJS for
   `backend-typescript` / `frontend-react`, if any tier there opts in.
@@ -471,7 +518,66 @@ ticket, plus a script that aggregates across runs.
   are kept separate on purpose. If that plan lands, its flow could reuse this
   inner-loop mode as-is.
 
+## Decisions (resolved 2026-10-23)
+
+1. **Monolith:** the `inner-loop` block is a sibling field on `System`
+   (`system.inner-loop`), with the same shape as the tier block.
+2. **Redesign/refactor tickets:** TDD applies only to behaviour changes. In
+   `redesign-*` and `refactor-*` cycles, the component's existing inner tests
+   must still pass, and that is the only check:
+   - no test-first;
+   - no mutation check (there is no new behaviour, so no new tests to grade).
+
+   We assume the architecture is hexagonal/clean.
+3. **Mutation threshold:** set per component. It hard-fails into the existing
+   fix loop, which receives the list of surviving mutants. The starting value
+   comes from the nightly full baseline.
+4. **`tdd` shape:** BPMN steps with fresh agents. The steps are:
+   - a design-note step;
+   - then, per behaviour: writer → verify red → implementer → verify green →
+     refactor.
+
+   Handoffs stay small, and the prompt prefix is kept stable so caching applies.
+5. **No `implement --target` unit-test slice.** The same person owns the inner
+   tests and the code that makes them pass. In `tdd` mode the writer/implementer
+   agents are an internal split *within* one slice, not a team handoff.
+6. **The field name is `inner-loop`.**
+7. **Level is a second setting: `level: component | unit`.**
+   - **Component level** drives the whole component through its edges (API or
+     ports), with test doubles for the database and external systems. It works
+     with any architecture. Tests go in the `componentTest` source set, which
+     both Java backends already have.
+   - **Unit level** drives domain and use-case classes directly. It requires a
+     hexagonal/clean architecture and the `domain`/`use-cases` paths.
+
+   This settles the pilot:
+   - component level on `backend-java` now (a `kind: system` backend);
+   - unit level on `backend-clean-java` once shop makes it a system backend
+     (a separate shop plan; it is `kind: component` today, which `implement`
+     refuses).
+8. **Priority: component level first, with no unit tests at all.** Get the
+   inner loop working end-to-end at component level before any unit-level work.
+   This applies to any component, regardless of architecture.
+   - **No `level` field until unit level is built.** Slice 1–2 configs carry
+     only `mode` and `mutation-threshold`, and component level is implied. The
+     `level` field is added in Slice 3 with default `component`, so existing
+     configs stay valid. This follows "schema fields must earn their slot":
+     nothing branches on `level` before then.
+
 ## Open questions
+
+1. **Rename the `unit-tests` mode?** With component level first, a mode called
+   `unit-tests` would write *component* tests, which is misleading for students.
+   Lean: rename it to **`test-after`** (`none | test-after | tdd`). It names the
+   real difference from `tdd` (when the tests are written) and doesn't depend
+   on the level. Once decided, apply the name throughout this plan.
+2. **Is mutation testing affordable at component level?** If the component tests
+   boot the Spring context, every mutant pays that startup cost. Checking only
+   the changed classes helps, but Step 4 should measure a changed-only PIT run on
+   `backend-java` first. If it is too slow, fall back to "component tests pass +
+   coverage of changed lines" for Slice 1, and record the result here.
+
+## Superseded open questions (kept for history)
 
 1. **Where does the monolith's setting live?** Monoliths use System-level
    `path/repo/lang`, not `TierSpec`. Options:
