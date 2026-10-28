@@ -21,7 +21,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 2 (parser in `internal/spec/`; the convention is in `docs/spec-gate/convention.md`). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
+Step 3 (JUnit XML reader in `internal/spec/`; the convention is in `docs/spec-gate/convention.md`; Step 2 parser exists in `internal/spec/usecase.go`). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
 
 ## Execution notes (autonomous and token-efficient)
 
@@ -46,7 +46,6 @@ Step 2 (parser in `internal/spec/`; the convention is in `docs/spec-gate/convent
 
 ## Steps
 
-- [ ] Step 2: `internal/spec/` parser: markdown use cases to a model (use case id/title, criteria with IDs, optional `flag`), plus `Validate` (duplicate IDs, prefix mismatch, malformed front matter). Table-driven tests using `docs/spec-gate/trial/UC-001-place-order.md` copied to `internal/spec/testdata/`. Gate: `go test ./internal/spec/...` green. Commit.
 - [ ] Step 3: JUnit XML reader in `internal/spec/`: parse Gradle/Surefire XML, extract tag/property IDs and `wip`, normalise `@TestTemplate` suffixes, aggregate multiple results per test. Fixtures: write small XML files in `internal/spec/testdata/` (all-pass, one red, one skipped, templated channels, unknown ID, orphan). Gate: tests green. Commit.
 - [ ] Step 4: Lifecycle engine and report model: compute per-criterion state, per-use-case state, spec coverage (`verified / total criteria`), orphans, unknown IDs; apply `spec.yaml` waivers (expiry honoured) and `flag`. Emit the versioned JSON report. Gate: tests cover each state using the Step 3 fixtures and the 14-criterion spec (criterion 14 has no test, criteria 3 and 4 share tests). Commit.
 - [ ] Step 5: Gating: lenient and strict modes, threshold, exit codes, baseline load/compare. Gate: tests for the lenient vs strict matrix and baseline regression. Commit.
