@@ -49,3 +49,13 @@ Analysis of the [sandbox project setup page](https://github.com/optivem/academy/
 ## Spec-coverage gate open items
 
 - TODO: prove tags-as-properties on a real run. Stock Gradle JUnit XML may not write JUnit 5 `@Tag` values as `<property>` entries (the shop trial in `docs/spec-gate/trial/gh-optivem-run.md` used generated XML). Verify against a real Gradle run; if absent, document and ship a `TestExecutionListener`/reporter setup, and correct the "Gradle/Surefire XML carries tags as properties" claim in `docs/spec-gate/convention.md` if it does not hold.
+
+Later ideas for the spec-coverage gate:
+
+- Needs Clarification lifecycle state.
+- Stale-criterion warning (spec changed after its test) and smell warning (one test tagged with many criteria).
+- `gh optivem spec next --json`: tells an AI agent which criterion is next and what "done" means.
+- Gherkin as a second spec source.
+- MCP wrapper (thin, read-only: `status`, `next`, `explain`, `validate`).
+- Wire the gate into the ATDD verify steps.
+- Extract the ATDD runner (`internal/atdd`) from gh-optivem; remove the `kernel` and `diagrams` back-edges first.
