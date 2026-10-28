@@ -21,7 +21,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 8 (Shop trial: copy `shop` to a temp dir outside both repos, never touch shop `main`, push nothing; add `spec.yaml`, the Place Order markdown and `@Tag` ids to the Java tests, produce JUnit XML (synthetic if Docker/Keycloak is unavailable, and say so), run `gh optivem spec check` in lenient and strict modes via the Step 7 CLI in `spec_commands.go` (flags `--mode`, `--threshold`, `--json`, `--html`, `--pr-comment`, `--flag`, `--config`; subcommands `check`, `status`, `validate`, `adopt`; exit 0 pass, 1 gate failed, 2 usage/config error), record results and friction in `docs/spec-gate/trial/gh-optivem-run.md`). Gate: expected states (13 of 14 covered, criterion 14 Planned). Commit the notes only. All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously. Do not read the Background section unless a step says so; each step is self-contained.
+Step 9 (Docs and wiring: README section and command reference for `gh optivem spec`, link `docs/spec-gate/convention.md`, mention in `docs/tbd.md` (stage-based gating); update the mockup README/screens for the `gh optivem spec` name and trunk-based flow only if cheap, else leave a note; also document the Gradle/JUnit 5 setup that writes tags as `<property>` entries (see `docs/spec-gate/trial/gh-optivem-run.md`); run the full `go test -p 2 ./...` and `go vet ./...`. Gate: all green. Commit). Step 8 (shop trial) is done: notes in `docs/spec-gate/trial/gh-optivem-run.md`, no bugs found. All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously. Do not read the Background section unless a step says so; each step is self-contained.
 
 ## Execution notes (autonomous and token-efficient)
 
@@ -46,7 +46,6 @@ Step 8 (Shop trial: copy `shop` to a temp dir outside both repos, never touch sh
 
 ## Steps
 
-- [ ] Step 8: Shop trial: copy `shop` to a temp dir outside both repos (never touch shop `main`, push nothing), add `spec.yaml`, the Place Order markdown and `@Tag` ids to the Java tests, produce JUnit XML (use synthetic XML if Docker/Keycloak is unavailable and say so), run `gh optivem spec check` in lenient and strict modes, record results and friction in `docs/spec-gate/trial/gh-optivem-run.md`. Gate: expected states (13 of 14 covered, criterion 14 Planned). Commit the notes only.
 - [ ] Step 9: Docs and wiring: README section and command reference for `gh optivem spec`, link `docs/spec-gate/convention.md`, mention in `docs/tbd.md` (stage-based gating). Update the mockup README/screens for the `gh optivem spec` name and trunk-based flow only if cheap, else leave a note. Run the full `go test -p 2 ./...` and `go vet ./...`. Gate: all green. Commit.
 - [ ] Step 10: Cleanup: delete this plan, and add the remaining ideas to `BACKLOG.md` (Needs Clarification state, stale and smell warnings, `next` command for agents, Gherkin source, MCP wrapper, wiring into the ATDD verify steps, extracting the ATDD runner). Commit.
 
