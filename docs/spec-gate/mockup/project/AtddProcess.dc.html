@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gh-optivem ATDD process with specgate</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1100px; height: 1040px; box-sizing: border-box; padding: 28px; background: #FAFAF8; color: #1B1F23; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; line-height: 1.4; display: flex; flex-direction: column; gap: 16px">
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">gh-optivem ATDD process, and where specgate fits</h1>
+    <p style="margin: 0; color: #5B6470">The main path for a Story or Bug. A Task (legacy coverage, redesign, refactor) branches off at the ticket-kind gateway. Shaded rows are where specgate reads or sets a criterion state.</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 30px minmax(0, 2.2fr) 112px minmax(0, 1fr) minmax(0, 2fr); gap: 5px">
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="80">
+      <div style="{{c.style}}">{{c.text}}</div>
+    </sc-for>
+  </div>
+
+  <p style="margin: 0; color: #5B6470; font-size: 12px">Process steps taken from gh-optivem's generated process diagram. Every step is its own commit, and a human approves agent output before the run continues.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const stage = {
+      board: { label: 'Board', bg: '#ECEEF1', fg: '#3A424C' },
+      human: { label: 'Human', bg: '#FFF4BF', fg: '#5C4B00' },
+      setup: { label: 'Setup', bg: '#ECEEF1', fg: '#3A424C' },
+      red: { label: 'RED', bg: '#FBE4E1', fg: '#8A1C12' },
+      green: { label: 'GREEN', bg: '#E4F3E8', fg: '#14532D' },
+      refactor: { label: 'REFACTOR', bg: '#E1ECFB', fg: '#123C7A' }
+    };
+    const rows = [
+      ['Refine ticket', null],
+      ['Mark ticket IN REFINEMENT', 'board', 'Command', ''],
+      ['Refine acceptance criteria', 'human', 'Agent + human', 'Criteria get IDs in the use case markdown: ○ Planned'],
+      ['Mark ticket READY', 'board', 'Command', 'specgate validate must pass'],
+      ['Implement ticket', null],
+      ['Set up tests, mark IN PROGRESS, parse the ticket', 'setup', 'Command', ''],
+      ['Ticket kind gateway: Story or Bug, or Task subtype', 'setup', 'Command', ''],
+      ['Change system behavior', null],
+      ['Implement external drivers if needed', 'red', 'Agent', ''],
+      ['Write failing acceptance tests (DSL, system driver adapters if ports changed)', 'red', 'Agent', 'Tests tagged with criterion IDs'],
+      ['Verify tests fail (fix any that pass unexpectedly)', 'red', 'Command', '◐ In progress (red, tagged wip)'],
+      ['Commit, human approves', 'human', 'Human', 'specgate check, branch mode'],
+      ['Implement system', 'green', 'Agent', ''],
+      ['Verify tests pass (fix loop until green, or halt)', 'green', 'Command', '✓ Verified (wip removed)'],
+      ['Opportunistic refactor, verify tests still pass', 'refactor', 'Agent', 'Stays ✓ Verified'],
+      ['Mark ticket IN ACCEPTANCE', 'board', 'Command', 'specgate strict gate on main']
+    ];
+    const head = 'padding: 8px 8px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #5B6470; border-bottom: 2px solid #1B1F23';
+    const cells = [];
+    ['#', 'Step', 'Stage', 'Executor', 'specgate'].forEach((h) => cells.push({ text: h, style: head }));
+    let n = 0;
+    rows.forEach((r) => {
+      if (r[1] === null) {
+        cells.push({ text: '', style: 'padding: 6px 0' });
+        cells.push({ text: r[0], style: 'grid-column: span 4; padding: 8px 8px 2px; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: #2F4BD8' });
+        return;
+      }
+      n += 1;
+      const hook = !!r[3];
+      const bg = hook ? '#EEF2FF' : '#FFFFFF';
+      const base = 'padding: 8px; border: 1px solid ' + (hook ? '#C7D2FE' : '#E3E3DE') + '; border-radius: 6px; background: ' + bg;
+      const st = stage[r[1]];
+      cells.push({ text: String(n), style: base + '; color: #5B6470; text-align: center; padding-left: 0; padding-right: 0' });
+      cells.push({ text: r[0], style: base + '; font-weight: 500' });
+      cells.push({ text: st.label, style: base + '; background: ' + st.bg + '; color: ' + st.fg + '; font-weight: 700; font-size: 12px; text-align: center' });
+      cells.push({ text: r[2], style: base + '; color: #3A424C' });
+      cells.push({ text: r[3] || '–', style: base + '; font-weight: ' + (hook ? '600' : '400') + '; color: ' + (hook ? '#1F3399' : '#8A94A0') });
+    });
+    return { cells };
+  }
+}
+</script>
+</body>
+</html>

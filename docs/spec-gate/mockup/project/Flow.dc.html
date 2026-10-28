@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>specgate process flow</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font-family:inherit}
+.pane{overflow:auto}
+</style>
+</helmet>
+<div style="min-height: 1500px; background: #FAFAF8; color: #1B1F23; font-family: 'Inter', system-ui, sans-serif; font-size: 14px; line-height: 1.45">
+  <header style="border-bottom: 1px solid #E3E3DE; background: #FFFFFF">
+    <div style="max-width: 1360px; margin: 0 auto; padding: 16px 24px; box-sizing: border-box; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; justify-content: space-between">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">specgate process flow</h1>
+      <span style="color: #5B6470; font-size: 13px">Click a step to see its screen. The flow runs top to bottom and feeds back into the next story.</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1360px; margin: 0 auto; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 20px">
+
+    <section style="background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 10px; padding: 14px 18px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <span style="font-weight: 700">How does the team write tests and build?</span>
+        <span style="font-size: 13px; color: #5B6470">{{pathNote}}</span>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <button onClick="{{setFree}}" aria-pressed="{{isFree}}" style="{{freeBtn}}">Freestyle (any architecture)</button>
+        <button onClick="{{setGh}}" aria-pressed="{{isGh}}" style="{{ghBtn}}">With gh-optivem</button>
+      </div>
+    </section>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start">
+
+    <nav aria-label="Process steps" style="flex: 1 1 320px; max-width: 380px; display: flex; flex-direction: column">
+      <sc-for list="{{items}}" as="it" hint-placeholder-count="20">
+        <sc-if value="{{it.isPhase}}" hint-placeholder-val="{{false}}">
+          <div style="{{it.phaseStyle}}">{{it.name}}</div>
+        </sc-if>
+        <sc-if value="{{it.isNode}}" hint-placeholder-val="{{true}}">
+          <button onClick="{{it.pick}}" aria-pressed="{{it.selected}}" style="{{it.nodeStyle}}">
+            <span style="font-weight: 600; font-size: 14px">{{it.title}}</span>
+            <span style="font-size: 12px; color: #5B6470">{{it.roles}}</span>
+          </button>
+        </sc-if>
+        <sc-if value="{{it.isLink}}" hint-placeholder-val="{{false}}">
+          <div style="{{it.linkStyle}}"></div>
+        </sc-if>
+        <sc-if value="{{it.isNote}}" hint-placeholder-val="{{false}}">
+          <div style="margin: 4px 0 0 4px; font-size: 12px; color: #5B6470">{{it.name}}</div>
+        </sc-if>
+      </sc-for>
+    </nav>
+
+    <section aria-label="Screen" style="flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 12px">
+      <div style="background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 10px; padding: 14px 18px; display: flex; flex-direction: column; gap: 4px">
+        <h2 style="margin: 0; font-size: 18px; font-weight: 700">{{selTitle}}</h2>
+        <span style="font-size: 12px; color: #5B6470; font-weight: 600">{{selRoles}}</span>
+        <p style="margin: 0; color: #3A424C">{{selDesc}}</p>
+      </div>
+      <div class="pane" style="max-height: 1200px; border: 1px solid #E3E3DE; border-radius: 10px; background: #F4F4F0; padding: 16px">
+        <sc-if value="{{show.roles}}" hint-placeholder-val="{{false}}"><dc-import name="Roles" hint-size="1100px,900px"></dc-import></sc-if>
+        <sc-if value="{{show.jira}}" hint-placeholder-val="{{false}}"><dc-import name="JiraStory" hint-size="880px,700px"></dc-import></sc-if>
+        <sc-if value="{{show.usecase}}" hint-placeholder-val="{{true}}"><dc-import name="UseCase" hint-size="760px,640px"></dc-import></sc-if>
+        <sc-if value="{{show.test}}" hint-placeholder-val="{{false}}"><dc-import name="AcceptanceTest" hint-size="760px,680px"></dc-import></sc-if>
+        <sc-if value="{{show.atdd}}" hint-placeholder-val="{{false}}"><dc-import name="AtddProcess" hint-size="1100px,1040px"></dc-import></sc-if>
+        <sc-if value="{{show.source}}" hint-placeholder-val="{{false}}"><dc-import name="Source" hint-size="760px,560px"></dc-import></sc-if>
+        <sc-if value="{{show.agent}}" hint-placeholder-val="{{false}}"><dc-import name="AgentLoop" hint-size="880px,760px"></dc-import></sc-if>
+        <sc-if value="{{show.git}}" hint-placeholder-val="{{false}}"><dc-import name="GitFlow" hint-size="880px,700px"></dc-import></sc-if>
+        <sc-if value="{{show.cli}}" hint-placeholder-val="{{false}}"><dc-import name="CLI" hint-size="880px,860px"></dc-import></sc-if>
+        <sc-if value="{{show.guard}}" hint-placeholder-val="{{false}}"><dc-import name="Guardrails" hint-size="880px,780px"></dc-import></sc-if>
+        <sc-if value="{{show.pr}}" hint-placeholder-val="{{false}}"><dc-import name="PRComment" hint-size="880px,560px"></dc-import></sc-if>
+        <sc-if value="{{show.dash}}" hint-placeholder-val="{{false}}"><dc-import name="Main" hint-size="1280px,1700px"></dc-import></sc-if>
+        <sc-if value="{{show.done}}" hint-placeholder-val="{{false}}"><dc-import name="Done" hint-size="880px,680px"></dc-import></sc-if>
+        <sc-if value="{{show.bug}}" hint-placeholder-val="{{false}}"><dc-import name="BugFlow" hint-size="880px,780px"></dc-import></sc-if>
+        <sc-if value="{{show.feedback}}" hint-placeholder-val="{{false}}"><dc-import name="Feedback" hint-size="880px,720px"></dc-import></sc-if>
+      </div>
+    </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { sel: 'usecase', path: 'free' };
+  }
+  switchPath(path) {
+    const freeOnly = ['test', 'source', 'agent'];
+    let sel = this.state.sel;
+    if (path === 'gh' && freeOnly.indexOf(sel) >= 0) sel = 'atdd';
+    if (path === 'free' && sel === 'atdd') sel = 'test';
+    this.setState({ path, sel });
+  }
+  renderVals() {
+    const gh = this.state.path === 'gh';
+    const buildFree = [
+      { name: '3 · Test', color: '#2E7D4F', nodes: [
+        { id: 'test', title: 'Acceptance tests', roles: 'Dev · AI agent · QA review', desc: 'Freestyle: any test architecture (plain tests, Cucumber, page objects, API only). The one requirement is that each test carries its criterion ID and the run produces JUnit XML. A wip tag allows red while a criterion is in progress.' }
+      ] },
+      { name: '4 · Build', color: '#D99A1E', nodes: [
+        { id: 'source', title: 'Implementation', roles: 'Dev · AI agent', desc: 'Freestyle: build the feature your own way until the acceptance tests pass. specgate never reads source code.' },
+        { id: 'agent', title: 'AI agent loop (optional)', roles: 'AI agent', desc: 'specgate next tells an agent which criterion is next and what done means. Works with any agent or tool.' }
+      ] }
+    ];
+    const buildGh = [
+      { name: '3-4 · Test and build', color: '#2E7D4F', nodes: [
+        { id: 'atdd', title: 'gh-optivem ATDD process', roles: 'Dev · AI agent · human approval', desc: 'A fixed, auditable sequence: refine, write failing tests (RED), implement (GREEN), refactor, with a human approving each step. specgate reads or sets the criterion state at the shaded steps.' }
+      ] }
+    ];
+    const phases = [
+      { name: 'Overview', color: '#8A94A0', nodes: [
+        { id: 'roles', title: 'Who does what', roles: 'PO · Dev · QA · AI agent · CI', desc: 'The roles across every step of the flow, and where commits and pushes happen.' }
+      ] },
+      { name: '1 · Plan', color: '#B0457A', nodes: [
+        { id: 'jira', title: 'Story in the backlog', roles: 'PO', desc: 'The PO writes the story and lists the criteria it adds or changes. In the paid Jira integration, Done stays blocked until they are Verified.' }
+      ] },
+      { name: '2 · Specify', color: '#2F6FDB', nodes: [
+        { id: 'usecase', title: 'Use case, scenarios, criteria', roles: 'Dev · QA · PO review', desc: 'Living documentation in markdown. Each acceptance criterion is one path through the use case and has its own ID.' }
+      ] }
+    ].concat(gh ? buildGh : buildFree).concat([
+      { name: '5 · Gate', color: '#5B3FB5', nodes: [
+        { id: 'git', title: 'Commit and push', roles: 'Dev', desc: 'Small commits. Every push runs the gate in branch mode. The merge to main runs the strict gate. Same gate for both build paths.' },
+        { id: 'cli', title: 'CI runs specgate', roles: 'CI', desc: 'Per-criterion report in the terminal, with exit code 0 or 1.' },
+        { id: 'guard', title: 'Guardrails', roles: 'CI · QA', desc: 'validate, stale and smell warnings, and expiring waivers.' },
+        { id: 'pr', title: 'Pull request comment', roles: 'CI · PO', desc: 'Spec coverage, the change versus main, and what is not verified yet.' },
+        { id: 'dash', title: 'Dashboard', roles: 'PO · QA', desc: 'Spec coverage, the lifecycle, every use case with its criteria. Toggle branch and strict mode.' }
+      ] },
+      { name: '6 · Accept', color: '#14532D', nodes: [
+        { id: 'done', title: 'Finish and merge', roles: 'Dev · CI', desc: 'Remove wip, add the last test, merge. The strict gate on main passes, and the story can move to Done.' }
+      ] },
+      { name: '7 · After release', color: '#C0392B', nodes: [
+        { id: 'bug', title: 'Bug flow', roles: 'PO · Dev', desc: 'A bug is either a violated criterion (Failing) or a missing one (a new Planned criterion).' },
+        { id: 'feedback', title: 'Production feedback', roles: 'PO', desc: 'Incidents and tickets become new criteria, new use cases or bugs. Non-functional signals are a known gap.' }
+      ] }
+    ]);
+    const all = {};
+    phases.forEach((p) => p.nodes.forEach((n) => { all[n.id] = n; }));
+    let sel = this.state.sel;
+    if (!all[sel]) sel = 'usecase';
+    const items = [];
+    phases.forEach((p, pi) => {
+      if (pi > 0) items.push({ isLink: true, linkStyle: 'width: 2px; height: 18px; margin-left: 24px; background: #B8BDC6' });
+      items.push({ isPhase: true, name: p.name, phaseStyle: 'margin: 2px 0 6px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: ' + p.color });
+      p.nodes.forEach((n, ni) => {
+        if (ni > 0) items.push({ isLink: true, linkStyle: 'width: 2px; height: 10px; margin-left: 24px; background: #D5D8DE' });
+        const on = n.id === sel;
+        items.push({
+          isNode: true,
+          title: n.title,
+          roles: n.roles,
+          selected: on,
+          pick: () => this.setState({ sel: n.id }),
+          nodeStyle: 'display: flex; flex-direction: column; gap: 2px; text-align: left; cursor: pointer; width: 100%; min-height: 48px; padding: 8px 12px; border-radius: 8px; border: 2px solid ' + (on ? '#2F4BD8' : '#E3E3DE') + '; background: ' + (on ? '#EEF2FF' : '#FFFFFF') + '; color: #1B1F23; box-sizing: border-box; border-left: 6px solid ' + p.color
+        });
+      });
+    });
+    items.push({ isNote: true, name: '↩ Feedback becomes the next story' });
+    const show = {};
+    Object.keys(all).forEach((k) => { show[k] = k === sel; });
+    const btn = (on) => 'padding: 8px 14px; min-height: 40px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid ' + (on ? '#2F4BD8' : '#CFCFC8') + '; background: ' + (on ? '#2F4BD8' : '#FFFFFF') + '; color: ' + (on ? '#FFFFFF' : '#1B1F23');
+    return {
+      items,
+      show,
+      selTitle: all[sel].title,
+      selRoles: all[sel].roles,
+      selDesc: all[sel].desc,
+      isFree: !gh,
+      isGh: gh,
+      freeBtn: btn(!gh),
+      ghBtn: btn(gh),
+      setFree: () => this.switchPath('free'),
+      setGh: () => this.switchPath('gh'),
+      pathNote: gh
+        ? 'gh-optivem drives the sequence: refine, RED, GREEN, refactor, with human approval. The gate downstream is identical.'
+        : 'The team uses its own tests and tooling. specgate needs only a criterion ID on each test and a JUnit XML result. The gate downstream is identical.'
+    };
+  }
+}
+</script>
+</body>
+</html>

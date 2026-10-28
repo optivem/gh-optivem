@@ -1,0 +1,33 @@
+{
+  "v": 3,
+  "createdOnFiles": { "v": 1, "at": "2026-10-28T10:00:00Z" },
+  "title": "specgate demo",
+  "launch": { "view": "focused", "file": "Flow.dc.html" },
+  "pages": [
+    { "id": "flow", "name": "Process flow" },
+    { "id": "screens", "name": "All screens" }
+  ],
+  "boards": {
+    "Flow.dc.html": { "x": 0, "y": 0, "w": 1440, "h": 1500, "title": "Process flow (click a step)", "expand": "fill", "is_interactive": true, "page": "flow" },
+    "Main.dc.html": { "x": 960, "y": 800, "w": 1280, "h": 1700, "title": "5 · Dashboard (coverage.html)", "expand": "fill", "is_interactive": true, "page": "screens" },
+    "CLI.dc.html": { "x": 0, "y": 800, "w": 880, "h": 860, "title": "4 · CI runs specgate (CLI)", "page": "screens" },
+    "PRComment.dc.html": { "x": 2320, "y": 800, "w": 880, "h": 560, "title": "6 · Pull request comment", "page": "screens" },
+    "UseCase.dc.html": { "x": 0, "y": 0, "w": 760, "h": 640, "title": "1 · Write the use case (markdown)", "page": "screens" },
+    "AcceptanceTest.dc.html": { "x": 840, "y": 0, "w": 760, "h": 680, "title": "2 · Write the acceptance tests", "page": "screens" },
+    "Source.dc.html": { "x": 1680, "y": 0, "w": 760, "h": 560, "title": "3 · Start the implementation", "page": "screens" },
+    "Done.dc.html": { "x": 2320, "y": 1480, "w": 880, "h": 680, "title": "7 · Finish the feature, gate goes green", "page": "screens" },
+    "AgentLoop.dc.html": { "x": 0, "y": 1780, "w": 880, "h": 760, "title": "8 · AI agent loop (specgate next)", "page": "screens" },
+    "Guardrails.dc.html": { "x": 2320, "y": 2280, "w": 880, "h": 780, "title": "9 · Guardrails: validate, stale, waivers", "page": "screens" },
+    "Roles.dc.html": { "x": 2520, "y": 0, "w": 1100, "h": 900, "title": "Roles: who does what", "page": "screens" },
+    "BugFlow.dc.html": { "x": 0, "y": 3480, "w": 880, "h": 780, "title": "12 · Bug flow (a violated criterion)", "page": "screens" },
+    "AtddProcess.dc.html": { "x": 1960, "y": 3440, "w": 1100, "h": 1040, "title": "gh-optivem ATDD process and specgate", "page": "screens" },
+    "Feedback.dc.html": { "x": 960, "y": 3440, "w": 880, "h": 720, "title": "13 · Production feedback to criteria", "page": "screens" },
+    "GitFlow.dc.html": { "x": 0, "y": 2660, "w": 880, "h": 700, "title": "11 · Commits and pushes (git flow)", "page": "screens" },
+    "JiraStory.dc.html": { "x": 960, "y": 2620, "w": 880, "h": 700, "title": "10 · Jira story (paid integration)", "is_interactive": true, "page": "screens" }
+  },
+  "order": ["Main.dc.html", "Flow.dc.html", "UseCase.dc.html", "AcceptanceTest.dc.html", "Source.dc.html", "CLI.dc.html", "PRComment.dc.html", "Done.dc.html", "AgentLoop.dc.html", "Guardrails.dc.html", "JiraStory.dc.html", "Roles.dc.html", "GitFlow.dc.html", "BugFlow.dc.html", "Feedback.dc.html", "AtddProcess.dc.html"],
+  "notes": {
+    "flowTitle": { "x": 0, "y": -300, "text": "From spec to gate: building UC-009 Refund order", "kind": "title1", "maxW": 2440, "page": "screens" }
+  },
+  "designSystems": []
+}

@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>specgate coverage report</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2F4BD8}a:hover{color:#1F3399}
+button{font-family:inherit}
+.tbl{overflow-x:auto}
+</style>
+</helmet>
+<div style="min-height: 1700px; background: #FAFAF8; color: #1B1F23; font-family: 'Inter', system-ui, sans-serif; font-size: 14px; line-height: 1.5">
+  <header style="border-bottom: 1px solid #E3E3DE; background: #FFFFFF">
+    <div style="max-width: 1120px; margin: 0 auto; padding: 16px 24px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; box-sizing: border-box">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+          <rect x="1.5" y="1.5" width="23" height="23" rx="6" stroke="#2F4BD8" stroke-width="2"/>
+          <path d="M7 13.5l4 4 8-9" stroke="#2F4BD8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span style="font-size: 18px; font-weight: 700; letter-spacing: -0.01em">specgate</span>
+      </div>
+      <span style="color: #5B6470; font-size: 13px">Report generated 2026-10-28 09:42 UTC · specgate 0.1.0</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1120px; margin: 0 auto; padding: 32px 24px 48px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px">
+
+    <section style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; justify-content: space-between">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em">optivem/shop-java</h1>
+        <p style="margin: 0; color: #5B6470; font-family: 'JetBrains Mono', monospace; font-size: 13px">{{context}}</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; align-items: flex-end">
+        <div style="display: flex; gap: 8px">
+          <button onClick="{{setBranch}}" style="{{branchBtnStyle}}">Feature branch (lenient)</button>
+          <button onClick="{{setStrict}}" style="{{strictBtnStyle}}">main (strict)</button>
+        </div>
+        <span style="font-size: 12px; color: #5B6470">{{modeNote}}</span>
+      </div>
+    </section>
+
+    <section role="status" style="{{bannerStyle}}">
+      <h2 style="{{bannerTitleStyle}}">{{bannerTitle}}</h2>
+      <p style="{{bannerTextStyle}}">{{bannerText}}</p>
+    </section>
+
+    <section aria-label="Summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px">
+      <sc-for list="{{stats}}" as="s" hint-placeholder-count="7">
+        <div style="background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 13px; color: #5B6470; font-weight: 500">{{s.label}}</span>
+          <span style="font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.15">{{s.value}}</span>
+          <span style="font-size: 12px; color: #5B6470">{{s.note}}</span>
+        </div>
+      </sc-for>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600">Spec coverage: 21 of 27 acceptance criteria verified (9 of 12 use cases)</h2>
+        <span style="font-size: 13px; color: #5B6470">Strict threshold 80%</span>
+      </div>
+      <div style="position: relative; padding-top: 8px">
+        <div role="img" aria-label="21 verified, 1 in progress, 4 planned, 1 waived criteria" style="display: flex; gap: 3px; height: 22px">
+          <div style="flex: 21 1 0; background: #2E7D4F; border-radius: 6px 0 0 6px"></div>
+          <div style="flex: 1 1 0; background: #2F6FDB"></div>
+          <div style="flex: 4 1 0; background: #8A94A0"></div>
+          <div style="flex: 1 1 0; background: #8E7CC3; border-radius: 0 6px 6px 0"></div>
+        </div>
+        <div style="position: absolute; left: 80%; top: 0; bottom: -4px; width: 2px; background: #1B1F23"></div>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 13px; color: #3A424C">
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #2E7D4F; border-radius: 2px; margin-right: 6px"></span>Verified (21)</span>
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #2F6FDB; border-radius: 2px; margin-right: 6px"></span>In progress (1)</span>
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #8A94A0; border-radius: 2px; margin-right: 6px"></span>Planned (4)</span>
+        <span><span style="display: inline-block; width: 10px; height: 10px; background: #8E7CC3; border-radius: 2px; margin-right: 6px"></span>Waived (1)</span>
+        <span><span style="display: inline-block; width: 2px; height: 12px; background: #1B1F23; margin-right: 6px; vertical-align: -2px"></span>Threshold 80%</span>
+      </div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; flex-direction: column; gap: 2px">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600">Criterion lifecycle: Planned → In progress → Verified</h2>
+        <p style="margin: 0; color: #5B6470">Each acceptance criterion moves through these states as the spec is written, its acceptance test is added, and the feature is built. A use case is Verified when all its criteria are.</p>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px">
+        <sc-for list="{{lifecycle}}" as="l" hint-placeholder-count="5">
+          <div style="border: 1px solid #E3E3DE; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; background: #FAFAF8">
+            <div style="display: flex; align-items: center; justify-content: space-between">
+              <span style="{{l.pillStyle}}">{{l.name}}</span>
+              <span style="font-size: 22px; font-weight: 700">{{l.count}}</span>
+            </div>
+            <span style="font-size: 13px; color: #3A424C">{{l.rule}}</span>
+            <span style="font-size: 12px; color: #5B6470; font-weight: 600">{{l.gate}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 10px; display: flex; flex-direction: column">
+      <div style="padding: 18px 20px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; border-bottom: 1px solid #E3E3DE">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600">Use cases and their criteria</h2>
+        <div style="display: flex; gap: 8px">
+          <button onClick="{{showAll}}" style="{{allBtnStyle}}">All (12)</button>
+          <button onClick="{{showIssues}}" style="{{issuesBtnStyle}}">Not verified (3)</button>
+        </div>
+      </div>
+      <div class="tbl">
+        <div style="min-width: 900px">
+          <div style="display: grid; grid-template-columns: 88px minmax(170px, 1fr) 132px 72px minmax(380px, 2.4fr); gap: 16px; padding: 10px 20px; background: #F4F4F0; font-size: 12px; font-weight: 600; color: #5B6470; text-transform: uppercase; letter-spacing: 0.04em">
+            <span>ID</span><span>Use case</span><span>State</span><span>Criteria</span><span>Criteria, state and linked acceptance test</span>
+          </div>
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+            <div style="display: grid; grid-template-columns: 88px minmax(170px, 1fr) 132px 72px minmax(380px, 2.4fr); gap: 16px; padding: 14px 20px; border-top: 1px solid #ECECE7; align-items: start">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500">{{r.id}}</span>
+              <span style="font-weight: 500">{{r.title}}</span>
+              <span><span style="{{r.pillStyle}}">{{r.statusLabel}}</span></span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px">{{r.count}}</span>
+              <span style="{{r.testsStyle}}">{{r.tests}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </section>
+
+    <section style="background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 10px">
+      <h2 style="margin: 0; font-size: 16px; font-weight: 600">Orphan tests (2)</h2>
+      <p style="margin: 0; color: #5B6470">These acceptance tests are not linked to any criterion. Tag them with a criterion ID or remove them.</p>
+      <ul style="margin: 0; padding-left: 20px; font-family: 'JetBrains Mono', monospace; font-size: 13px; display: flex; flex-direction: column; gap: 4px">
+        <li>OrderSmokeTest.shouldLoad</li>
+        <li>LegacyCartTest.addsItem</li>
+      </ul>
+    </section>
+
+    <footer style="color: #5B6470; font-size: 12px">Generated from <span style="font-family: 'JetBrains Mono', monospace">docs/use-cases/*.md</span> and <span style="font-family: 'JetBrains Mono', monospace">build/test-results/acceptance/*.xml</span>. Open source, runs in your own CI.</footer>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1700}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'all', mode: 'branch' };
+  }
+  renderVals() {
+    const v = (id, text, test) => '✓ ' + id + '  ' + text + '  ·  ' + test;
+    const data = [
+      { id: 'UC-009', title: 'Refund order', status: 'progress', count: '1/3', tests: [
+        v('UC-009.1', 'Full refund returns the whole amount', 'RefundOrderTest.refundsFullAmount'),
+        '◐ UC-009.2  Partial refund returns the selected items  ·  RefundOrderTest.refundsPartialAmount (@wip, red)',
+        '○ UC-009.3  Refund is rejected after 30 days  ·  no test'] },
+      { id: 'UC-011', title: 'Send order confirmation email', status: 'planned', count: '0/2', tests: [
+        '○ UC-011.1  Customer receives a confirmation email  ·  no test',
+        '○ UC-011.2  No email is sent if the order fails  ·  no test'] },
+      { id: 'UC-012', title: 'Export invoice PDF', status: 'planned', count: '0/2', tests: [
+        '○ UC-012.1  Customer can download an invoice as PDF  ·  no test',
+        '⏸ UC-012.2  Invoice shows tax by country  ·  waived until 2026-11-30'] },
+      { id: 'UC-001', title: 'Place order', status: 'verified', count: '4/4', tests: [
+        v('UC-001.1', 'Valid order is accepted', 'PlaceOrderTest.placesOrderWithValidItems'),
+        v('UC-001.2', 'Empty cart is rejected', 'PlaceOrderTest.rejectsEmptyCart'),
+        v('UC-001.3', 'Out-of-stock item is rejected', 'PlaceOrderTest.rejectsOutOfStockItem'),
+        v('UC-001.4', 'Tax is applied by country', 'PlaceOrderTest.appliesTaxByCountry')] },
+      { id: 'UC-002', title: 'Cancel order', status: 'verified', count: '3/3', tests: [
+        v('UC-002.1', 'Pending order can be cancelled', 'CancelOrderTest.cancelsPendingOrder'),
+        v('UC-002.2', 'Shipped order cannot be cancelled', 'CancelOrderTest.rejectsShippedOrder'),
+        v('UC-002.3', 'Cancelling restores stock', 'CancelOrderTest.restoresStock')] },
+      { id: 'UC-003', title: 'Apply discount coupon', status: 'verified', count: '2/2', tests: [
+        v('UC-003.1', 'Percent coupon reduces the total', 'CouponTest.appliesPercentCoupon'),
+        v('UC-003.2', 'Expired coupon is rejected', 'CouponTest.rejectsExpiredCoupon')] },
+      { id: 'UC-004', title: 'Browse product catalog', status: 'verified', count: '2/2', tests: [
+        v('UC-004.1', 'Products are listed by category', 'CatalogTest.listsProductsByCategory'),
+        v('UC-004.2', 'Results are paginated', 'CatalogTest.paginatesResults')] },
+      { id: 'UC-005', title: 'Search products', status: 'verified', count: '1/1', tests: [
+        v('UC-005.1', 'Products are found by keyword', 'SearchTest.findsByKeyword')] },
+      { id: 'UC-006', title: 'Track shipment', status: 'verified', count: '2/2', tests: [
+        v('UC-006.1', 'Carrier status is shown', 'TrackShipmentTest.showsCarrierStatus'),
+        v('UC-006.2', 'Unknown tracking number is handled', 'TrackShipmentTest.handlesUnknownTracking')] },
+      { id: 'UC-007', title: 'View order history', status: 'verified', count: '1/1', tests: [
+        v('UC-007.1', 'Past orders are listed', 'OrderHistoryTest.listsPastOrders')] },
+      { id: 'UC-008', title: 'Update delivery address', status: 'verified', count: '2/2', tests: [
+        v('UC-008.1', 'Address can be updated before shipping', 'AddressTest.updatesBeforeShipping'),
+        v('UC-008.2', 'Update is rejected after shipping', 'AddressTest.rejectsAfterShipping')] },
+      { id: 'UC-010', title: 'Reserve stock', status: 'verified', count: '3/3', tests: [
+        v('UC-010.1', 'Stock is reserved on order', 'StockTest.reservesOnOrder'),
+        v('UC-010.2', 'Reservation is released on cancel', 'StockTest.releasesOnCancel'),
+        v('UC-010.3', 'Overselling is prevented', 'StockTest.preventsOverselling')] }
+    ];
+    const pill = {
+      verified: { label: '✓ Verified', bg: '#E4F3E8', fg: '#14532D' },
+      progress: { label: '◐ In progress', bg: '#E1ECFB', fg: '#123C7A' },
+      planned: { label: '○ Planned', bg: '#ECEEF1', fg: '#3A424C' },
+      waived: { label: '⏸ Waived', bg: '#ECE8F7', fg: '#3F2F7A' },
+      failing: { label: '✗ Failing', bg: '#FBE4E1', fg: '#8A1C12' }
+    };
+    const base = 'display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; ';
+    const pillStyle = (k) => base + 'background: ' + pill[k].bg + '; color: ' + pill[k].fg;
+    const shown = this.state.filter === 'issues' ? data.filter((d) => d.status !== 'verified') : data;
+    const rows = shown.map((d) => ({
+      id: d.id,
+      title: d.title,
+      count: d.count,
+      statusLabel: pill[d.status].label,
+      pillStyle: pillStyle(d.status),
+      tests: d.tests.join('\n'),
+      testsStyle: "white-space: pre-line; font-family: 'JetBrains Mono', monospace; font-size: 12px; line-height: 1.7; color: #3A424C"
+    }));
+    const btn = (on) => 'padding: 7px 14px; min-height: 36px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid ' + (on ? '#2F4BD8' : '#CFCFC8') + '; background: ' + (on ? '#2F4BD8' : '#FFFFFF') + '; color: ' + (on ? '#FFFFFF' : '#1B1F23');
+    const strict = this.state.mode === 'strict';
+    const bannerBase = 'border-radius: 10px; padding: 18px 20px; display: flex; flex-direction: column; gap: 4px; border: 1px solid ';
+    const bannerStyle = strict ? bannerBase + '#E8B4AD; background: #FBE4E1' : bannerBase + '#A9D6B8; background: #E4F3E8';
+    return {
+      rows,
+      context: (strict ? 'main' : 'feature/invoice-export') + ' · 3f9a1c2 · acceptance-stage run #418',
+      modeNote: strict ? 'Strict mode: spec coverage must reach the threshold.' : 'Branch mode: only failing tests block. Unverified criteria are reported.',
+      bannerStyle,
+      bannerTitleStyle: 'margin: 0; font-size: 16px; font-weight: 700; color: ' + (strict ? '#8A1C12' : '#14532D'),
+      bannerTextStyle: 'margin: 0; color: ' + (strict ? '#5E1710' : '#1E4D2E'),
+      bannerTitle: strict ? 'Gate failed (strict mode): spec coverage 78% is below the 80% threshold' : 'Gate passed (branch mode): no failing tests',
+      bannerText: strict
+        ? 'Not verified: UC-009.2 (in progress), UC-009.3, UC-011 and UC-012.1 (planned). UC-012.2 is waived until 2026-11-30.'
+        : '6 criteria in 3 use cases are not verified yet: UC-009.2 is in progress, UC-009.3, UC-011 and UC-012.1 are planned, and UC-012.2 is waived until 2026-11-30. The rest must be verified before merging to main.',
+      stats: [
+        { label: 'Spec coverage', value: '78%', note: '21 of 27 acceptance criteria verified' },
+        { label: 'Use cases verified', value: '9 / 12', note: 'all criteria verified' },
+        { label: 'In progress', value: '1', note: 'criterion with a @wip test' },
+        { label: 'Planned', value: '4', note: 'criteria with no test yet' },
+        { label: 'Waived', value: '1', note: 'deferred, with an expiry' },
+        { label: 'Failing', value: '0', note: 'red test without @wip' },
+        { label: 'Orphan tests', value: '2', note: 'linked to no criterion' }
+      ],
+      lifecycle: [
+        { name: '○ Planned', count: '4', pillStyle: pillStyle('planned'), rule: 'The criterion exists in the spec, but no test references its ID yet.', gate: 'Branch: allowed · main: blocks' },
+        { name: '◐ In progress', count: '1', pillStyle: pillStyle('progress'), rule: 'A test references the ID and is tagged @wip. It may be red or skipped while the feature is built.', gate: 'Branch: allowed · main: blocks' },
+        { name: '✓ Verified', count: '21', pillStyle: pillStyle('verified'), rule: 'Every linked test passes and none is tagged @wip.', gate: 'Counts toward coverage' },
+        { name: '⏸ Waived', count: '1', pillStyle: pillStyle('waived'), rule: 'Deferred on purpose: reason, approver and expiry date in specgate.yaml. Still counted as not verified in the percentage.', gate: 'Not reported as a gap until it expires' },
+        { name: '✗ Failing', count: '0', pillStyle: pillStyle('failing'), rule: 'A linked test is red and not tagged @wip. This is a regression or a broken test.', gate: 'Always blocks' }
+      ],
+      showAll: () => this.setState({ filter: 'all' }),
+      showIssues: () => this.setState({ filter: 'issues' }),
+      setBranch: () => this.setState({ mode: 'branch' }),
+      setStrict: () => this.setState({ mode: 'strict' }),
+      allBtnStyle: btn(this.state.filter === 'all'),
+      issuesBtnStyle: btn(this.state.filter === 'issues'),
+      branchBtnStyle: btn(!strict),
+      strictBtnStyle: btn(strict)
+    };
+  }
+}
+</script>
+</body>
+</html>

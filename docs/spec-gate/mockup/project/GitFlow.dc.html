@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Commits and pushes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 880px; height: 700px; box-sizing: border-box; background: #0D1117; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; font-family: 'JetBrains Mono', monospace">
+  <div style="height: 40px; flex: none; background: #161B22; border-bottom: 1px solid #30363D; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: #E6EDF3; font-size: 12px">
+    <span>branch feature/refund-partial</span>
+    <span style="color: #8B949E">commit, push, CI, specgate</span>
+  </div>
+  <pre style="margin: 0; flex: 1; padding: 18px 24px; color: #E6EDF3; font-size: 13px; line-height: 19px; font-family: inherit; white-space: pre; overflow: hidden"><span style="color:#E3B341">a1b2c3d</span>  spec: UC-009 Refund order, criteria 009.1 to 009.3
+         <span style="color:#8B949E">by developer, PO reviews the diff            (step 2)</span>
+  <span style="color:#79B8FF">push</span> <span style="color:#8B949E">then CI:</span> validate <span style="color:#5FD38D">✓</span>   check (branch) <span style="color:#5FD38D">✓</span>
+         UC-009 <span style="color:#8B949E">○ Planned</span>   spec coverage 78% (21 of 27)
+         <span style="color:#8B949E">(pushes are safe: a Planned criterion never blocks a branch)</span>
+
+<span style="color:#E3B341">b2c3d4e</span>  test: refund acceptance tests (UC-009.1, UC-009.2 @wip)
+         <span style="color:#8B949E">by developer or AI agent, QA reviews          (step 3)</span>
+  <span style="color:#79B8FF">push</span> <span style="color:#8B949E">then CI:</span> check (branch) <span style="color:#5FD38D">✓</span>
+         UC-009 <span style="color:#79B8FF">◐ In progress</span>   spec coverage 78% (21 of 27)
+         <span style="color:#8B949E">(a red test is allowed because it is tagged wip)</span>
+
+<span style="color:#E3B341">c3d4e5f</span>  feat: partial refund, 30-day rule test, remove wip
+         <span style="color:#8B949E">by developer and AI agent                      (steps 4, 7)</span>
+  <span style="color:#79B8FF">push</span> <span style="color:#8B949E">then CI:</span> check (branch) <span style="color:#5FD38D">✓</span>
+         UC-009 <span style="color:#5FD38D">✓ Verified</span>   spec coverage 85% (23 of 27)
+
+  <span style="color:#79B8FF">open pull request</span> <span style="color:#8B949E">then CI posts the PR comment    (step 6)</span>
+         PO reads the comment, QA checks the tests, review approved
+
+<span style="color:#E3B341">d4e5f60</span>  Merge pull request into main
+  <span style="color:#79B8FF">push to main</span> <span style="color:#8B949E">then CI:</span> check --mode strict --threshold 80
+         <span style="color:#5FD38D"><b>✓ Gate passed (strict mode)</b></span>   spec coverage 85%
+         <span style="color:#8B949E">Jira: SHOP-214 is allowed to move to Done        (step 10)</span></pre>
+  <div style="flex: none; background: #161B22; border-top: 1px solid #30363D; padding: 14px 24px; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; color: #C9D1D9">
+    Commits are small and frequent, one meaning each. Every push runs the gate in branch mode. Only the merge to main runs the strict gate.
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

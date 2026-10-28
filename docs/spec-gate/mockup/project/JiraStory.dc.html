@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Jira story with specgate criteria</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 880px; height: 700px; box-sizing: border-box; padding: 28px; background: #F4F5F7; font-family: 'Inter', system-ui, sans-serif; color: #172B4D; font-size: 14px; line-height: 1.5">
+  <div style="background: #FFFFFF; border: 1px solid #DFE1E6; border-radius: 6px; overflow: hidden">
+    <div style="padding: 10px 20px; border-bottom: 1px solid #DFE1E6; background: #FAFBFC; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center">
+      <span style="color: #5E6C84; font-size: 13px">Jira · Shop project · <span style="font-family: 'JetBrains Mono', monospace">SHOP-214</span> · Story</span>
+      <div style="display: flex; gap: 8px">
+        <button onClick="{{showBefore}}" style="{{beforeBtn}}">Before merge</button>
+        <button onClick="{{showAfter}}" style="{{afterBtn}}">After merge</button>
+      </div>
+    </div>
+    <div style="padding: 20px 24px; display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <h1 style="margin: 0; font-size: 22px; font-weight: 600">Partial refunds</h1>
+        <p style="margin: 0; color: #42526E">As a customer, I want to refund only some items of a delivered order, so that I get money back for what I returned.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; color: #5E6C84">
+          <span style="{{statusPill}}">{{jiraStatus}}</span>
+          <span>Assignee: dev-team</span>
+          <span>Reporter: product-owner</span>
+        </div>
+      </div>
+
+      <div style="border: 1px solid #DFE1E6; border-radius: 6px; overflow: hidden">
+        <div style="padding: 10px 16px; background: #FAFBFC; border-bottom: 1px solid #DFE1E6; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; align-items: center">
+          <span style="font-weight: 600">Acceptance criteria (from specgate)</span>
+          <span style="background: #EAE6FF; color: #403294; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600">Paid tier: Jira integration</span>
+        </div>
+        <sc-for list="{{criteria}}" as="c" hint-placeholder-count="2">
+          <div style="display: grid; grid-template-columns: 96px 1fr 130px; gap: 12px; padding: 12px 16px; border-top: 1px solid #EBECF0; align-items: start">
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500">{{c.id}}</span>
+            <span>{{c.text}}<br><span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #5E6C84">{{c.test}}</span></span>
+            <span><span style="{{c.pillStyle}}">{{c.stateLabel}}</span></span>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="{{gateBox}}">
+        <div style="font-weight: 700">{{gateTitle}}</div>
+        <div>{{gateText}}</div>
+      </div>
+
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center">
+        <button disabled="{{doneDisabled}}" style="{{doneBtn}}">{{doneLabel}}</button>
+        <span style="font-size: 12px; color: #5E6C84">The workflow transition to Done checks the linked criteria in specgate.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":700}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { view: 'before' };
+  }
+  renderVals() {
+    const after = this.state.view === 'after';
+    const pillBase = 'display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; ';
+    const verified = pillBase + 'background: #E3FCEF; color: #006644';
+    const progress = pillBase + 'background: #DEEBFF; color: #0747A6';
+    const planned = pillBase + 'background: #EBECF0; color: #42526E';
+    const btn = (on) => 'padding: 6px 12px; min-height: 32px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid ' + (on ? '#0052CC' : '#C1C7D0') + '; background: ' + (on ? '#0052CC' : '#FFFFFF') + '; color: ' + (on ? '#FFFFFF' : '#172B4D');
+    return {
+      showBefore: () => this.setState({ view: 'before' }),
+      showAfter: () => this.setState({ view: 'after' }),
+      beforeBtn: btn(!after),
+      afterBtn: btn(after),
+      jiraStatus: after ? 'IN REVIEW' : 'IN PROGRESS',
+      statusPill: pillBase + (after ? 'background: #EAE6FF; color: #403294' : 'background: #DEEBFF; color: #0747A6'),
+      criteria: [
+        { id: 'UC-009.2', text: 'Partial refund returns the selected items', test: 'RefundOrderTest.refundsPartialAmount' + (after ? '' : ' (@wip, red)'), stateLabel: after ? '✓ Verified' : '◐ In progress', pillStyle: after ? verified : progress },
+        { id: 'UC-009.3', text: 'Refund is rejected after 30 days', test: after ? 'RefundOrderTest.rejectsRefundAfter30Days' : 'no test yet', stateLabel: after ? '✓ Verified' : '○ Planned', pillStyle: after ? verified : planned }
+      ],
+      gateBox: 'border-radius: 6px; padding: 12px 16px; border: 1px solid ' + (after ? '#ABF5D1' : '#FFBDAD') + '; background: ' + (after ? '#E3FCEF' : '#FFEBE6') + '; color: ' + (after ? '#006644' : '#BF2600'),
+      gateTitle: after ? '✓ Ready for Done' : '✗ Done is blocked',
+      gateText: after ? 'All 2 linked criteria are verified by passing acceptance tests on main.' : '2 of 2 linked criteria are not verified yet (1 in progress, 1 planned).',
+      doneDisabled: !after,
+      doneLabel: after ? 'Move to Done' : 'Done (blocked)',
+      doneBtn: 'padding: 8px 16px; min-height: 36px; border-radius: 4px; font-size: 14px; font-weight: 600; border: none; ' + (after ? 'background: #0052CC; color: #FFFFFF; cursor: pointer' : 'background: #EBECF0; color: #6B778C; cursor: not-allowed')
+    };
+  }
+}
+</script>
+</body>
+</html>

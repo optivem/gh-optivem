@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Feature finished</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 880px; height: 680px; box-sizing: border-box; background: #0D1117; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; font-family: 'JetBrains Mono', monospace">
+  <div style="height: 40px; flex: none; background: #161B22; border-bottom: 1px solid #30363D; display: flex; align-items: center; padding: 0 16px; color: #E6EDF3; font-size: 12px">
+    git diff
+  </div>
+  <pre style="margin: 0; padding: 16px 24px; color: #E6EDF3; font-size: 13px; line-height: 20px; font-family: inherit; white-space: pre; overflow: hidden"><span style="color:#8B949E">RefundOrderTest.java</span>
+     @Tag("UC-009.2")
+<span style="background:#3B1219;color:#FF9C95">-    @Tag("wip")   // red until partial refunds exist</span>
+     @Test
+     void refundsPartialAmount() {
+<span style="background:#12341F;color:#7EE2A0">+    @Tag("UC-009.3")</span>
+<span style="background:#12341F;color:#7EE2A0">+    @Test</span>
+<span style="background:#12341F;color:#7EE2A0">+    void rejectsRefundAfter30Days() {</span>
+<span style="background:#12341F;color:#7EE2A0">+        var order = shop.placeAndDeliverOrder("PRODUCT-1", 2, daysAgo(31));</span>
+<span style="background:#12341F;color:#7EE2A0">+        assertThat(shop.tryRefund(order.id())).isRejected();</span>
+<span style="background:#12341F;color:#7EE2A0">+    }</span>
+
+<span style="color:#8B949E">RefundService.java</span>
+<span style="background:#3B1219;color:#FF9C95">-        throw new UnsupportedOperationException(</span>
+<span style="background:#3B1219;color:#FF9C95">-            "partial refund not implemented");</span>
+<span style="background:#12341F;color:#7EE2A0">+        var total = items.stream()</span>
+<span style="background:#12341F;color:#7EE2A0">+            .map(order::priceOf)</span>
+<span style="background:#12341F;color:#7EE2A0">+            .reduce(Money.ZERO, Money::plus);</span>
+<span style="background:#12341F;color:#7EE2A0">+        return new Refund(total);</span></pre>
+  <div style="flex: none; height: 1px; background: #30363D"></div>
+  <pre style="margin: 0; padding: 16px 24px; color: #E6EDF3; font-size: 13px; line-height: 20px; font-family: inherit; white-space: pre; overflow: hidden"><span style="color:#8B949E"># on main, after merge</span>
+<span style="color:#8B949E">$</span> npx specgate check --mode strict --threshold 80
+
+Spec coverage  <b>85%</b> (23 of 27 criteria verified)   <span style="color:#8B949E">threshold 80%</span>
+<span style="color:#5FD38D">████████████████████</span><span style="color:#484F58">░░░░</span>
+
+<span style="color:#5FD38D"><b>✓ Gate passed (strict mode)</b></span>
+<span style="color:#8B949E">  UC-009 is now verified (3 of 3 criteria). Still planned: UC-011, UC-012</span>
+<span style="color:#8B949E">$</span> echo $?
+0</pre>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":680}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

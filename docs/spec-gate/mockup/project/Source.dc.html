@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Source code file</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 760px; height: 560px; box-sizing: border-box; background: #0D1117; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column">
+  <div style="height: 40px; flex: none; background: #161B22; border-bottom: 1px solid #30363D; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px">
+    <span style="color: #E6EDF3">src/main/java/shop/RefundService.java</span>
+    <span style="color: #8B949E">java</span>
+  </div>
+  <pre style="margin: 0; flex: 1; padding: 20px 24px; color: #E6EDF3; font-size: 13px; line-height: 20px; font-family: 'JetBrains Mono', monospace; white-space: pre; overflow: hidden"><span style="color:#FF7B72">public class</span> <span style="color:#FFA657">RefundService</span> {
+
+    <span style="color:#FF7B72">public</span> Refund <span style="color:#79B8FF">refund</span>(OrderId id) {
+        <span style="color:#FF7B72">var</span> order = orders.get(id);
+        <span style="color:#FF7B72">if</span> (order.deliveredMoreThanDaysAgo(30)) {
+            <span style="color:#FF7B72">throw new</span> RefundNotAllowedException(id);
+        }
+        <span style="color:#FF7B72">return new</span> Refund(order.total());
+    }
+
+    <span style="color:#FF7B72">public</span> Refund <span style="color:#79B8FF">refund</span>(OrderId id, List&lt;ItemId&gt; items) {
+        <span style="color:#FF7B72">throw new</span> UnsupportedOperationException(
+            <span style="color:#A5D6FF">"partial refund not implemented"</span>);
+    }
+}</pre>
+  <div style="flex: none; background: #161B22; border-top: 1px solid #30363D; padding: 14px 24px; display: flex; flex-direction: column; gap: 8px; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; color: #C9D1D9">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px">
+      <span style="color: #8B949E">specgate sees:</span>
+      <span style="background: #12294F; color: #A5C8FF; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 12px">◐ In progress</span>
+      <span>Nothing new. specgate never reads source code, only specs and test results.</span>
+    </div>
+    <span style="color: #8B949E; font-size: 12px">Full refund and the 30-day rule are implemented. Partial refund throws, so the<span style="font-family: 'JetBrains Mono', monospace">wip</span> test stays red.</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

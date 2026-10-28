@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Who does what</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1100px; height: 900px; box-sizing: border-box; padding: 32px; background: #FAFAF8; color: #1B1F23; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; line-height: 1.45; display: flex; flex-direction: column; gap: 20px">
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em">Who does what</h1>
+    <p style="margin: 0; color: #5B6470">Product owner, developers, QA, the AI agent and specgate across one change. The columns are the steps of the flow on this canvas.</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 120px repeat(6, minmax(0, 1fr)); gap: 6px">
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="42">
+      <div style="{{c.style}}">{{c.text}}</div>
+    </sc-for>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+    <sc-for list="{{views}}" as="v" hint-placeholder-count="3">
+      <div style="background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-weight: 700; font-size: 14px">{{v.role}}</span>
+        <span style="color: #3A424C; white-space: pre-line">{{v.sees}}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1100,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const steps = ['1 Request', '2 Specify', '3 Test', '4 Build', '5 Gate', '6 Accept'];
+    const rows = [
+      { role: 'Product owner', tint: '#FBEAF1', fg: '#7A1E4B', cells: ['Writes the story, agrees the criteria', 'Reviews the use case diff', '', '', 'Approves waivers', 'Reads the report, accepts, closes the story'] },
+      { role: 'Developer', tint: '#E1ECFB', fg: '#123C7A', cells: ['Refines the story with the team', 'Writes use case and criteria in markdown', 'Writes acceptance tests tagged with criterion IDs', 'Implements until the test is green', 'Fixes failures and stale warnings', ''] },
+      { role: 'QA', tint: '#E4F3E8', fg: '#14532D', cells: ['Challenges the story: edge cases?', 'Checks the paths: any missing flow?', 'Reviews test quality and smells', '', 'Checks orphan tests and stale criteria', 'Exploratory testing'] },
+      { role: 'AI agent', tint: '#FFF1D6', fg: '#6B4000', cells: ['', 'Drafts criteria from the story', 'Drafts red acceptance tests', 'Implements, guided by specgate next', 'Re-runs the gate', ''] },
+      { role: 'specgate (CI)', tint: '#ECEEF1', fg: '#3A424C', cells: ['', 'Validates the format', 'Planned becomes In progress', 'Reports progress per criterion', 'Branch: lenient. main: strict', 'Criteria Verified, Jira Done allowed'] },
+      { role: 'Git', tint: '#F0F0EB', fg: '#1B1F23', cells: ['', 'Commit and push the spec', 'Commit and push the red tests', 'Commit and push the implementation', 'Open the PR, CI runs the gate', 'Merge to main, strict gate runs'] }
+    ];
+    const head = 'padding: 8px 10px; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #5B6470; border-bottom: 2px solid #1B1F23';
+    const cells = [{ text: '', style: head }];
+    steps.forEach((s) => cells.push({ text: s, style: head }));
+    rows.forEach((r) => {
+      cells.push({ text: r.role, style: 'padding: 10px; font-weight: 700; border-radius: 8px; background: ' + r.tint + '; color: ' + r.fg });
+      r.cells.forEach((t) => {
+        cells.push(t
+          ? { text: t, style: 'padding: 10px; background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 8px; color: #1B1F23; min-height: 64px' }
+          : { text: '–', style: 'padding: 10px; color: #8A94A0; border: 1px dashed #E3E3DE; border-radius: 8px; min-height: 64px' });
+      });
+    });
+    return {
+      cells,
+      views: [
+        { role: 'Product owner sees', sees: 'The PR comment and the dashboard.\nThe Jira story with its criteria and a Done gate.\nThe use case diff in plain markdown.' },
+        { role: 'Developer sees', sees: 'The CLI output on every push.\nspecgate next: the next criterion and what done means.\nThe failing or planned criteria by ID.' },
+        { role: 'QA sees', sees: 'Orphan tests, stale criteria and smell warnings.\nThe criteria list per use case, to spot missing flows.\nWaivers and when they expire.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>specgate agent loop</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 880px; height: 760px; box-sizing: border-box; background: #0D1117; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; font-family: 'JetBrains Mono', monospace">
+  <div style="height: 40px; flex: none; background: #161B22; border-bottom: 1px solid #30363D; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: #E6EDF3; font-size: 12px">
+    <span>coding agent session</span>
+    <span style="color: #8B949E">tool: specgate.next (MCP or CLI)</span>
+  </div>
+  <pre style="margin: 0; flex: 1; padding: 18px 24px; color: #E6EDF3; font-size: 13px; line-height: 19px; font-family: inherit; white-space: pre; overflow: hidden"><span style="color:#8B949E">$</span> npx specgate next --json
+
+{
+  <span style="color:#7EE787">"mode"</span>: <span style="color:#A5D6FF">"branch"</span>,
+  <span style="color:#7EE787">"coverage"</span>: { <span style="color:#7EE787">"verified"</span>: 21, <span style="color:#7EE787">"total"</span>: 27, <span style="color:#7EE787">"percent"</span>: 78 },
+  <span style="color:#7EE787">"next"</span>: [
+    {
+      <span style="color:#7EE787">"id"</span>: <span style="color:#A5D6FF">"UC-009.2"</span>,
+      <span style="color:#7EE787">"state"</span>: <span style="color:#A5D6FF">"in_progress"</span>,
+      <span style="color:#7EE787">"criterion"</span>: <span style="color:#A5D6FF">"Partial refund returns the selected items"</span>,
+      <span style="color:#7EE787">"test"</span>: <span style="color:#A5D6FF">"RefundOrderTest.refundsPartialAmount (@wip, red)"</span>,
+      <span style="color:#7EE787">"action"</span>: <span style="color:#A5D6FF">"Implement the behaviour, then remove the wip tag"</span>
+    },
+    {
+      <span style="color:#7EE787">"id"</span>: <span style="color:#A5D6FF">"UC-009.3"</span>,
+      <span style="color:#7EE787">"state"</span>: <span style="color:#A5D6FF">"planned"</span>,
+      <span style="color:#7EE787">"criterion"</span>: <span style="color:#A5D6FF">"Refund is rejected after 30 days"</span>,
+      <span style="color:#7EE787">"action"</span>: <span style="color:#A5D6FF">"Write a failing acceptance test tagged UC-009.3"</span>
+    }
+  ]
+}
+
+<span style="color:#79B8FF">agent</span> UC-009.3 is planned. Writing an acceptance test tagged UC-009.3.
+<span style="color:#79B8FF">agent</span> The test is red, as expected. Implementing the 30-day rule.
+<span style="color:#79B8FF">agent</span> Re-running the acceptance stage and the gate.
+
+<span style="color:#8B949E">$</span> npx specgate check
+<span style="color:#5FD38D">✓ UC-009.3 verified</span>   spec coverage <b>81%</b> (22 of 27 criteria verified)
+<span style="color:#8B949E">  next: UC-009.2 (in progress), UC-011.1, UC-011.2, UC-012.1 (UC-012.2 is waived)</span></pre>
+  <div style="flex: none; background: #161B22; border-top: 1px solid #30363D; padding: 14px 24px; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; color: #C9D1D9">
+    The gate gives an AI agent a precise, checkable to-do list: which criterion is next, what state it is in, and what "done" means. The agent cannot call it done until the criterion is Verified.
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

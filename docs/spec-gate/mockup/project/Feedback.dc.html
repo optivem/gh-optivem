@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Production feedback loop</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 880px; height: 720px; box-sizing: border-box; padding: 32px; background: #FAFAF8; color: #1B1F23; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; line-height: 1.45; display: flex; flex-direction: column; gap: 18px">
+  <div style="display: flex; flex-direction: column; gap: 4px">
+    <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em">From production feedback to criteria</h1>
+    <p style="margin: 0; color: #5B6470">After release, the product owner turns each signal into a change to the living documentation. specgate shows the effect.</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="20">
+      <div style="{{c.style}}">{{c.text}}</div>
+    </sc-for>
+  </div>
+
+  <p style="margin: 0; color: #5B6470; font-size: 12px">The last row is the known gap: performance and other non-functional signals are not acceptance criteria today, so specgate does not track them.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":720}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const head = 'padding: 8px 10px; font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #5B6470; border-bottom: 2px solid #1B1F23';
+    const cell = 'padding: 10px; background: #FFFFFF; border: 1px solid #E3E3DE; border-radius: 8px';
+    const gap = 'padding: 10px; background: #FFF1D6; border: 1px solid #E8CF9C; border-radius: 8px; color: #6B4000';
+    const rows = [
+      ['Incident INC-77: a customer was refunded twice for one order', 'A flow nobody specified', 'Add UC-009.4: a second refund request for the same order is rejected', 'UC-009.4 ○ Planned. Spec coverage 82% (23 of 28)', false],
+      ['Support ticket: customers cannot tell when a refund arrives', 'A new capability', 'New use case UC-013 Notify refund status, with 2 criteria', 'UC-013 ○ Planned. 0 of 2 criteria verified', false],
+      ['Bug SHOP-231: a refund was accepted on day 31 when a coupon was used', 'An existing criterion is violated', 'No spec change. Add a failing test tagged UC-009.3', 'UC-009.3 ✗ Failing until fixed (see the bug flow)', false],
+      ['Alert: refund API p95 above 3 seconds', 'A non-functional signal', 'Not a criterion. Tracked by monitoring', 'Outside specgate today', true]
+    ];
+    const cells = [];
+    ['Signal', 'Product owner decides', 'Spec change', 'specgate shows'].forEach((h) => cells.push({ text: h, style: head }));
+    rows.forEach((r) => {
+      for (let i = 0; i < 4; i++) cells.push({ text: r[i], style: r[4] ? gap : cell });
+    });
+    return { cells };
+  }
+}
+</script>
+</body>
+</html>

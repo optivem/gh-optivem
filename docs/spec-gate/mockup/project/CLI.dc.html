@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>specgate CLI output</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 880px; height: 860px; box-sizing: border-box; background: #0D1117; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; font-family: 'JetBrains Mono', monospace">
+  <div style="height: 40px; flex: none; background: #161B22; border-bottom: 1px solid #30363D; display: flex; align-items: center; gap: 8px; padding: 0 16px">
+    <span style="width: 12px; height: 12px; border-radius: 50%; background: #484F58"></span>
+    <span style="width: 12px; height: 12px; border-radius: 50%; background: #484F58"></span>
+    <span style="width: 12px; height: 12px; border-radius: 50%; background: #484F58"></span>
+    <span style="margin-left: 12px; color: #8B949E; font-size: 12px">shop-java: terminal</span>
+  </div>
+  <pre style="margin: 0; padding: 20px 24px; color: #E6EDF3; font-size: 13px; line-height: 19px; font-family: inherit; white-space: pre; overflow: hidden"><span style="color:#8B949E"># on branch feature/invoice-export</span>
+<span style="color:#8B949E">$</span> npx specgate check
+
+<b>specgate</b> 0.1.0  <span style="color:#8B949E">optivem/shop-java @ 3f9a1c2  mode: branch</span>
+
+Use cases         <b>12</b>   <span style="color:#8B949E">docs/use-cases/*.md</span>
+Criteria          <b>27</b>
+Acceptance tests  <b>24</b>   <span style="color:#8B949E">build/test-results/acceptance/*.xml</span>
+
+ <span style="color:#5FD38D">✓</span> <b>9 use cases verified</b>   <span style="color:#8B949E">UC-001 to UC-008, UC-010 (20 criteria)</span>
+ <span style="color:#79B8FF">◐</span> UC-009  Refund order                    <span style="color:#79B8FF">1 of 3 criteria verified</span>
+      <span style="color:#5FD38D">✓</span> UC-009.1  Full refund returns the whole amount
+      <span style="color:#79B8FF">◐</span> UC-009.2  Partial refund returns the selected items  <span style="color:#8B949E">(@wip, red)</span>
+      <span style="color:#8B949E">○</span> UC-009.3  Refund is rejected after 30 days           <span style="color:#8B949E">no test</span>
+ <span style="color:#8B949E">○</span> UC-011  Send order confirmation email   <span style="color:#8B949E">0 of 2 criteria</span>
+ <span style="color:#8B949E">○</span> UC-012  Export invoice PDF              <span style="color:#8B949E">0 of 2 criteria (1 waived)</span>
+
+<span style="color:#8B949E">Orphan tests (linked to no criterion): 2</span>
+
+Spec coverage  <b>78%</b> (21 of 27 criteria verified)
+<span style="color:#5FD38D"><b>✓ Gate passed (branch mode):</b> no failing tests.</span>
+<span style="color:#8B949E">  6 criteria not verified yet. They must be verified before merging to main.</span>
+<span style="color:#8B949E">$</span> echo $?
+0
+
+<span style="color:#8B949E"># on main, same commit</span>
+<span style="color:#8B949E">$</span> npx specgate check --mode strict --threshold 80
+
+Spec coverage  <b>78%</b> (21 of 27 criteria verified)   <span style="color:#8B949E">threshold 80%</span>
+<span style="color:#5FD38D">███████████████████</span><span style="color:#484F58">░░░░░</span>
+
+<span style="color:#FF7B72"><b>✗ Gate failed (strict mode):</b> spec coverage 78% is below threshold 80%</span>
+<span style="color:#8B949E">  Not verified: UC-009.2 (in progress), UC-009.3, UC-011, UC-012 (planned)</span>
+<span style="color:#8B949E">$</span> echo $?
+1</pre>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":860}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

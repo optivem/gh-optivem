@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Use case markdown file</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 760px; height: 640px; box-sizing: border-box; background: #0D1117; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column">
+  <div style="height: 40px; flex: none; background: #161B22; border-bottom: 1px solid #30363D; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px">
+    <span style="color: #E6EDF3">docs/use-cases/UC-009-refund-order.md</span>
+    <span style="color: #8B949E">markdown</span>
+  </div>
+  <pre style="margin: 0; flex: 1; padding: 20px 24px; color: #E6EDF3; font-size: 13px; line-height: 20px; font-family: 'JetBrains Mono', monospace; white-space: pre; overflow: hidden"><span style="color:#8B949E">---</span>
+<span style="color:#7EE787">id</span>: UC-009
+<span style="color:#7EE787">title</span>: Refund order
+<span style="color:#8B949E">---</span>
+
+<b><span style="color:#79B8FF"># UC-009 Refund order</span></b>
+
+A customer asks for a refund on an order that
+has already been delivered.
+
+<b><span style="color:#79B8FF">## Main scenario</span></b>
+
+1. Customer requests a refund for the order.
+2. System returns the whole order amount.
+   <span style="color:#FFA657">→ UC-009.1</span> Full refund returns the whole amount.
+
+<b><span style="color:#79B8FF">## Extensions</span></b>
+
+2a. Customer selects only some items.
+    System returns the price of those items.
+    <span style="color:#FFA657">→ UC-009.2</span> Partial refund returns the selected items.
+
+2b. More than 30 days since delivery.
+    System rejects the refund.
+    <span style="color:#FFA657">→ UC-009.3</span> Refund is rejected after 30 days.</pre>
+  <div style="flex: none; background: #161B22; border-top: 1px solid #30363D; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-family: 'Inter', system-ui, sans-serif; font-size: 13px; color: #C9D1D9">
+    <span style="color: #8B949E">specgate sees:</span>
+    <span style="background: #30363D; color: #E6EDF3; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 12px">○ Planned</span>
+    <span>3 criteria (UC-009.1 to UC-009.3), one per path. None has an acceptance test yet.</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":760,"height":640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

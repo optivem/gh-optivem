@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>specgate pull request comment</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 880px; height: 560px; box-sizing: border-box; padding: 32px; background: #F6F8FA; font-family: 'Inter', system-ui, sans-serif; color: #1F2328; font-size: 14px; line-height: 1.5">
+  <div style="background: #FFFFFF; border: 1px solid #D0D7DE; border-radius: 8px; overflow: hidden">
+    <div style="background: #F6F8FA; border-bottom: 1px solid #D0D7DE; padding: 10px 16px; display: flex; align-items: center; gap: 10px">
+      <svg width="22" height="22" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <rect x="1.5" y="1.5" width="23" height="23" rx="6" stroke="#2F4BD8" stroke-width="2"/>
+        <path d="M7 13.5l4 4 8-9" stroke="#2F4BD8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span style="font-weight: 600">specgate</span>
+      <span style="color: #59636E">commented just now</span>
+    </div>
+    <div style="padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 16px">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 600">Spec coverage: 78% <span style="color: #59636E; font-weight: 500; font-size: 16px">(21 of 27 criteria verified, +2 vs main)</span></h2>
+      <p style="margin: 0; color: #116329; font-weight: 600">✓ Gate passed (branch mode). The strict gate on main needs 80%, so these 6 criteria must be verified before merge.</p>
+      <table style="border-collapse: collapse; width: 100%; font-size: 13px">
+        <thead>
+          <tr style="text-align: left; border-bottom: 1px solid #D0D7DE">
+            <th style="padding: 8px 10px; font-weight: 600">Criterion</th>
+            <th style="padding: 8px 10px; font-weight: 600">State</th>
+            <th style="padding: 8px 10px; font-weight: 600">Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid #EAEEF2">
+            <td style="padding: 8px 10px"><span style="font-family: 'JetBrains Mono', monospace">UC-009.2</span> Partial refund</td>
+            <td style="padding: 8px 10px; color: #0A3069; font-weight: 600">◐ In progress</td>
+            <td style="padding: 8px 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px">RefundOrderTest.refundsPartialAmount (@wip, red)</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #EAEEF2">
+            <td style="padding: 8px 10px"><span style="font-family: 'JetBrains Mono', monospace">UC-009.3</span> Refund after 30 days</td>
+            <td style="padding: 8px 10px; color: #424A53; font-weight: 600">○ Planned</td>
+            <td style="padding: 8px 10px; color: #59636E">No test yet</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #EAEEF2">
+            <td style="padding: 8px 10px"><span style="font-family: 'JetBrains Mono', monospace">UC-011</span> Order confirmation email</td>
+            <td style="padding: 8px 10px; color: #424A53; font-weight: 600">○ Planned</td>
+            <td style="padding: 8px 10px; color: #59636E">2 criteria, no tests yet</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 10px"><span style="font-family: 'JetBrains Mono', monospace">UC-012</span> Export invoice PDF</td>
+            <td style="padding: 8px 10px; color: #424A53; font-weight: 600">○ Planned</td>
+            <td style="padding: 8px 10px; color: #59636E">2 criteria, 1 waived until 2026-11-30</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin: 0; color: #59636E; font-size: 13px">2 orphan tests are linked to no criterion. Full report: <a href="#" style="color: #0969DA">coverage dashboard</a></p>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":880,"height":560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
