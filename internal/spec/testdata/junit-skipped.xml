@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.shop.PlaceOrderTest" tests="1" skipped="1" failures="0" errors="0">
+  <testcase name="shouldPlaceOrder" classname="com.shop.PlaceOrderTest" time="0"><properties><property name="tag" value="UC-001.1"/></properties><skipped/></testcase>
+</testsuite>

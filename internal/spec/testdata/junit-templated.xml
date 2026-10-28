@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.shop.PlaceOrderTest" tests="3" skipped="0" failures="0" errors="1">
+  <testcase name="shouldPlaceOrder [Channel: UI]" classname="com.shop.PlaceOrderTest" time="0.1"><properties><property name="tag" value="UC-001.1"/></properties></testcase>
+  <testcase name="shouldPlaceOrder [Channel: API]" classname="com.shop.PlaceOrderTest" time="0.1"><properties><property name="tag" value="UC-001.1"/></properties><error message="x"/></testcase>
+  <testcase name="shouldWip [Channel: UI]" classname="com.shop.PlaceOrderTest" time="0.1"><properties><property name="tag" value="UC-001.3"/><property name="tag" value="wip"/></properties></testcase>
+</testsuite>
