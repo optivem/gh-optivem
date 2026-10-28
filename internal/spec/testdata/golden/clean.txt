@@ -1,0 +1,20 @@
+Spec coverage: 2 of 14 acceptance criteria verified (14.3%)
+Mode: lenient (threshold 100.0%)   Gate: PASSED
+Verified 2 | In progress 0 | Failing 0 | Planned 12 | Waived 0
+
+UC-001 Place Order [In progress]
+  Acceptance criteria
+    [Verified]    UC-001.1   A valid order is placed and gets status PLACED with an ORD- prefixed number.
+    [Verified]    UC-001.2   Base price = unit price x quantity.
+    [Planned]     UC-001.3   Coupon discount applies; no coupon means no discount; subtotal = base - discount.
+    [Planned]     UC-001.4   Tax rate follows country; total = subtotal + tax.
+    [Planned]     UC-001.5   Coupon usage count increments after use.
+    [Planned]     UC-001.6   Placement timestamp is recorded.
+    [Planned]     UC-001.7   Promotion price rules (full price without promotion, discount when active).
+    [Planned]     UC-001.8   Non-positive / non-integer / empty / null quantity is rejected (narrative 4a).
+    [Planned]     UC-001.9   Unknown SKU or empty / null SKU is rejected (narrative 5b).
+    [Planned]     UC-001.10  Empty / null / invalid country is rejected.
+    [Planned]     UC-001.11  Non-existent, expired or over-used coupon is rejected.
+    [Planned]     UC-001.12  Admin cannot place an order.
+    [Planned]     UC-001.13  Order rejected at year end.
+    [Planned]     UC-001.14  ERP unavailable message (narrative 5a).

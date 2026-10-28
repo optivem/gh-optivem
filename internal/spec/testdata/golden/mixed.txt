@@ -1,0 +1,48 @@
+Spec coverage: 0 of 14 acceptance criteria verified (0.0%)
+Mode: strict (threshold 80.0%)   Gate: FAILED
+Verified 0 | In progress 1 | Failing 2 | Planned 10 | Waived 1
+
+UC-001 Place Order [In progress]
+  Acceptance criteria
+    [Failing]     UC-001.1   A valid order is placed and gets status PLACED with an ORD- prefixed number.
+    [Failing]     UC-001.2   Base price = unit price x quantity.
+    [In progress] UC-001.3   Coupon discount applies; no coupon means no discount; subtotal = base - discount.
+    [Planned]     UC-001.4   Tax rate follows country; total = subtotal + tax.
+    [Waived]      UC-001.5   Coupon usage count increments after use.
+                  note: waived until 2026-12-31 by vj: Payment <sandbox> down | later
+    [Planned]     UC-001.6   Placement timestamp is recorded.
+    [Planned]     UC-001.7   Promotion price rules (full price without promotion, discount when active).
+    [Planned]     UC-001.8   Non-positive / non-integer / empty / null quantity is rejected (narrative 4a).
+    [Planned]     UC-001.9   Unknown SKU or empty / null SKU is rejected (narrative 5b).
+    [Planned]     UC-001.10  Empty / null / invalid country is rejected.
+    [Planned]     UC-001.11  Non-existent, expired or over-used coupon is rejected.
+    [Planned]     UC-001.12  Admin cannot place an order.
+    [Planned]     UC-001.13  Order rejected at year end.
+    [Planned]     UC-001.14  ERP unavailable message (narrative 5a).
+                  note: baselined
+
+Orphan tests (not linked to any criterion)
+  - com.shop.PlaceOrderTest.shouldHaveNoTag: no criterion ID
+  - com.shop.PlaceOrderTest.shouldDoGhost: no known criterion ID
+
+Tests referencing unknown criterion IDs
+  - UC-999.1 in com.shop.PlaceOrderTest.shouldDoGhost
+
+Spec validation errors
+  - duplicate-id: UC-001.9 is defined twice
+
+Gate reasons
+  - validation error (duplicate-id): UC-001.9 is defined twice
+  - UC-001.1 is Failing
+  - UC-001.2 is Failing
+  - UC-001.3 is In progress (strict requires Verified)
+  - UC-001.4 is Planned (strict requires Verified)
+  - UC-001.6 is Planned (strict requires Verified)
+  - UC-001.7 is Planned (strict requires Verified)
+  - UC-001.8 is Planned (strict requires Verified)
+  - UC-001.9 is Planned (strict requires Verified)
+  - UC-001.10 is Planned (strict requires Verified)
+  - UC-001.11 is Planned (strict requires Verified)
+  - UC-001.12 is Planned (strict requires Verified)
+  - UC-001.13 is Planned (strict requires Verified)
+  - coverage 0.0% is below threshold 80.0%

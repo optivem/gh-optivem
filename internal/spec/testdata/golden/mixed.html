@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec coverage report</title>
+<style>
+:root{color-scheme:light dark;--bg:#FAFAF8;--card:#FFFFFF;--line:#E3E3DE;--fg:#1B1F23;--muted:#5B6470;--soft:#3A424C;--ok:#1E6B3F;--bad:#B3261E}
+@media (prefers-color-scheme:dark){:root{--bg:#14171A;--card:#1D2125;--line:#2E343A;--fg:#E8EAEC;--muted:#9AA3AD;--soft:#C3C9CF;--ok:#58C285;--bad:#FF8A80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+header{border-bottom:1px solid var(--line);background:var(--card)}
+.wrap{max-width:1120px;margin:0 auto;padding:16px 24px}
+main.wrap{padding-top:28px;padding-bottom:48px;display:flex;flex-direction:column;gap:24px}
+h1{margin:0;font-size:26px;letter-spacing:-0.02em}
+h2{margin:0;font-size:16px}
+.muted{color:var(--muted)}
+.banner{border-radius:10px;padding:14px 18px;border:1px solid var(--line);background:var(--card);border-left:6px solid var(--ok)}
+.banner.fail{border-left-color:var(--bad)}
+.banner.none{border-left-color:var(--muted)}
+.banner h2{font-size:18px}
+.banner ul{margin:8px 0 0;padding-left:20px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.tile .v{font-size:32px;font-weight:700;line-height:1.15;display:block}
+.tile .l{font-size:13px;color:var(--muted);font-weight:500}
+.bar{display:flex;gap:3px;height:22px;margin:12px 0}
+.bar div{border-radius:4px;min-width:3px}
+.legend{display:flex;flex-wrap:wrap;gap:18px;font-size:13px;color:var(--soft)}
+.dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+.life{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-top:12px}
+.life .item{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg)}
+.pill{display:inline-block;color:#fff;border-radius:999px;padding:1px 10px;font-size:12px;font-weight:600;white-space:nowrap}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.note{font-size:12px;color:var(--muted)}
+section.uc{display:flex;flex-direction:column;gap:8px}
+.uchead{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+@media (max-width:600px){.wrap{padding-left:16px;padding-right:16px}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><strong>gh optivem spec</strong> <span class="muted">Report generated 2026-10-28 12:00 UTC</span></div></header>
+<main class="wrap">
+<h1>Spec coverage report</h1>
+<section class="banner fail" role="status"><h2>Gate failed</h2><p class="muted">Mode strict, threshold 80.0%.</p><ul><li>validation error (duplicate-id): UC-001.9 is defined twice</li><li>UC-001.1 is Failing</li><li>UC-001.2 is Failing</li><li>UC-001.3 is In progress (strict requires Verified)</li><li>UC-001.4 is Planned (strict requires Verified)</li><li>UC-001.6 is Planned (strict requires Verified)</li><li>UC-001.7 is Planned (strict requires Verified)</li><li>UC-001.8 is Planned (strict requires Verified)</li><li>UC-001.9 is Planned (strict requires Verified)</li><li>UC-001.10 is Planned (strict requires Verified)</li><li>UC-001.11 is Planned (strict requires Verified)</li><li>UC-001.12 is Planned (strict requires Verified)</li><li>UC-001.13 is Planned (strict requires Verified)</li><li>coverage 0.0% is below threshold 80.0%</li></ul></section>
+<section class="tiles" aria-label="Summary">
+<div class="card tile"><span class="l">Spec coverage</span><span class="v">0.0%</span></div>
+<div class="card tile"><span class="l">Criteria verified</span><span class="v">0 of 14</span></div>
+<div class="card tile"><span class="l">Use cases verified</span><span class="v">0 of 1</span></div>
+<div class="card tile"><span class="l">In progress</span><span class="v">1</span></div>
+<div class="card tile"><span class="l">Failing</span><span class="v">2</span></div>
+<div class="card tile"><span class="l">Planned</span><span class="v">10</span></div>
+<div class="card tile"><span class="l">Waived</span><span class="v">1</span></div>
+</section>
+<section class="card">
+<h2>Spec coverage: 0 of 14 acceptance criteria verified (0.0%)</h2>
+<div class="bar" role="img" aria-label="0 verified, 1 in progress, 2 failing, 10 planned, 1 waived criteria"><div style="flex:1 1 0;background:#2F6FDB" title="In progress (1)"></div><div style="flex:2 1 0;background:#C0392B" title="Failing (2)"></div><div style="flex:10 1 0;background:#6B7580" title="Planned (10)"></div><div style="flex:1 1 0;background:#7E6BB8" title="Waived (1)"></div></div>
+<div class="legend"><span><span class="dot" style="background:#2E7D4F"></span>Verified (0)</span><span><span class="dot" style="background:#2F6FDB"></span>In progress (1)</span><span><span class="dot" style="background:#C0392B"></span>Failing (2)</span><span><span class="dot" style="background:#6B7580"></span>Planned (10)</span><span><span class="dot" style="background:#7E6BB8"></span>Waived (1)</span></div>
+<p class="note">Threshold 80.0% applies in strict mode.</p>
+</section>
+<section class="card">
+<h2>Criterion lifecycle</h2>
+<p class="muted">Each acceptance criterion moves through these states as its acceptance test is added and the feature is built. A use case is Verified when all its criteria are.</p>
+<div class="life">
+<div class="item"><span class="pill" style="background:#2E7D4F">Verified</span> <strong>0</strong><br><span class="note">Every linked acceptance test passes and none is marked wip.</span></div>
+<div class="item"><span class="pill" style="background:#2F6FDB">In progress</span> <strong>1</strong><br><span class="note">A linked acceptance test is marked wip: the feature is being built.</span></div>
+<div class="item"><span class="pill" style="background:#C0392B">Failing</span> <strong>2</strong><br><span class="note">A linked acceptance test is red and not marked wip. Always blocks the gate.</span></div>
+<div class="item"><span class="pill" style="background:#6B7580">Planned</span> <strong>10</strong><br><span class="note">No passing acceptance test is linked yet.</span></div>
+<div class="item"><span class="pill" style="background:#7E6BB8">Waived</span> <strong>1</strong><br><span class="note">Exempted by an approved, time-limited waiver. Counts as not verified.</span></div>
+</div>
+</section>
+<section class="card uc">
+<div class="uchead"><h2><span class="mono">UC-001</span> Place Order</h2><span class="pill" style="background:#2F6FDB">In progress</span><span class="note">0 of 14 criteria verified</span></div>
+<div class="tbl"><table>
+<thead><tr><th>Criterion</th><th>State</th><th>Description</th><th>Tests</th></tr></thead>
+<tbody>
+<tr class="s-failing"><td class="mono">UC-001.1</td><td><span class="pill" style="background:#C0392B">Failing</span></td><td><span class="note">Acceptance criteria</span><br>A valid order is placed and gets status PLACED with an ORD- prefixed number.</td><td class="mono">shouldPlaceOrder, shouldPlaceOrder</td></tr>
+<tr class="s-failing"><td class="mono">UC-001.2</td><td><span class="pill" style="background:#C0392B">Failing</span></td><td><span class="note">Acceptance criteria</span><br>Base price = unit price x quantity.</td><td class="mono">shouldRejectEmpty</td></tr>
+<tr class="s-in-progress"><td class="mono">UC-001.3</td><td><span class="pill" style="background:#2F6FDB">In progress</span></td><td><span class="note">Acceptance criteria</span><br>Coupon discount applies; no coupon means no discount; subtotal = base - discount.</td><td class="mono">shouldWip (wip)</td></tr>
+<tr class="s-planned"><td class="mono">UC-001.4</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Tax rate follows country; total = subtotal + tax.</td><td class="mono"></td></tr>
+<tr class="s-waived"><td class="mono">UC-001.5</td><td><span class="pill" style="background:#7E6BB8">Waived</span></td><td><span class="note">Acceptance criteria</span><br>Coupon usage count increments after use.<br><span class="note">waived until 2026-12-31 by vj: Payment &lt;sandbox&gt; down | later</span></td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.6</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Placement timestamp is recorded.</td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.7</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Promotion price rules (full price without promotion, discount when active).</td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.8</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Non-positive / non-integer / empty / null quantity is rejected (narrative 4a).</td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.9</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Unknown SKU or empty / null SKU is rejected (narrative 5b).</td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.10</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Empty / null / invalid country is rejected.</td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.11</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Non-existent, expired or over-used coupon is rejected.</td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.12</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Admin cannot place an order.</td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.13</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>Order rejected at year end.</td><td class="mono"></td></tr>
+<tr class="s-planned"><td class="mono">UC-001.14</td><td><span class="pill" style="background:#6B7580">Planned</span></td><td><span class="note">Acceptance criteria</span><br>ERP unavailable message (narrative 5a).<br><span class="note">baselined</span></td><td class="mono"></td></tr>
+</tbody></table></div>
+</section>
+<section class="card">
+<h2>Orphan tests (not linked to any criterion)</h2>
+<ul><li><code>com.shop.PlaceOrderTest.shouldHaveNoTag</code>: no criterion ID</li><li><code>com.shop.PlaceOrderTest.shouldDoGhost</code>: no known criterion ID</li></ul>
+</section>
+<section class="card">
+<h2>Tests referencing unknown criterion IDs</h2>
+<ul><li><code>UC-999.1</code> in <code>com.shop.PlaceOrderTest.shouldDoGhost</code></li></ul>
+</section>
+<section class="card">
+<h2>Spec validation errors</h2>
+<ul><li><code>duplicate-id</code>: UC-001.9 is defined twice</li></ul>
+</section>
+</main>
+</body>
+</html>
