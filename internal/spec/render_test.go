@@ -67,7 +67,9 @@ func TestRenderGolden(t *testing.T) {
 
 func TestRenderDeterministic(t *testing.T) {
 	rep := mixedReport(t)
-	if RenderHTML(rep, testNow) != RenderHTML(rep, testNow) || RenderText(rep) != RenderText(rep) {
+	html1, html2 := RenderHTML(rep, testNow), RenderHTML(rep, testNow)
+	text1, text2 := RenderText(rep), RenderText(rep)
+	if html1 != html2 || text1 != text2 {
 		t.Fatal("output not deterministic")
 	}
 }

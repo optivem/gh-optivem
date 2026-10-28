@@ -150,7 +150,7 @@ func writeTextList(b *strings.Builder, title string, n int, item func(int) strin
 		return
 	}
 	fmt.Fprintf(b, "\n%s\n", title)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		fmt.Fprintf(b, "  - %s\n", item(i))
 	}
 }
@@ -393,7 +393,7 @@ func RenderHTML(rep Report, generated time.Time) string {
 			return
 		}
 		w("<section class=\"card\">\n<h2>%s</h2>\n<ul>", esc(title))
-		for i := 0; i < n; i++ {
+		for i := range n {
 			w("<li>%s</li>", item(i))
 		}
 		w("</ul>\n</section>\n")
