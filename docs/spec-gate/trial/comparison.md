@@ -1,0 +1,30 @@
+# Trial results (2026-10-28, shop Java monolith, Place Order, 14 criteria)
+
+Both tools run on a throwaway copy of shop; nothing pushed. SpecLint and tracey were not run (Step 4 skipped: the two trials already show the gap). V = verified by running, R = read only.
+
+| Requirement from my model | rsaglobaltech/specgate 0.27.2 | reqcov 0.3.1 |
+|---|---|---|
+| Criterion with own ID under a use case | No (V). Unit is `REQ-NNN` + one Gherkin scenario; use case is a free-text label | Yes (V). Custom `id_pattern: UC-\d+\.\d+`; list line must be `- UC-001.1: text`. No use case hierarchy |
+| Plain markdown, no Gherkin | No (V). Every REQ needs a `.feature` scenario; `validate --strict` wants When/Then, 3+ steps | Yes (V) |
+| Tests linked by ID, no architecture change | Partly (V). Mention in a test file; link is per file, not per method | Yes (V). `// @req UC-001.3, UC-001.4` comment on 36 methods; many-to-many works |
+| Reads JUnit XML from Gradle | No (V). Runs one `test_cmd`, uses exit code only | Yes with a catch (V). Matches by method name; `@TestTemplate` results (`method [Channel: UI]`) matched none, all 29 became orphans until the suffix was stripped from the XML |
+| Lifecycle Planned / wip / Verified / Failing | Draft then Implemented only (V); `apply` refuses on red suite or no linked test; no wip or failing per criterion | uncovered / covered / verified / failing / skipped (V). No Planned or wip (`Status: wip` ignored) |
+| Waivers (reason, approver, expiry) | None found (R) | Exclusion only (`Status: obsolete`, `Verification: none`); no reason/approver/expiry (V/R) |
+| Lenient vs strict by stage | One strict gate, `--strict-*` sub-flags (partly V); no stage profiles | Yes via separate config files (V): lenient exit 0, strict (`min_verified: 80`) exit 1; no stage concept |
+| Baseline for adoption | `adopt` creates REQ-001 "existing tests stay green" (V); `quality baseline` only for SARIF/coverage (R) | `--baseline coverage.json`, `--base-ref`, `fail_on_coverage_drop` (V); per criterion |
+| Orphans, unknown, duplicate IDs | Orphaned tests, placeholders in `validate` (mostly R) | ORPHAN_TEST, UNKNOWN_ID, DUPLICATE_ID (V) |
+| Commit status / summary / PR comment | Workflow generator with `validate --strict`; no status or PR comment (V) | Markdown to stdout with sticky-comment marker, `GITHUB_STEP_SUMMARY`, `::error` annotations (R); does not post the comment itself; no commit status |
+| Report for a product owner | Self-contained HTML (V) | HTML, CSV, JSON, Markdown (V; HTML not opened) |
+| Agent support | MCP, `/specgate:*`, `harness`, `status`/`apply` (R) | None found |
+| Runtime | Node 22+ | Python 3.9+ (2 deps) |
+| License / maintenance | MIT; 0.27.2 published today, very active | MIT; young, single repo |
+| Time to first result | ~15 min | ~25 min (most of it a Windows path problem) |
+
+**rsaglobaltech/specgate friction.** Its model is REQ + Gherkin + file-level mention + one suite exit code, so it cannot express criteria lifecycle from per-test results, waivers or stage gating. `init --yes` scaffolded a new app folder because shop has no root build file (use `adopt --var STACK=java`); installing into the repo made it detect Node; it adds `spec.md`, `features/`, `docs/specs/`, `AGENTS.md`, edits `.gitattributes`, writes to shop's `reports/`; `new` makes one REQ per call. Criterion 14 (no test) is correctly refused by `apply`. Ideas worth taking: "Needs Clarification" state, `adopt`, HTML report for POs, MCP and `next`-style status.
+
+**reqcov friction.** Python on Windows silently missed files under paths over 260 characters (tests showed 0 found) until a short-path copy was used; the `@TestTemplate` name suffix mismatch needs a script or an upstream change; no use case hierarchy or lifecycle model; markers are comments and can drift from the tests. A real Gradle run of one acceptance class took 1m22s and all 29 results failed (Keycloak/system not running); the all-green XML used to test verified/failing/skipped was synthetic.
+
+**Shop findings (from Step 1).** Criteria 3 and 4 share tests; criterion 14 (SAP/ERP unavailable) has no test; the narrative has only 3 extensions while tests cover about 9 more behaviours, so it is not the full spec; `legacy/` holds about 25 duplicate PlaceOrder tests to exclude.
+
+**Provisional reading against the decision rule (to confirm).** reqcov meets rule 1's core (criteria IDs, Gradle JUnit XML, stage gating via configs), but the template-name workaround is not small and it lacks Planned/wip, waivers and stages, which are my differentiators; rsaglobaltech/specgate fails rule 1 (no JUnit, no per-criterion results). Rule 3 is out: there is no demand evidence yet (needs 5 unprompted external requests). So the live choice is (a) use reqcov as the gate plus a small wrapper script and spend the effort on the ATDD method, versus (b) a thin gate inside gh-optivem. Recommendation: (b), because the lifecycle and stage gating are the part that matters for the courses, I control the convention, and reqcov is an alpha single-repo project; revisit (a) if reqcov adds wip/waiver support. **DECIDED 2026-10-28: (b), build the gate as a gh-optivem feature, not a standalone product.** Consequences: (1) the standalone Go repo, Go module path, GoReleaser/Action packaging, npm name, domain and trademark work are dropped for now; the name question is no longer blocking (the gate is a gh-optivem command/feature; pick its command name when designing it); (2) the placeholder repo `optivem/gh-specgate` is no longer needed, delete it or leave it unused (decide later); (3) scope is the gate, as before; (4) keep the convention architecture-neutral (criterion IDs, `wip` tag, JUnit XML) so it could be split out later if demand appears (rule 3: 5 unprompted external requests); (5) take the ideas listed above (Needs Clarification state, adoption baseline, sticky PR comment, PO report); (6) the Steps and Handoff text above that describe a standalone Go CLI/Action are superseded by this decision and need rewriting into a gh-optivem design (next step).
+

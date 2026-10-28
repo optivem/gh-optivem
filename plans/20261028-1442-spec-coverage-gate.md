@@ -19,21 +19,43 @@
 
 ## ▶ Next executable step (resume here)
 
-Design work, not a mechanical edit: settle the open questions below (command name, ID convention, use case source format) via `/refine-plan plans/20261028-1442-spec-coverage-gate.md`, then Step 1 becomes executable. Background and trial evidence are in the hq repo: `plans/20261028-091856-sdd-coverage-tool.md` ("Trial results" and the decision paragraph).
+Step 1 (write the convention doc). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
+
+## Execution notes (autonomous and token-efficient)
+
+- **Autonomous:** no questions needed; every decision is below. Stop only for a failure that survives 2 fix attempts, or a destructive or third-party-visible action (none planned). Deployment is automated by the repo's CI, so there is no end-of-run wait gate.
+- **Token-efficient:** run each step in a fresh subagent given only this plan path and its step number. Read only the files the step names. Run tests scoped to the package (`go test ./internal/spec/...`), never `./...` until Step 9. Use `Edit`, not `Write`, on existing files. Use the fixtures in `docs/spec-gate/trial/` instead of re-deriving shop data. Do not re-read the Background section or the competitor material.
+- **One commit per step**, after its tests pass, via `/commit` (surgical `--repo gh-optivem --paths ...`). Delete the finished step from this file in the same commit and refresh the "Next executable step" block.
+- **Windows:** keep paths short; no hardcoded user paths; no `isolation: worktree`.
+
+## Decisions (resolved 2026-10-28)
+
+- **Command:** `gh optivem spec` with subcommands `check`, `status`, `validate`, `adopt` (later `next`). New file `spec_commands.go` in the repo root registered next to the other commands in `main.go` (see `doctor_commands.go` for the cobra pattern); logic in a new package `internal/spec/` that must not import `internal/atdd` (so it can be extracted later).
+- **Test link:** the criterion ID is carried by a JUnit tag/property (Java `@Tag("UC-001.3")`, as in the mockup) and read from the JUnit XML; no source scanning. A `wip` tag marks in-progress. Other stacks emit the same ID/tag (document the mapping in the convention doc).
+- **ID convention:** `UC-<n>.<m>` (use case dot criterion); the prefix must match the use case id.
+- **Spec source:** plain markdown files (default dir `docs/use-cases/`); a use case has front matter (`id`, `title`), and criteria are list lines `- UC-001.1: text` under the scenario/extension they belong to. No Gherkin in v1.
+- **JUnit XML:** `@TestTemplate` results named `method [Channel: UI]` are normalised by stripping a trailing ` [...]` suffix when mapping to a test method; tags (not method names) are the primary link, so one tagged method with several channel results counts as one test with several results (all must pass).
+- **Lifecycle:** Planned, In progress (linked test tagged `wip`), Verified (all linked results pass, no `wip`), Failing (red without `wip`), Waived (entry in config with reason, approver, until date; counts as not verified in the percentage, not reported as a gap until it expires). "Needs Clarification" is out of v1.
+- **Gating:** `--mode lenient|strict` chosen by the pipeline stage, never by branch. Lenient blocks only validate errors and Failing; strict also blocks anything not Verified in scope and coverage below `--threshold`. Optional `flag: <name>` on a criterion excludes it from strict unless the flag is on.
+- **Outputs:** terminal report, `--json` (versioned contract, `schemaVersion: 1`), GitHub job summary (`GITHUB_STEP_SUMMARY`), sticky PR-comment markdown (`<!-- gh-optivem-spec -->` marker, printed not posted), HTML report for product owners. No commit-status posting in v1.
+- **Baseline:** `spec adopt` writes `docs/use-cases/.spec-baseline.json` listing currently unverified criteria; the gate treats baselined criteria as non-blocking in strict mode and fails on new regressions.
+- **Config file:** `spec.yaml` at the repo root (spec dir, results glob, threshold, waivers, exclude globs such as `**/legacy/**`).
+- **License / naming / hosting:** none needed; it ships inside gh-optivem. No standalone product, no npm, no domain.
 
 ## Steps
 
-- [ ] Step 1: Write the convention: criterion ID format, markdown layout (use case with criteria list), tag syntax on tests, lifecycle states and `wip` tag, waiver format. Architecture-neutral.
-- [ ] Step 2: Decide where the code lives in gh-optivem (a package with no dependency on `internal/atdd`, so it can be extracted later) and the command name.
-- [ ] Step 3: Implement parsing (markdown criteria, test tags, JUnit XML incl. `@TestTemplate` suffix handling) and the `--json` report.
-- [ ] Step 4: Implement lifecycle computation and validation (orphan, unknown, duplicate IDs).
-- [ ] Step 5: Implement lenient vs strict gating by stage, plus the adoption baseline.
-- [ ] Step 6: Outputs: job summary, sticky PR comment, HTML report for the product owner.
-- [ ] Step 7: Try it on shop (Java monolith, Place Order, 14 criteria; known shape: criteria 3 and 4 share tests, criterion 14 has no test, `legacy/` duplicates excluded).
-- [ ] Step 8: Wire into the ATDD process at the verify steps ("verify tests fail" = In progress, "verify tests pass" = Verified, strict gate on `main`), and add a `next`-style status and an `adopt` command.
-- [ ] Step 9: Docs, and update the demo canvas and course references.
+- [ ] Step 1: Write `docs/spec-gate/convention.md` from the Decisions and the fixtures in `docs/spec-gate/trial/` (`UC-001-place-order.md` is the sample spec). Cover ID format, markdown layout, tag syntax per stack, lifecycle table, waiver and flag syntax, `spec.yaml` keys, JSON schema v1 outline, gating table. Gate: file exists and covers every Decisions bullet. Commit.
+- [ ] Step 2: `internal/spec/` parser: markdown use cases to a model (use case id/title, criteria with IDs, optional `flag`), plus `Validate` (duplicate IDs, prefix mismatch, malformed front matter). Table-driven tests using `docs/spec-gate/trial/UC-001-place-order.md` copied to `internal/spec/testdata/`. Gate: `go test ./internal/spec/...` green. Commit.
+- [ ] Step 3: JUnit XML reader in `internal/spec/`: parse Gradle/Surefire XML, extract tag/property IDs and `wip`, normalise `@TestTemplate` suffixes, aggregate multiple results per test. Fixtures: write small XML files in `internal/spec/testdata/` (all-pass, one red, one skipped, templated channels, unknown ID, orphan). Gate: tests green. Commit.
+- [ ] Step 4: Lifecycle engine and report model: compute per-criterion state, per-use-case state, spec coverage (`verified / total criteria`), orphans, unknown IDs; apply `spec.yaml` waivers (expiry honoured) and `flag`. Emit the versioned JSON report. Gate: tests cover each state using the Step 3 fixtures and the 14-criterion spec (criterion 14 has no test, criteria 3 and 4 share tests). Commit.
+- [ ] Step 5: Gating: lenient and strict modes, threshold, exit codes, baseline load/compare. Gate: tests for the lenient vs strict matrix and baseline regression. Commit.
+- [ ] Step 6: Outputs: terminal text, GitHub job summary, sticky PR-comment markdown, static HTML report (self-contained, product-owner readable; model it on `docs/spec-gate/mockup/project/Main.dc.html`: summary tiles, coverage bar, lifecycle legend, use-case table, orphans). Gate: golden-file tests. Commit.
+- [ ] Step 7: CLI wiring: `spec_commands.go` (`check`, `status`, `validate`, `adopt`) registered in `main.go`, flags `--mode`, `--threshold`, `--json`, `--html`, `--config`; add a root test like the existing `*_commands_test.go`. Gate: `go build ./...` and `go test .` for the new command tests. Commit.
+- [ ] Step 8: Shop trial: copy `shop` to a temp dir outside both repos (never touch shop `main`, push nothing), add `spec.yaml`, the Place Order markdown and `@Tag` ids to the Java tests, produce JUnit XML (use synthetic XML if Docker/Keycloak is unavailable and say so), run `gh optivem spec check` in lenient and strict modes, record results and friction in `docs/spec-gate/trial/gh-optivem-run.md`. Gate: expected states (13 of 14 covered, criterion 14 Planned). Commit the notes only.
+- [ ] Step 9: Docs and wiring: README section and command reference for `gh optivem spec`, link `docs/spec-gate/convention.md`, mention in `docs/tbd.md` (stage-based gating). Update the mockup README/screens for the `gh optivem spec` name and trunk-based flow only if cheap, else leave a note. Run the full `go test -p 2 ./...` and `go vet ./...`. Gate: all green. Commit.
+- [ ] Step 10: Cleanup: delete this plan, and add the remaining ideas to `BACKLOG.md` (Needs Clarification state, stale and smell warnings, `next` command for agents, Gherkin source, MCP wrapper, wiring into the ATDD verify steps, extracting the ATDD runner). Commit.
 
-## Background carried over from the hq plan (`plans/20261028-091856-sdd-coverage-tool.md`)
+## Background carried over from the earlier hq planning
 
 Wording below still says "specgate" for the gate; read it as the gh-optivem feature.
 
@@ -61,16 +83,8 @@ Wording below still says "specgate" for the gate; read it as the gh-optivem feat
 
 **Splitting the ATDD runner out of gh-optivem (separate, not started).** `internal/atdd/` is 88 Go files, about 16,000 of about 38,000 non-test lines (42%). It imports `engine` (42), `kernel` (33), `build` (5), `userstate` (3), `expand` (1). Back-edges to remove first: `kernel` and `diagrams` import `atdd`. About 13 root command files use it. Sequence: remove the two back-edges; extract `engine` and `kernel` into a shared module; move `internal/atdd` and its commands into a new repo (old command names forward for a while); update docs, skills, course references. Keeping the gate in its own package without a dependency on `internal/atdd` (Step 2) keeps this option open.
 
-**Trial results (shop Java monolith, Place Order, 14 criteria).** Full table in the hq plan. Summary: rsaglobaltech/specgate (V = run) needs Gherkin and REQ IDs, links per file, reads only the suite exit code, lifecycle Draft/Implemented only. reqcov (run): custom `id_pattern: UC-\d+\.\d+` works, plain markdown works, `// @req UC-001.3, UC-001.4` comments on 36 methods link many-to-many, Gradle XML read but `@TestTemplate` names (`method [Channel: UI]`) did not match (all 29 became orphans until the suffix was stripped), uncovered/covered/verified/failing/skipped states, lenient vs strict through two config files, per-criterion baseline, orphan/unknown/duplicate reports, sticky-comment marker and step summary (not posting itself), no Planned/wip, no waiver reason/approver/expiry. Windows note: Python missed files under paths over 260 characters. Shop findings: criteria 3 and 4 share tests; criterion 14 (SAP/ERP unavailable) has no test; the narrative has 3 extensions while tests cover about 9 more behaviours; `legacy/` holds about 25 duplicate PlaceOrder tests to exclude; tests are `@TestTemplate` (one method yields several JUnit results per channel). Use cases are in `shop/docs/design/shared/use-cases.md` and `use-case-narrative.md`.
+**Trial results (shop Java monolith, Place Order, 14 criteria).** Full table in `docs/spec-gate/trial/comparison.md`; trial inputs in the same folder (`UC-001-place-order.md`, `mapping.md`). Summary: rsaglobaltech/specgate (V = run) needs Gherkin and REQ IDs, links per file, reads only the suite exit code, lifecycle Draft/Implemented only. reqcov (run): custom `id_pattern: UC-\d+\.\d+` works, plain markdown works, `// @req UC-001.3, UC-001.4` comments on 36 methods link many-to-many, Gradle XML read but `@TestTemplate` names (`method [Channel: UI]`) did not match (all 29 became orphans until the suffix was stripped), uncovered/covered/verified/failing/skipped states, lenient vs strict through two config files, per-criterion baseline, orphan/unknown/duplicate reports, sticky-comment marker and step summary (not posting itself), no Planned/wip, no waiver reason/approver/expiry. Windows note: Python missed files under paths over 260 characters. Shop findings: criteria 3 and 4 share tests; criterion 14 (SAP/ERP unavailable) has no test; the narrative has 3 extensions while tests cover about 9 more behaviours; `legacy/` holds about 25 duplicate PlaceOrder tests to exclude; tests are `@TestTemplate` (one method yields several JUnit results per channel). Use cases are in `shop/docs/design/shared/use-cases.md` and `use-case-narrative.md`.
 
 **Dogfooding.** Level 1: the gate's own use cases and criteria live as markdown with tagged acceptance tests, and CI runs a pinned released version. Level 2: shop, one stack (Java monolith), Place Order. Level 3: a new product (the meetup app) built SDD-first with gh-optivem and the gate, as the greenfield case study and Substack series material.
 
 **Demo.** The UX mockup is saved in `docs/spec-gate/mockup/` (see its README); live canvas https://claude.ai/artifact/CfvTQoqjbsLV1c3mCDVDec. It shows the flow from story to dashboard to bug and feedback flows. To update: command name, trunk-based flow, four-layer test example.
-
-## Open questions
-
-- Command name (the standalone name `specgate` is no longer needed; options: `gh optivem spec ...`, `gh optivem verify-spec`, ...). Recommendation: a `spec` subcommand group (`check`, `status`, `adopt`), because it groups related commands and avoids a product name.
-- ID convention: `UC-001.3` (use case dot criterion) as in the trial. Recommendation: keep it; the trial showed reqcov-style custom patterns work and the prefix ties a criterion to its use case.
-- Use case source format: plain markdown files in the repo (the trial used `- UC-001.1: text` list lines). Recommendation: markdown only in v1.
-- Does the lifecycle include Needs Clarification? Recommendation: add it later; not needed for v1.
-- Test-link tag syntax per language (comment marker vs annotation). Recommendation: a language-agnostic marker that appears in JUnit XML where possible, with per-language annotations as optional sugar.
