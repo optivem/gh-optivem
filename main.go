@@ -186,6 +186,7 @@ func newRootCmd() *cobra.Command {
 		withGroup(newCompileCmd(), groupProjectOps),
 		withGroup(newTestAggregateCmd(), groupProjectOps),
 		withGroup(newDoctorCmd(), groupProjectOps),
+		withGroup(newSpecCmd(), groupProjectOps),
 
 		// Cross-repo ops — env-derived scope (workspace folders or the
 		// cwd repo). See cross_repo_commands.go for the cascade.
