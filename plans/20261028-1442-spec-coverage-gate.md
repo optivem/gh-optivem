@@ -21,7 +21,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 4 (lifecycle engine and report model in `internal/spec/`; the convention is in `docs/spec-gate/convention.md`; the Step 2 parser is `internal/spec/usecase.go`; the Step 3 JUnit reader is `internal/spec/junit.go` with fixtures `internal/spec/testdata/junit-*.xml`; API: `ParseJUnit`, `ReadJUnitFiles`, `Test{Class, Method, IDs, WIP, Results}`, `Test.Status()`). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
+Step 5 (gating in `internal/spec/`: lenient and strict modes, threshold, exit codes 0/1/2, baseline load/compare; the convention is in `docs/spec-gate/convention.md` sections 9 and 10; the Step 4 API is `BuildReport(useCases, tests, cfg, Options) Report` in `internal/spec/report.go` (Report has a nil `Gate *Gate{Passed, Reasons}` and per-criterion `Baselined`/`FlagOn` fields for Step 5 to fill/use; states `StatePlanned|StateInProgress|StateVerified|StateFailing|StateWaived`), `Config`/`LoadConfig`/`ParseConfig` in `internal/spec/config.go` (`Config.Baseline` path, `ThresholdValue()`), plus Step 2 `usecase.go` and Step 3 `junit.go`). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
 
 ## Execution notes (autonomous and token-efficient)
 
@@ -46,7 +46,6 @@ Step 4 (lifecycle engine and report model in `internal/spec/`; the convention is
 
 ## Steps
 
-- [ ] Step 4: Lifecycle engine and report model: compute per-criterion state, per-use-case state, spec coverage (`verified / total criteria`), orphans, unknown IDs; apply `spec.yaml` waivers (expiry honoured) and `flag`. Emit the versioned JSON report. Gate: tests cover each state using the Step 3 fixtures and the 14-criterion spec (criterion 14 has no test, criteria 3 and 4 share tests). Commit.
 - [ ] Step 5: Gating: lenient and strict modes, threshold, exit codes, baseline load/compare. Gate: tests for the lenient vs strict matrix and baseline regression. Commit.
 - [ ] Step 6: Outputs: terminal text, GitHub job summary, sticky PR-comment markdown, static HTML report (self-contained, product-owner readable; model it on `docs/spec-gate/mockup/project/Main.dc.html`: summary tiles, coverage bar, lifecycle legend, use-case table, orphans). Gate: golden-file tests. Commit.
 - [ ] Step 7: CLI wiring: `spec_commands.go` (`check`, `status`, `validate`, `adopt`) registered in `main.go`, flags `--mode`, `--threshold`, `--json`, `--html`, `--config`; add a root test like the existing `*_commands_test.go`. Gate: `go build ./...` and `go test .` for the new command tests. Commit.
