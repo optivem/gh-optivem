@@ -631,6 +631,28 @@ gh optivem hooks install                       # install a pre-push hook that re
 
 `doctor --orphans` runs the orphan-recovery sweep *instead of* the git-config check (invoke the command twice to run both). It lists the `claude` subprocesses tracked by per-dispatch PID markers under the user-level state dir and classifies each as stale (child already dead — silently cleaned), live (parent still running — left alone), or orphan (child alive, parent dead — prompts y/n to kill). Orphans are what a force-cancelled `implement` run leaves behind: Ctrl+C in the parent terminal, terminal closed, kernel kill, or a panic in a child.
 
+## Spec-coverage gate (`spec`)
+
+`gh optivem spec` derives the lifecycle state of each acceptance criterion (Planned, In progress, Verified, Failing, Waived) from use-case markdown plus JUnit XML, and gates on it. Concepts, ID format, tag syntax per stack, waivers, flags and `spec.yaml` are defined in [spec-gate/convention.md](spec-gate/convention.md).
+
+| Subcommand | Purpose |
+|---|---|
+| `spec validate` | Parse the use-case markdown only; fail on duplicate IDs, prefix mismatches, malformed front matter. No test results needed. |
+| `spec status` | Same report as `check`, but a failing gate verdict is shown, not enforced (exit `0`). |
+| `spec check` | Evaluate the gate for `--mode` and exit non-zero when it fails. |
+| `spec adopt` | Write the adoption baseline (`<specDir>/.spec-baseline.json`) of currently unverified criteria; in strict mode they stop blocking, new regressions still fail. |
+
+Flags (`check` and `status`): `--config <path>` (default `spec.yaml`), `--mode lenient|strict` (default `lenient`), `--threshold <0-100>` (strict only; overrides `spec.yaml`, default 100), `--json` (versioned report, `schemaVersion: 1`), `--html <path>` (self-contained report for product owners), `--pr-comment` (print the sticky PR-comment markdown, marker `<!-- gh-optivem-spec -->`; never posted), `--flag <name>` (repeatable; feature flag considered on). `validate` and `adopt` take `--config` (and `--flag` for `adopt`). When `GITHUB_STEP_SUMMARY` is set, `check` also appends a Markdown summary to it.
+
+**Exit codes:** `0` pass, `1` gate failed, `2` usage or configuration error.
+
+**Modes:** `lenient` blocks only validation errors and Failing criteria; `strict` also blocks any in-scope criterion that is not Verified (baselined and unflagged ones excepted) and coverage below the threshold. The mode is chosen by the pipeline stage, not by branch; see [tbd.md](tbd.md#stage-based-spec-gating).
+
+```bash
+gh optivem spec check --mode lenient
+gh optivem spec check --mode strict --threshold 90 --json > spec-report.json
+```
+
 ## Methodology assets
 
 `gh optivem` ships its ATDD methodology assets (the per-phase agent prompts and the shared preamble) embedded in the binary. They are fed to the `claude -p` subprocess via argv at dispatch time and are never written to disk in consumer repos — scaffolded projects hold zero ATDD assets locally, and updates propagate simply by upgrading the `gh-optivem` binary.

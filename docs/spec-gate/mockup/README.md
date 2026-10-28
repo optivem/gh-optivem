@@ -6,4 +6,6 @@ Source of the clickable prototype made 2026-10-28, published as a private Design
 - `index.html`: the published page shell.
 - The `.dc.html` files need the Design canvas runtime (`support.js`) to render, so view them on the published canvas or republish them there.
 
+Note (2026-10-28): the shipped command is `gh optivem spec` (subcommands `check`, `status`, `validate`, `adopt`), documented in `docs/cli-reference.md` and `docs/spec-gate/convention.md`; gating is by pipeline stage (lenient on commit/acceptance, strict on release), see `docs/tbd.md`. The screens below were not updated and still use the old names.
+
 Status: this is a draft from before the 2026-10-28 decision to build the gate inside gh-optivem. It still shows a standalone product called `specgate` (command `specgate ...`) with invented numbers (UC-009 Refund order, 27 criteria in 12 use cases, 78% coverage). Still to update: the name and command, trunk-based flow (stages, feature flags, commit status instead of PR comment), and a four-layer test example in the acceptance test screen.

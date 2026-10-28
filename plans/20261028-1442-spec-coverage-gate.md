@@ -21,7 +21,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 9 (Docs and wiring: README section and command reference for `gh optivem spec`, link `docs/spec-gate/convention.md`, mention in `docs/tbd.md` (stage-based gating); update the mockup README/screens for the `gh optivem spec` name and trunk-based flow only if cheap, else leave a note; also document the Gradle/JUnit 5 setup that writes tags as `<property>` entries (see `docs/spec-gate/trial/gh-optivem-run.md`); run the full `go test -p 2 ./...` and `go vet ./...`. Gate: all green. Commit). Step 8 (shop trial) is done: notes in `docs/spec-gate/trial/gh-optivem-run.md`, no bugs found. All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously. Do not read the Background section unless a step says so; each step is self-contained.
+Step 10 (Cleanup: delete this plan, and add the remaining ideas to `BACKLOG.md`; see the step below). Step 9 (docs and wiring) is done; the tags-as-properties real-run risk is recorded as a TODO in `BACKLOG.md`. All open questions are resolved (see \"Decisions\"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously. Do not read the Background section unless a step says so; each step is self-contained.
 
 ## Execution notes (autonomous and token-efficient)
 
@@ -46,7 +46,6 @@ Step 9 (Docs and wiring: README section and command reference for `gh optivem sp
 
 ## Steps
 
-- [ ] Step 9: Docs and wiring: README section and command reference for `gh optivem spec`, link `docs/spec-gate/convention.md`, mention in `docs/tbd.md` (stage-based gating). Update the mockup README/screens for the `gh optivem spec` name and trunk-based flow only if cheap, else leave a note. Run the full `go test -p 2 ./...` and `go vet ./...`. Gate: all green. Commit.
 - [ ] Step 10: Cleanup: delete this plan, and add the remaining ideas to `BACKLOG.md` (Needs Clarification state, stale and smell warnings, `next` command for agents, Gherkin source, MCP wrapper, wiring into the ATDD verify steps, extracting the ATDD runner). Commit.
 
 ## Background carried over from the earlier hq planning

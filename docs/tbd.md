@@ -147,6 +147,15 @@ So the real question is not "how big is the team" but "where does my review gate
 
 The same logic applies to the pre-merge CI gate. PRs deliver it via required status checks; in a no-PR world you need another mechanism (a pre-receive hook, a merge queue, a commit-time CI bot) to get the equivalent guarantee.
 
+## Stage-based spec gating
+
+Trunk-based flow has no long-lived branch to hold a "stricter" gate, so the spec-coverage gate (`gh optivem spec check`, see [spec-gate/convention.md](spec-gate/convention.md)) is tightened by **pipeline stage**, never by branch:
+
+- **Commit / acceptance stage:** `--mode lenient`. Blocks only validation errors and Failing criteria, so work-in-progress criteria (tagged `wip`, or behind a feature flag) can land on `main` continuously.
+- **Release / promotion stage:** `--mode strict`. Also blocks any in-scope criterion that is not Verified and coverage below `--threshold`.
+
+The same command and the same `main` run in both; only the stage's `--mode` differs.
+
 ## The version-bump bot
 
 This repo (and every repo scaffolded by `gh optivem init`) runs [`gh-bump-patch-version.yml`](../.github/workflows/gh-bump-patch-version.yml), which commits a `VERSION` bump directly to `main` after each release via the GitHub Contents API.

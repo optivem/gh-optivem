@@ -173,6 +173,20 @@ gh optivem --auto --confirm=command implement 56 --headless         # narrowest:
 
 Default when `--auto` is set and `--confirm` is omitted: `human`. See [Auto-approve](docs/cli-reference.md#auto-approve) for env-var overrides and more detail.
 
+# Spec-coverage gate
+
+`gh optivem spec` turns use-case markdown (acceptance criteria with stable IDs like `UC-001.3`) and JUnit XML test results into a per-criterion lifecycle (Planned, In progress, Verified, Failing, Waived) and a "spec coverage" number, and can gate a pipeline on it. Tests link to criteria by tag (`@Tag("UC-001.3")`); the gate reads only the markdown and the XML. The convention is in [docs/spec-gate/convention.md](docs/spec-gate/convention.md).
+
+```bash
+gh optivem spec validate                      # check the use-case markdown only
+gh optivem spec status                        # show states and coverage, never fails on the verdict
+gh optivem spec check --mode lenient          # commit/acceptance stage: blocks on validation errors and Failing
+gh optivem spec check --mode strict --threshold 95 --html spec-report.html   # release stage
+gh optivem spec adopt                         # baseline today's unverified criteria so an existing repo can adopt the gate
+```
+
+Exit codes: `0` pass, `1` gate failed, `2` usage or configuration error. Configuration lives in `spec.yaml`. See [docs/cli-reference.md](docs/cli-reference.md#spec-coverage-gate-spec) for flags.
+
 # Reference
 
 ## Everything else

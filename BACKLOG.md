@@ -45,3 +45,7 @@ Analysis of the [sandbox project setup page](https://github.com/optivem/academy/
 | **High** | #10, #11, #12 | Large — covers the bulk of manual implementation work (Tasks 3-8) |
 | **Medium** | #13, #14, #16 | Small-Medium — reduces manual testing, documentation setup, and project migration effort |
 | **Low** | #15 | Small — one-time task per student |
+
+## Spec-coverage gate open items
+
+- TODO: prove tags-as-properties on a real run. Stock Gradle JUnit XML may not write JUnit 5 `@Tag` values as `<property>` entries (the shop trial in `docs/spec-gate/trial/gh-optivem-run.md` used generated XML). Verify against a real Gradle run; if absent, document and ship a `TestExecutionListener`/reporter setup, and correct the "Gradle/Surefire XML carries tags as properties" claim in `docs/spec-gate/convention.md` if it does not hold.
