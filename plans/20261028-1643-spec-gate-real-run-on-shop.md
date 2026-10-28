@@ -1,5 +1,4 @@
 # 2026-10-28 16:43:19 UTC — Spec gate: real-run validation on shop
-> 🤖 **Picked up by agent** — ValentinaLaptop at 2026-10-28T16:56:17Z
 
 ## TL;DR
 
@@ -16,11 +15,11 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 6 (optional): ask the user whether to wire the gate into shop's pipeline, given the findings (the gate needs the tag-injection `doLast` step, already on shop `main`, and `gh optivem spec check` per stage). If no, delete this plan.
+Step 6 is deferred until a gh-optivem release contains `gh optivem spec` (v1.6.100 does not; check with `gh optivem spec --help` after `gh extension upgrade optivem`). Then: in shop add a lenient `gh optivem spec check --mode lenient` step to `.github/workflows/monolith-java-acceptance-stage.yml` after the suite steps (the XML exists only there; the commit stage runs no system tests).
 
 ## Steps
 
-- [ ] Step 6 (optional; decided: ask the user after Step 4 whether to do it, based on the findings): wire the gate into shop's pipeline: lenient at commit and acceptance stages, strict at release.
+- [ ] Step 6: wire the gate into shop's pipeline — ⏳ Deferred: needs a gh-optivem release containing `spec` (otherwise the acceptance stage breaks on `unknown command`). Design points to settle: (a) lenient check goes in the acceptance stage, not the commit stage (no system-test XML there); (b) strict at release needs the acceptance stage's JUnit XML uploaded as an artifact and downloaded in the release stage; (c) only the Java monolith carries tags and the tag-injection `doLast`, so other variants must stay out until tagged.
 
 ## Open questions
 
