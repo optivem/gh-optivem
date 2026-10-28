@@ -21,7 +21,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 5 (gating in `internal/spec/`: lenient and strict modes, threshold, exit codes 0/1/2, baseline load/compare; the convention is in `docs/spec-gate/convention.md` sections 9 and 10; the Step 4 API is `BuildReport(useCases, tests, cfg, Options) Report` in `internal/spec/report.go` (Report has a nil `Gate *Gate{Passed, Reasons}` and per-criterion `Baselined`/`FlagOn` fields for Step 5 to fill/use; states `StatePlanned|StateInProgress|StateVerified|StateFailing|StateWaived`), `Config`/`LoadConfig`/`ParseConfig` in `internal/spec/config.go` (`Config.Baseline` path, `ThresholdValue()`), plus Step 2 `usecase.go` and Step 3 `junit.go`). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
+Step 6 (outputs in `internal/spec/`: terminal text, GitHub job summary, sticky PR-comment markdown, static HTML report; the Step 5 API is `ApplyGate(&rep, *Baseline) error` (fills `Report.Gate` and per-criterion `Baselined`), `Report.ExitCode()` (0/1/2), `NewBaseline`, `WriteBaseline`, `LoadBaseline` in `internal/spec/gate.go`; the Step 4 API is `BuildReport(useCases, tests, cfg, Options) Report` in `internal/spec/report.go`, `Config` in `config.go`; the output formats are in `docs/spec-gate/convention.md` section 11, and the HTML model is `docs/spec-gate/mockup/project/Main.dc.html`). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
 
 ## Execution notes (autonomous and token-efficient)
 
@@ -46,7 +46,6 @@ Step 5 (gating in `internal/spec/`: lenient and strict modes, threshold, exit co
 
 ## Steps
 
-- [ ] Step 5: Gating: lenient and strict modes, threshold, exit codes, baseline load/compare. Gate: tests for the lenient vs strict matrix and baseline regression. Commit.
 - [ ] Step 6: Outputs: terminal text, GitHub job summary, sticky PR-comment markdown, static HTML report (self-contained, product-owner readable; model it on `docs/spec-gate/mockup/project/Main.dc.html`: summary tiles, coverage bar, lifecycle legend, use-case table, orphans). Gate: golden-file tests. Commit.
 - [ ] Step 7: CLI wiring: `spec_commands.go` (`check`, `status`, `validate`, `adopt`) registered in `main.go`, flags `--mode`, `--threshold`, `--json`, `--html`, `--config`; add a root test like the existing `*_commands_test.go`. Gate: `go build ./...` and `go test .` for the new command tests. Commit.
 - [ ] Step 8: Shop trial: copy `shop` to a temp dir outside both repos (never touch shop `main`, push nothing), add `spec.yaml`, the Place Order markdown and `@Tag` ids to the Java tests, produce JUnit XML (use synthetic XML if Docker/Keycloak is unavailable and say so), run `gh optivem spec check` in lenient and strict modes, record results and friction in `docs/spec-gate/trial/gh-optivem-run.md`. Gate: expected states (13 of 14 covered, criterion 14 Planned). Commit the notes only.
