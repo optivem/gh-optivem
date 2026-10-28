@@ -49,3 +49,13 @@ Expected states met: 13 of 14 criteria Verified, criterion 14 Planned. JSON per-
 - Dropping the `exclude` glob shows why it matters: shop's `legacy/` duplicates would pollute results.
 - Shop spec quality (unchanged from `comparison.md`): the narrative lists 3 extensions while the tests cover about 9 more behaviours, so criteria had to be authored from the tests; criterion 14 is a real gap.
 - Effort: tagging 38 tag lines across 5 classes was mechanical (scripted); a human would use the same mapping table.
+
+## Real run on shop (2026-10-28)
+
+Follow-up to the synthetic-XML trial above, on a short-lived shop branch with the local Docker stack (`gh optivem system start`, Keycloak included) and real Gradle runs of `acceptance-api`, `acceptance-ui` and `e2e-api` (Java monolith, stub mode).
+
+- **Tags are absent from stock Gradle XML.** Every `<testcase>` was written without properties (`<properties/>` only), so the gate saw no criterion IDs. The synthetic trial's known risk was real.
+- **Fix:** `SpecTagListener` (`TestExecutionListener`) plus a `doLast` step on shop's `test` task inject `<property name="tag">` entries; documented in `convention.md`. Two pitfalls found while building it: Gradle runs one launcher execution per class (the listener must append), and `@TestTemplate` invocations are not in the plan at start (record the template container).
+- **Gate bug found and fixed (`internal/spec/junit.go`):** the testing library emits `method() [Skipped: UI channel was not specified]` for channels a test does not apply to. The gate treated it as a separate test named `method()` with a skipped result, so criteria 2, 3, 4, 8, 9, 10, 12 stayed Planned (6 of 14 Verified). Now `()` is stripped in normalisation and `[Skipped: ...]` placeholders are ignored. Unit tests added.
+- **Results with the fix:** `spec check --mode lenient`: 13 of 14 Verified (92.9%), UC-001.14 Planned, PASSED (exit 0). `--mode strict` (threshold 90): same counts, FAILED only on "UC-001.14 is Planned" (exit 1). `spec validate`: OK.
+- **Friction:** every untagged test in the other suites (contract, other use cases) is listed as an orphan "no criterion ID", which is noisy on a repo where only one use case is tagged; consider hiding that list unless asked.

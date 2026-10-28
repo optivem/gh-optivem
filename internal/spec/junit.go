@@ -59,7 +59,14 @@ func (t Test) Status() Status {
 var (
 	tagIDPattern     = regexp.MustCompile(`^UC-\d+\.\d+$`)
 	templateSuffixRe = regexp.MustCompile(`\s*\[[^\]]*\]\s*$`)
+	paramSuffixRe    = regexp.MustCompile(`\([^)]*\)$`)
 )
+
+// notApplicableMarker is the bracket text a templated test carries when the
+// test runner reports a placeholder instead of a run, for example
+// "method() [Skipped: UI channel was not specified]". Such a result means the
+// test does not apply, not that it was skipped.
+const notApplicableMarker = "[Skipped:"
 
 type xmlSuite struct {
 	Suites []xmlSuite `xml:"testsuite"`
@@ -81,9 +88,11 @@ type xmlProperty struct {
 }
 
 // NormalizeTestName strips a trailing " [...]" suffix, as produced by
-// templated or parameterised tests (for example "method [Channel: UI]").
+// templated or parameterised tests (for example "method [Channel: UI]"), and
+// then a trailing parameter list such as "()" (for example "method()").
 func NormalizeTestName(name string) string {
-	return strings.TrimSpace(templateSuffixRe.ReplaceAllString(name, ""))
+	name = strings.TrimSpace(templateSuffixRe.ReplaceAllString(name, ""))
+	return paramSuffixRe.ReplaceAllString(name, "")
 }
 
 // ParseJUnit parses one JUnit XML document (Gradle or Surefire; a single
@@ -153,7 +162,9 @@ func (a *aggregator) addCase(c xmlCase) {
 	case len(c.Skipped) > 0:
 		status = StatusSkipped
 	}
-	t.Results = append(t.Results, Result{Name: c.Name, Status: status})
+	if status != StatusSkipped || !strings.Contains(c.Name, notApplicableMarker) {
+		t.Results = append(t.Results, Result{Name: c.Name, Status: status})
+	}
 
 	for _, p := range c.Properties {
 		if p.Name != "tag" && p.Name != "criterion" {

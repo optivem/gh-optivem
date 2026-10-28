@@ -48,7 +48,8 @@ Analysis of the [sandbox project setup page](https://github.com/optivem/academy/
 
 ## Spec-coverage gate open items
 
-- TODO: prove tags-as-properties on a real run. Stock Gradle JUnit XML may not write JUnit 5 `@Tag` values as `<property>` entries (the shop trial in `docs/spec-gate/trial/gh-optivem-run.md` used generated XML). Verify against a real Gradle run; if absent, document and ship a `TestExecutionListener`/reporter setup, and correct the "Gradle/Surefire XML carries tags as properties" claim in `docs/spec-gate/convention.md` if it does not hold.
+- TODO: `gh optivem spec check` lists every untagged test as an orphan ("no criterion ID"); on a repo where only one use case is tagged this drowns the report. Found in the shop real run (`docs/spec-gate/trial/gh-optivem-run.md`). Consider hiding the untagged list by default and showing only unknown IDs, or put it behind a flag.
+- TODO: match tests to criteria by ID in test names (for example `@DisplayName`) as a fallback when tags cannot reach the XML. Tags remain the primary link (many-to-many, rename-proof).
 
 Later ideas for the spec-coverage gate:
 

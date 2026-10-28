@@ -82,11 +82,13 @@ func TestTemplatedWipTag(t *testing.T) {
 
 func TestNormalizeTestName(t *testing.T) {
 	cases := map[string]string{
-		"method [Channel: UI]":        "method",
-		"method":                      "method",
-		"method [Channel: UI] [x]":    "method [Channel: UI]",
-		"method(String) [1]":          "method(String)",
-		"  spaced name  [Channel: A]": "spaced name",
+		"method [Channel: UI]":     "method",
+		"method":                   "method",
+		"method [Channel: UI] [x]": "method [Channel: UI]",
+		"method(String) [1]":       "method",
+		"method()":                 "method",
+		"method() [Skipped: UI channel was not specified]": "method",
+		"  spaced name  [Channel: A]":                      "spaced name",
 	}
 	for in, want := range cases {
 		if got := NormalizeTestName(in); got != want {
@@ -136,5 +138,22 @@ func TestReadJUnitFilesMergesResults(t *testing.T) {
 func TestTestStatusEmpty(t *testing.T) {
 	if (Test{}).Status() != StatusSkipped {
 		t.Error("no results should not count as passed")
+	}
+}
+
+func TestParseJUnitNotApplicablePlaceholder(t *testing.T) {
+	xml := `<testsuite>
+  <testcase name="admin [Channel: API]" classname="C"><properties><property name="tag" value="UC-001.12"/></properties></testcase>
+  <testcase name="admin() [Skipped: UI channel was not specified]" classname="C"><properties><property name="tag" value="UC-001.12"/></properties><skipped/></testcase>
+</testsuite>`
+	tests, err := ParseJUnit(strings.NewReader(xml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tests) != 1 || tests[0].Method != "admin" {
+		t.Fatalf("want one test named admin, got %+v", tests)
+	}
+	if got := tests[0].Status(); got != StatusPassed {
+		t.Errorf("Status() = %q, want passed (placeholder must not count as skipped)", got)
 	}
 }

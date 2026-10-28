@@ -61,10 +61,21 @@ The criterion ID is carried by a test **tag** (JUnit tag, surfaced as a property
 
 | Stack | Syntax | Notes |
 |---|---|---|
-| Java (JUnit 5) | `@Tag("UC-001.3")`, `@Tag("wip")` | Repeatable; several tags per method. Gradle/Surefire XML carries tags as properties. |
+| Java (JUnit 5) | `@Tag("UC-001.3")`, `@Tag("wip")` | Repeatable; several tags per method. **Stock Gradle does not write tags into the XML** (it writes an empty `<properties/>`), so a `TestExecutionListener` plus a `doLast` step on the `test` task must inject them as `<property>` entries; see below. |
 | .NET (xUnit/NUnit) | `[Trait("Criterion", "UC-001.3")]` / `[Category("UC-001.3")]` | Configure the logger so traits/categories are written as `<property>` entries. |
 | TypeScript (Jest/Playwright/Vitest) | Annotation or title tag, e.g. `{ tag: ["@UC-001.3"] }` | Use a JUnit reporter that emits tags as `<property name="tag" value="UC-001.3">`; a leading `@` is stripped. |
 | Any other | Emit a `<property>` (name `tag` or `criterion`, value the ID) or a test-case-level tag in JUnit XML | The only contract is that the ID appears as a property value on the `<testcase>`. |
+
+### Java and Gradle: getting tags into the XML
+
+Verified on a real run of shop's Place Order tests: Gradle's JUnit XML writer drops `@Tag` values. The working setup (see shop `system-test/java`):
+
+1. A `TestExecutionListener` (registered through `META-INF/services/org.junit.platform.launcher.TestExecutionListener`, with `junit-platform-launcher` on the test compile classpath) appends `class<TAB>method<TAB>tags` lines for each planned method to a per-JVM file under a directory passed as a system property. Gradle runs one launcher execution per class, so the listener must append, not overwrite. `@TestTemplate` invocations are created at run time, so record the template container (it has a `MethodSource` and the method's tags), not only `isTest()` identifiers.
+2. A `doLast` on the `test` task reads those files and inserts `<properties><property name="tag" value="UC-001.n"/></properties>` into each matching `<testcase>` (the method name is the `name` attribute up to the first space or `(`).
+
+### Result names the gate normalises
+
+A templated test appears as `method [Channel: API]`; a plain test as `method()`; both collapse to `method`. A placeholder result named like `method() [Skipped: UI channel was not specified]` means the test does not apply to that channel; the gate ignores it rather than counting a skipped result.
 
 Recognised IDs are property values matching `^UC-\d+\.\d+$`. The value `wip` marks in progress. Other values are ignored.
 

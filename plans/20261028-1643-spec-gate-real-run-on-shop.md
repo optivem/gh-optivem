@@ -1,4 +1,5 @@
 # 2026-10-28 16:43:19 UTC — Spec gate: real-run validation on shop
+> 🤖 **Picked up by agent** — ValentinaLaptop at 2026-10-28T16:56:17Z
 
 ## TL;DR
 
@@ -15,15 +16,10 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 1: in `../shop` (resolve dynamically), create a short-lived branch, add `@Tag("UC-001.n")` to the Place Order top-layer Java tests using the mapping in `docs/spec-gate/trial/mapping.md`, and check whether Docker and Keycloak work locally (if not, Step 2 uses a CI run on the branch). Gate: the tagged tests compile. Unblocks Step 2 (the real Gradle run).
+Step 6 (optional): ask the user whether to wire the gate into shop's pipeline, given the findings (the gate needs the tag-injection `doLast` step, already on shop `main`, and `gh optivem spec check` per stage). If no, delete this plan.
 
 ## Steps
 
-- [ ] Step 1: In shop, create a short-lived branch and add `@Tag("UC-001.n")` to the Place Order top-layer tests (mapping in `docs/spec-gate/trial/mapping.md`); check whether Docker and Keycloak work locally (decided: check locally first; if not, fall back to a CI run on the shop branch for Step 2). Do all work on the branch; nothing lands on shop `main` until the real run is green (see Step 5).
-- [ ] Step 2: Run the real Gradle tests for those tests and inspect the produced JUnit XML: are the tags present as `<property>` entries, and how do `@TestTemplate` channel results appear?
-- [ ] Step 3: If tags are absent, add a fix (a `TestExecutionListener` or report configuration, in shop or as a documented snippet) and re-run; update the tag/XML section of `docs/spec-gate/convention.md` to match what was observed.
-- [ ] Step 4: Add `spec.yaml` and the Place Order use case markdown to shop on the same branch; run `gh optivem spec check` in lenient and strict modes on the real XML; record results and friction in `docs/spec-gate/trial/gh-optivem-run.md`; fix gate bugs found, with tests.
-- [ ] Step 5: Close the BACKLOG TODO "prove tags-as-properties on a real run"; log any new findings there. If the real run is green (13 of 14 Verified, UC-001.14 Planned), merge the shop branch to shop `main` (decided: merge when green); if not green, leave it on the branch and report.
 - [ ] Step 6 (optional; decided: ask the user after Step 4 whether to do it, based on the findings): wire the gate into shop's pipeline: lenient at commit and acceptance stages, strict at release.
 
 ## Open questions
