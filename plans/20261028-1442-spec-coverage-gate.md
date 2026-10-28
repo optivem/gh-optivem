@@ -1,5 +1,7 @@
 # 2026-10-28 14:42:10 UTC — Spec-coverage gate as a gh-optivem feature
 
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-10-28T14:51:43Z`
+
 ## TL;DR
 
 **Why:** Teams (and AI agents) can't answer "which acceptance criteria are verified by passing tests?". Trials of rsaglobaltech/specgate and reqcov on shop (Place Order, 14 criteria) showed neither fits: specgate needs Gherkin and reads only the suite exit code; reqcov lacks Planned / in-progress states, waivers and stage-based gating. Decided 2026-10-28: build the gate inside gh-optivem, not as a standalone product.
@@ -19,7 +21,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 1 (write the convention doc). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
+Step 2 (parser in `internal/spec/`; the convention is in `docs/spec-gate/convention.md`). All open questions are resolved (see "Decisions"); run `/execute-plan plans/20261028-1442-spec-coverage-gate.md` and it proceeds autonomously, one commit per step. Do not read the Background section unless a step says so; each step is self-contained.
 
 ## Execution notes (autonomous and token-efficient)
 
@@ -44,7 +46,6 @@ Step 1 (write the convention doc). All open questions are resolved (see "Decisio
 
 ## Steps
 
-- [ ] Step 1: Write `docs/spec-gate/convention.md` from the Decisions and the fixtures in `docs/spec-gate/trial/` (`UC-001-place-order.md` is the sample spec). Cover ID format, markdown layout, tag syntax per stack, lifecycle table, waiver and flag syntax, `spec.yaml` keys, JSON schema v1 outline, gating table. Gate: file exists and covers every Decisions bullet. Commit.
 - [ ] Step 2: `internal/spec/` parser: markdown use cases to a model (use case id/title, criteria with IDs, optional `flag`), plus `Validate` (duplicate IDs, prefix mismatch, malformed front matter). Table-driven tests using `docs/spec-gate/trial/UC-001-place-order.md` copied to `internal/spec/testdata/`. Gate: `go test ./internal/spec/...` green. Commit.
 - [ ] Step 3: JUnit XML reader in `internal/spec/`: parse Gradle/Surefire XML, extract tag/property IDs and `wip`, normalise `@TestTemplate` suffixes, aggregate multiple results per test. Fixtures: write small XML files in `internal/spec/testdata/` (all-pass, one red, one skipped, templated channels, unknown ID, orphan). Gate: tests green. Commit.
 - [ ] Step 4: Lifecycle engine and report model: compute per-criterion state, per-use-case state, spec coverage (`verified / total criteria`), orphans, unknown IDs; apply `spec.yaml` waivers (expiry honoured) and `flag`. Emit the versioned JSON report. Gate: tests cover each state using the Step 3 fixtures and the 14-criterion spec (criterion 14 has no test, criteria 3 and 4 share tests). Commit.
