@@ -65,6 +65,8 @@ ${acceptance-criteria}
    viewProductList(): never { throw new Error('TODO: DSL'); }
    ```
 
+   **Design repeatable builders collection-shaped.** When a scenario calls a builder method more than once for distinct entities (e.g. `withLine(sku, quantity)` once per cart line), shape the new `${dsl-port}` surface so it *can* hold all of them: the builder is repeatable (returns the same builder for further calls) and the When/Then stages it feeds model a collection (an order with many lines), not a single entity. The dsl-implementer then fills in the accumulation behind your prototype without having to redesign the port surface.
+
    If a prior run's edits didn't compile (forgotten stub, typo, signature mismatch in `${dsl-port}` or `${dsl-core}`), fix the named issue minimally — do not change test intent. Limit your dsl-core read to identifying where to append or what to fix — do not read existing method bodies or browse other dsl-core files to "understand the structure".
 
 ## Outputs
