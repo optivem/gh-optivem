@@ -23,19 +23,14 @@ Root cause, pinned to this repo:
 - Existing manual `workflow_dispatch` behavior (all modes: `all`, `before-1h`..`before-12h`, `until-yesterday`, `custom-date`) is unchanged.
 - `test-app-483d46fd-b658b5d0eb089d86` (and any other accumulated orphans) get deleted, stopping the hourly failure noise.
 
-## ▶ Next executable step (resume here)
+## Resolved decisions
 
-Edit `.github/workflows/gh-cleanup-orphans.yml`: add a `schedule:` trigger alongside the existing `workflow_dispatch:` trigger (e.g. daily cron, off-peak UTC hour), and extend the "Resolve cutoff date" step so that when the run is schedule-triggered (`github.event_name == 'schedule'`), it defaults to `--before 24h ago` and runs all targets (`--all --delete`) — without touching the existing `workflow_dispatch` input handling. Then validate the YAML (`actionlint`/`yamllint` if available in this repo's tooling, otherwise review by eye) and confirm the existing manual-dispatch modes are untouched by diff review.
+- Cron: `0 3 * * *` (daily 03:00 UTC, off-peak) — recommended default; no conflicting job at that hour.
+- Scope: scheduled run uses `--all --delete --before <24h ago>` — matches the manual `all` default; Sonar/Docker/tmp orphans are the same unattended-cleanup problem.
 
-## Steps
+Steps 1-4 shipped (schedule trigger + `EVENT_NAME == schedule` branch in "Resolve cutoff date"; dispatch modes untouched; actionlint clean).
 
-- [ ] Step 1: Add a `schedule:` cron trigger to `.github/workflows/gh-cleanup-orphans.yml` (daily, off-peak UTC).
-- [ ] Step 2: Update the "Resolve cutoff date" step so a `schedule`-triggered run computes a safe default cutoff (e.g. 24h ago) instead of requiring `mode` input (which only exists for `workflow_dispatch`); keep all existing `workflow_dispatch` mode branches unchanged.
-- [ ] Step 3: Update the "Run cleanup" step's env/args if needed so it works correctly for both trigger types (`github.event.inputs.mode` is only present for `workflow_dispatch` — guard against it being empty on `schedule` runs).
-- [ ] Step 4: Validate the workflow YAML (lint/actionlint if available; otherwise careful manual review) and confirm no regressions to existing manual dispatch modes.
-- [ ] Step 5 (manual, operator-run, not part of this plan's code diff): trigger `gh-cleanup-orphans` (or delete directly) to remove `test-app-483d46fd-b658b5d0eb089d86` and check for other accumulated orphans older than 24h.
+## Verification
 
-## Open questions
-
-- Preferred daily cron time (any off-peak UTC hour is fine — defaulting to `0 3 * * *` unless the user wants a different slot).
-- Whether the scheduled run should include all targets (`--sonar --repos --docker --tmp`, i.e. `--all`) or just `--repos` — defaulting to `--all` to match the manual "all" default mode, since Sonar/Docker/tmp orphans are the same category of unattended cleanup problem.
+- After push to `main`, confirm the first scheduled `gh-cleanup-orphans` run (03:00 UTC) succeeds and logs a `--before` cutoff ~24h in the past.
+- Operator: confirm `test-app-483d46fd-b658b5d0eb089d86` and other >24h orphans are gone after that run (or dispatch the workflow manually once to sweep them immediately).

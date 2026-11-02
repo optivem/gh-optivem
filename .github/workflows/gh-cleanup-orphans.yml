@@ -1,6 +1,12 @@
 name: gh-cleanup-orphans
 
 on:
+  # Daily sweep so orphaned ephemeral repos (e.g. test-app-*) are removed
+  # before their own scheduled workflows spam failures for days. Scheduled
+  # runs only delete resources older than 24h, so a repo belonging to an
+  # in-progress local test session is never touched.
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 03:00 UTC (off-peak)
   workflow_dispatch:
     inputs:
       mode:
@@ -33,6 +39,11 @@ jobs:
       - name: Resolve cutoff date
         id: cutoff
         run: |
+          if [[ "$EVENT_NAME" == "schedule" ]]; then
+            # No inputs exist on schedule runs: use a safe 24h cutoff.
+            echo "before=$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           case "$MODE" in
             all)
               echo "before=" >> "$GITHUB_OUTPUT"
@@ -58,6 +69,7 @@ jobs:
               ;;
           esac
         env:
+          EVENT_NAME: ${{ github.event_name }}
           MODE: ${{ github.event.inputs.mode }}
           CUSTOM_DATE: ${{ github.event.inputs.custom_date }}
 
