@@ -65,11 +65,6 @@ S8545 demonstrably fired on `@v1.7.12`, a pinned patch tag. It is a near-certain
 
 ## Steps
 
-- [ ] **Step 1 — Add the canary workflow.**
-  New file: `.github/workflows/gh-actionlint-canary.yml`.
-  `on: schedule` (weekly) + `workflow_dispatch:`, mirroring the trigger shape of `gh-cleanup-prereleases.yml:4-6`. Checkout, `actions/setup-go@v6` with `go-version-file: go.mod` and `cache: false` (matching `gh-commit-stage.yml:22-26`), then `go install github.com/rhysd/actionlint/cmd/actionlint@latest`, `actionlint --version`, and bare `actionlint`.
-  Header comment must state: this workflow is non-blocking and deliberately unpinned; it exists so a new actionlint release is discovered here rather than at the merge gate; when it goes red, review the finding and bump the SHA at the three pinned sites.
-
 - [ ] **Step 2 — Cross-reference the canary from the three pinned sites.**
   Files: `.github/workflows/gh-commit-stage.yml:36-38`, `.github/actions/acceptance-test/action.yml:98-100`, `.github/workflows/_gh-acceptance-pipeline.yml:159-161`.
   Add one line to each existing comment naming `gh-actionlint-canary.yml` as where latest-tracking lives, so a reader who wonders "are we stuck on 1.7.12 forever?" finds the answer at the pin.

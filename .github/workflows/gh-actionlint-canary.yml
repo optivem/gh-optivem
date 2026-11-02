@@ -1,0 +1,45 @@
+name: gh-actionlint-canary
+
+# Non-blocking, deliberately UNPINNED actionlint canary.
+#
+# The three real install sites (gh-commit-stage.yml,
+# _gh-acceptance-pipeline.yml, .github/actions/acceptance-test/action.yml)
+# pin actionlint to one commit SHA so the merge gate is deterministic: a new
+# upstream release (which can add rules) must never turn main red on its own.
+# This workflow is the one place that tracks actionlint@latest, so a new
+# release's findings are discovered here, on a schedule, instead of at the
+# merge gate. It is not a required check.
+#
+# When this goes red: read the finding, fix the workflow (or accept the new
+# rule), then bump the SHA at all three pinned sites together.
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'  # Weekly, Monday 04:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint-latest:
+    name: actionlint@latest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install actionlint (latest)
+        run: |
+          set -euo pipefail
+          go install github.com/rhysd/actionlint/cmd/actionlint@latest
+          actionlint --version
+
+      - name: Lint workflows
+        run: actionlint
