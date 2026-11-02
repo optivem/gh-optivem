@@ -7,7 +7,43 @@
 
 ## ▶ Next executable step (resume here)
 
-**Wave 1, Batch 1A.** Each unit runs in its own session via `/execute-plan <that plan's path>`, not through this file. Start with **U1 (#40)**: `/execute-plan plans/backlog/p1-correctness/20261012-1042-replace-stale-commit-sh-in-claude-commands.md`. U2, U4, U5, U7+U8 and U9 can run in parallel sessions because their files don't overlap (see Batch 1A). When a unit's plan file is deleted, remove that unit from **Execution units** and **Execution waves** here.
+**Group 2 — Wave 1B: Items 7–10.** Wave 1A is done. Its commits are local on gh-optivem `main` and shop `main`, not pushed yet. Push them with `/commit` before Group 2 starts, because Item 7's rehearsal and Item 9's shop run need the pushed code. Then run `/execute-plan plans/20261029-2142-meta-backlog-consolidation.md`. Item 7 takes the rehearsal lock; Items 8, 9 and 10 run in parallel with it. Item 9 must ask before pushing to shop.
+
+## How to execute this meta-plan
+
+Run `/execute-plan` on this file. Each item below is one execution unit. To execute an item:
+
+1. **Dispatch one subagent per item.** Default isolation only, never a worktree. Give the subagent the child plan path(s), the decision(s) the item cites from **Decisions (resolved)**, and the item's file list. The subagent then runs that child plan end to end with `/execute-plan` Autonomous-mode rules:
+   - delete each step as it ships, and commit each step surgically to its own repo with raw `git` (never a workspace sweep);
+   - run Go tests only with `scripts/test.sh` or `-p 2`;
+   - write the cited decision into the child plan's open questions before starting;
+   - delete the child plan when it's empty.
+2. **Run items in parallel only inside the group marked parallel.** Groups run in order. Never start a group until every item in the previous group has finished or is recorded as blocked.
+3. **Rehearsal lock:** at most one running subagent may run a shop rehearsal or `gh optivem system start`, because they share fixed docker ports. Items tagged `[rehearsal]` take the lock, so run them one at a time even inside a parallel group.
+4. **Shop pushes:** items tagged `[shop-push]` stop and ask the user before pushing to shop `main`, while the shop cloud-deploy plan is active (see Pre-execute checks 4).
+5. **When an item finishes**, delete it here, update the ▶ Next block, and remove its unit from **Execution units** / **Execution waves**. **When an item is blocked**, write the blocker under it, keep the item, and move on.
+6. **Session budget:** one group per session. At the end of a group, hand back with the `/clear` + `/execute-plan` block so the next group starts with a fresh context.
+
+## Items
+
+### Group 2 — Wave 1B (parallel)
+- [ ] **Item 7 — U3 #27 then #28** (CS3, Q-3 A+B+C) `[rehearsal]`: `plans/backlog/p1-correctness/20260627-2149-channel-touched-skipped-tests-noop-dispatch.md`, then `plans/backlog/p1-correctness/20260629-1728-isolated-tests-validate-channels-registered.md`
+- [ ] **Item 8 — U10 #2** badges: `plans/backlog/p4-maintenance/20260502-103000-fix-unfiltered-workflow-badges-academy-wide.md`
+- [ ] **Item 9 — U11 #44** Step 6, lenient `[shop-push]`: `plans/backlog/p3-tooling-cost/20261028-1643-spec-gate-real-run-on-shop.md`
+- [ ] **Item 10 — U6 #36** (Q-4 option a): `plans/backlog/p1-correctness/20260820-1345-component-test-sample-filter-and-suite-group-defaults.md`
+
+### Group 3 — Wave 2 (parallel)
+- [ ] **Item 11 — U12 #31 + #24 L1** (CS4, Q-5): engine change first, then #31's Go port, then #24 Layer 1. Plans: `plans/backlog/p2-atdd-quality/20260811-1603-sonar-scan-transient-retry.md`, `plans/backlog/p2-atdd-quality/20260623-2125-atdd-dispatch-retry-budget-and-resume.md`. #24 Layer 2 stays in its plan.
+- [ ] **Item 12 — U13 #43** token-cost analysis `[rehearsal]` (reads existing logs only, so in practice it doesn't take the lock): `plans/backlog/p3-tooling-cost/20261028-1456-atdd-workflow-token-cost-analysis.md`. Afterwards, judge #1's items 4/5/7 against the results and delete #1 (CS5). #1 item 3 (`--no-update-check`) is BLOCKED and invalid: Claude CLI 2.1.316 rejects the flag under `-p` (recorded in #1, commit b0a2d460). Drop it when #1 is deleted.
+- [ ] **Item 13 — U14 #12 then #15** (Q-6) `[rehearsal]`: `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`, then `plans/backlog/p3-tooling-cost/20260616-0922-scope-drift-guard-fix-loop.md`
+- [ ] **Item 14 — U17 #38** (Q-9 option A): `plans/backlog/p3-tooling-cost/20261002-0817-unattended-plan-execution.md`
+
+### Group 4 — Wave 2 (serial)
+- [ ] **Item 15 — U15 #21** (Q-7, place/cancel only) `[rehearsal]` `[shop-push]`: `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`
+- [ ] **Item 16 — U16 #39** (Q-8): `plans/backlog/p2-atdd-quality/20261002-0900-green-touch-list-before-editing.md`
+
+### Group 5 — Wave 3 (stop and ask user first)
+- [ ] **Item 17 — confirm the "Later" decisions**, then add one item per plan here: #9, #6, #13, #16, #20 (after a green clean-room VM run), #42 Slice 1, #25 (re-pull Sonar first). **Stop and ask the user** to confirm the proposed answers before dispatching any of them.
 
 Read-only analysis of every plan under `plans/backlog/`, `plans/deferred/`, `plans/deferred2/` and `plans/meta/`. No plan was edited. Each plan was read in full and its premise spot-checked against the current code (grep/ls/git log). Modelled on shop's consolidation (shop commit 7ecc8277 + `shop/plans/20261029-1256-meta-backlog-execution.md`).
 
@@ -176,15 +212,8 @@ Mirrors shop's `plans/backlog/` structure. Apply this as one rename-only commit 
 
 | Unit | Plans / items | Type | Primary files | Auto |
 |---|---|---|---|---|
-| U1 | #40 | standalone | `internal/claude/assets/commands/*.md`, `cross_repo_commands.go`, `workspace.go`, `docs/gh-monitoring-process.md` | A |
-| U2 | #22 | standalone | `actions/scope_exception.go`, `bindings_test.go`, `dsl-implementer.md`, `acceptance-test-writer.md` | A |
 | U3 | #27 + #28 | atomic (CS3) | `runner/testnames.go`, `runner/tests.go`, `actions/channel.go`, `process-flow.yaml`, `acceptance-test-writer.md` | A for #27; #28 needs Q-3 |
-| U4 | #45 | standalone (needs synced shop) | `scaffolding/steps/{apply_template,optivem_yaml,readme}.go`, `docs/cli-reference.md` | A |
-| U5 | #32 | standalone, shop repo | shop `.github/workflows/*-acceptance-stage-legacy.yml` | A |
 | U6 | #36 | standalone | `build/componenttest/{run,config}.go`, `build/runner/tests.go` | needs Q-4 |
-| U7 | #17 | standalone | `runtime/driver/driver.go`, `step_summary.go`, `summary_sidecar.go` | A |
-| U8 | #1 item 3 | standalone | `clauderun/clauderun.go` (one line) | A |
-| U9 | #29, #33, #30 | three tiny independent plans | `.github/workflows/gh-cleanup-orphans.yml`; new canary workflow + pin sites; `CONTRIBUTING.md` | A |
 | U10 | #2 | standalone (after U4) | `README.md`, `scaffolding/steps/readme.go`, sibling-repo READMEs | A |
 | U11 | #44 Step 6 (lenient) | standalone, shop repo | shop `monolith-java-acceptance-stage.yml` | A |
 | U12 | #24 L1 + #31 | atomic (CS4) | `kernel/shell/retry*.go`, `clauderun.go`, `scaffolding/steps/verify.go` | Q-5 |
@@ -203,18 +232,7 @@ Rules for every batch:
 - Commit only with your per-action approval ([[feedback_no_commit_without_approval]]).
 - On Windows, run Go tests with `scripts/test.sh` or `-p 2`.
 
-### Wave 1 — can start now
-
-**Batch 1A (parallel-safe, 6 sessions; disjoint files):**
-
-| Session | Unit | Files owned |
-|---|---|---|
-| 1 | U1 #40 commit.sh references | assets/commands, cross_repo_commands.go, workspace.go |
-| 2 | U2 #22 ESCC misroute | scope_exception.go, dsl-implementer.md, acceptance-test-writer.md |
-| 3 | U4 #45 --no-legacy | scaffolding/steps/* (sync shop first) |
-| 4 | U5 #32 Playwright pin | shop legacy workflows only (check shop cloud plan state before pushing) |
-| 5 | U7 #17 persist run artifacts + U8 #1 item 3 | driver.go, step_summary.go, summary_sidecar.go, clauderun.go (one line) |
-| 6 | U9 #29 + #33 + #30 | gh-cleanup-orphans.yml, actionlint canary + pin sites, CONTRIBUTING.md |
+### Wave 1 — Batch 1A shipped 2026-11-02 (U1, U2, U4, U5, U7, U9; U8 blocked, see Item 12)
 
 **Batch 1B (after 1A lands):**
 - U3 #27 + #28: after U2, because both edit `acceptance-test-writer.md`. Holds the docker lock for the #76 rehearsal.
