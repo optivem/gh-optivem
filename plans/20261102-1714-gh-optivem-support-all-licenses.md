@@ -1,7 +1,5 @@
 # 2026-11-02 16:14:51 UTC — gh-optivem: support all common licenses
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-02T18:42:11Z`
-
 ## TL;DR
 
 **Why:** EventHub moved to AGPL-3.0, but `gh-optivem.yaml` still says `license: mit` with a workaround comment. `gh optivem` checks the field against a fixed list (`config: license %q must be one of %s`) and only has 8 bundled templates: mit, mit-0, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, 0bsd and unlicense. AGPL isn't one of them.
@@ -17,11 +15,11 @@
 
 ## ▶ Next executable step (resume here)
 
-Steps 1–6 are done: 16 bundled keys in `internal/kernel/license`, plus `scripts/refresh-licenses.sh`. Next is Step 7: commit that work (with user approval), release a new gh-optivem version, and run `gh extension upgrade optivem`.
+Steps 1–6 are done and pushed (commit e1008306). The rest is waiting on the operator: run gh-acceptance-stage and then gh-release-stage to promote the RC that the commit stage built from that push, then run `gh extension upgrade optivem`. After that, run Step 8.
 
 ## Steps
 
-- [ ] Step 7: Release a new gh-optivem version, then run `gh extension upgrade optivem` locally.
+- [ ] Step 7: Release a new gh-optivem version, then run `gh extension upgrade optivem` locally. — ⏳ Deferred: pushed only (2026-11-02); operator triggers acceptance and release stages.
 - [ ] Step 8: In the event-hub repo (outside this repo, at `$(git rev-parse --show-toplevel)/../../event-hub`), set `gh-optivem.yaml` to `license: agpl-3.0`, remove the comment and check that `gh optivem` commands still load the config.
 
 ## Decisions (resolved 2026-11-02)
