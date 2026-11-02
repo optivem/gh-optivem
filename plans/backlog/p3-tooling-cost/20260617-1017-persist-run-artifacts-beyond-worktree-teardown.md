@@ -28,19 +28,20 @@ runs because the data does not survive the run.
 ## Current behaviour (verified against code)
 
 - The per-run artifact dir is rooted at `repoPath`:
-  - `runDir := filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp)` — `internal/atdd/runtime/driver/driver.go:418`
-  - step sidecar: `stepsPath = filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp, "steps.jsonl")` — `step_summary.go` (`stepsPath`)
-  - agent sidecar `summary.jsonl` and digest `summary.md` written to the same dir.
+  - `runDir := filepath.Join(repoPath, ".gh-optivem", "runs", runState.runTimestamp)` — `internal/atdd/runtime/driver/driver.go:440`
+  - step sidecar: `stepsPath = filepath.Join(rs.repoPath, ".gh-optivem", "runs", rs.runTimestamp, "steps.jsonl")` — `step_summary.go:124` (`stepsPath`)
+  - agent sidecar `summary.jsonl` (`summary_sidecar.go:136`) and digest `summary.md`
+    (`summary_sidecar.go:342`) written to the same dir.
 - For rehearsals, `repoPath` **is the transient worktree**, so all of the above
   land inside it.
 - In-repo pruning already exists but is scoped to the same repo dir:
   `pruneOldRuns(filepath.Join(repoPath, ".gh-optivem", "runs"), opts.KeepRuns)` —
-  `driver.go:482`, governed by `--keep-runs` (default 10, `implement_commands.go:214`).
+  `driver.go:504`, governed by `--keep-runs` (default 10, `implement_commands.go:223`).
   It does nothing to help durability — it only caps how many run dirs accumulate
   *within* a repo.
 - A **durable, worktree-independent location already exists and is already used**:
   the gh-optivem user-state dir, `<userstate.Dir()>/runs/<runTimestamp>-<pid>/`,
-  via `resolvePidRunDir` — `driver.go:1800-1806`. Today it holds only PID marker
+  via `resolvePidRunDir` — `driver.go:2017-2024`. Today it holds only PID marker
   files, not the analytics artifacts. This is the obvious home for a durable copy.
 
 ## Proposed approach
@@ -82,31 +83,20 @@ live debugging); add a durable copy that analytics reads from.
    know where persistent run history lives and that it is the surface analytics
    should read (the `.jsonl` sidecars), not the transient in-worktree copy.
 
-## Open questions
+## Decisions (resolved 2026-11-02 — recommendations A–D accepted)
 
-- **A. Durable root.** **(Recommended)** Reuse `<userstate.Dir()>/runs/<ts>/` —
-  already exists, already worktree-independent, already the PID-marker home; one
-  helper to add. Alternative: a workspace-level `<workspace>/.gh-optivem-runs/`
-  (more discoverable in the IDE, but introduces a new path and a
-  workspace-root-resolution dependency). Recommend user-state dir.
-
-- **B. Per-agent files (`NNN-<agent>.events.jsonl` / `.prompt.md` / `.outputs.jsonl`).**
-  **(Recommended)** Mirror only the small aggregate artifacts (`summary.md`,
-  `summary.jsonl`, `steps.jsonl`, `flow.txt`) — that is the analytics surface,
-  and the per-agent event streams are large (100k–230k each in the sampled run).
-  Alternative: mirror everything (full forensic replay, much more disk). Recommend
-  aggregate-only, revisit if forensic replay of pruned worktrees is ever needed.
-
-- **C. Durable retention.** **(Recommended)** Keep more than the per-repo default —
-  e.g. last 100 runs (or a size cap) — since the whole point is history. Make it a
-  flag/env with a sensible default. Alternative: never prune (unbounded growth).
-  Recommend a generous default cap.
-
-- **D. Scope: all runs or rehearsals only?** **(Recommended)** Do it for **all**
-  runs — a durable archive is harmless for real-repo runs (they already have the
-  in-repo copy; the durable copy is just additive) and avoids a rehearsal-vs-real
-  branch. Alternative: only when running inside a worktree. Recommend all runs,
-  uniform path.
+- **A. Durable root:** `<userstate.Dir()>/runs/<ts>-<pid>/` — i.e. the existing
+  `resolvePidRunDir` dir itself (refinement: keep the `-<pid>` suffix so the
+  archive and the PID markers share one per-run dir and concurrent runs never
+  collide). `doctor --orphans` only reads `<seq>-<agent>.pid` files, so the
+  extra artifacts are invisible to it.
+- **B. Aggregate-only:** mirror `summary.md`, `summary.jsonl`, `steps.jsonl`,
+  `flow.txt`; never the per-agent `NNN-<agent>.*` files.
+- **C. Retention:** new `--keep-run-history` flag, default 100; `0` disables the
+  durable archive (and its pruning). Pruning runs at startup like `--keep-runs`
+  but skips any run dir still holding a `*.pid` marker (live dispatch or an
+  orphan awaiting `doctor --orphans`).
+- **D. Scope:** all runs, uniform path — no rehearsal-vs-real branch.
 
 ## Out of scope
 
