@@ -31,6 +31,7 @@ jobs:
       # in lockstep — a floating @v1 let install sites drift and surface
       # different rule sets on the same files. `go install` lands the binary in
       # $(go env GOPATH)/bin, which is on PATH; Go is already set up above.
+      # Tracking newer releases lives in gh-actionlint-canary.yml (non-blocking).
       - name: Install actionlint
         run: |
           set -euo pipefail

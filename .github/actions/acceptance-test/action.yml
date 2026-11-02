@@ -92,6 +92,7 @@ runs:
     # Use `go install` so the binary lands in $(go env GOPATH)/bin on both
     # Linux and Windows runners — Go is already set up by the previous
     # step, and GOPATH/bin is on PATH.
+    # Tracking newer releases lives in gh-actionlint-canary.yml (non-blocking).
     - name: Install actionlint
       shell: bash
       run: |

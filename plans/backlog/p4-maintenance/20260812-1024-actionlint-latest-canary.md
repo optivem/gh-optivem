@@ -65,30 +65,18 @@ S8545 demonstrably fired on `@v1.7.12`, a pinned patch tag. It is a near-certain
 
 ## Steps
 
-- [ ] **Step 2 — Cross-reference the canary from the three pinned sites.**
-  Files: `.github/workflows/gh-commit-stage.yml:36-38`, `.github/actions/acceptance-test/action.yml:98-100`, `.github/workflows/_gh-acceptance-pipeline.yml:159-161`.
-  Add one line to each existing comment naming `gh-actionlint-canary.yml` as where latest-tracking lives, so a reader who wonders "are we stuck on 1.7.12 forever?" finds the answer at the pin.
+All agent steps shipped (canary workflow, cross-references at the three pinned sites, reworded `_gh-acceptance-pipeline.yml` comment; `actionlint` clean, no Go/scaffolding files touched).
 
-- [ ] **Step 3 — Scope a Sonar ignore to the canary file.** *(Conditional — only if S8545 actually fires on the canary; see the assumption above.)*
-  File: `.github/workflows/gh-commit-stage.yml:78-84`.
-  Add to the inline `-D` flags:
+Step 3 (scoped Sonar ignore) was **not** applied: S8545 firing on `@latest` is unobserved, and the plan says drop rather than add speculatively. It moves to Verification below as a conditional follow-up.
+
+## Verification
+
+- After merge to `main`, check whether the Sonar scan reports `githubactions:S8545` on `gh-actionlint-canary.yml`. If it does, add a file-scoped ignore to the inline `-D` flags at `gh-commit-stage.yml` (with a YAML comment explaining the one-file exemption; move to `sonar-project.properties` if one is ever introduced):
   ```
   -Dsonar.issue.ignore.multicriteria=e1
   -Dsonar.issue.ignore.multicriteria.e1.ruleKey=githubactions:S8545
   -Dsonar.issue.ignore.multicriteria.e1.resourceKey=.github/workflows/gh-actionlint-canary.yml
   ```
-  Scoped to the single file by `resourceKey` — the rule must keep firing on every other workflow. Add a YAML comment stating why this one file is exempt.
-  If a `sonar-project.properties` is ever introduced, this belongs there instead; note that in the comment.
-
-- [ ] **Step 4 — Fix the over-claiming comment at the pipeline site.**
-  File: `.github/workflows/_gh-acceptance-pipeline.yml:159`.
-  The line reads `# Pinned to match shop's lint-workflows.yml — see acceptance-test/action.yml`, invoking the lockstep rationale. That rationale does not apply here: this site never invokes the linter (confirmed — lines 158-161 are the only `actionlint` mentions in the file). Reword to say the binary is installed only to satisfy `environment verify`'s PATH check and is never run, with the SHA kept identical to the two real lint sites so the pin set stays greppable.
-
-- [ ] **Step 5 — Lint and confirm blast radius.**
-  Run `actionlint` at the repo root; it must pass. `git diff --stat` must show only the four files above plus the one new workflow — no Go files, no scaffolding templates.
-
-## Verification
-
-- After merge to `main`, confirm the Sonar scan on that push reports no new `githubactions:S8545` issue for `gh-actionlint-canary.yml` (Step 3's ignore working), and still reports the rule as active elsewhere. This cannot be checked pre-merge — Sonar is gated to `main` pushes only.
+  and confirm the rule stays active on every other workflow. If it does not fire, nothing to do.
 - Trigger the canary manually via `workflow_dispatch` once and confirm it installs a version *newer* than 1.7.12 and reports a real lint result (pass or fail) rather than erroring on setup.
 - Confirm a failing canary does not affect any required check on an open PR.
