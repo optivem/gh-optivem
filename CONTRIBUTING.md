@@ -8,7 +8,7 @@ Rebuild + link `gh optivem` after editing CLI source (see [Install from source](
 bash scripts/install.sh   # rebuilds gh-optivem.exe and links it as `gh optivem`
 ```
 
-End-to-end manual test (see [Quick smoke test](#quick-smoke-test-no-install) for details):
+End-to-end manual test (see [Quick smoke test](#quick-smoke-test-no-install) for details; credentials can live in the portable `.env`, see [Environment variables](docs/cli-reference.md#environment-variables)):
 
 ```bash
 bash scripts/manual-test.sh --owner valentinajemuovic --system-name "Page Turner" \
@@ -241,7 +241,7 @@ go run . --version
 
 For invocations beyond `--version`, see the README for usage examples — once you want to iterate, `bash scripts/install.sh` (below) gives you `gh optivem` for the natural invocation form.
 
-End-to-end manual test (creates real GitHub repos + SonarCloud projects; cleaned up by `scripts/cleanup-orphans.sh` on success, kept on failure for debugging):
+End-to-end manual test (creates real GitHub repos + SonarCloud projects; cleaned up by `scripts/cleanup-orphans.sh` on success, kept on failure for debugging). It needs `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `SONAR_TOKEN`, `GHCR_TOKEN`, `WORKFLOW_TOKEN` and `REPO_TOKEN`; `manual-test.sh` defers credential handling to the `gh optivem` binary, so besides exporting them you can drop them in the user-level `.env` (see [Environment variables](docs/cli-reference.md#environment-variables)). If a run dies with a `FATAL: Verification failed ... HTTP 401` on one of these, refresh that token in the `.env` and re-run — no terminal restart needed:
 
 ```bash
 # multitier + multirepo, .NET backend, TypeScript frontend + TypeScript system tests
