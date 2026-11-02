@@ -91,7 +91,7 @@ Run the pre-flight gate (open questions) and also ask any other clarifying quest
 - Dependent items run sequentially; independent items touching disjoint files may run in parallel subagents.
 - Subagents re-read the plan and file state themselves — never trust an earlier worker's claim; verify via build/tests before marking an item done.
 - Delete each item from the plan file and refresh the `▶ Next executable step` block as soon as it is verified done (same rules as other modes), so the plan is always resumable.
-- **Commit incrementally** — one commit per completed item (or small coherent group), per repo, using the commit script/skill with `--repo` as in the other modes. Never push partial or failing work: commit only after the item's checks pass.
+- **Commit incrementally** — one commit per completed item (or small coherent group), per repo, using `gh optivem commit --repo` as in the other modes. Never push partial or failing work: commit only after the item's checks pass.
 - Fix test/build failures within the item's scope (up to 2 retries). If still failing, record the blocker in the plan, skip to unblocked items, and report it at the end.
 
 ### 3. The only reasons to stop and ask mid-run
@@ -186,9 +186,9 @@ For each incomplete item in the plan:
 
 ### Phase 3: Commit
 1. Determine which repo the changes belong to (from the file paths modified).
-2. Commit only that repo using the commit script with `--repo`:
+2. Commit only that repo with `gh optivem commit`, scoped by `--repo` and staging exactly the files this item touched via `--paths` (`--yes` is required because the agent shell has no TTY):
    ```bash
-   bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh" --repo <repo-name> "<item description>"
+   gh optivem commit --repo <repo-name> --yes --paths "<space-separated files this item changed>" "<item description>"
    ```
 3. **Delete the item from the plan file immediately after committing.** This is mandatory — never move to the next item without removing the completed item first.
 4. Report success, then move to the next item.
@@ -219,9 +219,9 @@ Once all items in scope are executed (or you hit a stopping point):
    - `discard` → revert all uncommitted changes, including the plan-file deletions
 
 ### Phase 3: Commit all
-1. For each repo that has changes, run the commit script once with a message summarizing the items addressed for that repo:
+1. For each repo that has changes, run `gh optivem commit` once, listing every file the items changed in that repo (including the plan file) in `--paths`, with a message summarizing the items addressed for that repo:
    ```bash
-   bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh" --repo <repo-name> "<summary of items>"
+   gh optivem commit --repo <repo-name> --yes --paths "<space-separated files changed in this repo>" "<summary of items>"
    ```
    The plan file's deletions (made in Phase 1) are part of these commits — no separate plan-file step is needed here.
 2. Report per-repo commit results and summarize what's left in the plan (if anything — e.g. deferred items or items past a stop-gate that weren't executed).

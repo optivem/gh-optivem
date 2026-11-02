@@ -98,7 +98,7 @@ When the user signals the plan is ready, **do not commit automatically.** Ask:
 - **yes** → commit only the current repo (the one the plan file lives in), mirroring `/execute-plan`'s scoped commit:
   ```bash
   REPO="$(basename "$(git rev-parse --show-toplevel)")"
-  bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh" --repo "$REPO" "Add plan: <human-readable title>"
+  gh optivem commit --repo "$REPO" --yes --paths "<plan file path, relative to the repo root>" "Add plan: <human-readable title>"
   ```
 - **not yet** → leave the file uncommitted and stop. Mention the user can run `/commit` later, or resume refining.
 

@@ -182,12 +182,12 @@ When all fixes for the repo are staged and verified:
      - optivem_shop-monolith-typescript (5): typescript:S7721×3, typescript:S7735×1, typescript:S4325×1
      - optivem_shop-tests-typescript (80): typescript:S6565×42, typescript:S2933×13, ...
      ```
-   - **Do not use ad-hoc `git add` / `git commit`** (per CLAUDE.md, the commit script is mandatory for all commit/push operations).
-   - The `commit.sh --paths` flag exists for other use cases but should NOT be used to split one SonarCloud run into multiple commits — the user prefers one commit for the whole run.
-2. **Auto-commit — do not block on the user.** Per the global `feedback_auto_commit` rule, run the commit script without asking. The only things that wait for the user are items written to the deferred-plan file(s) (see Phase 4 step 5 and **Deferred-plan file naming**).
-3. Commit via the commit script (per CLAUDE.md — never ad-hoc). To scope a commit to specific paths, pass the paths to the script:
+   - **Do not use ad-hoc `git add` / `git commit`** (per CLAUDE.md, `gh optivem commit` is mandatory for all commit/push operations).
+   - List every file the run touched in a single `--paths` value. Do NOT split one SonarCloud run into multiple `gh optivem commit --paths` calls — the user prefers one commit for the whole run.
+2. **Auto-commit — do not block on the user.** Per the global `feedback_auto_commit` rule, run `gh optivem commit` without asking. The only things that wait for the user are items written to the deferred-plan file(s) (see Phase 4 step 5 and **Deferred-plan file naming**).
+3. Commit via `gh optivem commit` (per CLAUDE.md — never ad-hoc), scoped to the repo and to the files the run touched (`--yes` is required because the agent shell has no TTY):
    ```bash
-   bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh" --repo <repo-name> "<summary>"
+   gh optivem commit --repo <repo-name> --yes --paths "<space-separated files the run changed>" "<summary>"
    ```
 
 ### Phase 6: Report

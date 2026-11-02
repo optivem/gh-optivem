@@ -31,18 +31,17 @@ Checked 2026-10-12 with `grep -rn "commit\.sh\|github-utils"` in `gh-optivem`:
 
 ## ▶ Next executable step (resume here)
 
-Step 1: in `internal/claude/assets/commands/execute-plan.md` lines 191 and 224, replace the `bash ".../commit.sh" --repo ...` blocks with the `gh optivem commit --repo <repo-name> "<message>"` form chosen in the open question below. Then repeat in `create-plan.md:101` and `fix-sonar-warnings.md:186-190`.
+Step 2: update the `bash ".../commit.sh"` example in `docs/gh-monitoring-process.md:65` to the `gh optivem commit --repo <repo-name> --yes --paths "<files>" "<message>"` form used in the command files.
 
 ## Steps
 
-1. **Command files.** Edit `execute-plan.md`, `create-plan.md`, `fix-sonar-warnings.md` as in Outcomes. In `fix-sonar-warnings.md` also reword the `commit.sh --paths` note to `gh optivem commit --paths`.
 2. **Docs.** Update `docs/gh-monitoring-process.md:65`.
 3. **Comments.** Reword the Go comments listed above so they don't cite `commit.sh` / `sync.sh` line numbers. Comment-only; no behavior change.
 4. **Verify.** `go build ./...` and `go test ./...` in `gh-optivem`. `grep -rn "commit\.sh" .` returns nothing outside `plans/`.
 5. **Propagate.** Run `gh optivem claude setup`, then `gh optivem claude check` (expect exit 0). Start a new Claude session to load the updated commands.
 6. **Commit** with `/commit`.
 
-## Open questions
+## Decisions (resolved open questions)
 
-- In the command files, should the commit instruction be the CLI form (`gh optivem commit --repo <name> "<msg>"`) or "invoke the `/commit` skill"? Recommended: the CLI form with `--repo` (and `--yes` where there is no TTY), because the commands need per-repo scoping and `/commit` is the interactive wrapper over the same primitive; mention `/commit` only where the user is driving.
-- Should the comment cleanups (step 3) ride in this plan or be dropped? Recommended: include them; they are one-line rewordings and leave no dangling references to a deleted script.
+- Command files use the CLI form `gh optivem commit --repo <name> --yes --paths "<files>" "<msg>"`, not "invoke `/commit`". `--yes` because the agent's shell has no TTY; `--paths` (not `--all`) because the agent knows exactly which files it touched and a blanket sweep under `--yes` is refused without `--all` anyway (and sweeps parallel-agent WIP). `--paths` also stages new untracked files (e.g. a freshly written plan), so `--include-untracked` is unnecessary.
+- Comment cleanups (step 3) ride in this plan, limited to comments that cite `commit.sh` / `sync.sh` (`cross_repo_commands.go`, `workspace.go`). The header comments in `cleanup_commands.go`, `ghbulk.go`, `sonar.go` only record port provenance from `github-utils/scripts/*.sh` (not a dangling instruction, no `commit.sh` mention) and are dropped from scope.
