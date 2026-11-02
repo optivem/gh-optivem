@@ -178,10 +178,27 @@ func TestCategorizeScopeException(t *testing.T) {
 			files: []string{"driver/typescript/src/external-adapter/erp/ErpStub.ts"},
 			want:  "escc-undeclared",
 		},
+		// Regression (rehearsal #68): dsl-port / dsl-core are also written by
+		// the vanilla acceptance-test-writer / dsl-implementer, so an
+		// internal-DSL scope-exception on a non-ESCC ticket must fall through
+		// to the generic STOP_SCOPE_VIOLATION, not the ESCC-undeclared halt.
 		{
-			name:  "dsl_port_file_no_escc_needs",
+			name:  "dsl_core_file_no_escc_is_other",
+			files: []string{"dsl/typescript/src/core/usecase/PlaceOrder.ts"},
+			want:  "other",
+		},
+		{
+			name:  "dsl_port_file_no_escc_is_other",
 			files: []string{"dsl/typescript/src/port/ErpDriver.ts"},
-			want:  "escc-undeclared",
+			want:  "other",
+		},
+		{
+			name: "dsl_and_external_adapter_files_no_escc_needs",
+			files: []string{
+				"dsl/typescript/src/core/usecase/PlaceOrder.ts",
+				"driver/typescript/src/external-adapter/erp/ErpStub.ts",
+			},
+			want: "escc-undeclared",
 		},
 		{
 			name:    "contract_file_with_escc_does_not_need",

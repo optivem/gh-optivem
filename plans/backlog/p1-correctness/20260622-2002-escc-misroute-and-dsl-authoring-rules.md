@@ -20,17 +20,11 @@ What we get out of this:
 
 ## ▶ Next executable step (resume here)
 
-**Step 1 (command layer).** In `internal/atdd/process/actions/scope_exception.go`, narrow the ESCC-determining layer set from `{ct-test, dsl-port, dsl-core, external-system-driver-adapter}` to **`{ct-test, external-system-driver-adapter}`** — remove `dsl-core` AND `dsl-port`. `scope-exception-needs-escc` then becomes true only when ≥1 scope-exception file sits under one of those two genuinely-external layers AND `ticket-has-escc == false`. Update the `contractStubScopeLayers` doc comment (`scope_exception.go:11-32`) to match. Stop at: code compiles, no test run yet (tests come in Step 2). Unblocks the regression test and the rest of the command-layer work.
-
-> Rationale (resolved): a layer only qualifies as an external-work fingerprint if no vanilla agent writes there. `dsl-core` and `dsl-port` are both written by the vanilla `acceptance-test-writer` (`process-flow.yaml:2060`), so they're false-positive prone — drop both. `ct-test` is written only by the external-contract agents (`contract-test-writer`, `stub-fidelity-test-writer`), so it stays.
+**Step 4 (agent layer).** Add the two DSL-authoring rules to `dsl-implementer.md`.
 
 ## Steps
 
-### Command layer — `internal/atdd/process/actions/scope_exception.go`
-
-- [ ] Step 1: Narrow the ESCC-determining layer set to **`{ct-test, external-system-driver-adapter}`** — remove both `dsl-core` and `dsl-port` (both are written by the vanilla `acceptance-test-writer`, so neither is a reliable external-work signal); keep `ct-test` and `external-system-driver-adapter` (written only by external-contract agents). Refresh the `contractStubScopeLayers` doc comment (`:11-32`) to state the narrowed contract — self-contained, no cross-language/cross-project references.
-- [ ] Step 2: Add/adjust the scope-exception tests (`internal/atdd/process/actions/` + the `bindings_test.go` in `actions/` and `gates/`) to cover the regression: a `dsl-core`-only scope-exception on a non-ESCC ticket → `scope-exception-needs-escc == false` (routes to `STOP_SCOPE_VIOLATION`, not ESCC). Keep/confirm an existing case proving a genuine external-layer file still routes to `ESCC_UNDECLARED_HALT`.
-- [ ] Step 3: Run `go test ./internal/atdd/process/...` (and `go build ./...`) to confirm green. Verify no other caller of `contractStubScopeLayers` / `contractStubSystemNames` depends on the old membership.
+_Command layer (Steps 1-3) shipped: `contractStubScopeLayers` narrowed to `{ct-test, external-system-driver-adapter, external-system-stub, external-system-simulator}` (dsl-port + dsl-core removed; the stub/simulator producer layers added after this plan was written are external-agent-only, so they stay); regression tests pin dsl-core/dsl-port-only → `other`._
 
 ### Agent layer — runtime prompts
 

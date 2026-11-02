@@ -8,30 +8,39 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
-// contractStubScopeLayers are the write-scope layers of the external-contract /
-// external-stub writing agents (plan 20260620-2348, Q3; producer dirs added by
-// plan 20260622-1739 Step 3):
+// contractStubScopeLayers are the write-scope layers that ONLY the
+// external-contract / external-stub writing agents write — no vanilla agent
+// writes under them, so a file there is a reliable fingerprint of external
+// work:
 //
-//   - contract-test-writer              — ct-test, dsl-port, dsl-core
-//   - stub-fidelity-test-writer         — ct-test
-//   - external-system-driver-adapter-updater / -implementer — external-system-driver-adapter
-//   - external-system-stub-implementer  — external-system-stub
-//   - external-system-real-simulator-implementer — external-system-simulator
+//   - ct-test                         — contract-test-writer, stub-fidelity-test-writer
+//   - external-system-driver-adapter  — external-system-driver-adapter-updater / -implementer
+//   - external-system-stub            — external-system-stub-implementer
+//   - external-system-simulator       — external-system-real-simulator-implementer
 //
 // A scope-exception that names a file under any of these is "external
 // contract/stub work" — exactly the work that requires a ## External System
-// Contract Criteria section on the ticket. The broadly-shared layers those
-// agents ALSO write (common, system-driver-adapter-shared) are deliberately
-// EXCLUDED: a shared-foundation edit is not contract/stub-specific and must not
-// route a vanilla scope-exception into the ESCC-undeclared halt. The set is
-// pinned as explicit placeholder keys (resolved via ResolveLayerPaths — the
-// registry-projected simulator/stub keys skip cleanly on a registry-less
-// project), never prose patterns ([[feedback_paths_deterministic_no_guessing]],
+// Contract Criteria section on the ticket.
+//
+// Layers the external agents share with vanilla agents are deliberately
+// EXCLUDED, because a file there says nothing about whether the work is
+// external:
+//
+//   - dsl-port, dsl-core — also written by the vanilla acceptance-test-writer
+//     (and dsl-implementer). An internal-DSL scope-exception (e.g. the DSL
+//     cannot express an authored scenario) on a ticket with no external system
+//     must surface as the generic STOP_SCOPE_VIOLATION, not as a misleading
+//     "declare an external system" halt.
+//   - common, system-driver-adapter-shared — shared foundation, not
+//     contract/stub-specific.
+//
+// The set is pinned as explicit placeholder keys (resolved via
+// ResolveLayerPaths — the registry-projected simulator/stub keys skip cleanly
+// on a registry-less project), never prose patterns
+// ([[feedback_paths_deterministic_no_guessing]],
 // [[feedback_substitutable_paths_in_docs]]).
 var contractStubScopeLayers = []string{
 	"ct-test",
-	"dsl-port",
-	"dsl-core",
 	"external-system-driver-adapter",
 	"external-system-stub",
 	"external-system-simulator",
@@ -145,7 +154,7 @@ func (a actions) categorizeScopeException(ctx *statemachine.Context) statemachin
 // scope-exception names, SOLELY from the entries under the external-system
 // driver roots (driver-adapter / driver-port), using the deterministic
 // <root>/<name>/ first-path-segment rule shared with
-// externalSystemNamesFromChangedPaths. Entries under ct-test / dsl-* carry no
+// externalSystemNamesFromChangedPaths. Entries under ct-test carry no
 // per-system path segment and contribute no name — the diagnostic falls back to
 // the generic "the external system" phrasing in that case rather than guessing a
 // name out of a filename. Returns a sorted, de-duplicated slice.
