@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -1876,6 +1877,158 @@ func TestRun_WritesRunDigest_Failed(t *testing.T) {
 	}
 	if !strings.Contains(digest, err.Error()) {
 		t.Errorf("failed verdict must carry the run error %q; got:\n%s", err.Error(), digest)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Durable run-history archive (KeepRunHistory)
+// ---------------------------------------------------------------------------
+
+// isolateUserState points userstate.Dir at a temp dir on every OS and
+// returns the per-run history dir Run will use for the smoke timestamp.
+func isolateUserState(t *testing.T) (historyRoot, historyRunDir string) {
+	t.Helper()
+	base := t.TempDir()
+	t.Setenv("LOCALAPPDATA", base)
+	t.Setenv("XDG_STATE_HOME", base)
+	historyRoot = filepath.Join(base, "gh-optivem", "runs")
+	runTs := time.Unix(1_700_000_000, 0).UTC().Format("20060102-150405")
+	return historyRoot, filepath.Join(historyRoot, fmt.Sprintf("%s-%d", runTs, os.Getpid()))
+}
+
+// runSmokeWithHistory drives Run over manualSmokeYAML with the durable
+// archive enabled and returns the repo-local run dir plus captured stderr.
+func runSmokeWithHistory(t *testing.T, keep int) (repoRunDir string, stderr string, runErr error) {
+	t.Helper()
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+	oldNow := nowFn
+	defer func() { nowFn = oldNow }()
+	nowFn = func() time.Time { return time.Unix(1_700_000_000, 0).UTC() }
+
+	repo := t.TempDir()
+	yamlPath := filepath.Join(repo, "smoke-flow.yaml")
+	if err := os.WriteFile(yamlPath, []byte(manualSmokeYAML), 0o644); err != nil {
+		t.Fatalf("write smoke YAML: %v", err)
+	}
+	var errBuf bytes.Buffer
+	runErr = Run(context.Background(), Options{
+		YAMLPath:       yamlPath,
+		RepoPath:       repo,
+		ManualAgents:   true,
+		KeepRunHistory: keep,
+		Stdout:         io.Discard,
+		Stderr:         &errBuf,
+		Stdin:          strings.NewReader("y\n"),
+	})
+	runTs := time.Unix(1_700_000_000, 0).UTC().Format("20060102-150405")
+	return filepath.Join(repo, ".gh-optivem", "runs", runTs), errBuf.String(), runErr
+}
+
+// TestRun_MirrorsRunArtifactsToHistory asserts the aggregate artifacts land
+// in BOTH the repo-local run dir and the durable history dir, byte-equal,
+// and that per-agent files are not mirrored.
+func TestRun_MirrorsRunArtifactsToHistory(t *testing.T) {
+	_, historyRunDir := isolateUserState(t)
+	repoRunDir, _, err := runSmokeWithHistory(t, 100)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, name := range []string{"summary.md", "flow.txt"} {
+		local, err := os.ReadFile(filepath.Join(repoRunDir, name))
+		if err != nil {
+			t.Fatalf("repo-local %s missing: %v", name, err)
+		}
+		durable, err := os.ReadFile(filepath.Join(historyRunDir, name))
+		if err != nil {
+			t.Fatalf("durable %s missing: %v", name, err)
+		}
+		if !bytes.Equal(local, durable) {
+			t.Errorf("%s: durable copy differs from repo-local copy", name)
+		}
+	}
+	entries, _ := os.ReadDir(historyRunDir)
+	allowed := map[string]bool{}
+	for _, n := range durableRunArtifacts {
+		allowed[n] = true
+	}
+	for _, e := range entries {
+		if !allowed[e.Name()] {
+			t.Errorf("unexpected file mirrored to history: %s", e.Name())
+		}
+	}
+}
+
+// TestRun_HistoryDisabledByDefault asserts KeepRunHistory=0 writes nothing
+// to the user state dir.
+func TestRun_HistoryDisabledByDefault(t *testing.T) {
+	historyRoot, _ := isolateUserState(t)
+	if _, _, err := runSmokeWithHistory(t, 0); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if _, err := os.Stat(historyRoot); !os.IsNotExist(err) {
+		t.Errorf("KeepRunHistory=0 must not create %s (stat err: %v)", historyRoot, err)
+	}
+}
+
+// TestRun_HistoryMirrorFailureIsWarning asserts a durable-side write failure
+// warns to stderr and never fails the run.
+func TestRun_HistoryMirrorFailureIsWarning(t *testing.T) {
+	_, historyRunDir := isolateUserState(t)
+	// A regular file squatting on the history run dir path makes MkdirAll fail.
+	if err := os.MkdirAll(filepath.Dir(historyRunDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(historyRunDir, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, err := runSmokeWithHistory(t, 100)
+	if err != nil {
+		t.Fatalf("durable mirror failure must not fail the run, got: %v", err)
+	}
+	if !strings.Contains(stderr, "mirror run artifacts") {
+		t.Errorf("expected mirror warning on stderr, got:\n%s", stderr)
+	}
+}
+
+// TestPruneRunHistory_HonoursCapAndSkipsPidMarkers asserts the durable
+// prune keeps keep-1 newest dirs and never removes a dir holding a *.pid
+// marker, regardless of age.
+func TestPruneRunHistory_HonoursCapAndSkipsPidMarkers(t *testing.T) {
+	root := t.TempDir()
+	names := []string{"r1-1", "r2-2", "r3-3", "r4-4", "r5-5"}
+	for i, n := range names {
+		p := filepath.Join(root, n)
+		if err := os.Mkdir(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if n == "r1-1" {
+			// Oldest dir holds an orphan PID marker — must survive.
+			if err := os.WriteFile(filepath.Join(p, "001-agent.pid"), []byte("{}"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ts := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC)
+		if err := os.Chtimes(p, ts, ts); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pruneRunHistory(root, 3, io.Discard)
+
+	entries, _ := os.ReadDir(root)
+	got := map[string]bool{}
+	for _, e := range entries {
+		got[e.Name()] = true
+	}
+	want := map[string]bool{"r1-1": true, "r4-4": true, "r5-5": true}
+	if len(got) != len(want) {
+		t.Fatalf("after prune got %v, want %v", got, want)
+	}
+	for n := range want {
+		if !got[n] {
+			t.Errorf("expected %q to remain", n)
+		}
 	}
 }
 

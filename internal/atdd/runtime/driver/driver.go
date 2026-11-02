@@ -208,6 +208,17 @@ type Options struct {
 	// the runtime treats anything <=0 as "skip pruning".
 	KeepRuns int
 
+	// KeepRunHistory enables the durable run-history archive and caps how
+	// many run directories it retains. At run end the aggregate analytics
+	// artifacts (summary.md, summary.jsonl, steps.jsonl, flow.txt) are
+	// mirrored from <repoPath>/.gh-optivem/runs/<ts>/ to the
+	// worktree-independent <userstate.Dir>/runs/<ts>-<pid>/ so they survive
+	// rehearsal-worktree teardown. Pruning runs at startup, like KeepRuns,
+	// but never removes a run dir that still holds a PID marker. Zero (the
+	// default) disables the archive entirely — tests leave it off so they
+	// never write into the real user state dir.
+	KeepRunHistory int
+
 	// ShowPrompt threads through to clauderun.Options.ShowPrompt for every
 	// dispatch so `gh optivem implement --show-prompt` dumps the full
 	// rendered prompt to stdout before each agent launches. Off by default
@@ -428,6 +439,25 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	defer func() { runState.printStepSummary(opts.Out.Phase) }()
 	defer func() { runState.printAgentSummary(opts.Out.Phase) }()
 
+	// runDir is the per-run, repo-local artifact dir (transient for
+	// rehearsals: it lives inside the worktree).
+	runDir := filepath.Join(repoPath, ghOptivemDir, "runs", runState.runTimestamp)
+
+	// Durable run-history archive: mirror the aggregate analytics artifacts
+	// to the worktree-independent user-state run dir so they survive
+	// rehearsal-worktree teardown. Registered BEFORE the flow.txt footer and
+	// the summary.md digest defers so it fires AFTER both (LIFO) — every
+	// mirrored file is final by then. Best-effort: a failure warns and never
+	// alters the run outcome, matching the sidecar contract.
+	if opts.KeepRunHistory > 0 && runState.pidRunDir != "" {
+		pruneRunHistory(filepath.Dir(runState.pidRunDir), opts.KeepRunHistory, opts.Stderr)
+		defer func() {
+			if err := mirrorRunArtifacts(runDir, runState.pidRunDir); err != nil {
+				fmt.Fprintf(opts.Stderr, "driver: warning: mirror run artifacts to %s: %v\n", runState.pidRunDir, err)
+			}
+		}()
+	}
+
 	// Live execution-flow tree (plan 20260604-1632): the decolored, readable
 	// sibling of the --log-file colored stream, written incrementally to
 	// <run-ts>/flow.txt so a halted run still leaves the partial tree on disk
@@ -437,7 +467,6 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// writer — the trace is informational, never load-bearing (Item 4),
 	// matching the openEventsLog / PID-marker policy.
 	flowStart := nowFn()
-	runDir := filepath.Join(repoPath, ghOptivemDir, "runs", runState.runTimestamp)
 	var flowTree *trace.TreeWriter
 	if f, err := openFlowFile(runDir); err != nil {
 		fmt.Fprintf(opts.Stderr, "driver: warning: open flow.txt: %v\n", err)
@@ -2249,6 +2278,13 @@ func formatSummaryTokens(n int) string {
 // Errors removing a single directory are surfaced back to the caller,
 // which logs them as a warning — pruning is diagnostics, not load-bearing.
 func pruneOldRuns(runsDir string, keep int) error {
+	return pruneOldRunsExcept(runsDir, keep, nil)
+}
+
+// pruneOldRunsExcept is pruneOldRuns with a keep-predicate: directories for
+// which skip returns true are neither counted nor removed. nil skip prunes
+// every directory.
+func pruneOldRunsExcept(runsDir string, keep int, skip func(dir string) bool) error {
 	if keep <= 0 {
 		return nil
 	}
@@ -2272,8 +2308,12 @@ func pruneOldRuns(runsDir string, keep int) error {
 		if err != nil {
 			continue
 		}
+		path := filepath.Join(runsDir, e.Name())
+		if skip != nil && skip(path) {
+			continue
+		}
 		dirs = append(dirs, entry{
-			path:  filepath.Join(runsDir, e.Name()),
+			path:  path,
 			mtime: info.ModTime(),
 		})
 	}
@@ -2294,6 +2334,76 @@ func pruneOldRuns(runsDir string, keep int) error {
 		}
 	}
 	return firstErr
+}
+
+// durableRunArtifacts are the aggregate analytics artifacts mirrored to the
+// durable run-history archive. The per-agent NNN-<agent>.* files are
+// deliberately excluded — they are large (100k+ each) and only needed for
+// forensic replay, which the in-repo copy serves while it exists.
+var durableRunArtifacts = []string{"summary.md", "summary.jsonl", "steps.jsonl", "flow.txt"}
+
+// mirrorRunArtifacts copies each durableRunArtifacts file present in srcDir
+// into dstDir (created if absent). Missing source files are skipped — a run
+// that busted before any dispatch has no summary.jsonl. Returns the first
+// error but still attempts every file.
+func mirrorRunArtifacts(srcDir, dstDir string) error {
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		return err
+	}
+	var firstErr error
+	for _, name := range durableRunArtifacts {
+		if err := copyFileIfExists(filepath.Join(srcDir, name), filepath.Join(dstDir, name)); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+// copyFileIfExists copies src to dst (truncating dst). A missing src is a
+// no-op, not an error.
+func copyFileIfExists(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// pruneRunHistory caps the durable run-history archive at keep run dirs,
+// skipping any dir that still holds a PID marker (a live dispatch, or an
+// orphan awaiting `gh optivem doctor --orphans` — pruning it would make the
+// orphan untrackable). Best-effort: failures warn to stderr.
+func pruneRunHistory(historyRoot string, keep int, stderr io.Writer) {
+	if err := pruneOldRunsExcept(historyRoot, keep, hasPidMarker); err != nil {
+		fmt.Fprintf(stderr, "driver: warning: prune run history: %v\n", err)
+	}
+}
+
+// hasPidMarker reports whether dir contains any *.pid file. An unreadable
+// dir counts as "has marker" so pruning errs on the side of keeping it.
+func hasPidMarker(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return true
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".pid") {
+			return true
+		}
+	}
+	return false
 }
 
 // openFlowFile creates runDir (if absent) and truncates/opens

@@ -59,6 +59,7 @@ func newImplementCmd() *cobra.Command {
 		verbose              bool
 		workspace            string
 		keepRuns             int
+		keepRunHistory       int
 		showPrompt           bool
 	)
 	cmd := &cobra.Command{
@@ -144,6 +145,7 @@ kill them.`,
 				exitOnError(errors.New("--channel requires --target (channel applies to a scoped slice)"))
 			}
 			exitOnError(validateKeepRuns(keepRuns))
+			exitOnError(validateKeepRunHistory(keepRunHistory))
 
 			// --autonomous is a deprecated alias for --auto --headless.
 			// Emit one stderr warning, then turn on headless and (if not
@@ -190,6 +192,7 @@ kill them.`,
 				ConfigPath:          resolvedConfigPath,
 				LogFile:             logFile,
 				KeepRuns:            keepRuns,
+				KeepRunHistory:      keepRunHistory,
 				ShowPrompt:          showPrompt,
 				Approval:            cmdctx.Approval(cmd),
 				TerminalLevel:       terminalLevel,
@@ -221,6 +224,7 @@ kill them.`,
 	cmd.Flags().StringVar(&logLevelArg, "log-level", "detail", "Verbosity of --log-file: phase (BPMN trace + prompts only) or detail (everything, default)")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Stream the full firehose (subprocess output, agent body, prompt-prep banners) to the terminal. Default: terminal shows only BPMN trace lines, agent enter/exit banners, and prompts")
 	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
+	cmd.Flags().IntVar(&keepRunHistory, "keep-run-history", 100, "Max runs to keep in the durable run-history archive (<user-state-dir>/runs/), which mirrors summary.md, summary.jsonl, steps.jsonl and flow.txt so they survive worktree teardown (0 = disable the archive)")
 	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
 	return cmd
 }
@@ -258,6 +262,15 @@ func printRunEndBanner(w io.Writer, cfg *projectconfig.Config, ticketURL, ticket
 func validateKeepRuns(n int) error {
 	if n < 0 {
 		return fmt.Errorf("--keep-runs must be >= 0 (got %d); use 0 to disable pruning", n)
+	}
+	return nil
+}
+
+// validateKeepRunHistory rejects negative --keep-run-history values at
+// flag-parse time. 0 is allowed (means "disable the durable archive").
+func validateKeepRunHistory(n int) error {
+	if n < 0 {
+		return fmt.Errorf("--keep-run-history must be >= 0 (got %d); use 0 to disable the run-history archive", n)
 	}
 	return nil
 }
