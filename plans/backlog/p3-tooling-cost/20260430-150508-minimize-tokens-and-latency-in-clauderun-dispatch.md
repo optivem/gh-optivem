@@ -1,7 +1,7 @@
 # Minimize tokens and latency in clauderun agent dispatch
 
-> 📋 **Deferred-plan review (2026-06-04, re-verified against code): KEEP — two items actionable.** Phase 1 (Items 1, 2, 6) shipped.
-> - **Item 3 is no longer deferred.** The old blocker has cleared: `--no-update-check` now exists and is already used in `preflight/tools.go:25`. The dispatch path (`claudeTuningArgs`, `clauderun.go:1669`) does NOT yet pass it. → ~1-line pickup, see Item 3 below.
+> 📋 **Deferred-plan review (2026-06-04, re-verified against code): KEEP — one item actionable (item 4); item 3 blocked.** Phase 1 (Items 1, 2, 6) shipped.
+> - **Item 3 is BLOCKED again (re-verified 2026-11-02).** See Item 3 below.
 > - **Item 4 is still genuinely pending, untouched.** Verified: `tracker.Issue` (`tracker.go:43`) carries only ID/Title/URL/Handle — no Body/Labels/projectItems field; `writeResolvedIssue` (`driver.go:787`) seeds only num/url/title/handle/id; `clauderun.Options`/`RunOpts` carry `IssueTitle` but no `IssueBody`; the shared preamble (`preamble.md:3`) interpolates only `${issue-num}` + `${issue-title}`. So each subagent still re-fetches the body itself.
 > - Items 5/7 are shop-side. Trim the shipped Phase 1 items if revisited.
 >
@@ -32,16 +32,23 @@ The dispatch design intent — "host is a thin shim, subagent does the work" —
 
 Ordered by ROI. Items 4–7 require coordination with shop.
 
-### 3. Disable update check on every dispatch — ✅ Actionable (blocker cleared)
+### 3. Disable update check on every dispatch — BLOCKED (flag does not exist)
 
-**History:** originally deferred because the `claude` CLI exposed no `--no-update-check` flag as of 2026-04-30 (commit `aeeff82` had removed an earlier attempt for that reason). That blocker is now gone — the flag exists and is already used in `preflight/tools.go:25` (`claude --no-update-check --version`).
+**Blocker (verified 2026-11-02 against `claude` 2.1.316):** the CLI has no
+`--no-update-check` option. `claude --help` does not list it, and
+`claude --no-update-check -p` fails with `error: unknown option '--no-update-check'`.
+The 2026-06-04 review note that the blocker had cleared was wrong:
+`preflight/tools.go:25` runs `claude --no-update-check --version`, but
+`--version` short-circuits before option validation (`claude --bogus-flag --version`
+also succeeds), so that call proves nothing. Adding the flag to
+`claudeTuningArgs` (`internal/atdd/process/clauderun/clauderun.go:2023`) would
+break every dispatch. Not shipped.
 
-**Files:**
-- `internal/atdd/runtime/clauderun/clauderun.go` → `claudeTuningArgs` (`clauderun.go:1669`)
+**Unblock when:** a `claude` release accepts the flag (or an equivalent env var
+such as `DISABLE_AUTOUPDATER`) on a `-p` invocation, not just alongside `--version`.
 
-**Fix:** prepend `"--no-update-check"` to the args slice in `claudeTuningArgs`. That function is the single chokepoint feeding both the interactive path (`execClaude.Run`) and the headless path (`runHeadless`), so one edit covers every dispatch. Each dispatch then skips the per-invocation update probe — a small but unconditional latency saving on the hot path.
-
-**Estimated effort:** minutes; verify with one dispatch that the flag is accepted by the pinned `claude` version.
+**Side finding:** the `--no-update-check` in `preflight/tools.go:25` is dead
+weight; drop it when that file is next touched.
 
 ### 4. Pass the resolved issue body into the subagent prompt (eliminates per-subagent `gh issue view`)
 
@@ -96,7 +103,7 @@ The aggressive items (1, 2, 4) all narrow the host's discretion. If a real ATDD 
 ## Phased rollout
 
 - **Phase 1** ✅ shipped: items 1, 2, 6 — pure gh-optivem changes.
-- **Phase 1b** (pure gh-optivem, now unblocked): item 3 (`--no-update-check` on dispatch). ~1-line change in `claudeTuningArgs`; can land independently of everything below.
+- **Phase 1b** (pure gh-optivem, BLOCKED): item 3 (`--no-update-check` on dispatch) — the flag does not exist in the `claude` CLI; see Item 3.
 - **Phase 2** (sister plan in shop): item 5 (model retiering) + item 7 (background commands). Tracked separately because it's shop-side.
 - **Phase 3** (coordinated): item 4 (issue-body pass-through). gh-optivem side ships additively first; shop-agent updates follow agent-by-agent.
 
