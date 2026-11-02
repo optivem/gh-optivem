@@ -11,18 +11,18 @@ import (
 )
 
 const (
-	readmeFile      = "README.md"
-	projectInfoHdr  = "## Project Info\n\n"
-	workflowPath    = "/actions/workflows"
-	githubBaseURL   = "https://github.com/"
-	testLangFmt     = "- **Test language:** %s\n"
-	badgeFmt        = "[![%s](%s/badge.svg)](%s)\n"
+	readmeFile            = "README.md"
+	projectInfoHdr        = "## Project Info\n\n"
+	workflowPath          = "/actions/workflows"
+	githubBaseURL         = "https://github.com/"
+	testLangFmt           = "- **Test language:** %s\n"
+	badgeFmt              = "[![%s](%s/badge.svg)](%s)\n"
 	acceptanceStage       = "acceptance-stage"
 	acceptanceStageLegacy = "acceptance-stage-legacy"
 	qaStage               = "qa-stage"
-	qaSignoff       = "qa-signoff"
-	prodStage       = "prod-stage"
-	commitStage     = "commit-stage"
+	qaSignoff             = "qa-signoff"
+	prodStage             = "prod-stage"
+	commitStage           = "commit-stage"
 )
 
 func actionsBase(fullRepo string) string {
@@ -55,11 +55,13 @@ func docsSection() string {
 }
 
 // pipelineBadges returns badge [url, label] pairs for the shared pipeline stages.
-func pipelineBadges(base, deploy string) [][2]string {
+// The acceptance-stage-legacy badge tracks addLegacyWorkflow: docker deploy only,
+// and never under --no-legacy (the workflow is not scaffolded then).
+func pipelineBadges(base string, cfg *config.Config) [][2]string {
 	badges := [][2]string{
 		{base + "/" + acceptanceStage + ".yml", acceptanceStage},
 	}
-	if deploy == "docker" {
+	if cfg.Deploy == "docker" && !cfg.NoLegacy {
 		badges = append(badges, [2]string{base + "/" + acceptanceStageLegacy + ".yml", acceptanceStageLegacy})
 	}
 	badges = append(badges,
@@ -126,7 +128,7 @@ func writeMonolithMultirepoReadme(cfg *config.Config) {
 	writeBadges(&badges, [][2]string{
 		{systemBase + "/commit-stage.yml", commitStage},
 	})
-	writeBadges(&badges, pipelineBadges(base, cfg.Deploy))
+	writeBadges(&badges, pipelineBadges(base, cfg))
 
 	reposSection := fmt.Sprintf("## Repositories\n\n- [%s](%s%s) — System (%s)\n",
 		cfg.SystemRepo, githubBaseURL, cfg.SystemFullRepo, cfg.Lang)
@@ -162,7 +164,7 @@ func writeMultitierMultirepoReadme(cfg *config.Config) {
 		{backendBase + "/backend-commit-stage.yml", "backend-commit-stage"},
 		{frontendBase + "/frontend-commit-stage.yml", "frontend-commit-stage"},
 	})
-	writeBadges(&badges, pipelineBadges(base, cfg.Deploy))
+	writeBadges(&badges, pipelineBadges(base, cfg))
 
 	reposSection := fmt.Sprintf("## Repositories\n\n- [%s](%s%s) — Backend (%s)\n- [%s](%s%s) — Frontend (%s)\n",
 		cfg.BackendRepo, githubBaseURL, cfg.BackendFullRepo, bl,
@@ -227,6 +229,6 @@ func generateBadges(cfg *config.Config) string {
 
 	var b strings.Builder
 	writeBadges(&b, commitStages)
-	writeBadges(&b, pipelineBadges(base, cfg.Deploy))
+	writeBadges(&b, pipelineBadges(base, cfg))
 	return b.String()
 }

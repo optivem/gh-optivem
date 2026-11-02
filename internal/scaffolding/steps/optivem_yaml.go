@@ -43,8 +43,15 @@ const (
 // wouldn't work with `gh optivem system start` / `gh optivem system-test run` from repo root — the runner
 // defaults are `./systems.yaml` / `./tests.yaml` in the working directory,
 // which don't resolve from the scaffolded repo root.
+//
+// --no-legacy omits gh-optivem.legacy.yaml (its tests.legacy.yaml target and
+// the acceptance-stage-legacy workflow that consumes it are omitted too).
 func WriteOptivemYAML(cfg *config.Config) {
-	log.Info("Writing gh-optivem.yaml + gh-optivem.legacy.yaml...")
+	label := projectconfig.Path + " + " + scaffoldedConfigFilenameLegacy
+	if cfg.NoLegacy {
+		label = projectconfig.Path
+	}
+	log.Infof("Writing %s...", label)
 
 	pc := optivemyaml.BuildOptivemYAML(cfg)
 	pc.System.Config = scaffoldedSystemConfigPath
@@ -56,7 +63,9 @@ func WriteOptivemYAML(cfg *config.Config) {
 
 	writePair := func(dir string) {
 		writeOptivemYAMLToDirIfNotSource(cfg, dir, pc)
-		writeLegacyOptivemYAMLToDir(dir, pcLegacy)
+		if !cfg.NoLegacy {
+			writeLegacyOptivemYAMLToDir(dir, pcLegacy)
+		}
 	}
 
 	writePair(cfg.RepoDir)
@@ -70,7 +79,7 @@ func WriteOptivemYAML(cfg *config.Config) {
 		}
 	}
 
-	log.Success("Wrote gh-optivem.yaml + gh-optivem.legacy.yaml")
+	log.Successf("Wrote %s", label)
 }
 
 // writeLegacyOptivemYAMLToDir writes <dir>/gh-optivem.legacy.yaml. The

@@ -144,7 +144,7 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `init` run:
 
 - `--verify-level` — `none`, `local`, `commit`, `acceptance`, `qa`, or `release` (default `release`). Each level runs every step up to and including its named stage.
-- `--no-legacy` — exclude legacy from local tests and acceptance stage.
+- `--no-legacy` — exclude legacy from runs (local tests, acceptance stage) and from the scaffolded output: no `gh-optivem.legacy.yaml`, no `system-test/tests.legacy.yaml` or legacy test sources, no `acceptance-stage-legacy.yml` workflow or README badge.
 - `--no-local-tests` — skip the local-test verification step.
 - `--no-local-sonar` — skip the local SonarCloud scan step.
 - `--no-project` — skip the `Ensure project board` step entirely (no auto-create, no status-ensure on a supplied `--project-url`).

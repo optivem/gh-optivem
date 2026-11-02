@@ -112,7 +112,7 @@ type Config struct {
 	SourceProjectURLWasEmpty bool
 
 	VerifyLevel  string // "none", "local", "commit", "acceptance", "qa", "release"
-	NoLegacy     bool   // exclude legacy from local tests and acceptance stage
+	NoLegacy     bool   // exclude legacy from runs (local tests, acceptance stage) and from the scaffolded output
 	NoLocalTests bool   // skip the "Verify local testing" step (runner package over system-test/)
 	NoLocalSonar bool   // skip the "Verify local SonarCloud scan" step (per-component run-sonar.sh)
 	NoAtdd       bool   // skip the "Install ATDD assets" step (skip copying agents/commands/prompts from shop)
@@ -614,7 +614,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs := cmd.Flags()
 	fs.BoolVar(&f.KeepLocal, "keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success")
 	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
-	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from local tests and acceptance stage")
+	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from runs (local tests, acceptance stage) and from the scaffolded output (gh-optivem.legacy.yaml, legacy tests, acceptance-stage-legacy workflow + badge)")
 	fs.BoolVar(&f.NoLocalTests, "no-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
 	fs.BoolVar(&f.NoLocalSonar, "no-local-sonar", false, "Skip the 'Verify local SonarCloud scan' step (per-component run-sonar.sh against the SonarCloud project)")
 	fs.BoolVar(&f.NoAtdd, "no-atdd", false, "No-op, retained for backward compatibility: ATDD assets ship embedded in the binary and are never installed per-repo")

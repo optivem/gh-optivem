@@ -138,7 +138,9 @@ func copyIssueTemplates(shop, repoDir string) {
 // or "multi" (multitier). systemLang identifies the per-system VERSION file
 // to copy from shop (cfg.Lang for monolith, cfg.BackendLang for multitier);
 // the file at shop/system/<arch>/<systemLang>/VERSION becomes repoDir/VERSION.
-func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string) string {
+// noLegacy (--no-legacy) strips the legacy suites config and sources from the
+// copied system-test tree (see removeLegacyTests).
+func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string, noLegacy bool) string {
 	arch := "monolith"
 	if composeVariant != "single" {
 		arch = "multitier"
@@ -147,6 +149,9 @@ func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string)
 
 	testDst := filepath.Join(repoDir, Names.TargetSystemTestDir)
 	files.CopyDir(filepath.Join(shop, Expand(Names.ShopSystemTestDir, vars)), testDst)
+	if noLegacy {
+		removeLegacyTests(testDst, testLang)
+	}
 
 	dockerDst := filepath.Join(repoDir, Names.TargetDockerDir)
 	files.CopyDir(filepath.Join(shop, Expand(Names.ShopDockerDir, vars)), dockerDst)
@@ -167,6 +172,26 @@ func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string)
 	// the same source BuildOptivemYAML writes into gh-optivem.yaml's channels:.
 	templates.WriteChannelType(testDst, testLang, projectconfig.DefaultChannels())
 	return testDst
+}
+
+// legacyTestPaths lists, per test language, the legacy artifacts shop ships
+// under system-test/<testLang>/: the mod-numbered suites config plus the
+// self-contained legacy source tree (latest tests never import from it).
+var legacyTestPaths = map[string][]string{
+	"java":       {"tests.legacy.yaml", filepath.Join("src", "test", "java", "com", "mycompany", "myshop", "systemtest", "legacy")},
+	"dotnet":     {"tests.legacy.yaml", filepath.Join("SystemTests", "Legacy")},
+	"typescript": {"tests.legacy.yaml", filepath.Join("tests", "legacy")},
+}
+
+// removeLegacyTests deletes the legacy suites config and legacy test sources
+// from a copied system-test tree. Absent paths are tolerated (older shop refs,
+// or a layout that never carried them); any other removal error is fatal.
+func removeLegacyTests(testDst, testLang string) {
+	for _, rel := range legacyTestPaths[testLang] {
+		if err := os.RemoveAll(filepath.Join(testDst, rel)); err != nil {
+			log.Fatalf("Remove legacy test artifact %s: %v", rel, err)
+		}
+	}
 }
 
 // pipelineWorkflows builds the workflow source->dest map for the four
@@ -192,8 +217,9 @@ func multitierPipelineWorkflows(vars map[string]string) map[string]string {
 }
 
 // addLegacyWorkflow adds the acceptance-stage-legacy workflow for docker deploy.
-func addLegacyWorkflow(wfMap map[string]string, srcTmpl string, vars map[string]string, deploy string) {
-	if deploy == "docker" {
+// --no-legacy omits it from the scaffolded output entirely.
+func addLegacyWorkflow(wfMap map[string]string, srcTmpl string, vars map[string]string, cfg *config.Config) {
+	if cfg.Deploy == "docker" && !cfg.NoLegacy {
 		wfMap[Expand(srcTmpl, vars)] = Names.DestLegacyAcceptWf
 	}
 }
@@ -253,7 +279,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	wfMap := monolithPipelineWorkflows(vars)
 	wfMap[Expand(Names.MonolithCommitStageWf, vars)] = Names.DestCommitStageWf
 	wfMap[Expand(Names.MonolithBumpPatchVersionWf, vars)] = Names.DestBumpPatchVersionWf
-	addLegacyWorkflow(wfMap, Names.MonolithLegacyAcceptWf, vars, cfg.Deploy)
+	addLegacyWorkflow(wfMap, Names.MonolithLegacyAcceptWf, vars, cfg)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
 	// System code: system/monolith/{lang}/ -> system/
@@ -275,7 +301,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	copyDbMigrations(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "single", lang)
+	copySystemTests(shop, repoDir, testLang, "single", lang, cfg.NoLegacy)
 
 	// Fix workflow content: paths, image names, workflow names
 	log.Info("Fixing up workflow and docker-compose content...")
@@ -321,7 +347,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	log.Info("Copying root repo pipeline workflows...")
 	rootWfMap := monolithPipelineWorkflows(vars)
 	rootWfMap[Names.BumpPatchVersionMultirepoWf] = Names.DestBumpPatchVersionWf
-	addLegacyWorkflow(rootWfMap, Names.MonolithLegacyAcceptWf, vars, cfg.Deploy)
+	addLegacyWorkflow(rootWfMap, Names.MonolithLegacyAcceptWf, vars, cfg)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
 	log.Info(infoCopyingExternals)
@@ -333,7 +359,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	copyDbMigrations(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "single", lang)
+	copySystemTests(shop, repoDir, testLang, "single", lang, cfg.NoLegacy)
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
@@ -436,7 +462,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	wfMap[Expand(Names.MultitierBackendCommitStageWf, vars)] = Names.DestBackendCommitStageWf
 	wfMap[Expand(Names.MultitierFrontendCommitStageWf, vars)] = Names.DestFrontendCommitStageWf
 	wfMap[Expand(Names.MultitierBumpPatchVersionWf, vars)] = Names.DestBumpPatchVersionWf
-	addLegacyWorkflow(wfMap, Names.MultitierLegacyAcceptWf, vars, cfg.Deploy)
+	addLegacyWorkflow(wfMap, Names.MultitierLegacyAcceptWf, vars, cfg)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
 
 	// Backend code: system/multitier/backend-{lang}/ -> backend/
@@ -461,7 +487,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	copyContracts(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "multi", backendLang)
+	copySystemTests(shop, repoDir, testLang, "multi", backendLang, cfg.NoLegacy)
 
 	// Fix workflow content: paths and image names
 	log.Info("Fixing up workflow and docker-compose content...")
@@ -527,7 +553,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	log.Info("Copying root repo pipeline workflows...")
 	rootWfMap := multitierPipelineWorkflows(vars)
 	rootWfMap[Names.BumpPatchVersionMultirepoWf] = Names.DestBumpPatchVersionWf
-	addLegacyWorkflow(rootWfMap, Names.MultitierLegacyAcceptWf, vars, cfg.Deploy)
+	addLegacyWorkflow(rootWfMap, Names.MultitierLegacyAcceptWf, vars, cfg)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
 
 	log.Info(infoCopyingExternals)
@@ -539,7 +565,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	copyDbMigrations(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
-	copySystemTests(shop, repoDir, testLang, "multi", backendLang)
+	copySystemTests(shop, repoDir, testLang, "multi", backendLang, cfg.NoLegacy)
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")

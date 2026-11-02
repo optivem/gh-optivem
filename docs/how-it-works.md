@@ -61,7 +61,7 @@ After the scaffold is pushed and linted, verification steps run based on `--veri
 | # | Step | Description |
 |---|------|-------------|
 | 1 | Compile system + Compile tests | Compiles system/backend/frontend and tests locally to catch broken imports and type errors |
-| 2 | Local system lifecycle | Build system → setup tests → start system → run tests (latest, then legacy) → stop system → clean system. Mirrors the CLI verb order. Skipped entirely when `--no-local-tests` is set; the legacy run is dropped by `--no-legacy` |
+| 2 | Local system lifecycle | Build system → setup tests → start system → run tests (latest, then legacy) → stop system → clean system. Mirrors the CLI verb order. Skipped entirely when `--no-local-tests` is set; the legacy run is dropped by `--no-legacy` (which also omits the legacy artifacts from the scaffold) |
 | 3 | Verify local SonarCloud scan | Per-component `run-sonar.sh` against the SonarCloud project. Skipped when `--no-local-sonar` is set |
 | 4 | Verify commit stage | Watches the commit stage CI workflow |
 | 5 | Verify acceptance stage | Triggers and watches acceptance stage **latest + legacy in parallel** (legacy dropped when `--no-legacy`). Captures the RC version |
@@ -80,4 +80,4 @@ After the scaffold is pushed and linted, verification steps run based on `--veri
 | `qa` | 1 + 2 + 3 + 4 + 5 + 6 |
 | `release` | 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 (default) |
 
-Steps 1–3 run at every level above `none`. `--no-local-tests` drops step 2 and `--no-local-sonar` drops step 3, regardless of level. `--no-legacy` applies to the legacy test run inside step 2 and to the legacy leg of step 5.
+Steps 1–3 run at every level above `none`. `--no-local-tests` drops step 2 and `--no-local-sonar` drops step 3, regardless of level. `--no-legacy` applies to the legacy test run inside step 2 and to the legacy leg of step 5, and also omits the legacy artifacts (`gh-optivem.legacy.yaml`, legacy tests, `acceptance-stage-legacy.yml` + its badge) from the scaffolded repo.
