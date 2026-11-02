@@ -62,7 +62,7 @@ The acceptance stage workflow is `gh-acceptance-stage.yml`. It supports a `verif
      - If the fix belongs in the **shop repo**, stop and ask the user for approval before modifying it.
    - Commit the source fix:
      ```bash
-     bash "$(git rev-parse --show-toplevel)/../github-utils/scripts/commit.sh"
+     gh optivem commit --repo <repo-name> --yes --paths "<space-separated files changed>" "<message>"
      ```
    - Wait for the **shop repo's commit stage** to pass (check every 1 minute).
    - Trigger the **shop repo's affected acceptance stage** (the one matching the architecture/lang that failed) and wait for it to pass (check every 5 minutes).

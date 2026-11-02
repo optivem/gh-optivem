@@ -94,8 +94,7 @@ type Scope struct {
 //  6. Nothing → error.
 //
 // Within ModeWorkspace, repos declared in folders[] but missing on disk
-// or without a .git/ subdir are silently filtered out (matches the
-// commit.sh:183 behavior). Malformed JSON, missing/empty folders[], and
+// or without a .git/ subdir are silently filtered out. Malformed JSON, missing/empty folders[], and
 // flag/env paths that do not exist are errors. The flag/env entries do
 // NOT apply the membership check from row 3 — those are explicit
 // operator intent and are honored even when CWD is outside the

@@ -39,9 +39,9 @@ import (
 // passed to workspace.Resolve as the highest-priority cascade input.
 var workspaceFlagValue string
 
-// commitCoAuthor is the trailer appended to every commit message. Kept
-// verbatim from commit.sh for parity; flagged for review in a follow-up
-// because gh-optivem itself is not a Claude session.
+// commitCoAuthor is the trailer appended to every commit message. Flagged
+// for review in a follow-up because gh-optivem itself is not a Claude
+// session.
 const commitCoAuthor = "Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 
 // Shared git argument tokens, deduplicated across the cross-repo verbs.
@@ -428,8 +428,8 @@ func commitOneRepo(repo, msg string, opts commitOptions) (bool, error) {
 // of the global --auto policy. Without --yes, the prompt routes through
 // approval.Confirm(CategoryHuman) as a placeholder; under the new tier
 // ladder the non-implement workspace-commit flow always prompts. Without
-// a TTY and without either flag, returns an error matching commit.sh's
-// wording.
+// a TTY and without either flag, returns an error telling the caller to
+// re-run with --yes.
 func confirmCommit(repo string, opts commitOptions) (bool, error) {
 	if opts.Yes {
 		return true, nil
@@ -1190,7 +1190,7 @@ func captureGit(repo string, args ...string) (string, error) {
 }
 
 // gitCachedClean returns true when `git diff --cached --quiet` exits zero —
-// i.e. nothing is staged. Mirrors commit.sh:201.
+// i.e. nothing is staged.
 func gitCachedClean(repo string) (bool, error) {
 	full := []string{"-C", repo, "diff", "--cached", gitFlagQuiet}
 	cmd := exec.Command("git", full...)
@@ -1206,7 +1206,7 @@ func gitCachedClean(repo string) (bool, error) {
 }
 
 // hasUpstream reports whether the repo's current branch has a remote tracking
-// branch. Repos without one are skipped — mirrors commit.sh:188 and sync.sh:30.
+// branch. Callers skip pull/push for repos without one.
 func hasUpstream(repo string) bool {
 	_, err := captureGit(repo, gitSubRevParse, gitFlagAbbrevRef, "--symbolic-full-name", "@{u}")
 	return err == nil
