@@ -44,7 +44,6 @@ What we get out of this:
 - [ ] **Step 3 — Invoke it inside the ATDD flow at compile time.** Wire the check so the `compile-tests` step (or an adjacent lint sub-step it calls) runs it and a violation makes the run hard-fail at a clean dedicated terminal — *before* `start-system` / implement. (See Open Question 1 for the exact home.)
 - [ ] **Step 4 — Regression fixture / unit test.** Prove the check rejects a deliberately-untagged clock-driving test and passes an isolated one, per language (or at minimum a unit test of the check logic).
 - [ ] **Step 5 — (If shop-side) wire into shop CI too** so a violation also fails the shop build independently of the ATDD flow.
-- [ ] **Step 6 — Resolve the deferred plan.** Delete `plans/deferred/20260618-1601-clock-driving-scenario-isolated-gate.md` (content folded here).
 
 ## Decisions (resolved)
 

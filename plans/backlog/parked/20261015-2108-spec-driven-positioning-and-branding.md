@@ -1,7 +1,5 @@
 # 2026-10-15 21:08 — Position gh-optivem as a spec-driven starter kit (spec-as-test)
 
-> 🤖 **Picked up by agent (refine)** — `Valentina_Desk` at `2026-10-15T19:10:23Z`
-
 ## TL;DR
 
 **Why:** "Spec-driven development" is the term developers search for when they look at AI-assisted coding (GitHub Spec Kit, AWS Kiro, Tessl, OpenSpec, BMAD). gh-optivem fits the category but out-ATDDs all of them: its specs are executable acceptance tests that must fail first and then pass. None of the existing tools checks that the code meets the spec. Today gh-optivem is presented as an academy/teaching tool, not as something a standalone developer would install.

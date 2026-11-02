@@ -1,7 +1,5 @@
 # 2026-06-25 09:44:47 UTC — SonarCloud go:S3776 cognitive-complexity refactors (deferred)
 
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-07-01T11:04:17Z`
-
 ## TL;DR
 
 **Why:** SonarCloud flagged 123 functions with `go:S3776` "Cognitive Complexity too high" (>15) across 66 files; they were excluded from the prior auto-fix run because each requires a genuine function refactor.

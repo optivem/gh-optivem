@@ -130,7 +130,7 @@ anchor on, so a head-only window would drop it. That variant is explicitly out.
    panic:, Error:}` the right anchor set across all three SUT languages, and is
    ~15 head lines enough for a stack-trace head without bloating prompts?
 4. **Relationship to the suppress-stderr plan**
-   (`plans/backlog/20260528-1302-suppress-subprocess-stderr-non-verbose.md`) —
+   (`plans/backlog/p3-tooling-cost/20260528-1302-suppress-subprocess-stderr-non-verbose.md`) —
    different concern (live streaming vs. failure capture), but both touch the
    stderr story; confirm they stay independent.
 
