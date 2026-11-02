@@ -79,7 +79,8 @@ type Config struct {
 
 	// CopyrightHolder names the legal entity in the scaffolded LICENSE's
 	// copyright notice, for the licenses whose notice is inline (mit, mit-0,
-	// bsd-2-clause, bsd-3-clause, 0bsd). Empty falls back to Owner — a GitHub
+	// bsd-2-clause, bsd-3-clause, 0bsd; every other license ships verbatim
+	// and ignores it). Empty falls back to Owner — a GitHub
 	// handle is a serviceable default but not a legal name, so operators who
 	// care set this in gh-optivem.yaml. Deliberately absent from `config
 	// init`'s prompt: an optional refinement does not earn a question in the

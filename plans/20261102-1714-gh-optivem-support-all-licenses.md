@@ -1,5 +1,7 @@
 # 2026-11-02 16:14:51 UTC — gh-optivem: support all common licenses
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-02T18:42:11Z`
+
 ## TL;DR
 
 **Why:** EventHub moved to AGPL-3.0, but `gh-optivem.yaml` still says `license: mit` with a workaround comment. `gh optivem` checks the field against a fixed list (`config: license %q must be one of %s`) and only has 8 bundled templates: mit, mit-0, apache-2.0, gpl-3.0, bsd-2-clause, bsd-3-clause, 0bsd and unlicense. AGPL isn't one of them.
@@ -15,22 +17,16 @@
 
 ## ▶ Next executable step (resume here)
 
-In this repo, find the license validation (search for `must be one of`) and the `licenses/*.txt` embed. Record the valid-key list, where templates are rendered, and how `copyright-holder` is substituted. Answer the "bundle vs fetch" open question before changing any code.
+Steps 1–6 are done: 16 bundled keys in `internal/kernel/license`, plus `scripts/refresh-licenses.sh`. Next is Step 7: commit that work (with user approval), release a new gh-optivem version, and run `gh extension upgrade optivem`.
 
 ## Steps
 
-- [ ] Step 1: In this repo, find the license key list, the embedded `licenses/*.txt` templates, the `LICENSE` writer and the `copyright-holder` substitution.
-- [ ] Step 2: Decide how to get the license texts (see Open questions), then add the missing licenses: at minimum agpl-3.0, plus the rest of GitHub's list.
-- [ ] Step 3: Change validation to derive the valid keys from the available templates, so adding a license no longer means editing a hard-coded list.
-- [ ] Step 4: Mark which licenses get `copyright-holder` substituted and which ship unchanged.
-- [ ] Step 5: Add tests: every key validates, every key produces a non-empty `LICENSE`, the copyright holder is substituted where expected, and an unknown key fails with the full list.
-- [ ] Step 6: Update the gh-optivem docs or config comments that list the valid `license` values.
 - [ ] Step 7: Release a new gh-optivem version, then run `gh extension upgrade optivem` locally.
 - [ ] Step 8: In the event-hub repo (outside this repo, at `$(git rev-parse --show-toplevel)/../../event-hub`), set `gh-optivem.yaml` to `license: agpl-3.0`, remove the comment and check that `gh optivem` commands still load the config.
 
-## Open questions
+## Decisions (resolved 2026-11-02)
 
-- **Bundle or fetch the license texts?** Bundling keeps scaffolding offline and deterministic. Fetching from GitHub's `/licenses/{key}` API covers every license with no upkeep, but needs network and auth. My suggestion is to bundle, using a small script that refreshes the bundled files from the API.
-- **Which licenses count as "all"?** GitHub's API list (about 13 keys), or the full SPDX list (600+ keys)? My suggestion is GitHub's list plus the current extras (mit-0, 0bsd).
-- **Allow source-available licenses (FSL, BUSL)?** GitHub doesn't offer them, but FSL came up as an option for EventHub. Include them now, or wait until they're needed?
-- **Should keys accept SPDX ids (`AGPL-3.0-only`) as well as GitHub keys (`agpl-3.0`)?**
+- **Bundle or fetch:** bundle the texts as embedded `licenses/*.txt`, plus a refresh script that pulls them from GitHub's `/licenses/{key}` API.
+- **Scope:** GitHub's API list plus mit-0 and 0bsd.
+- **FSL/BUSL:** not now. A later addition is a single `.txt` file.
+- **SPDX ids:** not accepted. GitHub keys only.

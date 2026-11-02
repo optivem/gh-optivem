@@ -49,7 +49,7 @@ func monolithAnswers() []string {
 		"3",                                       // test-lang → typescript
 		"y",                                       // project-url gate → yes
 		"https://github.com/orgs/acme/projects/1", // project-url
-		"1",                                       // license → mit
+		"",                                        // license → ENTER = mit (keys are sorted; mit is not [1])
 	}
 }
 
@@ -64,7 +64,7 @@ func multitierAnswers() []string {
 		"1",                                       // test-lang → java
 		"y",                                       // project-url gate → yes
 		"https://github.com/orgs/acme/projects/2", // project-url
-		"1",                                       // license → mit
+		"",                                        // license → ENTER = mit (keys are sorted; mit is not [1])
 	}
 }
 

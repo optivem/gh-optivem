@@ -1615,7 +1615,16 @@ func TestValidate_RejectsBadCharsInSystemName(t *testing.T) {
 
 func TestValidate_AcceptsKnownLicenses(t *testing.T) {
 	t.Parallel()
-	for _, key := range []string{LicenseMIT, LicenseApache2, LicenseGPL3, LicenseBSD2, LicenseBSD3, LicenseUnlicense} {
+	keys := LicenseKeys()
+	if len(keys) == 0 {
+		t.Fatal("LicenseKeys() is empty")
+	}
+	// agpl-3.0 is the key plan 20261102-1714 was opened for; pin it explicitly
+	// so it cannot drop out of the derived set unnoticed.
+	if !IsValidLicense(LicenseAGPL3) {
+		t.Errorf("IsValidLicense(%q) = false", LicenseAGPL3)
+	}
+	for _, key := range keys {
 		cfg := validMonolithBase()
 		cfg.License = key
 		if err := cfg.Validate(); err != nil {
@@ -1634,6 +1643,11 @@ func TestValidate_RejectsUnknownLicense(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "license") {
 		t.Errorf("error should mention license, got: %v", err)
+	}
+	for _, key := range LicenseKeys() {
+		if !strings.Contains(err.Error(), key) {
+			t.Errorf("error should list valid license %q, got: %v", key, err)
+		}
 	}
 }
 

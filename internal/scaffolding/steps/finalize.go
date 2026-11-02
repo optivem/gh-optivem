@@ -10,17 +10,17 @@ import (
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/config"
+	"github.com/optivem/gh-optivem/internal/kernel/license"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
-	"github.com/optivem/gh-optivem/internal/scaffolding/assets"
 	"github.com/optivem/gh-optivem/internal/scaffolding/files"
 )
 
 // WriteLicense writes the LICENSE file into every scaffolded repo and aligns
 // the package manifests' license field with it.
 //
-// The text comes from an embedded asset (internal/scaffolding/assets/licenses),
+// The text comes from an embedded asset (internal/kernel/license/texts),
 // not from the GitHub licenses API. The former fetch-based implementation
 // downgraded both a failed call and an empty body to a warning and returned,
 // so a network blip, an auth failure or a rate limit produced a repo with no
@@ -41,7 +41,7 @@ func WriteLicense(cfg *config.Config) {
 		return
 	}
 
-	body, err := assets.RenderLicense(cfg.License, strconv.Itoa(time.Now().Year()), copyrightHolder(cfg))
+	body, err := license.Render(cfg.License, strconv.Itoa(time.Now().Year()), copyrightHolder(cfg))
 	if err != nil {
 		log.Fatalf("Cannot write LICENSE for license %q: %v", cfg.License, err)
 	}

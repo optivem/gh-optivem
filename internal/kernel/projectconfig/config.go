@@ -166,17 +166,18 @@ type Config struct {
 
 	// License is the SPDX-like license key used to emit the scaffolded
 	// repo's LICENSE file and README badge. The offered set is
-	// projectconfig.LicenseKeys(); each key has a bundled text under
-	// internal/scaffolding/assets/licenses. Validated against the known
-	// set when set.
+	// projectconfig.LicenseKeys(): exactly the bundled texts under
+	// internal/kernel/license/texts (GitHub's license keys plus mit-0 and
+	// 0bsd). Validated against that set when set.
 	License string `yaml:"license,omitempty"`
 
 	// CopyrightHolder names the legal entity written into the scaffolded
 	// LICENSE's copyright notice, for the licenses whose notice is inline
 	// (mit, mit-0, bsd-2-clause, bsd-3-clause, 0bsd). Optional: when unset
 	// the scaffolder falls back to the GitHub owner handle, which is a
-	// serviceable default but not a legal name. Apache-2.0, GPL-3.0 and the
-	// Unlicense ignore it — their documents ship verbatim.
+	// serviceable default but not a legal name. Every other license (Apache,
+	// the GNU family, MPL, EPL, BSL, CC0, Unlicense) ignores it — those
+	// documents ship verbatim.
 	CopyrightHolder string `yaml:"copyright-holder,omitempty"`
 
 	// Deploy is the deployment target the scaffolded repo's workflows

@@ -176,8 +176,13 @@ func TestWriteLicense_UnknownKeyFailsTheStep(t *testing.T) {
 		if !strings.Contains(se.Msg, "not-a-license") {
 			t.Errorf("failure message does not name the license key: %s", se.Msg)
 		}
-		if !strings.Contains(se.Msg, "assets/licenses/not-a-license.txt") {
+		if !strings.Contains(se.Msg, "license/texts/not-a-license.txt") {
 			t.Errorf("failure message does not name the expected asset path: %s", se.Msg)
+		}
+		for _, key := range projectconfig.LicenseKeys() {
+			if !strings.Contains(se.Msg, key) {
+				t.Errorf("failure message does not list valid license %q: %s", key, se.Msg)
+			}
 		}
 		if _, err := os.Stat(filepath.Join(dir, "LICENSE")); !os.IsNotExist(err) {
 			t.Error("a LICENSE file was written despite the failure")
