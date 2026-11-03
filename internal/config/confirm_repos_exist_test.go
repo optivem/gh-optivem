@@ -68,3 +68,28 @@ func TestReposThatExist_SkipsEmptyEntries(t *testing.T) {
 		t.Fatalf("expected no existing repos, got %v", got)
 	}
 }
+
+// TestConfirmReposExist_OverwriteReturnsPreExistingSet pins the opt-in path:
+// with overwrite, pre-existing repos are returned (not fatal) so CreateRepos
+// can skip them.
+func TestConfirmReposExist_OverwriteReturnsPreExistingSet(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStubOSSpecific(t, dir, "gh", reposExistStubBody(t, []string{"acme/backend", "acme/system"}))
+
+	got := confirmReposExist([]string{"acme/backend", "acme/frontend", "acme/system"}, true)
+	want := []string{"acme/backend", "acme/system"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+}
+
+// TestConfirmReposExist_NoneExistWithoutOverwrite covers the greenfield path:
+// nothing exists, so no flag is needed and nothing is returned.
+func TestConfirmReposExist_NoneExistWithoutOverwrite(t *testing.T) {
+	dir := mkPathDir(t)
+	writeStubOSSpecific(t, dir, "gh", reposExistStubBody(t, nil))
+
+	if got := confirmReposExist([]string{"acme/repo-one"}, false); len(got) != 0 {
+		t.Fatalf("expected no existing repos, got %v", got)
+	}
+}

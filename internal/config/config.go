@@ -123,6 +123,7 @@ type Config struct {
 	Quiet        bool   // suppress info-level output
 	LogFile      string // optional path to mirror plain-text log output
 	AssumeYes    bool   // skip all interactive confirmations (--report-bug, project-board status-ensure)
+	Overwrite    bool   // opt in to scaffolding into repositories that already exist on GitHub
 
 	// Approval is the global auto-approve policy resolved from --auto /
 	// --confirm at root command startup. Init reads it in runInit and the
@@ -196,6 +197,14 @@ type Config struct {
 	FrontendRepoDir string
 	BackendRepoDir  string
 	SystemRepoDir   string
+
+	// PreExistingRepos is the set of "owner/name" repos that already existed on
+	// GitHub when scaffold started (only ever non-empty when Overwrite is set;
+	// otherwise confirmReposExist fails the run). CreateRepos skips creating
+	// these, and finalize allows a clean working tree for them (re-scaffold of
+	// identical content is a no-op) while treating a clean tree on a freshly
+	// created repo as a hard error.
+	PreExistingRepos map[string]bool
 }
 
 // BackendService is one microservices backend service: its identity (the
@@ -558,6 +567,7 @@ type RawFlags struct {
 	Verbose      bool
 	Quiet        bool
 	AssumeYes    bool
+	Overwrite    bool
 }
 
 // bindYAMLAffectingFlags binds the subset of init flags that influence the
@@ -626,6 +636,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
 	fs.StringVar(&f.LogFile, "log-file", "", "Override path for the plain-text log mirror (default: $TEMP/gh-optivem-<timestamp>.log; always written so failures can be attached to bug reports)")
 	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (--report-bug confirmation, project-board status-ensure on supplied --project-url). Expected pattern for CI/unattended runs.")
+	fs.BoolVar(&f.Overwrite, "overwrite", false, "Opt in to scaffolding into repositories that already exist on GitHub: existing repos are reused (not recreated), new files are added, and files that clash with the scaffold are replaced. Without this flag, init fails if any target repository already exists.")
 }
 
 // BindConfigInitFlags binds the YAML-affecting flag subset for `gh optivem
@@ -1115,29 +1126,33 @@ func parseProjectURL(s string) (ownerKind, owner string, number int, err error) 
 }
 
 // confirmReposExist probes every repo in fullRepos ("<owner>/<name>") and
-// fails the run immediately (FatalExit) if any already exist on GitHub,
-// naming the repo(s). CreateRepo() (internal/kernel/shell/github.go) fatals
-// unconditionally on an existing repo with no --force override, so a repo
-// that trips this check can never succeed later in the run — failing here
-// avoids burning time on shop-ref resolution and cloning first.
+// returns the subset that already exist on GitHub.
+//
+// Without overwrite, any pre-existing repo fails the run immediately
+// (FatalExit), naming the repo(s) and pointing at --overwrite -- a repo name
+// typo must not silently scaffold into someone else's repository, so adoption
+// is always an explicit opt-in. With overwrite, the pre-existing set is
+// returned so callers can skip creating those repos (CreateRepos) and relax
+// the clean-tree rule for them (finalize).
 //
 // Batched (vs one check per repo) so multirepo runs report every pre-existing
 // repo in one message instead of failing on the first and leaving the rest
 // undiagnosed.
-func confirmReposExist(fullRepos []string) {
+func confirmReposExist(fullRepos []string, overwrite bool) []string {
 	existing := reposThatExist(fullRepos)
-	if len(existing) == 0 {
-		return
+	if len(existing) == 0 || overwrite {
+		return existing
 	}
 
 	if len(existing) == 1 {
-		log.FatalExit(fmt.Sprintf("Repository %s already exists on GitHub -- gh optivem init does not support scaffolding into an existing repository", existing[0]))
+		log.FatalExit(fmt.Sprintf("Repository %s already exists on GitHub -- re-run with --overwrite to scaffold into it", existing[0]))
 	}
 	log.Errorf("The following repositories already exist on GitHub:")
 	for _, r := range existing {
 		log.Errorf("  - %s", r)
 	}
-	log.FatalExit("gh optivem init does not support scaffolding into an existing repository")
+	log.FatalExit("re-run with --overwrite to scaffold into the existing repositories")
+	return existing
 }
 
 // reposThatExist probes every repo in fullRepos ("<owner>/<name>") via
@@ -1244,12 +1259,16 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 			log.FatalExit("--project-url: " + failures[0].err.Error())
 		}
 	}
-	confirmReposExist([]string{
+	preExisting := confirmReposExist([]string{
 		f.Owner + "/" + repoName,
 		mr.backendFullRepo,
 		mr.frontendFullRepo,
 		mr.systemFullRepo,
-	})
+	}, f.Overwrite)
+	preExistingSet := make(map[string]bool, len(preExisting))
+	for _, r := range preExisting {
+		preExistingSet[r] = true
+	}
 
 	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
 	resolvedShopRef := resolveShopRef(f.ShopRef)
@@ -1313,6 +1332,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		Quiet:           f.Quiet,
 		LogFile:         logFilePath,
 		AssumeYes:       f.AssumeYes,
+		Overwrite:       f.Overwrite,
 		Approval:        resolved,
 		WorkDir:         wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed
@@ -1363,6 +1383,8 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 
 		SystemRepo:     mr.systemRepo,
 		SystemFullRepo: mr.systemFullRepo,
+
+		PreExistingRepos: preExistingSet,
 	}
 }
 

@@ -266,7 +266,7 @@ func TestCreateRepo_ExistingRepoFailsLoud(t *testing.T) {
 	if caught == nil {
 		t.Fatal("CreateRepo: want a fatal abort when the repo already exists, got none")
 	}
-	for _, want := range []string{"myorg/myrepo", "already exists", "not supported"} {
+	for _, want := range []string{"myorg/myrepo", "already exists", "--overwrite"} {
 		if !strings.Contains(caught.Error(), want) {
 			t.Fatalf("error %q does not mention %q", caught.Error(), want)
 		}

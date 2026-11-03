@@ -21,28 +21,30 @@ func logCloned(fullRepo, localPath string) {
 }
 
 // CreateRepos creates the GitHub repository (and component repos for multitier).
+// Repos in cfg.PreExistingRepos (only populated under --overwrite) are reused
+// as-is and not created.
 func CreateRepos(cfg *config.Config, gh *shell.GitHub) {
 	log.Infof("Creating repository %s...", cfg.FullRepo)
 
-	gh.CreateRepo()
-	logCreated(cfg.FullRepo)
+	createOrReuseRepo(cfg, gh, cfg.FullRepo)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
-			ghFrontend := gh.ForRepo(cfg.FrontendFullRepo)
-			ghBackend := gh.ForRepo(cfg.BackendFullRepo)
-
-			ghFrontend.CreateRepo()
-			logCreated(cfg.FrontendFullRepo)
-
-			ghBackend.CreateRepo()
-			logCreated(cfg.BackendFullRepo)
+			createOrReuseRepo(cfg, gh.ForRepo(cfg.FrontendFullRepo), cfg.FrontendFullRepo)
+			createOrReuseRepo(cfg, gh.ForRepo(cfg.BackendFullRepo), cfg.BackendFullRepo)
 		} else {
-			ghSystem := gh.ForRepo(cfg.SystemFullRepo)
-			ghSystem.CreateRepo()
-			logCreated(cfg.SystemFullRepo)
+			createOrReuseRepo(cfg, gh.ForRepo(cfg.SystemFullRepo), cfg.SystemFullRepo)
 		}
 	}
+}
+
+func createOrReuseRepo(cfg *config.Config, gh *shell.GitHub, fullRepo string) {
+	if cfg.PreExistingRepos[fullRepo] {
+		log.Successf("Reusing existing repository %s (--overwrite)", fullRepo)
+		return
+	}
+	gh.CreateRepo()
+	logCreated(fullRepo)
 }
 
 // SetupEnvironments creates GitHub environments on the main repo.

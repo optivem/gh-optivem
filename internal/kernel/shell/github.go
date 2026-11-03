@@ -502,7 +502,7 @@ func (g *GitHub) CreateRepo() {
 		log.Fatalf("failed to check if repository %s exists: %v", g.Repo, err)
 	}
 	if exists {
-		log.Fatalf("Repository %s already exists -- re-scaffolding an existing repo is not supported", g.Repo)
+		log.Fatalf("Repository %s already exists -- pass --overwrite to scaffold into an existing repo", g.Repo)
 	}
 	g.createRepoAdoptingLostAttempt()
 	g.waitForRepoVisible()
