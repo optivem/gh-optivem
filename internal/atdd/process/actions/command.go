@@ -202,7 +202,24 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 // Test runners typically print the failing test name + assertion on
 // stdout and the stack trace on stderr; preserving both streams gives
 // the diagnosing fixer everything the operator saw inline.
+//
+// The tail block is purely additive over a head window: when the combined
+// output contains an error marker (see errorMarkers) that the tail does not
+// already show, a window anchored on the first marker is prepended, followed
+// by headTailSeparator. The assertion of a failed test usually sits mid-output
+// (Gradle/JUnit end with the BUILD FAILED banner), so the tail alone misses
+// it. With no marker, or when the window is already inside the tail, the
+// result is exactly the tail block.
 func formatVerifyFailureOutput(stdout, stderr []byte) string {
+	tail := formatVerifyFailureTail(stdout, stderr)
+	head := firstErrorWindow(string(stdout)+"\n"+string(stderr), errorMarkers, verifyFailureHeadLines)
+	if head == "" || strings.Contains(tail, head) {
+		return tail
+	}
+	return head + headTailSeparator + tail
+}
+
+func formatVerifyFailureTail(stdout, stderr []byte) string {
 	out := lastNLines(string(stdout), commandStderrTailLines)
 	errs := lastNLines(string(stderr), commandStderrTailLines)
 	switch {
@@ -215,6 +232,38 @@ func formatVerifyFailureOutput(stdout, stderr []byte) string {
 	default:
 		return out + "\n--- stderr ---\n" + errs
 	}
+}
+
+// verifyFailureHeadLines is the size of the head window (marker line plus
+// following lines) prepended to verify_failure_output; budgeted separately
+// from commandStderrTailLines so neither block truncates the other.
+const verifyFailureHeadLines = 15
+
+const headTailSeparator = "\n--- (later output) ---\n"
+
+// errorMarkers anchor the head window across the SUT languages (Java/Gradle,
+// .NET, Playwright/TypeScript, Go).
+var errorMarkers = []string{"AssertionError", "Exception", "FAILED", "panic:", "Error:"}
+
+// firstErrorWindow returns the first line containing any marker plus the
+// following n-1 lines, or "" when no line matches.
+func firstErrorWindow(s string, markers []string, n int) string {
+	if s == "" || n <= 0 {
+		return ""
+	}
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	for i, line := range lines {
+		for _, m := range markers {
+			if strings.Contains(line, m) {
+				end := i + n
+				if end > len(lines) {
+					end = len(lines)
+				}
+				return strings.TrimRight(strings.Join(lines[i:end], "\n"), "\n")
+			}
+		}
+	}
+	return ""
 }
 
 // commandStderrTailLines caps the stderr block stashed in ctx.State for

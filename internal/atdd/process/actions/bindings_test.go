@@ -1350,6 +1350,49 @@ func TestRunCommand_TestRunFailure_StampsVerifyFailureOutput(t *testing.T) {
 	}
 }
 
+func TestFormatVerifyFailureOutput_HeadWindow(t *testing.T) {
+	filler := func(prefix string, n int) string {
+		var b strings.Builder
+		for i := 0; i < n; i++ {
+			fmt.Fprintf(&b, "%s %d\n", prefix, i+1)
+		}
+		return b.String()
+	}
+	t.Run("marker mid-output surfaces assertion ahead of tail", func(t *testing.T) {
+		stdout := filler("pre", 30) + "AssertionError: Expected failure but was success\n  at Foo.java:1\n" + filler("post", 60) + "BUILD banner\n"
+		got := formatVerifyFailureOutput([]byte(stdout), nil)
+		if !strings.HasPrefix(got, "AssertionError: Expected failure but was success") {
+			t.Fatalf("head must lead with the assertion:\n%s", got)
+		}
+		tail := lastNLines(stdout, commandStderrTailLines)
+		if !strings.HasSuffix(got, headTailSeparator+tail) {
+			t.Fatalf("tail must be preserved unchanged after the separator:\n%s", got)
+		}
+	})
+	t.Run("no marker is tail-only", func(t *testing.T) {
+		stdout, stderr := filler("out", 40), filler("err", 40)
+		got := formatVerifyFailureOutput([]byte(stdout), []byte(stderr))
+		want := formatVerifyFailureTail([]byte(stdout), []byte(stderr))
+		if got != want || strings.Contains(got, "later output") {
+			t.Fatalf("no-marker must equal tail-only:\n got: %q\nwant: %q", got, want)
+		}
+	})
+	t.Run("short output does not double-print", func(t *testing.T) {
+		stdout := "starting\nAssertionError: boom\n"
+		got := formatVerifyFailureOutput([]byte(stdout), nil)
+		if got != "starting\nAssertionError: boom" {
+			t.Fatalf("got %q", got)
+		}
+	})
+	t.Run("infra-style failure keeps cause in tail", func(t *testing.T) {
+		stderr := filler("noise", 40) + "cannot connect to daemon"
+		got := formatVerifyFailureOutput(nil, []byte(stderr))
+		if got != lastNLines(stderr, commandStderrTailLines) {
+			t.Fatalf("infra output must be tail-only: %q", got)
+		}
+	})
+}
+
 func TestRunCommand_TestRunSuccess_DoesNotStampVerifyFailureOutput(t *testing.T) {
 	// A clean test-run must NOT stash verify_failure_output so a later
 	// fix dispatch via an unrelated failure-kind cannot inherit a stale

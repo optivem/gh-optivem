@@ -1,10 +1,3 @@
-# ❓❓❓ NEEDS DISCUSSION — NO DECISION YET ❓❓❓
-
-> **Status (2026-06-08):** Discussion only. The problem is confirmed real,
-> but VJ has **not** decided whether to act, or which option. Three live
-> choices are on the table (do-nothing / cosmetic-only / additive capture).
-> **Do not implement until VJ picks an option.**
-
 # Surface the assertion in failure capture, without losing the true error
 
 ## TL;DR
@@ -120,44 +113,23 @@ anchor on, so a head-only window would drop it. That variant is explicitly out.
   Possible regex misfire anchoring on the wrong "Error" line (bounded: tail
   retained). Fixer prompts assume the current shape — must re-read for drift.
 
-## Open questions (for VJ)
+## Decisions
 
-1. **Act at all, or accept Option A?** Is the diagnostic/ergonomics gain worth
-   touching a path that runs on every failing command?
-2. **If acting: B, C, or B+C?** B is cosmetic-safe; C is the substantive fix;
-   they compose (do C, fold in B as a one-line tidy).
-3. **Marker set & window size** — is `{AssertionError, Exception, FAILED,
-   panic:, Error:}` the right anchor set across all three SUT languages, and is
-   ~15 head lines enough for a stack-trace head without bloating prompts?
-4. **Relationship to the suppress-stderr plan**
-   (`plans/backlog/p3-tooling-cost/20260528-1302-suppress-subprocess-stderr-non-verbose.md`) —
-   different concern (live streaming vs. failure capture), but both touch the
-   stderr story; confirm they stay independent.
+- **Q-6 (meta-plan, resolved):** Option C (additive head+tail capture) **plus** the Option B Gradle `--warning-mode none` tidy. Q1-Q4 are settled by this: act; B+C; marker set `{AssertionError, Exception, FAILED, panic:, Error:}` with a 15-line head window; the suppress-stderr plan stays independent.
+- `command-stderr-tail` (HALT banner / `command-failed-fixer`) stays tail-only: the infra path's cause is usually the last line.
 
-## Items (only if Option C is chosen — DO NOT START YET)
+## Shipped
 
-1. Add `firstErrorWindow(s, markers, n)` and `overlaps(head, tail)` helpers in
-   `internal/atdd/runtime/actions/bindings.go` near `lastNLines`.
-2. Rewrite `formatVerifyFailureOutput` (`bindings.go:995`) to the additive shape
-   above. Budget head and tail line caps separately.
-3. Decide whether `command-stderr-tail` (`bindings.go:951`, HALT banner path)
-   gets the same additive treatment or stays tail-only — the HALT banner is the
-   infra path, where the tail is usually the right thing.
-4. Unit tests: marker-found (assertion surfaces), no-marker (tail-only, byte
-   identical to today), short-output overlap (no double-print), infra-style
-   failure (tail still carries the cause).
-5. Re-read and, if needed, adjust the fixer prompts that consume the payload:
-   `internal/assets/runtime/agents/atdd/command-failed-fixer.md` and
-   `internal/assets/runtime/agents/atdd/unexpected-failing-tests-fixer.md`
-   (wording currently assumes the tail shape).
-6. (Optional, Option B) Add `--warning-mode none` to the Gradle test invocation.
+Steps 1-5 (helpers `firstErrorWindow`, additive `formatVerifyFailureOutput` in `internal/atdd/process/actions/command.go`, unit tests in `bindings_test.go`, fixer prompts re-read: no tail-shape wording, no change needed).
 
-## Verification (only if Option C is chosen)
+## Remaining steps
+
+1. (Option B, shop-side) Add `--warning-mode none` to the Gradle test invocations in shop's `system-test/java/tests.yaml` (and `tests.legacy.yaml` if still used). The commands live in shop config, not gh-optivem; needs a shop edit + shop push (not done in the gh-optivem pass).
+
+## Verification (not yet run - needs an attended rehearsal)
 
 - Re-run the `#76` cancellation-blackout rehearsal red phase; confirm
   `verify_failure_output` in the trace leads with
   `AssertionError: Expected result to be failure but was success`.
 - Force an infra failure (break the Gradle build / rename the test source) and
-  confirm the tail still carries the real cause (no marker → tail-only path).
-- Confirm `classifyShellErr` infra-vs-red verdicts are unchanged (it reads raw
-  stderr, so they must be) — existing `verify_classify_test.go` stays green.
+  confirm the tail still carries the real cause (no marker -> tail-only path; covered by unit test, rehearsal confirms end-to-end).
