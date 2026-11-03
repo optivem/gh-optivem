@@ -401,25 +401,37 @@ flowchart TD
 flowchart TD
     RESOLVE_CHANNEL[[Resolve Channel]]
     GATE_CHANNEL_TOUCHED{Channel Touched?}
-    RUN_ACTION["Run the Configured Agent — see § ${action}"]
+    RESOLVE_INNER_LOOP[[Resolve Inner Loop]]
     CHANNEL_SKIPPED(( ))
+    RUN_ACTION["Run the Configured Agent — see § ${action}"]
     BUILD_SYSTEM[Build the System — see § build-system]
     START_SYSTEM[Start the System — see § start-system-restart]
     VERIFY_TESTS_PASS[Verify Tests Pass]
+    GATE_INNER_LOOP{Inner Loop Mode?}
     COMMIT_SYSTEM["Commit System Changes — see § commit<br/>category = system-commit"]
+    VERIFY_INNER_LOOP[Verify Inner Loop]
+    INNER_LOOP_TDD_UNSUPPORTED((⚡))
     IMPL_AND_VERIFY_SYSTEM_END(( ))
 
     RESOLVE_CHANNEL --> GATE_CHANNEL_TOUCHED
-    GATE_CHANNEL_TOUCHED -- Yes --> RUN_ACTION
+    GATE_CHANNEL_TOUCHED -- Yes --> RESOLVE_INNER_LOOP
     GATE_CHANNEL_TOUCHED -- No --> CHANNEL_SKIPPED
+    RESOLVE_INNER_LOOP --> RUN_ACTION
     RUN_ACTION --> BUILD_SYSTEM
     BUILD_SYSTEM --> START_SYSTEM
     START_SYSTEM --> VERIFY_TESTS_PASS
-    VERIFY_TESTS_PASS --> COMMIT_SYSTEM
+    VERIFY_TESTS_PASS --> GATE_INNER_LOOP
+    GATE_INNER_LOOP -- None --> COMMIT_SYSTEM
+    GATE_INNER_LOOP -- Test After --> VERIFY_INNER_LOOP
+    GATE_INNER_LOOP -- TDD --> INNER_LOOP_TDD_UNSUPPORTED
+    VERIFY_INNER_LOOP --> COMMIT_SYSTEM
     COMMIT_SYSTEM --> IMPL_AND_VERIFY_SYSTEM_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class RESOLVE_CHANNEL serviceNode
+    class RESOLVE_CHANNEL,RESOLVE_INNER_LOOP serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class INNER_LOOP_TDD_UNSUPPORTED errorEndNode
 ```
 
 ## Refactor and Verify Tests
@@ -1018,6 +1030,18 @@ flowchart TD
     UPDATE_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_SYS_DA_END
+```
+
+## Verify Inner Loop
+
+```mermaid
+flowchart TD
+    RUN_COMPONENT_TESTS["Run Component Tests — see § execute-command<br/>category = command<br/>scope-task-name = implement-system<br/>task-name = verify-inner-loop"]
+    RUN_MUTATION_GATE["Run Mutation Gate — see § execute-command<br/>category = command<br/>scope-task-name = implement-system<br/>task-name = verify-inner-loop"]
+    VERIFY_INNER_LOOP_END(( ))
+
+    RUN_COMPONENT_TESTS --> RUN_MUTATION_GATE
+    RUN_MUTATION_GATE --> VERIFY_INNER_LOOP_END
 ```
 
 ## Write External System Stub-Fidelity Tests
