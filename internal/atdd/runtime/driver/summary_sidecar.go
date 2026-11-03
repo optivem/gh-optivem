@@ -366,20 +366,7 @@ func renderRunDigest(w io.Writer, d runDigest) {
 		return
 	}
 
-	num := strings.TrimSpace(d.issueNum)
-	title := strings.TrimSpace(d.title)
-	switch {
-	case num != "" && title != "":
-		fmt.Fprintf(w, "# Run digest — #%s %s\n", num, title)
-	case num != "":
-		fmt.Fprintf(w, "# Run digest — #%s\n", num)
-	case title != "":
-		fmt.Fprintf(w, "# Run digest — %s\n", title)
-	default:
-		fmt.Fprintln(w, "# Run digest")
-	}
-	fmt.Fprintln(w)
-
+	writeDigestHeading(w, d)
 	if d.result == nil {
 		fmt.Fprintln(w, "**Result:** ✅ succeeded")
 	} else {
@@ -406,6 +393,49 @@ func renderRunDigest(w io.Writer, d runDigest) {
 		fmt.Fprintln(w)
 	}
 
+	writeDigestCommits(w, d)
+
+	// Steps executed: the agents-and-commands timeline. Placed before the
+	// Agents section because that section returns early when no agents
+	// dispatched — putting Steps after it would drop the table on
+	// command-only runs.
+	writeDigestSteps(w, d)
+
+	fmt.Fprintln(w, "## Agents dispatched")
+	if len(d.records) == 0 {
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "_No agents were dispatched._")
+		return
+	}
+	// renderAgentSummary leads with a blank line then the `=== Agent
+	// summary ===` header; fencing it keeps the monospace columns aligned
+	// when GitHub renders the Markdown.
+	fmt.Fprintln(w, "```")
+	renderAgentSummary(w, d.records)
+	fmt.Fprintln(w, "```")
+}
+
+// writeDigestHeading emits the digest's H1, naming the issue number and/or
+// title when present.
+func writeDigestHeading(w io.Writer, d runDigest) {
+	num := strings.TrimSpace(d.issueNum)
+	title := strings.TrimSpace(d.title)
+	switch {
+	case num != "" && title != "":
+		fmt.Fprintf(w, "# Run digest — #%s %s\n", num, title)
+	case num != "":
+		fmt.Fprintf(w, "# Run digest — #%s\n", num)
+	case title != "":
+		fmt.Fprintf(w, "# Run digest — %s\n", title)
+	default:
+		fmt.Fprintln(w, "# Run digest")
+	}
+	fmt.Fprintln(w)
+}
+
+// writeDigestCommits emits the Commits section (and compare link) when the
+// run produced commits.
+func writeDigestCommits(w io.Writer, d runDigest) {
 	if len(d.commits) > 0 {
 		fmt.Fprintf(w, "## Commits (%d)\n", len(d.commits))
 		fmt.Fprintln(w)
@@ -431,11 +461,10 @@ func renderRunDigest(w io.Writer, d runDigest) {
 			fmt.Fprintln(w)
 		}
 	}
+}
 
-	// Steps executed: the agents-and-commands timeline. Placed before the
-	// Agents section because that section returns early when no agents
-	// dispatched — putting Steps after it would drop the table on
-	// command-only runs.
+// writeDigestSteps emits the Steps executed section.
+func writeDigestSteps(w io.Writer, d runDigest) {
 	fmt.Fprintln(w, "## Steps executed")
 	if len(d.steps) == 0 {
 		fmt.Fprintln(w)
@@ -450,19 +479,6 @@ func renderRunDigest(w io.Writer, d runDigest) {
 		fmt.Fprintln(w, "```")
 		fmt.Fprintln(w)
 	}
-
-	fmt.Fprintln(w, "## Agents dispatched")
-	if len(d.records) == 0 {
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "_No agents were dispatched._")
-		return
-	}
-	// renderAgentSummary leads with a blank line then the `=== Agent
-	// summary ===` header; fencing it keeps the monospace columns aligned
-	// when GitHub renders the Markdown.
-	fmt.Fprintln(w, "```")
-	renderAgentSummary(w, d.records)
-	fmt.Fprintln(w, "```")
 }
 
 // commitMeta joins a commit's author and relative date into the GitHub-

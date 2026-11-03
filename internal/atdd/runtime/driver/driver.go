@@ -278,18 +278,9 @@ type Options struct {
 func Run(ctx context.Context, opts Options) (runErr error) {
 	opts = opts.withDefaults()
 
-	var eng *statemachine.Engine
-	var err error
-	if opts.YAMLPath == "" {
-		eng, err = process.Load()
-		if err != nil {
-			return fmt.Errorf("driver: load embedded YAML: %w", err)
-		}
-	} else {
-		eng, err = statemachine.LoadFile(opts.YAMLPath)
-		if err != nil {
-			return fmt.Errorf("driver: load YAML %q: %w", opts.YAMLPath, err)
-		}
+	eng, err := loadEngine(opts)
+	if err != nil {
+		return err
 	}
 
 	if _, ok := eng.Processes[opts.ProcessName]; !ok {
@@ -371,40 +362,8 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// Absent/empty channels: skip the unroll and keep the single static node
 	// (today's `suite: acceptance` behaviour) — graceful fallback for older
 	// configs. Channels are already enum-validated by projectconfig.Validate.
-	if cfg != nil && len(cfg.Channels) > 0 {
-		if err := eng.UnrollSystemChannels(cfg.Channels); err != nil {
-			return fmt.Errorf("driver: unroll system channels: %w", err)
-		}
-		// Same per-channel decomposition for the RED System Driver adapter step
-		// (plan 20260530-1725 Item 0, D-adapter-ownership option A). The driver
-		// adapter is channel-specific (MyShopApiDriver / MyShopUiDriver), so it
-		// unrolls into one dispatch per channel just like the system step. Kept
-		// inside the RED cascade, gated by GATE_SYSTEM_DRIVER_PORTS_CHANGED; the
-		// no-arg full run is unchanged for a single-channel project.
-		if err := eng.UnrollSystemDriverAdapterChannels(cfg.Channels); err != nil {
-			return fmt.Errorf("driver: unroll system driver adapter channels: %w", err)
-		}
-	}
-
-	// Statically unroll the external-system driver-adapter contract cycle from
-	// the project-declared `external-systems:` registry (plan 20260615-0755).
-	// Like channels, external systems are project-dependent, so the single
-	// IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS anchor in shared-contract is
-	// rewritten in memory into one guarded clone per registered system, each
-	// carrying its baked external-system-name + real-kind. Done before Bind so
-	// the synthesized clones get NodeFns resolved; order-independent of the
-	// channel unrolls (they target different processes). Guarded on a non-empty
-	// registry — a project with no external systems never reaches the anchor
-	// (its entry gate is port-keyed), so the single static node is harmless.
-	if cfg != nil && len(cfg.ExternalSystems) > 0 {
-		names := cfg.ExternalSystemNames()
-		realKind := make(map[string]string, len(names))
-		for _, name := range names {
-			realKind[name] = string(cfg.ExternalSystems[name].RealKind)
-		}
-		if err := eng.UnrollExternalSystems(names, realKind); err != nil {
-			return fmt.Errorf("driver: unroll external systems: %w", err)
-		}
+	if err := unrollProjectTopology(eng, cfg); err != nil {
+		return err
 	}
 
 	if err := eng.Bind(); err != nil {
@@ -451,11 +410,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// alters the run outcome, matching the sidecar contract.
 	if opts.KeepRunHistory > 0 && runState.pidRunDir != "" {
 		pruneRunHistory(filepath.Dir(runState.pidRunDir), opts.KeepRunHistory, opts.Stderr)
-		defer func() {
-			if err := mirrorRunArtifacts(runDir, runState.pidRunDir); err != nil {
-				fmt.Fprintf(opts.Stderr, "driver: warning: mirror run artifacts to %s: %v\n", runState.pidRunDir, err)
-			}
-		}()
+		defer mirrorRunArtifactsOrWarn(opts.Stderr, runDir, runState.pidRunDir)
 	}
 
 	// Live execution-flow tree (plan 20260604-1632): the decolored, readable
@@ -466,46 +421,10 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// Fail-soft: if the file can't be opened we warn and continue with a nil
 	// writer — the trace is informational, never load-bearing (Item 4),
 	// matching the openEventsLog / PID-marker policy.
-	flowStart := nowFn()
-	var flowTree *trace.TreeWriter
-	if f, err := openFlowFile(runDir); err != nil {
-		fmt.Fprintf(opts.Stderr, "driver: warning: open flow.txt: %v\n", err)
-	} else {
-		flowTree = trace.NewTreeWriter(f)
-		flowTree.WriteHeader(trace.TreeHeader{
-			RunTimestamp: runState.runTimestamp,
-			RepoPath:     repoPath,
-			Process:      opts.ProcessName,
-			IssueNum:     opts.IssueNum,
-		})
-		// Footer carries the named runErr (final verdict) and the dispatch
-		// count straight from runState's records — the same tally
-		// printAgentSummary renders — so the two cannot diverge. Registered
-		// here so it fires before printAgentSummary / logClose (LIFO) but
-		// after the digest tail; flow.txt is its own file, independent of
-		// the --log-file logClose.
-		//
-		// After the footer lands, echo the flow.txt path to the operator's
-		// Phase sink so the closing pointer cluster (right after `Run digest:`,
-		// which fires first via its later-registered defer) surfaces the
-		// readable execution tree — the mainstream "stream live, then point at
-		// the artifact" convention. The live colored stream already showed the
-		// content; this line just tells the operator where the clean nested
-		// copy lives. Mirrored into --log-file too (logClose fires last).
-		flowPath := filepath.Join(runDir, "flow.txt")
-		defer func() {
-			flowTree.WriteFooter(trace.TreeFooter{
-				Result:     runErr,
-				WallClock:  nowFn().Sub(flowStart),
-				CommitSHA:  headCommitSHA(repoPath),
-				Dispatches: len(runState.snapshotRecords()),
-				RunDir:     runDir,
-				LogFile:    opts.LogFile,
-			})
-			f.Close()
-			fmt.Fprintf(opts.Out.Phase, "Execution flow: %s\n", flowPath)
-		}()
-	}
+	// The footer is registered here so it fires before printAgentSummary /
+	// logClose (LIFO) but after the digest tail.
+	flowTree, finishFlow := startFlowTree(opts, runState, repoPath, runDir)
+	defer func() { finishFlow(runErr) }()
 
 	// Post-Bind decoration order matters:
 	//   1. Wrap user-task agent dispatch with per-node info-printer (uses
@@ -579,28 +498,7 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// disk and the verdict stamped before the table prints and the log file
 	// closes. Best-effort: a write failure warns to stderr and never alters
 	// the run outcome (D6), mirroring appendSummaryLine.
-	defer func() {
-		runState.setResult(runErr)
-		digestPath := runState.summaryMarkdownPath()
-		commits := commitsSince(repoPath, runState.baseSHA)
-		if err := writeRunDigest(digestPath, runDigest{
-			issueNum:           sCtx.GetString(ctxKeyIssueNum),
-			title:              sCtx.GetString(ctxKeyIssueTitle),
-			url:                sCtx.GetString("issue-url"),
-			description:        sCtx.GetString("description"),
-			acceptanceCriteria: sCtx.GetString("acceptance-criteria"),
-			records:            runState.snapshotRecords(),
-			result:             runErr,
-			commits:            commits,
-			compareURL:         compareURL(repoPath, runState.baseSHA, len(commits)),
-			steps:              runState.snapshotSteps(),
-			wallClock:          runState.wallClock(),
-		}); err != nil {
-			fmt.Fprintf(opts.Stderr, "driver: warning: write run digest: %v\n", err)
-		} else if digestPath != "" {
-			fmt.Fprintf(opts.Out.Phase, "Run digest: %s\n", digestPath)
-		}
-	}()
+	defer func() { finishRunDigest(opts, runState, repoPath, sCtx, runErr) }()
 
 	if opts.IssueNum > 0 {
 		if err := preResolveIssue(ctx, opts, sCtx, cfg); err != nil {
@@ -614,20 +512,9 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 	// read (acceptance-criteria, checklist, …). Run parse-ticket here so the
 	// slice sees the same ticket context the full walk gives it, then route into
 	// the resolved slice (which may refuse on a not-DONE upstream slice).
-	entryProcess := opts.ProcessName
-	if opts.Target != TargetUnset {
-		if opts.IssueNum > 0 {
-			if fn := actionReg.Lookup("parse-ticket"); fn != nil {
-				if out := fn(sCtx); out.Err != nil {
-					return fmt.Errorf("driver: scoped --target %s: parse ticket: %w", opts.Target, out.Err)
-				}
-			}
-		}
-		proc, err := resolveScopedEntry(opts.Target, opts.Channel, cfg, repoPath, sCtx)
-		if err != nil {
-			return fmt.Errorf("driver: %w", err)
-		}
-		entryProcess = proc
+	entryProcess, err := resolveEntryProcess(opts, actionReg, cfg, repoPath, sCtx)
+	if err != nil {
+		return err
 	}
 
 	runErr = eng.RunProcess(entryProcess, sCtx)
@@ -643,6 +530,143 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		}
 	}
 	return runErr
+}
+
+// loadEngine loads the process engine from the embedded YAML, or from
+// opts.YAMLPath when set.
+func loadEngine(opts Options) (*statemachine.Engine, error) {
+	if opts.YAMLPath == "" {
+		eng, err := process.Load()
+		if err != nil {
+			return nil, fmt.Errorf("driver: load embedded YAML: %w", err)
+		}
+		return eng, nil
+	}
+	eng, err := statemachine.LoadFile(opts.YAMLPath)
+	if err != nil {
+		return nil, fmt.Errorf("driver: load YAML %q: %w", opts.YAMLPath, err)
+	}
+	return eng, nil
+}
+
+// unrollProjectTopology statically unrolls the channel loop, the RED System
+// Driver adapter step, and the external-system driver-adapter contract cycle
+// from the project-declared `channels:` / `external-systems:` registries.
+// Must run before Bind so synthesized nodes get NodeFns resolved. Absent or
+// empty registries leave the single static nodes in place.
+func unrollProjectTopology(eng *statemachine.Engine, cfg *projectconfig.Config) error {
+	if cfg == nil {
+		return nil
+	}
+	if len(cfg.Channels) > 0 {
+		if err := eng.UnrollSystemChannels(cfg.Channels); err != nil {
+			return fmt.Errorf("driver: unroll system channels: %w", err)
+		}
+		if err := eng.UnrollSystemDriverAdapterChannels(cfg.Channels); err != nil {
+			return fmt.Errorf("driver: unroll system driver adapter channels: %w", err)
+		}
+	}
+	if len(cfg.ExternalSystems) > 0 {
+		names := cfg.ExternalSystemNames()
+		realKind := make(map[string]string, len(names))
+		for _, name := range names {
+			realKind[name] = string(cfg.ExternalSystems[name].RealKind)
+		}
+		if err := eng.UnrollExternalSystems(names, realKind); err != nil {
+			return fmt.Errorf("driver: unroll external systems: %w", err)
+		}
+	}
+	return nil
+}
+
+// mirrorRunArtifactsOrWarn mirrors the run artifacts to the durable archive;
+// a failure warns and never alters the run outcome.
+func mirrorRunArtifactsOrWarn(stderr io.Writer, runDir, pidRunDir string) {
+	if err := mirrorRunArtifacts(runDir, pidRunDir); err != nil {
+		fmt.Fprintf(stderr, "driver: warning: mirror run artifacts to %s: %v\n", pidRunDir, err)
+	}
+}
+
+// startFlowTree opens flow.txt and writes its header. It returns the tree
+// writer (nil when the file cannot be opened — the trace is informational)
+// and a finisher that writes the footer, closes the file and echoes the path.
+// The finisher is a no-op when no tree was opened.
+func startFlowTree(opts Options, rs *runState, repoPath, runDir string) (*trace.TreeWriter, func(runErr error)) {
+	flowStart := nowFn()
+	f, err := openFlowFile(runDir)
+	if err != nil {
+		fmt.Fprintf(opts.Stderr, "driver: warning: open flow.txt: %v\n", err)
+		return nil, func(error) {
+			// no-op: flow.txt was never opened.
+		}
+	}
+	flowTree := trace.NewTreeWriter(f)
+	flowTree.WriteHeader(trace.TreeHeader{
+		RunTimestamp: rs.runTimestamp,
+		RepoPath:     repoPath,
+		Process:      opts.ProcessName,
+		IssueNum:     opts.IssueNum,
+	})
+	flowPath := filepath.Join(runDir, "flow.txt")
+	return flowTree, func(runErr error) {
+		flowTree.WriteFooter(trace.TreeFooter{
+			Result:     runErr,
+			WallClock:  nowFn().Sub(flowStart),
+			CommitSHA:  headCommitSHA(repoPath),
+			Dispatches: len(rs.snapshotRecords()),
+			RunDir:     runDir,
+			LogFile:    opts.LogFile,
+		})
+		f.Close()
+		fmt.Fprintf(opts.Out.Phase, "Execution flow: %s\n", flowPath)
+	}
+}
+
+// finishRunDigest stamps the overall verdict into runState, writes the human
+// digest (summary.md) and echoes its path. Best-effort: a write failure warns
+// and never alters the run outcome.
+func finishRunDigest(opts Options, rs *runState, repoPath string, sCtx *statemachine.Context, runErr error) {
+	rs.setResult(runErr)
+	digestPath := rs.summaryMarkdownPath()
+	commits := commitsSince(repoPath, rs.baseSHA)
+	if err := writeRunDigest(digestPath, runDigest{
+		issueNum:           sCtx.GetString(ctxKeyIssueNum),
+		title:              sCtx.GetString(ctxKeyIssueTitle),
+		url:                sCtx.GetString("issue-url"),
+		description:        sCtx.GetString("description"),
+		acceptanceCriteria: sCtx.GetString("acceptance-criteria"),
+		records:            rs.snapshotRecords(),
+		result:             runErr,
+		commits:            commits,
+		compareURL:         compareURL(repoPath, rs.baseSHA, len(commits)),
+		steps:              rs.snapshotSteps(),
+		wallClock:          rs.wallClock(),
+	}); err != nil {
+		fmt.Fprintf(opts.Stderr, "driver: warning: write run digest: %v\n", err)
+	} else if digestPath != "" {
+		fmt.Fprintf(opts.Out.Phase, "Run digest: %s\n", digestPath)
+	}
+}
+
+// resolveEntryProcess returns the process to run. A --target slice runs
+// parse-ticket first (when an issue is given) so the slice sees the ticket
+// context, then routes into the resolved scoped entry.
+func resolveEntryProcess(opts Options, actionReg *actions.Registry, cfg *projectconfig.Config, repoPath string, sCtx *statemachine.Context) (string, error) {
+	if opts.Target == TargetUnset {
+		return opts.ProcessName, nil
+	}
+	if opts.IssueNum > 0 {
+		if fn := actionReg.Lookup("parse-ticket"); fn != nil {
+			if out := fn(sCtx); out.Err != nil {
+				return "", fmt.Errorf("driver: scoped --target %s: parse ticket: %w", opts.Target, out.Err)
+			}
+		}
+	}
+	proc, err := resolveScopedEntry(opts.Target, opts.Channel, cfg, repoPath, sCtx)
+	if err != nil {
+		return "", fmt.Errorf("driver: %w", err)
+	}
+	return proc, nil
 }
 
 // resolveRepoPath returns the absolute path the driver treats as the
@@ -770,42 +794,51 @@ func printConfig(w io.Writer, opts Options, cfg *projectconfig.Config, repoPath 
 			fmt.Fprintf(w, "  repos:         %s\n", strings.Join(repos, ", "))
 		}
 		fmt.Fprintf(w, "  architecture:  %s\n", orPlaceholder(cfg.System.Architecture, "-"))
-		switch cfg.System.Architecture {
-		case projectconfig.ArchMonolith:
-			fmt.Fprintf(w, "  system:        %s (lang: %s, repo: %s)\n",
-				cfg.System.Path, cfg.System.Lang, cfg.System.Repo)
-		case projectconfig.ArchMultitier:
-			fmt.Fprintf(w, "  backend:       %s (lang: %s, repo: %s)\n",
-				cfg.System.Backend.Path, cfg.System.Backend.Lang, cfg.System.Backend.Repo)
-			fmt.Fprintf(w, "  frontend:      %s (lang: %s, repo: %s)\n",
-				cfg.System.Frontend.Path, cfg.System.Frontend.Lang, cfg.System.Frontend.Repo)
-		case projectconfig.ArchMicroservices:
-			// One backend route per declared service, keyed by service name —
-			// the microservices generalization of the single multitier
-			// `backend:` line. backendServiceRoutes resolves the same
-			// per-service TierSpec the system-test driver addresses, in
-			// BackendServiceNames() (sorted) order so the banner is
-			// deterministic. The single frontend stays one line (D5).
-			for _, name := range cfg.BackendServiceNames() {
-				route := cfg.System.BackendServices[name]
-				fmt.Fprintf(w, "  backend %s: %s (lang: %s, repo: %s)\n",
-					name, route.Path, route.Lang, route.Repo)
-			}
-			fmt.Fprintf(w, "  frontend:      %s (lang: %s, repo: %s)\n",
-				cfg.System.Frontend.Path, cfg.System.Frontend.Lang, cfg.System.Frontend.Repo)
-		}
+		printSystemLayout(w, cfg)
 		if !cfg.SystemTest.IsEmpty() {
 			fmt.Fprintf(w, "  system-test:   %s (lang: %s, repo: %s)\n",
 				cfg.SystemTest.Path, cfg.SystemTest.Lang, cfg.SystemTest.Repo)
 		}
-		for _, name := range cfg.ExternalSystemNames() {
-			es := cfg.ExternalSystems[name]
-			fmt.Fprintf(w, "  ext %s: real-kind=%s, stub: %s (repo: %s)\n",
-				name, es.RealKind, es.Stub.Path, es.Stub.Repo)
-			if !es.Simulator.IsEmpty() {
-				fmt.Fprintf(w, "  ext %s sim:  %s (repo: %s)\n",
-					name, es.Simulator.Path, es.Simulator.Repo)
-			}
+		printExternalSystems(w, cfg)
+	}
+}
+
+// printSystemLayout prints the architecture-specific system lines of the
+// config banner.
+func printSystemLayout(w io.Writer, cfg *projectconfig.Config) {
+	switch cfg.System.Architecture {
+	case projectconfig.ArchMonolith:
+		fmt.Fprintf(w, "  system:        %s (lang: %s, repo: %s)\n",
+			cfg.System.Path, cfg.System.Lang, cfg.System.Repo)
+	case projectconfig.ArchMultitier:
+		fmt.Fprintf(w, "  backend:       %s (lang: %s, repo: %s)\n",
+			cfg.System.Backend.Path, cfg.System.Backend.Lang, cfg.System.Backend.Repo)
+		fmt.Fprintf(w, "  frontend:      %s (lang: %s, repo: %s)\n",
+			cfg.System.Frontend.Path, cfg.System.Frontend.Lang, cfg.System.Frontend.Repo)
+	case projectconfig.ArchMicroservices:
+		// One backend route per declared service, keyed by service name, in
+		// BackendServiceNames() (sorted) order so the banner is deterministic.
+		// The single frontend stays one line.
+		for _, name := range cfg.BackendServiceNames() {
+			route := cfg.System.BackendServices[name]
+			fmt.Fprintf(w, "  backend %s: %s (lang: %s, repo: %s)\n",
+				name, route.Path, route.Lang, route.Repo)
+		}
+		fmt.Fprintf(w, "  frontend:      %s (lang: %s, repo: %s)\n",
+			cfg.System.Frontend.Path, cfg.System.Frontend.Lang, cfg.System.Frontend.Repo)
+	}
+}
+
+// printExternalSystems prints one stub line (plus a simulator line when
+// declared) per external system in the config banner.
+func printExternalSystems(w io.Writer, cfg *projectconfig.Config) {
+	for _, name := range cfg.ExternalSystemNames() {
+		es := cfg.ExternalSystems[name]
+		fmt.Fprintf(w, "  ext %s: real-kind=%s, stub: %s (repo: %s)\n",
+			name, es.RealKind, es.Stub.Path, es.Stub.Repo)
+		if !es.Simulator.IsEmpty() {
+			fmt.Fprintf(w, "  ext %s sim:  %s (repo: %s)\n",
+				name, es.Simulator.Path, es.Simulator.Repo)
 		}
 	}
 }
@@ -1272,16 +1305,9 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// the user-task hop because RUN_AGENT is a generic primitive with
 		// no `params:` block of its own (see clauderun's
 		// "prompt has unfilled placeholders" error).
-		nodeParams := make(map[string]string, len(ctx.Params)+len(raw.Params))
-		for k, v := range ctx.Params {
-			nodeParams[k] = v
-		}
-		for k, v := range raw.Params {
-			expanded, err := statemachine.ExpandParams(v, ctx.Params, ctx.State)
-			if err != nil {
-				return statemachine.Outcome{Err: fmt.Errorf("dispatcher: node param %q: %w", k, err)}
-			}
-			nodeParams[k] = expanded
+		nodeParams, err := buildNodeParams(raw, ctx)
+		if err != nil {
+			return statemachine.Outcome{Err: err}
 		}
 		// Unattended human gate (plan 20260615-1845 Step 1). A category:human
 		// node forces interactive mode (Headless is AND-gated on category in
@@ -1308,24 +1334,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// (CLI utility / test paths with no project context) leaves the
 		// map nil; findUnfilledPlaceholders surfaces any unsubstituted
 		// references at render time.
-		var placeholders map[string]string
-		if cfg != nil {
-			placeholders = cfg.PlaceholderMap()
-			// ${system-surface} is the per-dispatch production-code surface
-			// the GREEN/redesign/refactor system prompts name. PlaceholderMap
-			// only emits the monolith-only ${system-path} (empty on
-			// multitier), so the driver resolves the surface here from cfg +
-			// the dispatch's channel: monolith → the single system path;
-			// multitier → the channel's tier (api→backend, ui→frontend) or
-			// both tiers for a whole-system dispatch. Mirrors the
-			// driver-resolved-per-phase Language pattern (plan 20260619-1120
-			// A1). Unknown channel on multitier → unfilled, so
-			// findUnfilledPlaceholders fail-fasts rather than silently
-			// substituting "".
-			if surface, ok := resolveSystemSurface(cfg, nodeParams["channel"]); ok && surface != "" {
-				placeholders["system-surface"] = surface
-			}
-		}
+		placeholders := buildDispatchPlaceholders(cfg, nodeParams["channel"])
 		// Raw tier surface path(s) for the scope-block render. The
 		// monolith-only `system-path` scope key is empty in PlaceholderMap on
 		// multitier, so the driver supplies the concrete surface — from
@@ -1336,12 +1345,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// the channel has no surface, so renderScopeBlock hard-errors on a
 		// declared system-path key rather than leaking `(unresolved)`
 		// (plan 20260619-1953).
-		var systemSurfacePaths []string
-		if cfg != nil && cfg.System.Architecture == projectconfig.ArchMultitier {
-			if paths, ok := cfg.SystemSurfacePaths(nodeParams["channel"]); ok {
-				systemSurfacePaths = paths
-			}
-		}
+		systemSurfacePaths := dispatchSystemSurfacePaths(cfg, nodeParams["channel"])
 		// Command-failure payload from upstream runCommand. State keys are
 		// only populated when the LOW execute-command primitive's shell
 		// dispatch failed and routed via GATE_COMMAND_SUCCEEDED → FIX;
@@ -1379,24 +1383,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// would otherwise shadow the surrounding writer's identity, leaving the
 		// fixer with no scope. It threads the writer's name through
 		// `scope-task-name`, which wins over both.
-		scopeKey := ctx.Params["scope-task-name"]
-		if scopeKey == "" {
-			scopeKey = ctx.Params["originating-task-name"]
-		}
-		if scopeKey == "" {
-			scopeKey = ctx.Params["task-name"]
-		}
-		if scopeKey == "" {
-			scopeKey = agentName
-		}
-		var scopeRead, scopeWrite []string
-		var scopeRationale string
-		if eng != nil {
-			r, w, _ := eng.Scope(scopeKey)
-			scopeRead = r
-			scopeWrite = w
-			scopeRationale, _ = eng.ScopeRationale(scopeKey)
-		}
+		scopeKey := dispatchScopeKey(ctx, agentName)
+		scopeRead, scopeWrite, scopeRationale := lookupDispatchScope(eng, ctx, scopeKey)
 
 		// Scope augmentation for fix-* recovery dispatches. Some
 		// failure-kinds require the fixer to edit paths the originating
@@ -1407,10 +1395,6 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// documents it so a YAML reader sees the augmentation next to
 		// the dispatch site. failure-kind is absent on every non-fix
 		// dispatch, so the lookup is a no-op outside the recovery path.
-		if extra := fixScopeAugmentation[ctx.GetString("failure-kind")]; len(extra) > 0 {
-			scopeRead = append(scopeRead, extra...)
-			scopeWrite = append(scopeWrite, extra...)
-		}
 
 		// Compute the paired per-dispatch artefact paths in one seq bump
 		// (prompt log + outputs JSONL + events JSONL). When rs is nil —
@@ -1451,42 +1435,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// facts (statemachine.EnvelopeOutputSpecs), so the absent declared
 		// list does not lose type fidelity. scope: none dispatches
 		// (refine-acceptance-criteria) stay exempt.
-		var (
-			outputKeysSpec  string
-			expectedOutputs []statemachine.OutputSpec
-		)
-		if eng == nil {
-			ctx.Set(ctxKeyOutputFile, "")
-			outputFilePath = ""
-		} else {
-			outs, _ := eng.Outputs(scopeKey)
-			expectedOutputs = outs
-			switch {
-			case outputFilePath != "" && (len(outs) > 0 || !eng.IsScopeNone(scopeKey)):
-				// Declared outputs OR a non-`none` scope: wire the channel
-				// and merge the envelope keys in (deduped) so the writers
-				// that already list them don't double-list and the scoped
-				// agents that declare no flag outputs still get them.
-				outputKeysSpec = encodeOutputKeysSpec(withEnvelopeSpecs(outs))
-				ctx.Set(ctxKeyOutputFile, outputFilePath)
-			default:
-				// scope: none (refine-acceptance-criteria) or a no-MID
-				// dispatch (test fixtures whose scopeKey falls back to the
-				// agent noun, not a process — IsScopeNone returns false
-				// there, but those have no outputFilePath so they land
-				// here) → unwire the path so clauderun doesn't export
-				// GH_OPTIVEM_OUTPUT_FILE in isolation, which would let
-				// the agent write to a file the dispatcher never reads.
-				// Also clear any path the previous agent's dispatch
-				// stashed: without this, the next
-				// validateOutputsAndScopes would re-read the prior JSONL
-				// with this MID's empty declared list, fall through
-				// coerceJSONOutputValue's default branch, and clobber
-				// already-typed state keys ([]string → []any).
-				ctx.Set(ctxKeyOutputFile, "")
-				outputFilePath = ""
-			}
-		}
+		outputKeysSpec, expectedOutputs, outputFilePath := wireOutputChannel(eng, ctx, scopeKey, outputFilePath)
 
 		nodeDescription, err := statemachine.ExpandParams(raw.Name, ctx.Params, ctx.State)
 		if err != nil {
@@ -1502,11 +1451,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		attemptMax, _ := ctx.Get("visit-max").(int)
 		// Inner-loop mode for this dispatch's component (api -> backend,
 		// ui -> frontend, monolith -> system); empty/none renders nothing.
-		var innerLoopMode string
-		if cfg != nil {
-			il, _ := cfg.InnerLoopForChannel(nodeParams["channel"])
-			innerLoopMode = string(il.EffectiveMode())
-		}
+		innerLoopMode := dispatchInnerLoopMode(cfg, nodeParams["channel"])
 		cOpts := clauderun.Options{
 			InnerLoopMode:       innerLoopMode,
 			Agent:               agentName,
@@ -1588,27 +1533,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			innerLoopMode: ctx.GetString("inner-loop-mode"),
 			ticketID:      ctx.GetString("ticket-id"),
 		}
-		rs.appendRecord(record)
-		// Mirror to the run's summary sidecar so `gh optivem run summary`
-		// can replay any past run, AND so a binary crash between this
-		// point and Run's deferred print-summary still leaves every
-		// completed row on disk. Best-effort: a write failure is logged
-		// as a warning and never blocks the dispatch.
-		if err := appendSummaryLine(rs.summaryPath(), record); err != nil {
-			fmt.Fprintf(opts.Stderr, "driver: warning: append summary sidecar: %v\n", err)
-		}
-		// Agent half of the step-execution summary. scopeKey is the MID
-		// task-name (originating-task-name for fix-* recovery, agent noun for
-		// no-MID test fixtures) — the same "BPMN step" identity the scope
-		// lookup uses. The command half is recorded by wrapStepRecorders.
-		rs.recordStep(stepRecord{
-			name:     scopeKey,
-			bpmnStep: scopeKey,
-			channel:  nodeParams["channel"],
-			kind:     stepKindAgent,
-			elapsed:  elapsed,
-			err:      runErr,
-		}, opts.Stderr)
+		recordDispatch(opts, rs, record, scopeKey, nodeParams["channel"], elapsed, runErr)
 		if runErr != nil {
 			return statemachine.Outcome{Err: runErr}
 		}
@@ -1620,6 +1545,141 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// parser that only worked in autonomous mode.
 		return inner(ctx)
 	}
+}
+
+// buildNodeParams builds the prompt-substitution bag in two layers:
+// ctx.Params (the call-activity stack's accumulated params, lowest
+// precedence) and raw.Params (the YAML node's own params, expanded against
+// the live ctx scope, which win over inherited values).
+func buildNodeParams(raw statemachine.RawNode, ctx *statemachine.Context) (map[string]string, error) {
+	nodeParams := make(map[string]string, len(ctx.Params)+len(raw.Params))
+	for k, v := range ctx.Params {
+		nodeParams[k] = v
+	}
+	for k, v := range raw.Params {
+		expanded, err := statemachine.ExpandParams(v, ctx.Params, ctx.State)
+		if err != nil {
+			return nil, fmt.Errorf("dispatcher: node param %q: %w", k, err)
+		}
+		nodeParams[k] = expanded
+	}
+	return nodeParams, nil
+}
+
+// buildDispatchPlaceholders returns the project-wide placeholder map from the
+// loaded config plus the per-dispatch ${system-surface} resolved from the
+// dispatch's channel. nil cfg yields a nil map; findUnfilledPlaceholders
+// surfaces any unsubstituted references at render time. An unknown channel on
+// multitier leaves ${system-surface} unfilled so it fails fast rather than
+// substituting "".
+func buildDispatchPlaceholders(cfg *projectconfig.Config, channel string) map[string]string {
+	if cfg == nil {
+		return nil
+	}
+	placeholders := cfg.PlaceholderMap()
+	if surface, ok := resolveSystemSurface(cfg, channel); ok && surface != "" {
+		placeholders["system-surface"] = surface
+	}
+	return placeholders
+}
+
+// dispatchSystemSurfacePaths returns the raw tier surface path(s) for the
+// scope-block render. Multitier-only (monolith resolves system-path via
+// PlaceholderMap); nil when the channel has no surface, so renderScopeBlock
+// hard-errors on a declared system-path key rather than leaking
+// `(unresolved)`.
+func dispatchSystemSurfacePaths(cfg *projectconfig.Config, channel string) []string {
+	if cfg == nil || cfg.System.Architecture != projectconfig.ArchMultitier {
+		return nil
+	}
+	if paths, ok := cfg.SystemSurfacePaths(channel); ok {
+		return paths
+	}
+	return nil
+}
+
+// dispatchScopeKey returns the identity the per-phase scope and outputs are
+// looked up by: scope-task-name (a command MID threading the writer's name),
+// then originating-task-name (fix-* recovery dispatches), then task-name,
+// then the agent name (test fixtures that dispatch a synthetic user-task).
+// These keys live in ctx.Params, not ctx.State.
+func dispatchScopeKey(ctx *statemachine.Context, agentName string) string {
+	for _, k := range []string{"scope-task-name", "originating-task-name", "task-name"} {
+		if v := ctx.Params[k]; v != "" {
+			return v
+		}
+	}
+	return agentName
+}
+
+// lookupDispatchScope resolves the read/write scope and rationale for
+// scopeKey from the engine, then widens the scope for fix-* recovery
+// dispatches via fixScopeAugmentation. failure-kind is absent on every
+// non-fix dispatch, so the augmentation is a no-op outside the recovery path.
+func lookupDispatchScope(eng *statemachine.Engine, ctx *statemachine.Context, scopeKey string) (read, write []string, rationale string) {
+	if eng != nil {
+		read, write, _ = eng.Scope(scopeKey)
+		rationale, _ = eng.ScopeRationale(scopeKey)
+	}
+	if extra := fixScopeAugmentation[ctx.GetString("failure-kind")]; len(extra) > 0 {
+		read = append(read, extra...)
+		write = append(write, extra...)
+	}
+	return read, write, rationale
+}
+
+// wireOutputChannel decides whether the per-dispatch output channel is wired.
+// It returns the GH_OPTIVEM_OUTPUT_KEYS spec, the declared outputs, and the
+// output file path to use (cleared when the channel is unwired).
+//
+// With declared outputs OR a non-`none` scope, the channel is wired and the
+// scope-exception envelope keys are merged in (deduped). Otherwise (scope:
+// none, no engine, or a no-MID test fixture) the path is cleared both locally
+// and on ctx, so clauderun does not export GH_OPTIVEM_OUTPUT_FILE in
+// isolation and the next validateOutputsAndScopes does not re-read the prior
+// agent's JSONL with this dispatch's empty declared list.
+func wireOutputChannel(eng *statemachine.Engine, ctx *statemachine.Context, scopeKey, outputFilePath string) (keysSpec string, expected []statemachine.OutputSpec, path string) {
+	if eng == nil {
+		ctx.Set(ctxKeyOutputFile, "")
+		return "", nil, ""
+	}
+	outs, _ := eng.Outputs(scopeKey)
+	if outputFilePath != "" && (len(outs) > 0 || !eng.IsScopeNone(scopeKey)) {
+		ctx.Set(ctxKeyOutputFile, outputFilePath)
+		return encodeOutputKeysSpec(withEnvelopeSpecs(outs)), outs, outputFilePath
+	}
+	ctx.Set(ctxKeyOutputFile, "")
+	return "", outs, ""
+}
+
+// dispatchInnerLoopMode returns the inner-loop mode for the dispatch's
+// component (api -> backend, ui -> frontend, monolith -> system); empty/none
+// renders nothing.
+func dispatchInnerLoopMode(cfg *projectconfig.Config, channel string) string {
+	if cfg == nil {
+		return ""
+	}
+	il, _ := cfg.InnerLoopForChannel(channel)
+	return string(il.EffectiveMode())
+}
+
+// recordDispatch records the dispatch (even on failure, so the end-of-run
+// summary shows what ran before a bust), mirrors it to the run's summary
+// sidecar (best-effort: a write failure warns and never blocks the dispatch),
+// and records the agent step. scopeKey is the BPMN step identity.
+func recordDispatch(opts Options, rs *runState, record dispatchRecord, scopeKey, channel string, elapsed time.Duration, runErr error) {
+	rs.appendRecord(record)
+	if err := appendSummaryLine(rs.summaryPath(), record); err != nil {
+		fmt.Fprintf(opts.Stderr, "driver: warning: append summary sidecar: %v\n", err)
+	}
+	rs.recordStep(stepRecord{
+		name:     scopeKey,
+		bpmnStep: scopeKey,
+		channel:  channel,
+		kind:     stepKindAgent,
+		elapsed:  elapsed,
+		err:      runErr,
+	}, opts.Stderr)
 }
 
 // encodeOutputKeysSpec composes the GH_OPTIVEM_OUTPUT_KEYS env-var value
@@ -2183,6 +2243,53 @@ func summaryAgentLabel(r dispatchRecord) string {
 	return r.agent
 }
 
+// summaryColumnWidths sizes the agent/channel/model/effort columns to the
+// longest value in each so the table stays aligned regardless of which
+// agents ran. Headers participate in the width calc so a short-name run
+// still has readable column headings.
+func summaryColumnWidths(records []dispatchRecord) (agentW, channelW, modelW, effortW int) {
+	agentW, channelW, modelW, effortW = len("agent"), len("channel"), len("model"), len("effort")
+	for _, r := range records {
+		agentW = max(agentW, len(summaryAgentLabel(r))+2) // +2 for "✗ " marker on failed rows
+		channelW = max(channelW, len(r.channel))
+		modelW = max(modelW, len(r.model))
+		effortW = max(effortW, len(r.effort))
+	}
+	return agentW, channelW, modelW, effortW
+}
+
+// summaryUsageCells holds one row's rendered token/cost cells alongside the
+// raw numbers that feed the totals row.
+type summaryUsageCells struct {
+	fresh, cached, out, cost string
+	freshN, cachedN, outN    int
+	costN                    float64
+}
+
+// newSummaryUsageCells renders a row's usage cells. ok is false when the
+// dispatch has no parsed usage or every figure is zero, in which case the
+// row shows "—" and contributes nothing to the totals.
+func newSummaryUsageCells(u *clauderun.TokenUsage) (cells summaryUsageCells, ok bool) {
+	if u == nil {
+		return cells, false
+	}
+	freshTokens, cachedTokens := clauderun.SplitInputTokens(u)
+	outTokens := u.OutputTokens
+	if freshTokens <= 0 && cachedTokens <= 0 && outTokens <= 0 && u.TotalCostUSD <= 0 {
+		return cells, false
+	}
+	return summaryUsageCells{
+		fresh:   formatSummaryTokens(freshTokens),
+		cached:  formatSummaryTokens(cachedTokens),
+		out:     formatSummaryTokens(outTokens),
+		cost:    fmt.Sprintf("$%.2f", u.TotalCostUSD),
+		freshN:  freshTokens,
+		cachedN: cachedTokens,
+		outN:    outTokens,
+		costN:   u.TotalCostUSD,
+	}, true
+}
+
 func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 	if w == nil {
 		return
@@ -2191,28 +2298,7 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 		return
 	}
 
-	// Column widths sized to the longest value in each column so the
-	// table stays aligned regardless of which agents ran. Headers
-	// participate in the width calc so a short-name run still has
-	// readable column headings.
-	agentW := len("agent")
-	channelW := len("channel")
-	modelW := len("model")
-	effortW := len("effort")
-	for _, r := range records {
-		if w := len(summaryAgentLabel(r)) + 2; w > agentW { // +2 for "✗ " marker on failed rows
-			agentW = w
-		}
-		if w := len(r.channel); w > channelW {
-			channelW = w
-		}
-		if w := len(r.model); w > modelW {
-			modelW = w
-		}
-		if w := len(r.effort); w > effortW {
-			effortW = w
-		}
-	}
+	agentW, channelW, modelW, effortW := summaryColumnWidths(records)
 
 	var (
 		totalElapsed time.Duration
@@ -2239,20 +2325,13 @@ func renderAgentSummary(w io.Writer, records []dispatchRecord) {
 		}
 		elapsed := r.elapsed.Round(time.Second).String()
 		fresh, cached, out, cost := "—", "—", "—", "—"
-		if r.usage != nil {
-			freshTokens, cachedTokens := clauderun.SplitInputTokens(r.usage)
-			outTokens := r.usage.OutputTokens
-			if freshTokens > 0 || cachedTokens > 0 || outTokens > 0 || r.usage.TotalCostUSD > 0 {
-				fresh = formatSummaryTokens(freshTokens)
-				cached = formatSummaryTokens(cachedTokens)
-				out = formatSummaryTokens(outTokens)
-				cost = fmt.Sprintf("$%.2f", r.usage.TotalCostUSD)
-				totalFresh += freshTokens
-				totalCached += cachedTokens
-				totalOut += outTokens
-				totalCost += r.usage.TotalCostUSD
-				anyUsage = true
-			}
+		if cells, ok := newSummaryUsageCells(r.usage); ok {
+			fresh, cached, out, cost = cells.fresh, cells.cached, cells.out, cells.cost
+			totalFresh += cells.freshN
+			totalCached += cells.cachedN
+			totalOut += cells.outN
+			totalCost += cells.costN
+			anyUsage = true
 		}
 		totalElapsed += r.elapsed
 		fmt.Fprintf(w, "%3d  %-*s  %-*s  %-*s  %-*s  %8s  %8s  %8s  %8s  %8s\n",
