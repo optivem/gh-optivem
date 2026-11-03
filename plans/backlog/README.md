@@ -4,7 +4,6 @@ The backlog is grouped by priority. The open items, attended-verification checkl
 
 | Folder | Theme | Plans |
 |---|---|---|
-| `p1-correctness/` | False halts, silent passes, broken shipped commands | Empty (all shipped; remaining verification is in the meta-plan). Git does not track empty dirs, so the folder is absent. |
 | `p2-atdd-quality/` | ATDD output quality and pipeline robustness | failure-capture-head-window, view-product-list-erp-list-gap, no-order-persisted-fanout-prevention, atdd-dispatch-retry-budget-and-resume, environment-setup-command, optional-inner-tdd-loop-per-component |
 | `p3-tooling-cost/` | Token, latency and tooling cost | rehearsal-corpus-testinstance-and-refine, unattended-plan-execution |
 | `p4-maintenance/` | Docs, Sonar debt, shop-first renames | shop-frontend-react-to-typescript-rename (blocked until shop renames `frontend-react`), sonar-deferred (test-file findings need a human Won't Fix, then delete the plan) |
