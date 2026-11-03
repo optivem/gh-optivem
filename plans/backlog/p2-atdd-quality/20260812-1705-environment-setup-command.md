@@ -99,10 +99,6 @@ Tier 3 is why this plan does not delete the README's setup section — it shorte
 
 *(Blocked on the Open questions above. Written against the recommended answers.)*
 
-- [ ] **Step 7 — Tests.**
-  New: `environment_setup_test.go` (command wiring, `--lang` parity with `verify`) and `internal/config/tool_install_test.go` (table completeness; every tier-1/2 entry has a probe and a Windows spec; the already-installed path is a no-op; a non-zero winget exit with a passing re-probe counts as success).
-  Run scoped — `go test ./internal/config/` — never an unbounded `go test ./...`.
-
 - [ ] **Step 8 — Collapse `scripts/readme-steps.sh` onto the new command.** *(Only after a green guest run — see Verification.)*
   Replace the `ensure_<tool>_installed` family and `winget_install` with a call to `gh optivem environment setup`, keeping the script's logging and its closing inventory so a guest run still reports what ended up installed. The script's job becomes proving the command works on a clean machine, not performing the setup itself.
 
