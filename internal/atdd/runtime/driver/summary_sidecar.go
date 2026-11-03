@@ -59,6 +59,10 @@ type dispatchRecordJSON struct {
 	// neither field, keeping pre-feature sidecars and non-loop rows clean.
 	AttemptNumber int `json:"attempt_number,omitempty"`
 	AttemptMax    int `json:"attempt_max,omitempty"`
+	// InnerLoopMode / Ticket tag the dispatch for cross-mode comparison
+	// (`gh optivem run compare-modes`); omitempty keeps older rows unchanged.
+	InnerLoopMode string `json:"inner_loop_mode,omitempty"`
+	Ticket        string `json:"ticket,omitempty"`
 }
 
 // usageJSON mirrors clauderun.TokenUsage's field shape but with stable
@@ -84,6 +88,8 @@ func recordToJSON(r dispatchRecord) dispatchRecordJSON {
 		ElapsedNS:     r.elapsed.Nanoseconds(),
 		AttemptNumber: r.attemptNumber,
 		AttemptMax:    r.attemptMax,
+		InnerLoopMode: r.innerLoopMode,
+		Ticket:        r.ticketID,
 	}
 	if r.usage != nil {
 		out.Usage = &usageJSON{
@@ -109,6 +115,8 @@ func recordFromJSON(j dispatchRecordJSON) dispatchRecord {
 		elapsed:       time.Duration(j.ElapsedNS),
 		attemptNumber: j.AttemptNumber,
 		attemptMax:    j.AttemptMax,
+		innerLoopMode: j.InnerLoopMode,
+		ticketID:      j.Ticket,
 	}
 	if j.Usage != nil {
 		out.usage = &clauderun.TokenUsage{

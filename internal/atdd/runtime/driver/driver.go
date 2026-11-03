@@ -1585,6 +1585,8 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			err:           runErr,
 			attemptNumber: attemptNumber,
 			attemptMax:    attemptMax,
+			innerLoopMode: ctx.GetString("inner-loop-mode"),
+			ticketID:      ctx.GetString("ticket-id"),
 		}
 		rs.appendRecord(record)
 		// Mirror to the run's summary sidecar so `gh optivem run summary`
@@ -2007,6 +2009,12 @@ type dispatchRecord struct {
 	// when attemptMax > 0, so single-pass rows are untouched.
 	attemptNumber int
 	attemptMax    int
+
+	// innerLoopMode / ticketID tag the dispatch with the component's inner-loop
+	// mode (empty before resolve-inner-loop ran) and the ticket id, so runs can
+	// be compared by mode (see CompareModes).
+	innerLoopMode string
+	ticketID      string
 }
 
 // appendRecord records one completed dispatch. Safe to call with nil rs —

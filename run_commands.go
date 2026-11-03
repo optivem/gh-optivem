@@ -31,7 +31,7 @@ func newRunCmd() *cobra.Command {
 		Use:   "run",
 		Short: "Inspect artefacts from past `gh optivem implement` runs",
 	}
-	cmd.AddCommand(newRunSummaryCmd())
+	cmd.AddCommand(newRunSummaryCmd(), newRunCompareModesCmd())
 	return cmd
 }
 
@@ -83,6 +83,24 @@ renders inline on github.com.`,
 	}
 	cmd.Flags().BoolVar(&markdown, "markdown", false, "Print the human run digest (summary.md) instead of the table")
 	return cmd
+}
+
+// newRunCompareModesCmd implements `gh optivem run compare-modes`: it groups
+// the repo's past runs by inner-loop mode and prints per-run averages (tokens
+// fresh vs cached, cost, fix-loop attempts, elapsed) for the inner-loop
+// experiments.
+func newRunCompareModesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "compare-modes",
+		Short:   "Compare past runs by inner-loop mode (tokens, cost, fix loops, time)",
+		Example: `  gh optivem run compare-modes`,
+		Args:    cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			cwd, err := os.Getwd()
+			exitOnError(err)
+			exitOnError(driver.CompareModes(cmd.OutOrStdout(), cwd))
+		},
+	}
 }
 
 // resolveRunDir picks the run directory a `run summary` invocation targets.

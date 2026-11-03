@@ -253,10 +253,6 @@ component tests.
   the changed-only gate misses, and supplies the baseline for the threshold.
   Verify the exact flag names against the current PIT version; the same applies
   later to Stryker.NET `--since` and StrykerJS `--incremental`.
-- [ ] Step 4b: Tag each run's `summary.jsonl` with the component's inner-loop
-  mode and the ticket id. Add an aggregation command or script that compares
-  modes across runs: tokens split into fresh vs cached, cost, fix-loop attempts,
-  and elapsed time. These are the prerequisites for the experiments.
 - [ ] Step 5: Tests:
   - statemachine/transition tests for the new gateway (audit loopback edges for
     the deadlock hazard first);
