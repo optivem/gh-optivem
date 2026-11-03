@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Group 4 — Wave 2 serial (Items 15–16)**, (Item 13's code shipped; its leftovers are deferred). Items 11, 12 and 14 shipped (Item 14's remaining steps, incl. the permissions step 5, live in its own plan #38). Item 7 keeps only the deferred #76 rehearsal check. Nothing is pushed yet (gh-optivem plus local sibling-repo commits): push with `/commit`, then run `/execute-plan plans/20261029-2142-meta-backlog-consolidation.md`.
+**Group 5 — Items 18–24**: decisions confirmed, so they are ready to dispatch one per session (start with Item 18 or 19; 20 and 21 need a shop-push OK). Item 15's code shipped locally (shop `32e90dcb`, gh-optivem `15b30e6c`, unpushed); its remainder, Item 13's leftovers and Item 7's #76 check are all deferred and need an attended session (shop push OK + rehearsal). Run `/sync` to push gh-optivem (and shop, with OK).
 
 ## How to execute this meta-plan
 
@@ -33,11 +33,16 @@ Run `/execute-plan` on this file. Each item below is one execution unit. To exec
 - [ ] **Item 13 — U14 #12 then #15** (Q-6) `[rehearsal]` — ⏳ Deferred: code shipped (#12 `59450e7d`, #15 `416a761f`). Remaining, in the child plans `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md` and `plans/backlog/p3-tooling-cost/20260616-0922-scope-drift-guard-fix-loop.md`: #12 step 6 (Gradle `--warning-mode none`, a shop edit in `system-test/java/tests*.yaml` + shop push, needs OK) and the attended rehearsal checks for both.
 
 ### Group 4 — Wave 2 (serial)
-- [ ] **Item 15 — U15 #21** (Q-7, place/cancel only) `[rehearsal]` `[shop-push]`: `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`
-- [ ] **Item 16 — U16 #39** (Q-8): `plans/backlog/p2-atdd-quality/20261002-0900-green-touch-list-before-editing.md`
+- [ ] **Item 15 — U15 #21** (Q-7, place/cancel only) `[rehearsal]` `[shop-push]` — ⏳ Deferred: code shipped locally (shop `32e90dcb`, gh-optivem `15b30e6c`; both unpushed, compile-checked only). Remaining, in `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`: push shop `main` (needs OK), attended runtime check of `cannotPlaceOrderWithNonExistentCoupon` on monolith + multitier ×3 languages, rehearsal check of the `scope-task-name` fixer change, then Step 6 (restore #68's criterion).
 
 ### Group 5 — Wave 3 (stop and ask user first)
-- [ ] **Item 17 — confirm the "Later" decisions**, then add one item per plan here: #9, #6, #13, #16, #20 (after a green clean-room VM run), #42 Slice 1, #25 (re-pull Sonar first). **Stop and ask the user** to confirm the proposed answers before dispatching any of them.
+"Later" decisions confirmed 2026-11-03 (user: use the recommendation for all). Copy each into its own plan's open questions when that item starts. Run one item per session.
+- [ ] **Item 18 — #6** (`p2-atdd-quality/20260525-1753-…pre-refine-check…`): refine signal = board status past "In refinement"; drop Idea 2 (post-run refactor offer).
+- [ ] **Item 19 — #9** (`p3-tooling-cost/20260528-1302-suppress-subprocess-stderr…`): Option 2, route subprocess stderr through `Out.Detail`.
+- **Items 20 (#13) and 21 (#16)** and the shop parts of Items 13 and 15 moved to the shop plan `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md`. Decisions: #13 Option A (Java only); #16 `/users` customer directory in all configs, rehearsed on monolith-java only, refine deferred. Nothing to do here except the gh-optivem side of their rehearsals.
+- [ ] **Item 22 — #20** (`p2-atdd-quality/20260812-1705-environment-setup-command`): the plan's own recommendations; Step 8 (collapse duplication) only after a green clean-room VM run.
+- [ ] **Item 23 — #42 Slice 1** (`p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component`): rename `unit-tests` to `test-after`; measure changed-only PIT run before relying on mutation gate.
+- [ ] **Item 24 — #25** (`p4-maintenance/20260625-0944-sonar-deferred`): re-pull the SonarCloud issue list first, then fix.
 
 Read-only analysis of every plan under `plans/backlog/`, `plans/deferred/`, `plans/deferred2/` and `plans/meta/`. No plan was edited. Each plan was read in full and its premise spot-checked against the current code (grep/ls/git log). Modelled on shop's consolidation (shop commit 7ecc8277 + `shop/plans/20261029-1256-meta-backlog-execution.md`).
 
