@@ -29,6 +29,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -280,12 +281,15 @@ type Component struct {
 	Path string `yaml:"path,omitempty"`
 	Repo string `yaml:"repo,omitempty"`
 	Lang string `yaml:"lang,omitempty"`
+
+	// InnerLoop is the optional inner-loop declaration; absent means none.
+	InnerLoop InnerLoop `yaml:"inner-loop,omitempty"`
 }
 
 // IsEmpty reports whether no component field is set. Mirrors
 // TierSpec.IsEmpty so the "declared at all?" test reads the same for both.
 func (c Component) IsEmpty() bool {
-	return c.Name == "" && c.Path == "" && c.Repo == "" && c.Lang == ""
+	return c.Name == "" && c.Path == "" && c.Repo == "" && c.Lang == "" && c.InnerLoop.IsEmpty()
 }
 
 // System describes the system being built. Polymorphic by architecture:
@@ -314,6 +318,11 @@ type System struct {
 	Repo         string `yaml:"repo,omitempty"`
 	Lang         string `yaml:"lang,omitempty"`
 	SonarProject string `yaml:"sonar-project,omitempty"`
+
+	// InnerLoop is the monolith's optional inner-loop declaration (sibling of
+	// Path/Repo/Lang); absent means none. Multitier and microservices declare
+	// it per tier/service instead.
+	InnerLoop InnerLoop `yaml:"inner-loop,omitempty"`
 
 	// DbMigrationPath names the canonical Flyway-style migration set shared
 	// across every SUT (3 languages × 2 architectures). Sibling of
@@ -378,6 +387,10 @@ type TierSpec struct {
 	Config       string            `yaml:"config,omitempty"`
 	SonarProject string            `yaml:"sonar-project,omitempty"`
 	Paths        map[string]string `yaml:"paths,omitempty"`
+
+	// InnerLoop is the optional inner-loop declaration for a backend/frontend
+	// tier or microservice; absent means none. Rejected on system-test.
+	InnerLoop InnerLoop `yaml:"inner-loop,omitempty"`
 
 	// SystemDriverAdapterChannels splits the whole-layer system-driver-adapter
 	// path into per-channel members (channel token → fully-resolved adapter
@@ -1168,6 +1181,31 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: system.frontend.paths is not a supported field (paths: is system-test-only; use system-test.paths)")
 	}
 
+	// Rule 22e: inner-loop is valid on the monolith system, backend/frontend
+	// tiers and microservices (validated below); on system-test it is
+	// meaningless and rejected.
+	if !c.SystemTest.InnerLoop.IsEmpty() {
+		return fmt.Errorf("config: system-test.inner-loop is not a supported field (inner-loop belongs on a system backend/frontend tier, service, monolith system, or component)")
+	}
+	for _, il := range []struct {
+		prefix string
+		loop   InnerLoop
+	}{
+		{"system.inner-loop", c.System.InnerLoop},
+		{"system.backend.inner-loop", c.System.Backend.InnerLoop},
+		{"system.frontend.inner-loop", c.System.Frontend.InnerLoop},
+		{"component.inner-loop", c.Component.InnerLoop},
+	} {
+		if err := il.loop.validate(il.prefix); err != nil {
+			return err
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.System.BackendServices)) {
+		if err := c.System.BackendServices[name].InnerLoop.validate("system.backend-services." + name + ".inner-loop"); err != nil {
+			return err
+		}
+	}
+
 	// Rule 22d: system-driver-adapter-channels is system-test-only, same as
 	// paths: (Rule 22c) — reject it on backend/frontend so a misplaced block
 	// can't parse as a silent no-op.
@@ -1425,7 +1463,7 @@ func sortedKeys(m map[string]string) []string {
 // is still IsEmpty so the architecture-presence rule fires the same way
 // it always did.
 func (t TierSpec) IsEmpty() bool {
-	return t.Path == "" && t.Repo == "" && t.Lang == ""
+	return t.Path == "" && t.Repo == "" && t.Lang == "" && t.InnerLoop.IsEmpty()
 }
 
 // IsEmpty reports whether e is the zero-value ExternalSpec.

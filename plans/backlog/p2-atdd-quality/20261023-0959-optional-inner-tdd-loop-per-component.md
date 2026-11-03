@@ -207,17 +207,10 @@ component:
 
 ## ▶ Next executable step (resume here)
 
-All design questions are resolved (see Decisions) except the mode name
-(open question below). Start Step 1 (component level only, Decision 8): add the
-`InnerLoop` struct to the schema with two fields:
-- `Mode`: `none|test-after|tdd`, default `none`;
-- `MutationThreshold`: 0–100.
-
-There is no `Level` field yet. Add the struct to `TierSpec`, `System`
-(monolith) and `Component`, in
-`internal/kernel/projectconfig/config.go`. Add the Validate rules listed under
-"Schema and validation changes", and their tests. Stop when the schema and
-validation tests pass with `-p 2`. This unblocks Step 2 (path placeholders).
+Step 1 (schema + `Validate`, `InnerLoop` in
+`internal/kernel/projectconfig/innerloop.go`) is shipped. Resume at Step 2
+(path placeholders for the component test path, relaxing Rule 22c on
+backend/frontend `paths:` to allow exactly `component-test`).
 
 ## Steps
 
@@ -230,10 +223,13 @@ prerequisite is needed. Slices 1–2 are component level only. In their steps,
 "domain core" means the component's main source, and the inner tests are the
 component tests.
 
-- [ ] Step 1: Add the inner-loop mode field to `TierSpec`
-  (`internal/kernel/projectconfig/config.go`). Use an enum `none|test-after|tdd`,
-  default `none`. Add Validate rules and init/config prompts that run the same
-  validator as the flag.
+- [ ] Step 1b: Add the `--backend-inner-loop` style flags and the matching
+  init/config prompts for the mode per tier (default `none`), running
+  `projectconfig.ValidateInnerLoopMode` (same validator as `Validate`). The
+  schema, `Validate` rules and tests shipped in Step 1; the flag/prompt
+  plumbing (`internal/config/config.go` RawFlags -> yaml writer,
+  `internal/config/configinit/prompt.go`) is a separate, wide change. Hand-editing
+  `inner-loop:` works meanwhile, so this does not block Steps 2-5.
 - [ ] Step 2: Add a Family B path placeholder for the component's domain core and
   its unit-test path. Pin it in `phase-scopes.yaml` for the new inner-loop phase.
   Paths must be constructed deterministically (pinned against the shop
