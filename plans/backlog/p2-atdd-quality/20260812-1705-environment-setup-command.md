@@ -1,22 +1,9 @@
 # 2026-08-12 17:05:00 CEST — Replace the README's install prose with `gh optivem environment setup`
 
-> **⏸ PENDING — TO BE DISCUSSED. Do not execute.**
-> This plan is a proposal, not an approved work item. The `## Open questions` section
-> below has five unresolved decisions, each with a recommendation. Discuss and resolve
-> them first; only then does `## Steps` become executable.
->
-> **⚠ Written against HEAD `0101ad82`; the tree has moved since.** A parallel session
-> landed eight commits on `main` in the same territory — notably `ec38c75f` ("Install
-> Go, Java, .NET and Node instead of stopping on them") and `d6f67750` ("Move the
-> GOPATH/bin PATH note to the Go prerequisite") — and then a further three
-> (`c723be83`, `6768e74f`, `3fae236c`) that added scope assertion to `verifyGhAuth`
-> and trimmed the README's rationale prose. **All line-number citations below were
-> re-resolved against `3fae236c` and are current as of that commit.** Two premises
-> did shift and are flagged inline where they appear: the README no longer explains
-> *why* Go is a prerequisite, and the two PATH notes are now one line each rather
-> than short paragraphs. Still worth re-checking before discussing: **Context** (the
-> check table, and the claim that Go is not verified at all) and **Step 1** (which
-> builds on `tool_checks.go`, now ~160 lines longer).
+> **Resolved 2026-11-03 (meta-backlog Item 22).** All five open questions were
+> decided by taking the plan's own recommendation; Steps 1-7 are executable. Stale
+> paths re-anchored: the README's setup prose now lives in `docs/setup.md` (README
+> only points at it), so Step 5 targets that file.
 
 ## TL;DR
 
@@ -91,7 +78,7 @@ Tier 3 is why this plan does not delete the README's setup section — it shorte
 
 ## Open questions
 
-Each has a recommendation; none are settled.
+**All five resolved: the recommendation was taken for each.** (`gh` itself is necessarily present when the extension runs, so its table entry is a probe that is always a no-op in practice.)
 
 1. **New `environment setup` subcommand, or a flag on `verify`?**
    *Recommended: new subcommand.* Keeps `verify` read-only for the pipeline and the VM loop, and matches the existing `gh optivem claude setup` / `gh optivem claude check` pairing — same verb split, same repo, already familiar.
@@ -111,10 +98,6 @@ Each has a recommendation; none are settled.
 ## Steps
 
 *(Blocked on the Open questions above. Written against the recommended answers.)*
-
-- [ ] **Step 1 — Promote the install hints to a structured table.**
-  New file: `internal/config/tool_install.go`, alongside `tool_checks.go`.
-  One entry per tier-1 and tier-2 tool: probe command, human label, per-platform install spec (winget id for Windows; a documentation URL elsewhere), and an optional post-install PATH directory. Populate the install strings from the existing failure messages in `tool_checks.go:201-396` so the two agree by construction. Add Go, which `verify` does not currently check at all — setup needs it as actionlint's prerequisite, and it should be installed before actionlint is attempted.
 
 - [ ] **Step 2 — Port the winget backend from `readme-steps.sh`.**
   Same file. Reproduce the three behaviours the script's comments document as load-bearing: the PATH-free `winget list --id <id> -e` presence probe (`readme-steps.sh:237`), treating winget's exit code as advisory and letting a re-probe decide the outcome (`:279-282`), and refreshing the process environment's PATH after an install before re-probing (`:265`). Each of those comments records a real guest-run failure; carry the *reasoning* across, not just the code.

@@ -196,7 +196,7 @@ type scopeStatus struct {
 // one of them guessing.
 func ghNotFoundErr() error {
 	return errors.New("gh CLI not found on PATH.\n    " +
-		"Install: https://cli.github.com/")
+		"Install: "+ghInstallURL)
 }
 
 // verifyGhInstalled checks that the gh binary is on PATH. Sibling of
@@ -383,7 +383,7 @@ func verifyGhVersion() error {
 func verifyActionlint() error {
 	if _, err := exec.LookPath("actionlint"); err != nil {
 		return errors.New("actionlint not found on PATH.\n    " +
-			"Install: go install github.com/rhysd/actionlint/cmd/actionlint@v1")
+			"Install: go install "+actionlintGoPackage)
 	}
 	return nil
 }
@@ -472,7 +472,7 @@ func claudeCheckSkipped() (bool, error) {
 func verifyNpm() error {
 	if _, err := exec.LookPath("npm"); err != nil {
 		return errors.New("npm not found on PATH.\n    " +
-			"Install Node.js (bundles npm): https://nodejs.org/")
+			"Install Node.js (bundles npm): "+npmInstallURL)
 	}
 	return nil
 }
@@ -482,7 +482,7 @@ func verifyNpm() error {
 func verifyDotnet() error {
 	if _, err := exec.LookPath("dotnet"); err != nil {
 		return errors.New("dotnet not found on PATH.\n    " +
-			"Install the .NET SDK: https://dotnet.microsoft.com/download")
+			"Install the .NET SDK: "+dotnetInstallURL)
 	}
 	return nil
 }
@@ -493,7 +493,7 @@ func verifyDotnet() error {
 func verifyJava() error {
 	if _, err := exec.LookPath("java"); err != nil {
 		return errors.New("java not found on PATH.\n    " +
-			"Install a JDK (Temurin recommended): https://adoptium.net/")
+			"Install a JDK (Temurin recommended): "+javaInstallURL)
 	}
 	return nil
 }
