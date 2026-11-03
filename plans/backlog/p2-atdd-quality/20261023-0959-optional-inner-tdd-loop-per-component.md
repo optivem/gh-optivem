@@ -13,8 +13,8 @@ into whatever shape the first test set. She did not test legacy or long-lived
 code.
 
 **End result:** Each component (tier) of a `kind: system` project declares an
-inner-loop mode: `none` (default, today's behaviour), `unit-tests`, or `tdd`.
-`backend-clean-java` runs the `unit-tests` mode end-to-end. In that mode,
+inner-loop mode: `none` (default, today's behaviour), `test-after`, or `tdd`.
+`backend-clean-java` runs the `test-after` mode end-to-end. In that mode,
 domain code is written with unit tests, and green is gated on a mutation-score
 threshold over the domain core. A `tdd` mode, with a separate unit-test-writer
 agent, exists for teaching.
@@ -24,7 +24,7 @@ agent, exists for teaching.
 - A component can opt in to an inner loop without affecting any other component
   in the same system. Thin backends and `frontend-react` stay `none` at zero
   extra cost.
-- In `unit-tests` mode, "green" means more than "the acceptance test passes". It
+- In `test-after` mode, "green" means more than "the acceptance test passes". It
   also means:
   - unit tests on the domain core pass;
   - a mutation-score threshold holds (PIT for Java).
@@ -49,7 +49,7 @@ flowchart TD
 
     G -- "none (default)" --> N["Implement system<br/>(today's behaviour)"]
 
-    G -- "unit-tests" --> U1["Design upfront, then write domain code<br/>+ unit tests via domain API / ports"]
+    G -- "test-after" --> U1["Design upfront, then write domain code<br/>+ unit tests via domain API / ports"]
     U1 --> U2["Run unit tests<br/>+ mutation test on CHANGED domain classes only"]
     U2 -- "survivors / failures" --> U3["Fix loop<br/>(gets the short survivor list)"]
     U3 --> U2
@@ -75,13 +75,13 @@ flowchart TD
     class G,U1,U2,U3,T0,T1,T2,T3,T4,T5,T6,T7,NIGHT new;
 ```
 
-## Modes compared: `unit-tests` vs `tdd`
+## Modes compared: `test-after` vs `tdd`
 
 Both modes produce unit tests on the domain core and pass the same mutation
 gate. What differs is **order and step size**: when the tests are written
 relative to the code, and how much code is written between test runs.
 
-| | `unit-tests` | `tdd` |
+| | `test-after` | `tdd` |
 |---|---|---|
 | Order | Design → write code **and** tests together → run | Design note → for each behaviour: test first → see it fail → code → see it pass → refactor |
 | Step size | One large change for the whole ticket | One behaviour at a time (~10 lines) |
@@ -93,12 +93,12 @@ relative to the code, and how much code is written between test runs.
 | Token cost | Modestly above `none` | Several times `none` (3–8.5× measured for a single agent) |
 | Best for | Normal opt-in for domain cores | Rule-heavy logic; teaching and demos of the double loop |
 
-Despite its name, `unit-tests` is a mode, not a level: both modes can run at
+`test-after` is a mode, not a level: both modes can run at
 either level (`level: component` or `level: unit`). In restructuring tickets
 (`redesign-*` / `refactor-*`), both modes reduce to "the existing inner tests
 must pass": no test-first, no mutation check.
 
-In one line: `unit-tests` checks the **result** (good tests exist, measured by
+In one line: `test-after` checks the **result** (good tests exist, measured by
 mutation testing). `tdd` also enforces the **process** (test first, in small
 verified steps).
 
@@ -122,7 +122,7 @@ system:
         lang: java
         sonar-project: optivem_shop-multitier-backend-clean-java
         inner-loop:                       # NEW: optional; absent = none
-            mode: unit-tests              # none | unit-tests | tdd
+            mode: test-after              # none | test-after | tdd
             level: unit                   # component | unit (unit requires hexagonal/clean)
             mutation-threshold: 80        # % killed, applies to changed domain classes;
                                           # starting value set from the nightly baseline
@@ -149,7 +149,7 @@ system:
         lang: java
         sonar-project: optivem_shop-multitier-backend-java
         inner-loop:
-            mode: unit-tests              # component level implied until Slice 3 adds `level`
+            mode: test-after              # component level implied until Slice 3 adds `level`
             mutation-threshold: 70        # any architecture; tests drive the backend via its API/ports
         paths:
             component-test: system/multitier/backend-java/src/componentTest/java/com/mycompany/myshop/backend
@@ -162,7 +162,7 @@ system:
 system:
     architecture: monolith
     path: system/monolith/java
-    inner-loop: { mode: unit-tests }
+    inner-loop: { mode: test-after }
 
 # microservices: per service, because each service is a TierSpec
 system:
@@ -174,7 +174,7 @@ system:
 # (plans/20260818-1658)
 component:
     name: backend-clean-java
-    inner-loop: { mode: unit-tests }
+    inner-loop: { mode: test-after }
 ```
 
 ### Schema and validation changes this implies
@@ -210,7 +210,7 @@ component:
 All design questions are resolved (see Decisions) except the mode name
 (open question below). Start Step 1 (component level only, Decision 8): add the
 `InnerLoop` struct to the schema with two fields:
-- `Mode`: `none|unit-tests|tdd`, default `none`;
+- `Mode`: `none|test-after|tdd`, default `none`;
 - `MutationThreshold`: 0–100.
 
 There is no `Level` field yet. Add the struct to `TierSpec`, `System`
@@ -221,7 +221,7 @@ validation tests pass with `-p 2`. This unblocks Step 2 (path placeholders).
 
 ## Steps
 
-### Slice 1 — component level, `unit-tests` mode, Java only, pilot on backend-java (FIRST PRIORITY)
+### Slice 1 — component level, `test-after` mode, Java only, pilot on backend-java (FIRST PRIORITY)
 
 Slice 1 pilots **component level only**, with no unit tests at all, on
 `backend-java` (`gh-optivem-multitier-java.yaml`). It uses that backend's
@@ -231,7 +231,7 @@ prerequisite is needed. Slices 1–2 are component level only. In their steps,
 component tests.
 
 - [ ] Step 1: Add the inner-loop mode field to `TierSpec`
-  (`internal/kernel/projectconfig/config.go`). Use an enum `none|unit-tests|tdd`,
+  (`internal/kernel/projectconfig/config.go`). Use an enum `none|test-after|tdd`,
   default `none`. Add Validate rules and init/config prompts that run the same
   validator as the flag.
 - [ ] Step 2: Add a Family B path placeholder for the component's domain core and
@@ -239,7 +239,7 @@ component tests.
   Paths must be constructed deterministically (pinned against the shop
   template), with no fallback ladder.
 - [ ] Step 3: In `implement-and-verify-system`, add a gateway on the component's
-  mode. For `unit-tests`, the implementer prompt gains a "design upfront, then
+  mode. For `test-after`, the implementer prompt gains a "design upfront, then
   domain code + unit tests through the domain API/ports, no mocking inside the
   domain" section. A new verify step runs the unit suite plus mutation testing,
   scoped to the domain core. The mutation gate runs **once per ticket, at inner
@@ -336,7 +336,7 @@ https://martinfowler.com/articles/exploring-gen-ai/tdd-in-the-agent-loop.html
   CRUD, adapters and glue stay `none`, because there the acceptance test
   already pinpoints the typical wiring failures.
 - **Prefer outcome sensors over policing the ritual.** That is why the
-  `unit-tests` mode gates on mutation score instead of enforcing red-green
+  `test-after` mode gates on mutation score instead of enforcing red-green
   ordering.
 - **Where we keep real TDD (`tdd` mode), make the red independent.** A separate
   unit-test-writer agent writes the failing test, mirroring the existing
@@ -365,7 +365,7 @@ ranking, cheapest first (only the 3–8.5× figure is measured; the others are
 estimates):
 
 1. `none`: baseline.
-2. `unit-tests`: modestly more. Tests are written alongside the code in a few
+2. `test-after`: modestly more. Tests are written alongside the code in a few
    large edits, plus usually one round of feedback on surviving mutants.
 3. `tdd` as fresh agents per behaviour (see below): likely at or below the next
    row, if handoffs stay small.
@@ -393,7 +393,7 @@ The mitigations below become requirements of `tdd` mode:
   paid at full price.
 
 This makes per-behaviour BPMN steps the leaning answer to Q4. It is still clearly
-more expensive than `unit-tests` mode.
+more expensive than `test-after` mode.
 
 ### Where TDD might save tokens (the hypothesis)
 
@@ -414,12 +414,12 @@ Spirals become likely when:
 Long-lived systems have all of these.
 
 TDD prevents spirals through two separate mechanisms:
-- **Pinpointing:** a red unit test names the broken rule. `unit-tests` mode
+- **Pinpointing:** a red unit test names the broken rule. `test-after` mode
   gives this too.
 - **Small steps from a known green:** the bug is in the last ~10 lines. Only
   `tdd` mode gives this.
 
-So `unit-tests` mode is expected to capture most of the long-term regression
+So `test-after` mode is expected to capture most of the long-term regression
 benefit. `tdd` adds a benefit within the current ticket that matters only for
 complex logic.
 
@@ -446,7 +446,7 @@ ticket, plus a script that aggregates across runs.
 ### Experiments, cheapest first
 
 1. **Same ticket, every mode (A/B/C).** Start from one pinned commit of
-   `backend-clean-java`. Run the same ticket in `none`, `unit-tests` and `tdd`,
+   `backend-clean-java`. Run the same ticket in `none`, `test-after` and `tdd`,
    3–5 times per mode, because LLM runs vary. Use a mix of tickets:
    - CRUD-shaped (expect `none` to win);
    - rule-heavy (pricing, discounts, state transitions), where TDD should have
@@ -480,7 +480,7 @@ ticket, plus a script that aggregates across runs.
    - full-domain mutation score;
    - Sonar complexity/duplication.
 
-   If `none` grows more expensive over time while `unit-tests`/`tdd` stay flat,
+   If `none` grows more expensive over time while `test-after`/`tdd` stay flat,
    that confirms the long-lived-code argument. This is the most expensive
    experiment, so run it last and only if experiments 1–3 point that way.
 
@@ -502,8 +502,8 @@ ticket, plus a script that aggregates across runs.
 
 ### What would change the plan
 
-- **`unit-tests` captures most of `tdd`'s savings at a fraction of the cost:**
-  confirms the design (`unit-tests` = normal opt-in, `tdd` = teaching).
+- **`test-after` captures most of `tdd`'s savings at a fraction of the cost:**
+  confirms the design (`test-after` = normal opt-in, `tdd` = teaching).
 - **`tdd` wins on rule-heavy or aged code:** promote `tdd` to the recommended
   mode for domain cores.
 - **Neither mode beats `none` on any measure:** keep the feature for teaching
@@ -564,18 +564,17 @@ ticket, plus a script that aggregates across runs.
      configs stay valid. This follows "schema fields must earn their slot":
      nothing branches on `level` before then.
 
+9. **Mode renamed `unit-tests` -> `test-after`** (`none | test-after | tdd`).
+   It names the real difference from `tdd` (when the tests are written) and does
+   not depend on the level. Applied throughout this plan and the code.
+10. **Mutation affordability (was OQ2):** Step 4 must measure a changed-only PIT
+    run on `backend-java` before the mutation gate is relied on. If too slow,
+    fall back to "component tests pass + coverage of changed lines" for Slice 1
+    and record the measurement here.
+
 ## Open questions
 
-1. **Rename the `unit-tests` mode?** With component level first, a mode called
-   `unit-tests` would write *component* tests, which is misleading for students.
-   Lean: rename it to **`test-after`** (`none | test-after | tdd`). It names the
-   real difference from `tdd` (when the tests are written) and doesn't depend
-   on the level. Once decided, apply the name throughout this plan.
-2. **Is mutation testing affordable at component level?** If the component tests
-   boot the Spring context, every mutant pays that startup cost. Checking only
-   the changed classes helps, but Step 4 should measure a changed-only PIT run on
-   `backend-java` first. If it is too slow, fall back to "component tests pass +
-   coverage of changed lines" for Slice 1, and record the result here.
+None open. Both were resolved in Decisions 9 and 10.
 
 ## Superseded open questions (kept for history)
 
@@ -585,7 +584,7 @@ ticket, plus a script that aggregates across runs.
    - a per-path list (domain-core dirs, each with a mode).
    Lean: a sibling field on `System`, mirroring the TierSpec field.
 2. **Do the `redesign-*` cycles get the inner loop?** They reuse
-   `IMPLEMENT_AND_VERIFY_SYSTEM`. Lean: yes in `unit-tests` mode, since the
+   `IMPLEMENT_AND_VERIFY_SYSTEM`. Lean: yes in `test-after` mode, since the
    mutation gate is cheap and protects the redesign. Unclear in `tdd` mode.
 3. **Mutation threshold: what value, and is it a hard failure?** Lean: the
    threshold is configured per component, and the gate fails hard (it routes
