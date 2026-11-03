@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Group 5 — Items 22, 23, 24** (Items 18 and 19 closed): decisions confirmed, so they are ready to dispatch one per session (start with Item 22 or 23). Item 18 (#6) was judged on merit and parked 2026-11-03: there is no `gh optivem refine` command to point the fast-exit at, a status gate would break rehearsals, and the tracker has no status read. The plan is now `plans/backlog/parked/20260525-1753-…`, with the revisit condition recorded in it. Item 15's code shipped locally (shop `32e90dcb`, gh-optivem `15b30e6c`, unpushed); its remainder, Item 13's leftovers and Item 7's #76 check are all deferred and need an attended session (shop push OK + rehearsal). Run `/sync` to push gh-optivem (and shop, with OK).
+**Everything unattended is done.** Items 22, 23 and 24 ran on 2026-11-03 and what remains in each is listed in Group 5. The only unattended work left is Item 24's production Cognitive Complexity refactors, which run from its child plan (`/execute-plan plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md`), and Item 23's Step 1b. Everything else needs an attended session (rehearsal, VM run, shop push OK). Item 18 (#6) was judged on merit and parked 2026-11-03: there is no `gh optivem refine` command to point the fast-exit at, a status gate would break rehearsals, and the tracker has no status read. The plan is now `plans/backlog/parked/20260525-1753-…`, with the revisit condition recorded in it. Item 15's code shipped locally (shop `32e90dcb`, gh-optivem `15b30e6c`, unpushed); its remainder, Item 13's leftovers and Item 7's #76 check are all deferred and need an attended session (shop push OK + rehearsal). Run `/sync` to push gh-optivem (and shop, with OK).
 
 ## How to execute this meta-plan
 
@@ -40,9 +40,9 @@ Run `/execute-plan` on this file. Each item below is one execution unit. To exec
 ### Group 5 — Wave 3 (stop and ask user first)
 "Later" decisions confirmed 2026-11-03 (user: use the recommendation for all). Copy each into its own plan's open questions when that item starts. Run one item per session.
 - **Items 20 (#13) and 21 (#16)** and the shop parts of Items 13 and 15 moved to the shop plan `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md`. Decisions: #13 Option A (Java only); #16 `/users` customer directory in all configs, rehearsed on monolith-java only, refine deferred. Nothing to do here except the gh-optivem side of their rehearsals.
-- [ ] **Item 22 — #20** (`p2-atdd-quality/20260812-1705-environment-setup-command`): the plan's own recommendations; Step 8 (collapse duplication) only after a green clean-room VM run.
-- [ ] **Item 23 — #42 Slice 1** (`p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component`): rename `unit-tests` to `test-after`; measure changed-only PIT run before relying on mutation gate.
-- [ ] **Item 24 — #25** (`p4-maintenance/20260625-0944-sonar-deferred`): re-pull the SonarCloud issue list first, then fix.
+- [ ] **Item 22 — #20** — ⏳ Deferred: Steps 1–7 shipped (`95f1bb46`…`39e245d9`, unpushed). Step 8 (collapse `scripts/readme-steps.sh`) needs a green clean-room VM run first.
+- [ ] **Item 23 — #42 Slice 1** — ⏳ Partly shipped (`90fb81e2`…`fa21df35`, shop `cf2869ad`, all unpushed). Left in the child plan: Step 1b (`--backend-inner-loop` flags and init prompts), the nightly mutation CI workflow in shop (push needs OK), and setting `mutation-threshold` from a full `--all` baseline. Slices 2–4 untouched.
+- [ ] **Item 24 — #25** — ⏳ Partly done (`633650ff`). The Sonar list was re-pulled: 73 `go:S3776` findings, 32 production files left to refactor. The 16 test-file findings are recommended Won't Fix, which needs SonarCloud admin rights. The remaining refactors are in the child plan and can run unattended.
 
 Read-only analysis of every plan under `plans/backlog/`, `plans/deferred/`, `plans/deferred2/` and `plans/meta/`. No plan was edited. Each plan was read in full and its premise spot-checked against the current code (grep/ls/git log). Modelled on shop's consolidation (shop commit 7ecc8277 + `shop/plans/20261029-1256-meta-backlog-execution.md`).
 
