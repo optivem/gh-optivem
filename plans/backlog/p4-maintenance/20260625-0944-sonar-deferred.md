@@ -39,7 +39,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 - `internal/build/runner/tests.go` — L78 (CC 28)
 - `internal/config/config.go` — L712 (CC 29)
 - `internal/config/configinit/prompt.go` — L345 (CC 22)
-- `internal/devworkflow/ghbulk/ghbulk.go` — L157 (CC 23)
 - `internal/diagrams/diagram/expanded.go` — L149 (CC 25)
 - `internal/engine/statemachine/invariants.go` — L93 (CC 23)
 - `internal/engine/statemachine/load.go` — L175 (CC 23), L347 (CC 28)

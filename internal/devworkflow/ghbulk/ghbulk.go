@@ -160,41 +160,55 @@ func ForEachPackage(owner, repoName string, opt Options, fn func(Package) error)
 		return fmt.Errorf("detect owner type for %s: %w", owner, err)
 	}
 	for _, pkgType := range PackageTypes {
-		for page := 1; ; page++ {
-			shell.CheckRateLimit()
-			path := fmt.Sprintf("%s/%s/packages?package_type=%s&per_page=%d&page=%d",
-				ownerType, owner, pkgType, opt.pageSize(), page)
-			var packages []Package
-			// A 404 here means "no packages of this type" — common, not an error.
-			err := apiGet(path, &packages)
-			if err != nil {
-				if isNotFound(err) {
-					break
-				}
-				return fmt.Errorf("list packages %s page %d: %w", pkgType, page, err)
+		if err := forEachPackageOfType(ownerType, owner, pkgType, repoName, opt, fn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// forEachPackageOfType pages through the packages of one package_type and
+// invokes fn for each one belonging to repoName.
+func forEachPackageOfType(ownerType, owner, pkgType, repoName string, opt Options, fn func(Package) error) error {
+	for page := 1; ; page++ {
+		shell.CheckRateLimit()
+		path := fmt.Sprintf("%s/%s/packages?package_type=%s&per_page=%d&page=%d",
+			ownerType, owner, pkgType, opt.pageSize(), page)
+		var packages []Package
+		// A 404 here means "no packages of this type" — common, not an error.
+		err := apiGet(path, &packages)
+		if err != nil {
+			if isNotFound(err) {
+				return nil
 			}
-			if len(packages) == 0 {
-				break
-			}
-			matched := 0
-			for _, p := range packages {
-				if p.Repository.Name != repoName {
-					continue
-				}
-				if !opt.passesBeforeDate(p.CreatedAt) {
-					log.Infof("    Skipping: %s (on or after %s)",
-						p.Name, opt.BeforeDate.Format("2006-01-02"))
-					continue
-				}
-				matched++
-				if err := fn(p); err != nil {
-					return err
-				}
-			}
-			if len(packages) < opt.pageSize() {
-				break
-			}
-			_ = matched
+			return fmt.Errorf("list packages %s page %d: %w", pkgType, page, err)
+		}
+		if len(packages) == 0 {
+			return nil
+		}
+		if err := applyToRepoPackages(packages, repoName, opt, fn); err != nil {
+			return err
+		}
+		if len(packages) < opt.pageSize() {
+			return nil
+		}
+	}
+}
+
+// applyToRepoPackages invokes fn for each package of repoName that passes the
+// before-date filter.
+func applyToRepoPackages(packages []Package, repoName string, opt Options, fn func(Package) error) error {
+	for _, p := range packages {
+		if p.Repository.Name != repoName {
+			continue
+		}
+		if !opt.passesBeforeDate(p.CreatedAt) {
+			log.Infof("    Skipping: %s (on or after %s)",
+				p.Name, opt.BeforeDate.Format("2006-01-02"))
+			continue
+		}
+		if err := fn(p); err != nil {
+			return err
 		}
 	}
 	return nil
