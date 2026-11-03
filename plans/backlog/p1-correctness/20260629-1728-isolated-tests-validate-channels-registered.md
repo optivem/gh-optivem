@@ -10,6 +10,10 @@
 Ticket: #76 — Bug: Order cancellation blackout on Dec 31 ends at 22:30 instead of 23:00
 Machine: ValentinaLaptop
 
+## Open questions
+
+- **Q-3 (decided, #28):** Do A+B+C. The RED verify also runs the isolated suite (not only the non-isolated one), so `acceptance-isolated-*` reports exist when `VALIDATE_CHANNELS_REGISTERED` reads them; the validator looks in them (A); the writer prompt documents that `@isolated` tests must not use `forChannels()` (C).
+
 ## Summary
 
 Run `20260629-124124` halted at `VALIDATE_CHANNELS_REGISTERED` after the
