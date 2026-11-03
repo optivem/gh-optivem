@@ -27,6 +27,11 @@ func gitIn(t *testing.T, dir string, args ...string) string {
 // bare remote, plus the bare remote path.
 func newClonedRepo(t *testing.T) (work, bare string) {
 	t.Helper()
+	// Code under test shells out to git commit; CI runners have no identity.
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@example.com")
 	root := t.TempDir()
 	bare = filepath.Join(root, "remote.git")
 	work = filepath.Join(root, "work")
