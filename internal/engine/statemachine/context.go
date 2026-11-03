@@ -16,6 +16,12 @@ package statemachine
 type Context struct {
 	State  map[string]any
 	Params map[string]string
+
+	// Unit is the id of the innermost resumable unit currently executing
+	// ("" outside any). Commits made inside it are marked with it.
+	Unit string
+
+	unitsSeen map[string]bool // units entered so far in this run
 }
 
 // NewContext constructs an empty Context with both maps initialised.

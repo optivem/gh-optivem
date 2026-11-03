@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -93,6 +94,7 @@ type commitOptions struct {
 	Yes              bool
 	All              bool
 	IncludeUntracked bool
+	Trailers         []string
 	Approval         approval.Resolved
 }
 
@@ -133,6 +135,7 @@ Interactively neither flag is needed: you confirm against the printed file list.
 			if opts.Paths != "" && opts.Repo == "" {
 				exitOnError(errors.New("--paths requires --repo (path semantics are repo-scoped)"))
 			}
+			exitOnError(validateTrailers(opts.Trailers))
 			opts.Approval = cmdctx.Approval(cmd)
 			exitOnError(runCommit(msg, opts))
 		},
@@ -144,6 +147,8 @@ Interactively neither flag is needed: you confirm against the printed file list.
 		"With --yes, stage all tracked changes (git add -A scope). Required when --paths is not given — a blanket stage is opt-in for scripted callers, the same foot-gun guard as --include-untracked. No effect interactively or with --paths.")
 	cmd.Flags().BoolVar(&opts.IncludeUntracked, "include-untracked", false,
 		"With --yes, also stage untracked (??) files. No effect interactively.")
+	cmd.Flags().StringArrayVar(&opts.Trailers, "trailer", nil,
+		`Git trailer ("Key: value") appended to the commit message; repeatable. The orchestrator uses it to mark which ATDD unit a commit completes.`)
 	return cmd
 }
 
@@ -384,7 +389,7 @@ func commitPathsInRepo(repo, msg string, opts commitOptions) (bool, error) {
 		fmt.Println("  ✗ Skipped (unstaged)")
 		return false, nil
 	}
-	if err := runGitCommit(repo, msg); err != nil {
+	if err := runGitCommit(repo, msg, opts.Trailers); err != nil {
 		return false, err
 	}
 	fmt.Println("  ✓ Committed")
@@ -448,7 +453,7 @@ func commitAllInRepo(repo, msg string, opts commitOptions) (bool, error) {
 	if err := runGit(repo, "add", "-A"); err != nil {
 		return false, fmt.Errorf("git add -A in %s: %w", repo, err)
 	}
-	if err := runGitCommit(repo, msg); err != nil {
+	if err := runGitCommit(repo, msg, opts.Trailers); err != nil {
 		return false, err
 	}
 	fmt.Println("  ✓ Committed")
@@ -488,9 +493,29 @@ func errSweepNeedsAll() error {
 	return errors.New("--yes refuses a blanket stage without --all.\n       Stage only the files you touched (surgical, no foot-gun):\n         gh optivem commit --repo myrepo --paths \"<space-separated paths>\" \"<message>\"\n       or deliberately stage every tracked change in scope:\n         gh optivem commit --yes --all \"<message>\"")
 }
 
-func runGitCommit(repo, msg string) error {
-	full := msg + "\n\n" + commitCoAuthor
-	return runGit(repo, "commit", "-m", full)
+func runGitCommit(repo, msg string, trailers []string) error {
+	return runGit(repo, "commit", "-m", commitMessage(msg, trailers))
+}
+
+// commitMessage renders the full commit message: the supplied message, then
+// one trailer block holding the caller's trailers followed by the co-author
+// trailer, so git parses them all as trailers of the same message.
+func commitMessage(msg string, trailers []string) string {
+	block := append(append([]string{}, trailers...), commitCoAuthor)
+	return msg + "\n\n" + strings.Join(block, "\n")
+}
+
+var trailerRE = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9-]*: \S.*$`)
+
+// validateTrailers rejects a malformed --trailer value up front rather than
+// letting it corrupt the commit message.
+func validateTrailers(trailers []string) error {
+	for _, t := range trailers {
+		if strings.ContainsAny(t, "\r\n") || !trailerRE.MatchString(t) {
+			return fmt.Errorf("invalid --trailer %q: want a single line of the form \"Key: value\"", t)
+		}
+	}
+	return nil
 }
 
 // ── sync ────────────────────────────────────────────────────────────────

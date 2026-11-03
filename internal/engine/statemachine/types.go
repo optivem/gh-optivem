@@ -156,6 +156,10 @@ type Engine struct {
 	GateFn   func(name string) NodeFn
 	ActionFn func(name string) NodeFn
 	AgentFn  func(name string) NodeFn
+
+	// Resume, when set, lets call-activities that a previous run already
+	// completed and committed on the current branch be skipped.
+	Resume *ResumeConfig
 }
 
 // Outputs returns the structured output contract declared on the named

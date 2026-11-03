@@ -3097,3 +3097,52 @@ func TestResolveLayerPaths_TierPathKeysResolveFromTier(t *testing.T) {
 		}
 	}
 }
+
+func TestRunCommand_CommitInsideResumableUnitCarriesTrailers(t *testing.T) {
+	eng, err := statemachine.LoadBytes([]byte(`
+processes:
+  unit:
+    name: "Unit"
+    start: END
+    outputs:
+      - key: test-names
+        type: string-list
+    nodes:
+      - id: END
+        type: end-event
+        name: "End"
+    sequence-flows: []
+`))
+	if err != nil {
+		t.Fatalf("LoadBytes: %v", err)
+	}
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Engine: eng, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Unit = "root@NODE"
+	ctx.Set("ticket-id", "65")
+	ctx.Set("test-names", []string{"a", "b"})
+	ctx.Params["command"] = "gh optivem commit --yes --all"
+	ctx.Params["message"] = "#65 T - DSL"
+	if out := a.runCommand(ctx); out.Err != nil {
+		t.Fatalf("unexpected err: %v", out.Err)
+	}
+	want := `gh optivem commit --yes --all --trailer 'Atdd-Ticket: 65' --trailer 'Atdd-Unit: root@NODE' --trailer 'Atdd-State: {"test-names":["a","b"]}' '#65 T - DSL'`
+	if sh.calls[0] != want {
+		t.Fatalf("shell call:\n got %q\nwant %q", sh.calls[0], want)
+	}
+}
+
+func TestRunCommand_CommitInsideUnitWithoutEngineFailsLoud(t *testing.T) {
+	sh := &fakeShell{out: []byte("OK")}
+	a := newActions(Deps{Shell: sh, Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}})
+	ctx := statemachine.NewContext()
+	ctx.Unit = "root@NODE"
+	ctx.Params["command"] = "gh optivem commit"
+	if out := a.runCommand(ctx); out.Err == nil {
+		t.Fatal("expected an error, and no commit to be attempted")
+	}
+	if len(sh.calls) != 0 {
+		t.Fatalf("commit must not run, calls = %v", sh.calls)
+	}
+}

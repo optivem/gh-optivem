@@ -31,7 +31,7 @@ func (e *Engine) Bind() error {
 	var errs []string
 	for _, process := range e.Processes {
 		for id, node := range process.Nodes {
-			fn, err := e.resolve(node)
+			fn, err := e.resolve(process.ID, node)
 			if err != nil {
 				errs = append(errs, fmt.Sprintf("process %q node %q: %v", process.ID, id, err))
 				continue
@@ -72,7 +72,7 @@ func resolveNamedFn(taskKind, label, ref string, lookup func(string) NodeFn) (No
 
 // resolve picks the right NodeFn for one node based on its kind and the
 // engine's registries.
-func (e *Engine) resolve(node Node) (NodeFn, error) {
+func (e *Engine) resolve(parentProcess string, node Node) (NodeFn, error) {
 	switch node.Kind {
 	case StartEvent, EndEvent, ErrorEndEvent:
 		return func(ctx *Context) Outcome { return Outcome{} }, nil
@@ -102,7 +102,7 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 		}
 		return e.wrapGateway(node.Raw.Binding, fn), nil
 	case CallActivity:
-		return e.wrapCallActivity(node.Raw), nil
+		return e.wrapCallActivity(parentProcess, node.Raw), nil
 	default:
 		return nil, fmt.Errorf("unhandled NodeKind %d", node.Kind)
 	}
@@ -143,7 +143,7 @@ func (e *Engine) wrapGateway(binding string, fn NodeFn) NodeFn {
 // lines above) — so a call site like `process: ${action}` resolves the
 // sub-process name at dispatch time from caller-supplied params. Static names
 // (the common case) pass through unchanged because ExpandParams is idempotent.
-func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
+func (e *Engine) wrapCallActivity(parentProcess string, raw RawNode) NodeFn {
 	return func(ctx *Context) Outcome {
 		processName, err := ExpandParams(raw.Process, ctx.Params, ctx.State)
 		if err != nil {
@@ -156,6 +156,18 @@ func (e *Engine) wrapCallActivity(raw RawNode) NodeFn {
 		merged, err := mergeCallActivityParams(ctx.Params, raw.Params, ctx.State, processName)
 		if err != nil {
 			return Outcome{Err: err}
+		}
+		if unit := e.resumableUnit(parentProcess, raw, processName, merged); unit != "" {
+			skip, err := e.trySkipUnit(ctx, unit)
+			if err != nil {
+				return Outcome{Err: err}
+			}
+			if skip {
+				return Outcome{}
+			}
+			prevUnit := ctx.Unit
+			ctx.Unit = unit
+			defer func() { ctx.Unit = prevUnit }()
 		}
 		prev := ctx.Params
 		ctx.Params = merged

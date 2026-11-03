@@ -106,7 +106,10 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	// would otherwise have those flags rendered into every intermediate
 	// `system build` / `system start` / `commit` shell-out, which the
 	// receiving CLIs reject with "unknown flag: --suite".
-	cmd = appendCommandFlags(ctx, cmd, isTestRun, isCommit)
+	cmd, err := a.appendCommandFlags(ctx, cmd, isTestRun, isCommit)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("run-command: %w", err)}
+	}
 	// Lift the permanent WIP gate on the acceptance tests for the
 	// orchestrator's own verify runs only. The gated AT methods key on
 	// GH_OPTIVEM_RUN_WIP_TESTS (see clauderun.renderGateMarkerExample);
@@ -140,7 +143,10 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 // appendCommandFlags renders the optional `--suite` / `--test` flags onto a
 // `gh optivem system-test run` command and the `message` positional onto a
 // `gh optivem commit` command; any other command is returned unchanged.
-func appendCommandFlags(ctx *statemachine.Context, cmd string, isTestRun, isCommit bool) string {
+//
+// A commit made inside a resumable unit also carries the unit's `--trailer`
+// flags (ticket, unit id, saved state) so a later run can prove the unit done.
+func (a actions) appendCommandFlags(ctx *statemachine.Context, cmd string, isTestRun, isCommit bool) (string, error) {
 	if isTestRun {
 		if suite := strings.TrimSpace(ctx.Params["suite"]); suite != "" {
 			cmd += " --suite=" + shellEscape(suite)
@@ -150,11 +156,30 @@ func appendCommandFlags(ctx *statemachine.Context, cmd string, isTestRun, isComm
 		}
 	}
 	if isCommit {
+		trailers, err := a.commitTrailers(ctx)
+		if err != nil {
+			return "", err
+		}
+		for _, t := range trailers {
+			cmd += " --trailer " + shellEscape(t)
+		}
 		if msg := strings.TrimSpace(ctx.Params["message"]); msg != "" {
 			cmd += " " + shellEscape(msg)
 		}
 	}
-	return cmd
+	return cmd, nil
+}
+
+// commitTrailers returns the resume trailers for a commit, or none when the
+// commit is not inside a resumable unit.
+func (a actions) commitTrailers(ctx *statemachine.Context) ([]string, error) {
+	if ctx.Unit == "" {
+		return nil, nil
+	}
+	if a.deps.Engine == nil {
+		return nil, fmt.Errorf("commit inside resumable unit %q but no engine is wired to build its trailers", ctx.Unit)
+	}
+	return a.deps.Engine.CommitTrailers(ctx)
 }
 
 // liftWipGate sets the WIP-tests env var to "1" and returns a function that

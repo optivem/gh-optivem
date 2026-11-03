@@ -792,3 +792,25 @@ func TestRepoBaseName(t *testing.T) {
 		}
 	}
 }
+
+func TestCommitMessage_TrailersShareOneBlockWithCoAuthor(t *testing.T) {
+	got := commitMessage("#1 Subject", []string{"Atdd-Unit: p@N", `Atdd-State: {"k":"v"}`})
+	want := "#1 Subject\n\nAtdd-Unit: p@N\nAtdd-State: {\"k\":\"v\"}\n" + commitCoAuthor
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if commitMessage("m", nil) != "m\n\n"+commitCoAuthor {
+		t.Error("no trailers must keep the original message shape")
+	}
+}
+
+func TestValidateTrailers(t *testing.T) {
+	if err := validateTrailers([]string{"Atdd-Unit: p@N", `Atdd-State: {"a": "b"}`}); err != nil {
+		t.Errorf("valid trailers rejected: %v", err)
+	}
+	for _, bad := range []string{"no colon", "Key:novalue", "Key: a\nInjected: b", ": x", "Key: "} {
+		if err := validateTrailers([]string{bad}); err == nil {
+			t.Errorf("trailer %q must be rejected", bad)
+		}
+	}
+}

@@ -370,6 +370,12 @@ func Run(ctx context.Context, opts Options) (runErr error) {
 		return fmt.Errorf("driver: bind engine: %w", err)
 	}
 
+	// Resume: on a branch that already carries completed units, skip them. The
+	// scoped --target entry has its own content-addressed resume and is left alone.
+	if opts.Target == TargetUnset {
+		eng.Resume = newResumeConfig(repoPath, opts.Out.Phase)
+	}
+
 	// Per-run diagnostic state: timestamp + monotonic dispatch counter,
 	// shared by every dispatcher closure registered by wrapAgentDispatchers.
 	// Used to compose <run-ts>/<seq>-<agent>.prompt.md log paths so files
