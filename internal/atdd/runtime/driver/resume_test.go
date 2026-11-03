@@ -72,6 +72,14 @@ func TestGitResumeProbe_FindUnitCommitAndTreeState(t *testing.T) {
 	if clean, _ := p.WorkingTreeClean(); clean {
 		t.Error("untracked file must make the tree dirty")
 	}
+	status = "?? .atdd-prompt-123.tmp.md\n"
+	if clean, _ := p.WorkingTreeClean(); !clean {
+		t.Error("prompt temp file alone must not make the tree dirty")
+	}
+	status = "?? .atdd-prompt-123.tmp.md\n M a.go\n"
+	if clean, _ := p.WorkingTreeClean(); clean {
+		t.Error("tracked edit must make the tree dirty even with a prompt temp file")
+	}
 }
 
 func TestGitResumeProbe_NoHeadMeansNoMarker(t *testing.T) {

@@ -14,14 +14,12 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-Layers 1 and 2 are implemented (Layer 2 via commit trailers `Atdd-Ticket` / `Atdd-Unit` / `Atdd-State`; code in `internal/engine/statemachine/resume.go`, `internal/atdd/runtime/driver/resume.go`, `--trailer` flag on `gh optivem commit`). Unit tests pass, but it has NOT been run against a real ticket branch. Only attended verification remains (below) — this needs an operator, not an agent. Delete this plan once the verification passes.
+Layers 1 and 2 are implemented and verified on shop #76 (2026-11-03 rehearsal, monolith-java): killed after the ACCEPTANCE TESTS + DSL commit, re-ran in the same worktree, log showed `resume: skipping write-acceptance-tests-and-dsl@WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE: already done in commit <sha>`, then the run continued to the system implementer, committed SYSTEM (api), rc=0. Two fixes came out of it: `WorkingTreeClean` ignores `.atdd-prompt-*.tmp.md`, and the acceptance unit snapshots the per-channel RED report names into `Atdd-State` (`acceptance-red-reports`) because the on-disk reports are build output that does not survive. One decision remains (below); a fresh-clone resume has not been run.
 
 ## Steps
 
-### Attended verification (operator)
-
-- [ ] Rehearsal: run `gh optivem implement` on a real ticket, kill/crash it after the acceptance + DSL commits, re-run on the same branch/worktree, and confirm the log shows `resume: skipping <unit>: already done in commit <sha>` and the run continues at the first incomplete unit with correct state (no strict-expansion failure on `${test-names}`, no whole-suite widening).
-- [ ] Confirm a fresh branch / fresh clone still behaves as before (starts over). Known limit: the acceptance RED-verify reports are files on disk, not in the trailer, so resume on a fresh clone fails loudly in `validate-channels-registered` ("ran in none of the configured channels") rather than skipping silently. Resume is supported in the same (kept) worktree only. Decide whether that limit is acceptable or worth persisting the reports.
+- [ ] Decide the tracked-partial-edit case. A crash mid-way through the next unit leaves tracked edits (e.g. a half-written `OrderService.java`), the tree is dirty, and resume re-runs the finished unit instead of skipping it (`resume: re-running …: working tree has uncommitted changes`). Today the operator must `git checkout HEAD -- <file>` first. Options: leave as is and document it, or have resume discard the partial unit's tracked edits itself (destructive — needs a decision).
+- [ ] Optional: confirm a fresh clone resumes from the trailer alone (should now work since the reports are in `Atdd-State`).
 
 
 ## Resolved decisions

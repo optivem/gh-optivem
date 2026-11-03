@@ -260,3 +260,62 @@ func TestSplitTestNames(t *testing.T) {
 		})
 	}
 }
+
+// TestAcceptanceReportSnapshot_SurvivesWipedReports: the acceptance unit's
+// commit snapshots the per-channel RED report names into state, so a resumed run
+// answers channel membership and registration even after the on-disk reports
+// (build output) are gone.
+func TestAcceptanceReportSnapshot_SurvivesWipedReports(t *testing.T) {
+	dir := t.TempDir()
+	tests, cfg := apiOnlyTestsConfig(t, dir, "shouldRejectQty100")
+	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
+
+	ctx := statemachine.NewContext()
+	ctx.Unit = "write-acceptance-tests-and-dsl@WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE"
+	if err := a.snapshotAcceptanceReports(ctx); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if ctx.GetString(CtxKeyAcceptanceReports) == "" {
+		t.Fatal("acceptance unit must snapshot the reports into state")
+	}
+
+	for _, s := range tests.Suites {
+		_ = os.Remove(filepath.Join(dir, s.TestCountPath))
+	}
+
+	ctx.Set("test-names", "shouldRejectQty100")
+	if out := a.validateChannelsRegistered(ctx); out.Err != nil {
+		t.Fatalf("validate from snapshot: %v", out.Err)
+	}
+	apiCtx := channelCtx("api", "shouldRejectQty100")
+	apiCtx.Set(CtxKeyAcceptanceReports, ctx.GetString(CtxKeyAcceptanceReports))
+	if out := a.resolveChannel(apiCtx); out.Err != nil {
+		t.Fatalf("resolve api from snapshot: %v", out.Err)
+	}
+	if got, _ := apiCtx.State["channel-touched"].(bool); !got {
+		t.Error("api must be touched per the snapshot")
+	}
+	uiCtx := channelCtx("ui", "shouldRejectQty100")
+	uiCtx.Set(CtxKeyAcceptanceReports, ctx.GetString(CtxKeyAcceptanceReports))
+	if out := a.resolveChannel(uiCtx); out.Err != nil {
+		t.Fatalf("resolve ui from snapshot: %v", out.Err)
+	}
+	if got, _ := uiCtx.State["channel-touched"].(bool); got {
+		t.Error("ui must be untouched per the snapshot")
+	}
+}
+
+func TestAcceptanceReportSnapshot_OtherUnitsDoNotSnapshot(t *testing.T) {
+	dir := t.TempDir()
+	tests, cfg := apiOnlyTestsConfig(t, dir, "shouldRejectQty100")
+	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
+
+	ctx := statemachine.NewContext()
+	ctx.Unit = "change-system-behavior@IMPLEMENT_AND_VERIFY_SYSTEM_API"
+	if err := a.snapshotAcceptanceReports(ctx); err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	if ctx.GetString(CtxKeyAcceptanceReports) != "" {
+		t.Error("only the acceptance unit may snapshot; later units overwrite reports with green runs")
+	}
+}

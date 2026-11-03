@@ -1,8 +1,10 @@
 package actions
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 
@@ -71,7 +73,7 @@ func (a actions) resolveChannel(ctx *statemachine.Context) statemachine.Outcome 
 		return statemachine.Outcome{Err: fmt.Errorf("resolve-channel: tests.yaml not loaded — driver must inject actions.Deps.TestsConfig")}
 	}
 
-	names, err := a.channelReportNames(channel)
+	names, err := a.channelReportNames(ctx, channel)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("resolve-channel: %w", err)}
 	}
@@ -115,10 +117,24 @@ func (a actions) validateChannelsRegistered(ctx *statemachine.Context) statemach
 	if a.deps.Config != nil {
 		channels = a.deps.Config.Channels
 	}
-	suiteIDs := a.acceptanceSuiteIDs("acceptance", channels)
-	names, err := runner.NamesInReport(a.deps.TestsConfig, a.deps.TestsCwd, suiteIDs)
+	var names map[string]bool
+	saved, ok, err := savedAcceptanceReports(ctx)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-channels-registered: %w", err)}
+	}
+	if ok {
+		names = map[string]bool{}
+		for _, list := range saved {
+			for _, n := range list {
+				names[n] = true
+			}
+		}
+	} else {
+		suiteIDs := a.acceptanceSuiteIDs("acceptance", channels)
+		names, err = runner.NamesInReport(a.deps.TestsConfig, a.deps.TestsCwd, suiteIDs)
+		if err != nil {
+			return statemachine.Outcome{Err: fmt.Errorf("validate-channels-registered: %w", err)}
+		}
 	}
 	var orphans []string
 	for _, t := range ticketTests {
@@ -138,13 +154,85 @@ func (a actions) validateChannelsRegistered(ctx *statemachine.Context) statemach
 // suiteGroups: override and falling back to the channel-aware default), then
 // reads each partition's report via runner.NamesInReport without running
 // anything.
-func (a actions) channelReportNames(channel string) (map[string]bool, error) {
+func (a actions) channelReportNames(ctx *statemachine.Context, channel string) (map[string]bool, error) {
+	saved, ok, err := savedAcceptanceReports(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return toNameSet(saved[channel]), nil
+	}
 	var channels []string
 	if a.deps.Config != nil {
 		channels = a.deps.Config.Channels
 	}
 	suiteIDs := a.acceptanceSuiteIDs("acceptance-"+channel, channels)
 	return runner.NamesInReport(a.deps.TestsConfig, a.deps.TestsCwd, suiteIDs)
+}
+
+// CtxKeyAcceptanceReports holds the RED acceptance run's per-channel test names
+// as JSON ({"api":["T1",...],"ui":[...]}). The on-disk reports are build output
+// a later run (or a `clean`) can wipe, so the acceptance unit snapshots them
+// into state when it commits; the snapshot rides the commit's Atdd-State
+// trailer, letting a resumed run answer channel membership without the files.
+const CtxKeyAcceptanceReports = "acceptance-red-reports"
+
+// acceptanceUnitSuffix identifies the resumable unit whose commit snapshots the
+// RED reports (ctx.Unit is "<parent-process>@<NODE_ID>").
+const acceptanceUnitSuffix = "@WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE"
+
+// snapshotAcceptanceReports stores the per-channel RED report names in state
+// when the commit is the acceptance unit's. Any other unit is left alone: later
+// units overwrite the reports with green runs, which are not the RED truth.
+func (a actions) snapshotAcceptanceReports(ctx *statemachine.Context) error {
+	if !strings.HasSuffix(ctx.Unit, acceptanceUnitSuffix) || a.deps.TestsConfig == nil {
+		return nil
+	}
+	var channels []string
+	if a.deps.Config != nil {
+		channels = a.deps.Config.Channels
+	}
+	saved := map[string][]string{}
+	for _, ch := range channels {
+		names, err := runner.NamesInReport(a.deps.TestsConfig, a.deps.TestsCwd, a.acceptanceSuiteIDs("acceptance-"+ch, channels))
+		if err != nil {
+			return fmt.Errorf("snapshot acceptance reports for channel %q: %w", ch, err)
+		}
+		list := make([]string, 0, len(names))
+		for n := range names {
+			list = append(list, n)
+		}
+		sort.Strings(list)
+		saved[ch] = list
+	}
+	raw, err := json.Marshal(saved)
+	if err != nil {
+		return fmt.Errorf("encode acceptance reports: %w", err)
+	}
+	ctx.Set(CtxKeyAcceptanceReports, string(raw))
+	return nil
+}
+
+// savedAcceptanceReports returns the snapshot taken at the acceptance unit's
+// commit (or restored from its trailer on resume). ok is false when none exists.
+func savedAcceptanceReports(ctx *statemachine.Context) (map[string][]string, bool, error) {
+	raw := ctx.GetString(CtxKeyAcceptanceReports)
+	if raw == "" {
+		return nil, false, nil
+	}
+	var saved map[string][]string
+	if err := json.Unmarshal([]byte(raw), &saved); err != nil {
+		return nil, false, fmt.Errorf("decode state %q: %w", CtxKeyAcceptanceReports, err)
+	}
+	return saved, true, nil
+}
+
+func toNameSet(names []string) map[string]bool {
+	set := make(map[string]bool, len(names))
+	for _, n := range names {
+		set[n] = true
+	}
+	return set
 }
 
 // acceptanceSuiteIDs expands an `acceptance` / `acceptance-<ch>` group alias to

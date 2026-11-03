@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/atdd/process/actions"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
@@ -26,7 +27,7 @@ var resumeExcludeParams = []string{"external-system-name"}
 
 // resumeExtraStateKeys are derived state keys (not declared agent outputs)
 // that later steps read and a skipped unit must therefore restore.
-var resumeExtraStateKeys = []string{"external-driver-port-changed-paths"}
+var resumeExtraStateKeys = []string{"external-driver-port-changed-paths", actions.CtxKeyAcceptanceReports}
 
 // newResumeConfig builds the engine's resume configuration for a full-pipeline
 // walk over the repository at repoPath.
@@ -98,5 +99,23 @@ func (p gitResumeProbe) WorkingTreeClean() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("read working tree status: %w", err)
 	}
-	return strings.TrimSpace(string(out)) == "", nil
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" || isPromptTempFile(line) {
+			continue
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
+// isPromptTempFile reports whether a `git status --porcelain` line is an
+// untracked prompt temp file (.atdd-prompt-*.tmp.md) left behind by an agent
+// dispatch that was killed mid-run. It is harness scratch, not unfinished work.
+func isPromptTempFile(line string) bool {
+	path, ok := strings.CutPrefix(line, "?? ")
+	if !ok {
+		return false
+	}
+	return strings.HasPrefix(path, ".atdd-prompt-") && strings.HasSuffix(path, ".tmp.md")
 }

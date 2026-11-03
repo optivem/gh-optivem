@@ -179,6 +179,9 @@ func (a actions) commitTrailers(ctx *statemachine.Context) ([]string, error) {
 	if a.deps.Engine == nil {
 		return nil, fmt.Errorf("commit inside resumable unit %q but no engine is wired to build its trailers", ctx.Unit)
 	}
+	if err := a.snapshotAcceptanceReports(ctx); err != nil {
+		return nil, err
+	}
 	return a.deps.Engine.CommitTrailers(ctx)
 }
 
