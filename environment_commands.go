@@ -1,6 +1,6 @@
 // environment_commands.go wires the `gh optivem environment` subtree. The
-// `environment` noun owns read-only operations on the local shell environment
-// the gh-optivem CLI reads from — credentials and other inputs alike (e.g.
+// `environment` noun owns the local shell environment the gh-optivem CLI reads
+// from — credentials and other inputs alike (e.g.
 // DOCKERHUB_USERNAME is an account name, not a token, but is still required
 // from the environment).
 //
@@ -12,6 +12,8 @@
 //	                                 local tool (gh CLI auth, actionlint),
 //	                                 returning non-zero on any missing or
 //	                                 rejected value.
+//	gh optivem environment setup  — install the missing tools and fix PATH.
+//	                                 The only subcommand that writes.
 //
 // `verify` is designed to be invoked from a CI preflight job so a single
 // broken input surfaces once, before a scaffolding matrix fans out and burns
@@ -38,10 +40,14 @@ const langFlagUsage = "Languages whose toolchains to check or install: java, dot
 func newEnvironmentCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "environment",
-		Short: "Inspect the local shell environment gh-optivem reads from",
-		Long: `Inspect the local shell environment gh-optivem reads from. Subcommands run
-read-only checks against the current process environment and exit non-zero
-on any failure. No repos, secrets, or releases are mutated.`,
+		Short: "Inspect or set up the local environment gh-optivem needs",
+		Long: `Inspect or set up the local environment gh-optivem needs.
+
+  show    read-only: print each credential variable (masked)
+  verify  read-only: check tools and credentials, exit non-zero on any failure
+  setup   WRITES: install missing tools and fix PATH on this machine
+
+No repos, secrets, or releases are mutated by any of them.`,
 	}
 	cmd.AddCommand(
 		newEnvironmentShowCmd(),
@@ -101,8 +107,12 @@ func newEnvironmentVerifyCmd() *cobra.Command {
 	var langs []string
 	cmd := &cobra.Command{
 		Use:   "verify",
-		Short: "Verify the local environment is ready to run the gh-acceptance pipeline",
-		Long: `Verify the local environment is ready to run the gh-acceptance pipeline:
+		Short: "Verify the local environment is ready (read-only; never installs anything)",
+		Long: `Verify the local environment is ready to run the gh-acceptance pipeline.
+This only reads - it changes nothing on your machine. To install what is
+missing, run 'gh optivem environment setup'.
+
+Checks that
 required local tools are installed and authenticated, and every credential
 the CLI consumes is present and accepted by its provider.
 
