@@ -430,10 +430,28 @@ func writeExit(deps Deps, ev *Event) {
 	if delta != "" && !hoisted {
 		fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("state:", color.Faint), delta)
 	}
+	if node.ID == "FIX_LOOP_EXHAUSTED" || node.ID == "FIX_LOOP_NO_PROGRESS_EXHAUSTED" {
+		writeFixLoopEditedFiles(deps, ev.PostState)
+	}
 	if node.Kind == statemachine.UserTask {
 		if files := dirtyDelta(ev.PreDirty, ev.PostDirty); len(files) > 0 {
 			fmt.Fprintf(w, "%s    %s %s\n", deps.tracePrefix(), deps.paint("files:", color.Faint), strings.Join(files, ", "))
 		}
+	}
+}
+
+// writeFixLoopEditedFiles lists, under a fix-loop halt, the files the fixer
+// edited across its passes (state key fix-loop-edited-files). Report-only: it
+// lets the human see whether the fixer only touched tests/DTOs and never the
+// system under test. Prints nothing when no edits were recorded.
+func writeFixLoopEditedFiles(deps Deps, post map[string]string) {
+	files := strings.Fields(post["fix-loop-edited-files"])
+	if len(files) == 0 {
+		return
+	}
+	fmt.Fprintf(deps.Out, "%s    %s %d file(s) across fix passes\n", deps.tracePrefix(), deps.paint("fixer edited:", color.Faint), len(files))
+	for _, f := range files {
+		fmt.Fprintf(deps.Out, "%s      %s\n", deps.tracePrefix(), f)
 	}
 }
 

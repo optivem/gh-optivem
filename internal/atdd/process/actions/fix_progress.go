@@ -43,6 +43,12 @@ import (
 const (
 	CtxKeyFixPrevFailureSignature = "fix-prev-failure-signature"
 	CtxKeyFixLoopProgressing      = "fix-loop-progressing"
+	// CtxKeyFixLoopEditedFiles is the newline-joined, de-duplicated set of
+	// files the fixer edited across the passes of the current loop. Purely
+	// diagnostic: no gateway reads it. The trace surfaces it on the
+	// FIX_LOOP_*_EXHAUSTED halts so a human sees at a glance which layers the
+	// fixer touched (e.g. only tests/DTOs, never the system under test).
+	CtxKeyFixLoopEditedFiles = "fix-loop-edited-files"
 )
 
 // checkFixProgress is the verify-tests-pass no-progress guard
@@ -54,6 +60,13 @@ const (
 func (a actions) checkFixProgress(ctx *statemachine.Context) statemachine.Outcome {
 	cur := fixFailureSignature(ctx.GetString("verify_failure_output"))
 	prev := ctx.GetString(CtxKeyFixPrevFailureSignature)
+
+	// A recorded prior signature means a fixer pass ran since the last fail,
+	// so phase-changed-files now holds that pass's edits. Report-only: this
+	// never influences the progress verdict below.
+	if prev != "" {
+		accumulateFixEditedFiles(ctx, ctx.GetString("phase-changed-files"))
+	}
 
 	// Indeterminate (the failing run produced no capturable output) or the
 	// first fail of this loop (no prior signature to compare against):
@@ -80,6 +93,27 @@ func (a actions) checkFixProgress(ctx *statemachine.Context) statemachine.Outcom
 	ctx.Set(CtxKeyFixPrevFailureSignature, cur)
 	ctx.Set(CtxKeyFixLoopProgressing, true)
 	return statemachine.Outcome{}
+}
+
+// accumulateFixEditedFiles merges the newline-joined paths in changed into
+// ctx.State[CtxKeyFixLoopEditedFiles], preserving first-seen order and
+// dropping duplicates.
+func accumulateFixEditedFiles(ctx *statemachine.Context, changed string) {
+	if strings.TrimSpace(changed) == "" {
+		return
+	}
+	existing := ctx.GetString(CtxKeyFixLoopEditedFiles)
+	seen := map[string]bool{}
+	var all []string
+	for _, f := range strings.Split(existing+"\n"+changed, "\n") {
+		f = strings.TrimSpace(f)
+		if f == "" || seen[f] {
+			continue
+		}
+		seen[f] = true
+		all = append(all, f)
+	}
+	ctx.Set(CtxKeyFixLoopEditedFiles, strings.Join(all, "\n"))
 }
 
 // fixFailureSignature normalises a verify_failure_output payload into a

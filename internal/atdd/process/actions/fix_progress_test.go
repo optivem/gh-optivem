@@ -88,6 +88,32 @@ func TestFixFailureSignature(t *testing.T) {
 // a baseline and lets the fixer run; a later fail with an identical
 // signature halts; a fail whose signature changed advances the baseline
 // and continues; an empty payload fails safe (never halts).
+func TestCheckFixProgress_AccumulatesEditedFiles(t *testing.T) {
+	a := actions{}
+	ctx := statemachine.NewContext()
+	// First fail: phase-changed-files is upstream residue, not a fixer edit.
+	ctx.Set("phase-changed-files", "upstream/Residue.java")
+	ctx.Set("verify_failure_output", "A FAILED")
+	a.checkFixProgress(ctx)
+	if got := ctx.GetString("fix-loop-edited-files"); got != "" {
+		t.Fatalf("first fail must not record edits, got %q", got)
+	}
+	// Second fail: the fixer's pass 1 edits.
+	ctx.Set("phase-changed-files", "dto/A.java\ntest/ATest.java")
+	ctx.Set("verify_failure_output", "B FAILED")
+	a.checkFixProgress(ctx)
+	// Third fail: pass 2 overlaps pass 1.
+	ctx.Set("phase-changed-files", "test/ATest.java\ntest/BTest.java")
+	ctx.Set("verify_failure_output", "C FAILED")
+	a.checkFixProgress(ctx)
+	if got, want := ctx.GetString("fix-loop-edited-files"), "dto/A.java\ntest/ATest.java\ntest/BTest.java"; got != want {
+		t.Fatalf("edited files:\n got: %q\nwant: %q", got, want)
+	}
+	if p, _ := ctx.State["fix-loop-progressing"].(bool); !p {
+		t.Error("reporting must not change the progress verdict")
+	}
+}
+
 func TestCheckFixProgress(t *testing.T) {
 	a := actions{}
 

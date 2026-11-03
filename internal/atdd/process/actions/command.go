@@ -169,6 +169,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		// same run, where its first fail would compare against a stale
 		// signature. Cleared here for the same reason verify_failure_output is.
 		ctx.Unset("fix-prev-failure-signature")
+		ctx.Unset(CtxKeyFixLoopEditedFiles)
 	}
 	if isTestRun && !succeeded {
 		// Classify the failure so the gateway downstream of run-tests can

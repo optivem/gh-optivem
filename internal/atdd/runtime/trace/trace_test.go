@@ -129,6 +129,35 @@ func TestWrap_TestsInfraHaltBannerRendersDiagnosticPayload(t *testing.T) {
 	}
 }
 
+func TestWrap_FixLoopHaltListsEditedFiles(t *testing.T) {
+	prevNow := nowFn
+	nowFn = fixedClock
+	t.Cleanup(func() { nowFn = prevNow })
+
+	var buf bytes.Buffer
+	node := statemachine.Node{
+		ID:   "FIX_LOOP_EXHAUSTED",
+		Kind: statemachine.ErrorEndEvent,
+		Fn:   func(ctx *statemachine.Context) statemachine.Outcome { return statemachine.Outcome{} },
+	}
+	wrapped := wrap(node, Deps{Out: &buf}.withDefaults())
+	ctx := statemachine.NewContext()
+	ctx.Set("fix-loop-edited-files", "dto/A.java\ntest/ATest.java")
+	wrapped(ctx)
+	got := buf.String()
+	for _, s := range []string{"fixer edited: 2 file(s)", "dto/A.java", "test/ATest.java"} {
+		if !strings.Contains(got, s) {
+			t.Errorf("missing %q in:\n%s", s, got)
+		}
+	}
+
+	buf.Reset()
+	wrapped(statemachine.NewContext())
+	if strings.Contains(buf.String(), "fixer edited") {
+		t.Errorf("no edits recorded: must print nothing, got:\n%s", buf.String())
+	}
+}
+
 // TestWrap_TestsInfraHaltBannerSurfacesContractDrift guards the
 // "(unset)" rendering for missing diagnostic state. Pre-classifier
 // drift (e.g. an upstream change that stops stamping test-infra-label)
