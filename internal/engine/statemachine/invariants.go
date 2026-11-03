@@ -98,37 +98,47 @@ func ruleCommitIsVerified(eng *Engine) []Violation {
 			if !isCallTo(node, "commit") {
 				continue
 			}
-			compileOnly := isCompileOnlyVerifiedCommit(proc, node.ID)
-			preds := dispatchingPredecessors(proc, node.ID)
-			if len(preds) == 0 {
-				out = append(out, Violation{
-					Process: proc.ID, Node: node.ID, Rule: rule,
-					Message: "commit has no dispatching predecessor — not gated by a verify-tests-* call-activity",
-				})
-				continue
-			}
-			for _, pred := range preds {
-				pn := proc.Nodes[pred]
-				// verify-inner-loop is the opt-in inner-loop gate (component tests +
-				// mutation) layered after verify-tests-pass; it is itself a suite
-				// verify, so a commit it gates is verified.
-				if isCallTo(pn, "verify-tests-pass") || isCallTo(pn, "verify-tests-fail") || isCallTo(pn, "verify-inner-loop") {
-					continue
-				}
-				// Compile-only route: the idempotent system-start (or the
-				// compile step itself) is a legitimate predecessor when
-				// COMPILE_TESTS gates the commit instead of a verify.
-				if compileOnly && (isCallTo(pn, "start-system") || isCallTo(pn, "start-system-restart") || isCallTo(pn, "compile-tests")) {
-					continue
-				}
-				out = append(out, Violation{
-					Process: proc.ID, Node: node.ID, Rule: rule,
-					Message: fmt.Sprintf("commit's dispatching predecessor %q (process %q) is not a verify-tests-* call-activity", pred, pn.Raw.Process),
-				})
-			}
+			out = append(out, commitVerifiedViolations(proc, node, rule)...)
 		}
 	}
 	return out
+}
+
+// commitVerifiedViolations checks one commit node's dispatching predecessors.
+func commitVerifiedViolations(proc *Process, node Node, rule string) []Violation {
+	var out []Violation
+	compileOnly := isCompileOnlyVerifiedCommit(proc, node.ID)
+	preds := dispatchingPredecessors(proc, node.ID)
+	if len(preds) == 0 {
+		return append(out, Violation{
+			Process: proc.ID, Node: node.ID, Rule: rule,
+			Message: "commit has no dispatching predecessor — not gated by a verify-tests-* call-activity",
+		})
+	}
+	for _, pred := range preds {
+		pn := proc.Nodes[pred]
+		if isVerifyingPredecessor(pn, compileOnly) {
+			continue
+		}
+		out = append(out, Violation{
+			Process: proc.ID, Node: node.ID, Rule: rule,
+			Message: fmt.Sprintf("commit's dispatching predecessor %q (process %q) is not a verify-tests-* call-activity", pred, pn.Raw.Process),
+		})
+	}
+	return out
+}
+
+// isVerifyingPredecessor reports whether pn legitimately gates a commit.
+// verify-inner-loop is the opt-in inner-loop gate (component tests + mutation)
+// layered after verify-tests-pass; it is itself a suite verify, so a commit it
+// gates is verified. On the compile-only route the idempotent system-start (or
+// the compile step itself) is a legitimate predecessor when COMPILE_TESTS gates
+// the commit instead of a verify.
+func isVerifyingPredecessor(pn Node, compileOnly bool) bool {
+	if isCallTo(pn, "verify-tests-pass") || isCallTo(pn, "verify-tests-fail") || isCallTo(pn, "verify-inner-loop") {
+		return true
+	}
+	return compileOnly && (isCallTo(pn, "start-system") || isCallTo(pn, "start-system-restart") || isCallTo(pn, "compile-tests"))
 }
 
 // isCompileOnlyVerifiedCommit reports whether commitID is the compile-only
