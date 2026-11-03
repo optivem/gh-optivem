@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Group 5 — Items 18, 22, 23, 24** (Item 19 shipped): decisions confirmed, so they are ready to dispatch one per session (start with Item 18, 22 or 23). Item 15's code shipped locally (shop `32e90dcb`, gh-optivem `15b30e6c`, unpushed); its remainder, Item 13's leftovers and Item 7's #76 check are all deferred and need an attended session (shop push OK + rehearsal). Run `/sync` to push gh-optivem (and shop, with OK).
+**Group 5 — Items 22, 23, 24** (Items 18 and 19 closed): decisions confirmed, so they are ready to dispatch one per session (start with Item 22 or 23). Item 18 (#6) was judged on merit and parked 2026-11-03: there is no `gh optivem refine` command to point the fast-exit at, a status gate would break rehearsals, and the tracker has no status read. The plan is now `plans/backlog/parked/20260525-1753-…`, with the revisit condition recorded in it. Item 15's code shipped locally (shop `32e90dcb`, gh-optivem `15b30e6c`, unpushed); its remainder, Item 13's leftovers and Item 7's #76 check are all deferred and need an attended session (shop push OK + rehearsal). Run `/sync` to push gh-optivem (and shop, with OK).
 
 ## How to execute this meta-plan
 
@@ -39,7 +39,6 @@ Run `/execute-plan` on this file. Each item below is one execution unit. To exec
 
 ### Group 5 — Wave 3 (stop and ask user first)
 "Later" decisions confirmed 2026-11-03 (user: use the recommendation for all). Copy each into its own plan's open questions when that item starts. Run one item per session.
-- [ ] **Item 18 — #6** (`p2-atdd-quality/20260525-1753-…pre-refine-check…`): refine signal = board status past "In refinement"; drop Idea 2 (post-run refactor offer).
 - **Items 20 (#13) and 21 (#16)** and the shop parts of Items 13 and 15 moved to the shop plan `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md`. Decisions: #13 Option A (Java only); #16 `/users` customer directory in all configs, rehearsed on monolith-java only, refine deferred. Nothing to do here except the gh-optivem side of their rehearsals.
 - [ ] **Item 22 — #20** (`p2-atdd-quality/20260812-1705-environment-setup-command`): the plan's own recommendations; Step 8 (collapse duplication) only after a green clean-room VM run.
 - [ ] **Item 23 — #42 Slice 1** (`p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component`): rename `unit-tests` to `test-after`; measure changed-only PIT run before relying on mutation gate.

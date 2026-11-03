@@ -4,6 +4,12 @@
 >
 > **Verdict: KEEP.** Genuine UX improvement, nothing built yet, not superseded. Still an idea — run `/refine-plan` before `/execute-plan`.
 
+> **Parked 2026-11-03 (merit review during meta-backlog execution).** Not executed, because the premise no longer holds:
+> - **Idea 1 has no remedy to offer.** There is no `gh optivem refine` command. `refine-ticket` is a process in `process-flow.yaml` that no CLI verb reaches. A fast-exit saying "run refine" would name a command that does not exist. The only real remedy is to move the card by hand on the board.
+> - **Idea 1 would break existing flows.** `scripts/atdd-rehearsal.sh` and anyone who skips refinement drive `implement` on cards that never passed "In refinement". A hard gate on board status would fail those runs. The tracker also has no status read: `tracker.Issue` carries no status, although the github adapter already fetches one per item. That means interface, adapter and markdown-adapter changes.
+> - **Idea 2 was already dropped** (confirmed 2026-11-03), and `refactor` remains a bare process, not a command.
+> - **Revisit only if** a `gh optivem refine` verb is added. Then: add `Status` to `tracker.Issue`, read it in `preResolveIssue`, and gate on status "Backlog"/"In refinement" with a `--skip-refine-check`-style escape hatch.
+
 **Date:** 2026-05-25
 **Status:** idea — not yet refined. Run `/refine-plan` against this file before `/execute-plan`.
 **Trigger:** observation while walking ATDD plans — `gh optivem implement --issue <n>` currently jumps straight into the WRITE/RED/GREEN cycle without checking whether the ticket has been through `backlog_refinement` first, and exits without prompting whether the user wants to follow up with a refactor pass. Both gaps cause friction: implementing un-refined tickets produces noisier cycles, and refactor opportunities surfaced during implementation are forgotten once the command exits.
