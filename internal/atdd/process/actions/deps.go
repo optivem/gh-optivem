@@ -135,7 +135,7 @@ func (d Deps) withDefaults() Deps {
 	// sink (and only there, by default). Earlier "Shell == nil" branch
 	// position would have referenced d.Out before it was populated.
 	if d.Shell == nil {
-		d.Shell = realShell{stdout: d.Out.Detail, stderr: d.Stderr}
+		d.Shell = realShell{stdout: d.Out.Detail, stderr: d.Out.Detail}
 	}
 	if d.Tracker == nil {
 		// Default to a github adapter wrapping the (possibly fake) Gh

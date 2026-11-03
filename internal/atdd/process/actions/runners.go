@@ -86,7 +86,7 @@ func (r realShell) Run(ctx context.Context, commandLine string) (ShellResult, er
 		shell = "bash"
 	}
 	cmd := exec.CommandContext(ctx, shell, "-c", commandLine)
-	// Tee the child's stdio: stream live to the operator's terminal so
+	// Tee the child's stdio: stream live to the Detail sinks (terminal only with --verbose) so
 	// long-running commands (docker compose build, gradle, etc.) show
 	// progress instead of looking hung, and capture into buffers so the
 	// returned ShellResult still carries stdout for callers that parse it
@@ -97,14 +97,16 @@ func (r realShell) Run(ctx context.Context, commandLine string) (ShellResult, er
 	// only sees them with --verbose; --log-file always gets them) — a
 	// shift from the pre-outlog behaviour where realShell wrote straight
 	// to os.Stdout, bypassing the log-file mirror entirely. Zero-value
-	// writers fall back to os.Stdout / os.Stderr for direct-construction
+	// stdout falls back to os.Stdout and stderr to the stdout sink (stderr is
+		// Detail-level too; failures surface via the HALT banner's
+		// command-stderr-tail) for direct-construction
 	// callers.
 	stdoutSink, stderrSink := r.stdout, r.stderr
 	if stdoutSink == nil {
 		stdoutSink = os.Stdout
 	}
 	if stderrSink == nil {
-		stderrSink = os.Stderr
+		stderrSink = stdoutSink
 	}
 	var stdoutBuf, stderrBuf bytes.Buffer
 	cmd.Stdout = io.MultiWriter(stdoutSink, &stdoutBuf)

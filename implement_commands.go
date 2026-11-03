@@ -222,7 +222,7 @@ kill them.`,
 	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
 	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
 	cmd.Flags().StringVar(&logLevelArg, "log-level", "detail", "Verbosity of --log-file: phase (BPMN trace + prompts only) or detail (everything, default)")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Stream the full firehose (subprocess output, agent body, prompt-prep banners) to the terminal. Default: terminal shows only BPMN trace lines, agent enter/exit banners, and prompts")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Stream the full firehose (subprocess stdout and stderr, agent body, prompt-prep banners) to the terminal. Default: terminal shows only BPMN trace lines, agent enter/exit banners, and prompts")
 	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
 	cmd.Flags().IntVar(&keepRunHistory, "keep-run-history", 100, "Max runs to keep in the durable run-history archive (<user-state-dir>/runs/), which mirrors summary.md, summary.jsonl, steps.jsonl and flow.txt so they survive worktree teardown (0 = disable the archive)")
 	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
