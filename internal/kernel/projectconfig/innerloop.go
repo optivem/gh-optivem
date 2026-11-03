@@ -1,6 +1,9 @@
 package projectconfig
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // InnerLoopMode names how (and whether) a component runs an inner loop of
 // unit/component-level testing beneath the acceptance-test outer loop.
@@ -65,6 +68,59 @@ func (il InnerLoop) validate(prefix string) error {
 	}
 	if il.MutationThreshold != 0 && !il.Enabled() {
 		return fmt.Errorf("config: %s.mutation-threshold requires %s.mode to be %s or %s", prefix, prefix, InnerLoopTestAfter, InnerLoopTDD)
+	}
+	return nil
+}
+
+// ComponentTestPathKey is the placeholder / tier `paths:` key naming the
+// component's inner test source set (the component tests an inner loop writes
+// and runs). It is declared on the backend or frontend tier that opts in, not
+// under system-test.paths, and is scoped only to the inner-loop phase.
+const ComponentTestPathKey = "component-test"
+
+// IsTierInnerLoopPathKey reports whether key is a placeholder resolved from a
+// system tier's own `paths:` block rather than system-test.paths.
+func IsTierInnerLoopPathKey(key string) bool {
+	return key == ComponentTestPathKey
+}
+
+// ComponentTestPath returns the configured component-test path of the
+// multitier backend tier (falling back to the frontend tier), or "" when no
+// tier declares one.
+func (c *Config) ComponentTestPath() string {
+	if c == nil {
+		return ""
+	}
+	if v := c.System.Backend.Paths[ComponentTestPathKey]; v != "" {
+		return v
+	}
+	return c.System.Frontend.Paths[ComponentTestPathKey]
+}
+
+// validateTierPaths enforces the tier `paths:` contract: only the inner-loop
+// keys are accepted, values are fully-resolved repo-relative paths, and
+// component-test is required exactly when the tier's inner loop is enabled.
+func validateTierPaths(prefix string, t TierSpec) error {
+	if err := t.InnerLoop.validate(prefix + ".inner-loop"); err != nil {
+		return err
+	}
+	for _, k := range sortedKeys(t.Paths) {
+		if !IsTierInnerLoopPathKey(k) {
+			return fmt.Errorf("config: %s.paths.%s is not a supported key (only %q is allowed on a system tier; other paths belong under system-test.paths)", prefix, k, ComponentTestPathKey)
+		}
+		if strings.Contains(t.Paths[k], "${") {
+			return fmt.Errorf("config: %s.paths.%s %q contains a ${...} marker; paths must be fully resolved", prefix, k, t.Paths[k])
+		}
+		if err := validatePath(prefix+".paths."+k, t.Paths[k]); err != nil {
+			return err
+		}
+	}
+	has := t.Paths[ComponentTestPathKey] != ""
+	switch {
+	case t.InnerLoop.Enabled() && !has:
+		return fmt.Errorf("config: %s.inner-loop.mode is %s; %s.paths.%s is required", prefix, t.InnerLoop.EffectiveMode(), prefix, ComponentTestPathKey)
+	case !t.InnerLoop.Enabled() && has:
+		return fmt.Errorf("config: %s.paths.%s requires %s.inner-loop.mode to be %s or %s", prefix, ComponentTestPathKey, prefix, InnerLoopTestAfter, InnerLoopTDD)
 	}
 	return nil
 }

@@ -207,10 +207,9 @@ component:
 
 ## ▶ Next executable step (resume here)
 
-Step 1 (schema + `Validate`, `InnerLoop` in
-`internal/kernel/projectconfig/innerloop.go`) is shipped. Resume at Step 2
-(path placeholders for the component test path, relaxing Rule 22c on
-backend/frontend `paths:` to allow exactly `component-test`).
+Steps 1 and 2 are shipped (`internal/kernel/projectconfig/innerloop.go`; the
+`component-test` tier path key, `Validate` rules and `ResolveLayerPaths` wiring).
+Resume at Step 3 (BPMN gateway + inner-loop phase + prompt section + verify).
 
 ## Steps
 
@@ -230,11 +229,11 @@ component tests.
   plumbing (`internal/config/config.go` RawFlags -> yaml writer,
   `internal/config/configinit/prompt.go`) is a separate, wide change. Hand-editing
   `inner-loop:` works meanwhile, so this does not block Steps 2-5.
-- [ ] Step 2: Add a Family B path placeholder for the component's domain core and
-  its unit-test path. Pin it in `phase-scopes.yaml` for the new inner-loop phase.
-  Paths must be constructed deterministically (pinned against the shop
-  template), with no fallback ladder.
-- [ ] Step 3: In `implement-and-verify-system`, add a gateway on the component's
+- [ ] Step 3: First pin the `component-test` scope key (shipped in Step 2 as
+  `atdd.TierPathKeysInScope`, resolved by `ResolveLayerPaths`) in the inline
+  `read`/`write` scope of the new inner-loop phase in
+  `internal/atdd/process/process-flow.yaml` (scope SSoT now lives there, not in
+  `phase-scopes.yaml`). Then, in `implement-and-verify-system`, add a gateway on the component's
   mode. For `test-after`, the implementer prompt gains a "design upfront, then
   domain code + unit tests through the domain API/ports, no mocking inside the
   domain" section. A new verify step runs the unit suite plus mutation testing,

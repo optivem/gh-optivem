@@ -25,6 +25,7 @@ func TestInnerLoop_ValidOnTierMonolithServiceComponent(t *testing.T) {
 
 	mt := validMultitierBase()
 	mt.System.Backend.InnerLoop = loop
+	mt.System.Backend.Paths = map[string]string{ComponentTestPathKey: "be/ct"}
 	if err := mt.Validate(); err != nil {
 		t.Fatalf("multitier backend: %v", err)
 	}
@@ -62,6 +63,7 @@ func TestInnerLoop_Rejections(t *testing.T) {
 			t.Parallel()
 			cfg := validMultitierBase()
 			cfg.System.Backend.InnerLoop = tc.loop
+			cfg.System.Backend.Paths = map[string]string{ComponentTestPathKey: "be/ct"}
 			err := cfg.Validate()
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("want error containing %q, got %v", tc.want, err)
@@ -84,6 +86,7 @@ func TestInnerLoop_YAMLRoundTrip(t *testing.T) {
 	t.Parallel()
 	cfg := validMultitierBase()
 	cfg.System.Backend.InnerLoop = InnerLoop{Mode: InnerLoopTestAfter, MutationThreshold: 70}
+	cfg.System.Backend.Paths = map[string]string{ComponentTestPathKey: "be/ct"}
 	dir := t.TempDir()
 	if err := Write(dir, cfg); err != nil {
 		t.Fatalf("Write: %v", err)
@@ -94,5 +97,52 @@ func TestInnerLoop_YAMLRoundTrip(t *testing.T) {
 	}
 	if got.System.Backend.InnerLoop != cfg.System.Backend.InnerLoop {
 		t.Fatalf("round-trip lost inner-loop: got %+v", got.System.Backend.InnerLoop)
+	}
+}
+
+func TestInnerLoop_ComponentTestPath(t *testing.T) {
+	t.Parallel()
+	cfg := validMultitierBase()
+	cfg.System.Backend.InnerLoop = InnerLoop{Mode: InnerLoopTestAfter}
+
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "paths.component-test is required") {
+		t.Fatalf("enabled mode without component-test path: got %v", err)
+	}
+
+	cfg.System.Backend.Paths = map[string]string{ComponentTestPathKey: "be/src/componentTest/java"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("enabled mode with component-test path: %v", err)
+	}
+	if got := cfg.PlaceholderMap()[ComponentTestPathKey]; got != "be/src/componentTest/java" {
+		t.Fatalf("PlaceholderMap[component-test] = %q", got)
+	}
+	if got := cfg.ComponentTestPath(); got != "be/src/componentTest/java" {
+		t.Fatalf("ComponentTestPath = %q", got)
+	}
+}
+
+func TestInnerLoop_TierPathsRejections(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		loop  InnerLoop
+		paths map[string]string
+		want  string
+	}{
+		{"path without mode", InnerLoop{}, map[string]string{ComponentTestPathKey: "be/ct"}, "requires system.backend.inner-loop.mode"},
+		{"foreign key", InnerLoop{Mode: InnerLoopTDD}, map[string]string{ComponentTestPathKey: "be/ct", "at-test": "x"}, "not a supported key"},
+		{"unresolved marker", InnerLoop{Mode: InnerLoopTDD}, map[string]string{ComponentTestPathKey: "${x}/ct"}, "${...}"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg := validMultitierBase()
+			cfg.System.Backend.InnerLoop = tc.loop
+			cfg.System.Backend.Paths = tc.paths
+			err := cfg.Validate()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want error containing %q, got %v", tc.want, err)
+			}
+		})
 	}
 }

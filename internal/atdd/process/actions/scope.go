@@ -189,6 +189,14 @@ func ResolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, er
 			out = append(out, paths...)
 			continue
 		}
+		if atdd.TierPathKeysInScope[layer] {
+			v := cfg.ComponentTestPath()
+			if v == "" {
+				return nil, fmt.Errorf("layer %q resolves to no system.backend.paths.%s (or frontend) in gh-optivem.yaml; the tier's inner-loop needs it", layer, layer)
+			}
+			out = append(out, v)
+			continue
+		}
 		if atdd.FamilyAPathKeysInScope[layer] {
 			switch layer {
 			case "system-path":

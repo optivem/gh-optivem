@@ -703,6 +703,9 @@ func (c *Config) PlaceholderMap() map[string]string {
 			out[key] = strings.Join(paths, ", ")
 		}
 	}
+	if v := c.ComponentTestPath(); v != "" {
+		out[ComponentTestPathKey] = v
+	}
 	out["architecture"] = c.System.Architecture
 	out["system-path"] = c.System.Path
 	out["system-db-migration-path"] = c.System.DbMigrationPath
@@ -1174,11 +1177,13 @@ func (c *Config) Validate() error {
 	// to anchor against, and silently accepting the field would let a typo
 	// like `system.backend.paths:` parse as a no-op. Same shape as Rule 0b
 	// for TierSpec.Config (also system-test-only).
-	if len(c.System.Backend.Paths) > 0 {
-		return fmt.Errorf("config: system.backend.paths is not a supported field (paths: is system-test-only; use system-test.paths)")
+	// Relaxed for the inner loop: backend/frontend tiers accept exactly the
+	// inner-loop keys (see validateTierPaths); every other key stays rejected.
+	if err := validateTierPaths("system.backend", c.System.Backend); err != nil {
+		return err
 	}
-	if len(c.System.Frontend.Paths) > 0 {
-		return fmt.Errorf("config: system.frontend.paths is not a supported field (paths: is system-test-only; use system-test.paths)")
+	if err := validateTierPaths("system.frontend", c.System.Frontend); err != nil {
+		return err
 	}
 
 	// Rule 22e: inner-loop is valid on the monolith system, backend/frontend
