@@ -198,6 +198,27 @@ func TestPrompt_FixerPreamble(t *testing.T) {
 	}
 }
 
+func TestPrompt_GreenTouchList(t *testing.T) {
+	// Only the six GREEN implementers carry the touch-list chunk; RED agents,
+	// fixers and the rest must not.
+	for _, name := range DefaultAgentSet().Names() {
+		t.Run(name, func(t *testing.T) {
+			body, err := DefaultAgentSet().Prompt(name)
+			if err != nil {
+				t.Fatalf("Prompt: %v", err)
+			}
+			if got := strings.Contains(body, touchList); got != greenImplementers[name] {
+				t.Errorf("touch-list present = %v, want %v", got, greenImplementers[name])
+			}
+		})
+	}
+	for name := range greenImplementers {
+		if _, err := DefaultAgentSet().Prompt(name); err != nil {
+			t.Errorf("greenImplementers lists %q but no such agent: %v", name, err)
+		}
+	}
+}
+
 func TestPrompt_SystemImplementer_ContradictoryTestsHalt(t *testing.T) {
 	// Pins the contradictory-tests halt doctrine into the
 	// system-implementer prompt (plan 20260623-1346). When an acceptance

@@ -17,6 +17,7 @@ const (
 	fixerPreamblePath     = "runtime/shared/fixer-preamble.md"
 	interactiveSuffixPath = "runtime/shared/interactive-suffix.md"
 	headlessSuffixPath    = "runtime/shared/headless-no-ask.md"
+	touchListPath         = "runtime/shared/green-touch-list.md"
 )
 
 // sharedPreamble is the universal ticket-vars + don't-commit/summarise block
@@ -40,7 +41,21 @@ var (
 	fixerPreamble     = mustReadAsset(fixerPreamblePath)
 	interactiveSuffix = mustReadAsset(interactiveSuffixPath)
 	headlessSuffix    = mustReadAsset(headlessSuffixPath)
+	touchList         = mustReadAsset(touchListPath)
 )
+
+// greenImplementers are the GREEN-phase implementer agents. They — and only
+// they — get the touch-list chunk inserted between scope and the body, so the
+// declared-scope instruction lives in one place and RED agents and fixers are
+// unaffected.
+var greenImplementers = map[string]bool{
+	"system-implementer":                         true,
+	"dsl-implementer":                            true,
+	"system-driver-adapter-implementer":          true,
+	"external-system-driver-adapter-implementer": true,
+	"external-system-stub-implementer":           true,
+	"external-system-real-simulator-implementer": true,
+}
 
 func mustReadAsset(path string) string {
 	data, err := assets.FS.ReadFile(path)
@@ -152,6 +167,9 @@ func (s *AgentSet) Prompt(name string) (string, error) {
 	prompt := sharedPreamble + "\n\n" + sharedScope + "\n\n"
 	if isFixer(name) {
 		prompt += fixerPreamble + "\n\n"
+	}
+	if greenImplementers[name] {
+		prompt += touchList + "\n\n"
 	}
 	return prompt + body + "\n", nil
 }
