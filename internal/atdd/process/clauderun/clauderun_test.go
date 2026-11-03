@@ -3038,16 +3038,49 @@ func TestParseClaudeStreamJSON_ErrorResultEventSurfacesText(t *testing.T) {
 
 func TestRenderInnerLoopSection(t *testing.T) {
 	for _, mode := range []string{"", "none"} {
-		got, err := renderInnerLoopSection(mode)
+		got, err := renderInnerLoopSection(mode, "")
 		if err != nil || got != "" {
 			t.Errorf("mode %q: got %q, %v; want empty, nil", mode, got, err)
 		}
 	}
-	got, err := renderInnerLoopSection("test-after")
-	if err != nil || !strings.Contains(got, "Design upfront") || !strings.Contains(got, "${component-test}") {
-		t.Errorf("test-after: got %q, %v; want the design-upfront section naming ${component-test}", got, err)
+	got, err := renderInnerLoopSection("test-after", "be/ct")
+	if err != nil || !strings.Contains(got, "Design upfront") || !strings.Contains(got, "(`be/ct`)") || strings.Contains(got, "${") {
+		t.Errorf("test-after: got %q, %v; want the design-upfront section with the path filled in", got, err)
 	}
-	if _, err := renderInnerLoopSection("tdd"); err == nil {
+	if _, err := renderInnerLoopSection("test-after", ""); err == nil {
+		t.Error("test-after without a component-test path must fail loudly")
+	}
+	if _, err := renderInnerLoopSection("tdd", "be/ct"); err == nil {
 		t.Error("tdd has no section yet and must fail loudly")
+	}
+}
+
+// TestRenderMatrix_InnerLoopTestAfter renders the system-implementer for an
+// opted-in multitier backend: the ${inner-loop-section} chunk is inlined, its
+// ${component-test} reference resolves from the config placeholder map, and
+// nothing is left unfilled. The default (none) rows above prove the empty case.
+func TestRenderMatrix_InnerLoopTestAfter(t *testing.T) {
+	opts := renderMatrixOpts(projectconfig.ArchMultitier, "backend", "api")
+	opts.Agent = "system-implementer"
+	opts.InnerLoopMode = "test-after"
+	opts.Placeholders[projectconfig.ComponentTestPathKey] = "backend/src/componentTest/java"
+
+	prompt, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, prompt, "Inner loop: test-after")
+	mustContain(t, prompt, "backend/src/componentTest/java")
+	if leftovers := findUnfilledPlaceholders(prompt); len(leftovers) > 0 {
+		t.Errorf("unfilled placeholders: %s", strings.Join(leftovers, ", "))
+	}
+
+	opts.InnerLoopMode = "none"
+	prompt, err = renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt(none): %v", err)
+	}
+	if strings.Contains(prompt, "Inner loop: test-after") {
+		t.Error("mode none must not render the test-after section")
 	}
 }

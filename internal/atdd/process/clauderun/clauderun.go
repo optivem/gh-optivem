@@ -965,7 +965,7 @@ func renderPrompt(opts Options) (string, error) {
 	}
 	// Inner-loop section (system-implementer). Always registered: empty for a
 	// component with no inner loop, so the prompt is unchanged for it.
-	section, err := renderInnerLoopSection(opts.InnerLoopMode)
+	section, err := renderInnerLoopSection(opts.InnerLoopMode, opts.Placeholders[projectconfig.ComponentTestPathKey])
 	if err != nil {
 		return "", err
 	}
@@ -1376,8 +1376,8 @@ func renderIsolatedMarkerExample(lang string) string {
 // mode: "" for none/empty, the shared chunk for test-after, and an error for
 // any mode whose section does not exist yet (tdd is a later slice) so a
 // misconfigured component fails the dispatch rather than silently running
-// without its inner loop.
-func renderInnerLoopSection(mode string) (string, error) {
+// without its inner loop. componentTestPath fills the chunk's ${component-test}.
+func renderInnerLoopSection(mode, componentTestPath string) (string, error) {
 	switch mode {
 	case "", "none":
 		return "", nil
@@ -1386,7 +1386,13 @@ func renderInnerLoopSection(mode string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("clauderun: read inner-loop-test-after chunk: %w", err)
 		}
-		return strings.TrimRight(string(data), "\n"), nil
+		if componentTestPath == "" {
+			return "", fmt.Errorf("clauderun: inner-loop mode test-after needs the component-test path (set paths.component-test on the tier)")
+		}
+		// Expanded here, not by the prompt renderer: a placeholder inside a
+		// substituted value is not re-expanded.
+		section := strings.ReplaceAll(string(data), "${component-test}", componentTestPath)
+		return strings.TrimRight(section, "\n"), nil
 	default:
 		return "", fmt.Errorf("clauderun: inner-loop mode %q has no prompt section yet", mode)
 	}
