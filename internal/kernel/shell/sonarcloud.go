@@ -45,40 +45,7 @@ func (s *SonarCloud) api(ctx context.Context, method, endpoint string, data map[
 	// callers handle "already exists" / 404 via the result map below, exactly
 	// as before.
 	_, retryErr := RetryWithPolicy(retryTransient, retryHardFail, "sonar-retry", func() (string, error) {
-		var body io.Reader
-		if method == "POST" && data != nil {
-			vals := url.Values{}
-			for k, v := range data {
-				vals.Set(k, v)
-			}
-			body = strings.NewReader(vals.Encode())
-		}
-		req, err := http.NewRequestWithContext(ctx, method, apiURL, body)
-		if err != nil {
-			return "", err
-		}
-		req.Header.Set("Authorization", "Basic "+creds)
-		if body != nil {
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
-		resp, err := s.client.Do(req)
-		if err != nil {
-			return err.Error(), err
-		}
-		defer resp.Body.Close()
-		raw, err = io.ReadAll(resp.Body)
-		if err != nil {
-			return err.Error(), fmt.Errorf("reading response body: %w", err)
-		}
-		statusCode = resp.StatusCode
-		summary := fmt.Sprintf("HTTP %d\n%s", statusCode, string(raw))
-		// Synthesize an error on 5xx so the classifier inspects `summary`
-		// and retries. 2xx and 4xx return nil here; the result map below
-		// surfaces the 4xx to the caller as it always has.
-		if statusCode >= 500 {
-			return summary, fmt.Errorf("HTTP %d", statusCode)
-		}
-		return summary, nil
+		return s.attempt(ctx, method, apiURL, creds, data, &raw, &statusCode)
 	})
 	if retryErr != nil && statusCode == 0 {
 		// Transport / body-read error never reached a response. Preserve the
@@ -88,6 +55,52 @@ func (s *SonarCloud) api(ctx context.Context, method, endpoint string, data map[
 	// Otherwise we have a response (success, 4xx, or exhausted-5xx). Fall
 	// through to result-building so callers see the same map shape as today.
 
+	return buildSonarResult(raw, statusCode), nil
+}
+
+// attempt performs one HTTP request, storing the body and status in raw and
+// statusCode. It rebuilds the request body each call so retries are safe.
+func (s *SonarCloud) attempt(ctx context.Context, method, apiURL, creds string, data map[string]string, raw *[]byte, statusCode *int) (string, error) {
+	var body io.Reader
+	if method == "POST" && data != nil {
+		vals := url.Values{}
+		for k, v := range data {
+			vals.Set(k, v)
+		}
+		body = strings.NewReader(vals.Encode())
+	}
+	req, err := http.NewRequestWithContext(ctx, method, apiURL, body)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Basic "+creds)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err.Error(), err
+	}
+	defer resp.Body.Close()
+	var err2 error
+	*raw, err2 = io.ReadAll(resp.Body)
+	if err2 != nil {
+		return err2.Error(), fmt.Errorf("reading response body: %w", err2)
+	}
+	*statusCode = resp.StatusCode
+	summary := fmt.Sprintf("HTTP %d\n%s", *statusCode, string(*raw))
+	// Synthesize an error on 5xx so the classifier inspects `summary`
+	// and retries. 2xx and 4xx return nil here; the result map below
+	// surfaces the 4xx to the caller as it always has.
+	if *statusCode >= 500 {
+		return summary, fmt.Errorf("HTTP %d", *statusCode)
+	}
+	return summary, nil
+}
+
+// buildSonarResult decodes the response body into a result map, flagging 4xx/5xx
+// responses with error/status/message keys.
+func buildSonarResult(raw []byte, statusCode int) map[string]interface{} {
 	var result map[string]interface{}
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &result); err != nil {
@@ -106,7 +119,7 @@ func (s *SonarCloud) api(ctx context.Context, method, endpoint string, data map[
 		}
 	}
 
-	return result, nil
+	return result
 }
 
 func (s *SonarCloud) isAlreadyExists(result map[string]interface{}) bool {
