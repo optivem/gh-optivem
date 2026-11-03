@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Group 2 — Wave 1B: Items 7–10.** Wave 1A is done. Its commits are local on gh-optivem `main` and shop `main`, not pushed yet. Push them with `/commit` before Group 2 starts, because Item 7's rehearsal and Item 9's shop run need the pushed code. Then run `/execute-plan plans/20261029-2142-meta-backlog-consolidation.md`. Item 7 takes the rehearsal lock; Items 8, 9 and 10 run in parallel with it. Item 9 must ask before pushing to shop.
+**Group 4 — Wave 2 serial (Items 15–16)**, (Item 13's code shipped; its leftovers are deferred). Items 11, 12 and 14 shipped (Item 14's remaining steps, incl. the permissions step 5, live in its own plan #38). Item 7 keeps only the deferred #76 rehearsal check. Nothing is pushed yet (gh-optivem plus local sibling-repo commits): push with `/commit`, then run `/execute-plan plans/20261029-2142-meta-backlog-consolidation.md`.
 
 ## How to execute this meta-plan
 
@@ -27,16 +27,10 @@ Run `/execute-plan` on this file. Each item below is one execution unit. To exec
 ## Items
 
 ### Group 2 — Wave 1B (parallel)
-- [ ] **Item 7 — U3 #27 then #28** (CS3, Q-3 A+B+C) `[rehearsal]`: `plans/backlog/p1-correctness/20260627-2149-channel-touched-skipped-tests-noop-dispatch.md`, then `plans/backlog/p1-correctness/20260629-1728-isolated-tests-validate-channels-registered.md`
-- [ ] **Item 8 — U10 #2** badges: `plans/backlog/p4-maintenance/20260502-103000-fix-unfiltered-workflow-badges-academy-wide.md`
-- [ ] **Item 9 — U11 #44** Step 6, lenient `[shop-push]`: `plans/backlog/p3-tooling-cost/20261028-1643-spec-gate-real-run-on-shop.md`
-- [ ] **Item 10 — U6 #36** (Q-4 option a): `plans/backlog/p1-correctness/20260820-1345-component-test-sample-filter-and-suite-group-defaults.md`
+- [ ] **Item 7 — U3 #27 then #28** `[rehearsal]` — ⏳ Deferred: code shipped (#27 `dd5883ea`, #28 `10c2546c`/`6d553b95`; #28 plan deleted). Only the #76 rehearsal verification remains, in `plans/backlog/p1-correctness/20260627-2149-channel-touched-skipped-tests-noop-dispatch.md`; it needs an attended rehearsal.
 
 ### Group 3 — Wave 2 (parallel)
-- [ ] **Item 11 — U12 #31 + #24 L1** (CS4, Q-5): engine change first, then #31's Go port, then #24 Layer 1. Plans: `plans/backlog/p2-atdd-quality/20260811-1603-sonar-scan-transient-retry.md`, `plans/backlog/p2-atdd-quality/20260623-2125-atdd-dispatch-retry-budget-and-resume.md`. #24 Layer 2 stays in its plan.
-- [ ] **Item 12 — U13 #43** token-cost analysis `[rehearsal]` (reads existing logs only, so in practice it doesn't take the lock): `plans/backlog/p3-tooling-cost/20261028-1456-atdd-workflow-token-cost-analysis.md`. Afterwards, judge #1's items 4/5/7 against the results and delete #1 (CS5). #1 item 3 (`--no-update-check`) is BLOCKED and invalid: Claude CLI 2.1.316 rejects the flag under `-p` (recorded in #1, commit b0a2d460). Drop it when #1 is deleted.
-- [ ] **Item 13 — U14 #12 then #15** (Q-6) `[rehearsal]`: `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`, then `plans/backlog/p3-tooling-cost/20260616-0922-scope-drift-guard-fix-loop.md`
-- [ ] **Item 14 — U17 #38** (Q-9 option A): `plans/backlog/p3-tooling-cost/20261002-0817-unattended-plan-execution.md`
+- [ ] **Item 13 — U14 #12 then #15** (Q-6) `[rehearsal]` — ⏳ Deferred: code shipped (#12 `59450e7d`, #15 `416a761f`). Remaining, in the child plans `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md` and `plans/backlog/p3-tooling-cost/20260616-0922-scope-drift-guard-fix-loop.md`: #12 step 6 (Gradle `--warning-mode none`, a shop edit in `system-test/java/tests*.yaml` + shop push, needs OK) and the attended rehearsal checks for both.
 
 ### Group 4 — Wave 2 (serial)
 - [ ] **Item 15 — U15 #21** (Q-7, place/cancel only) `[rehearsal]` `[shop-push]`: `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`
