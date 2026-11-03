@@ -2,192 +2,73 @@
 
 ## TL;DR
 
-**Why:** SonarCloud flagged 123 functions with `go:S3776` "Cognitive Complexity too high" (>15) across 66 files; they were excluded from the prior auto-fix run because each requires a genuine function refactor.
-**End result:** All 123 functions reduced to CC ≤ 15 via helper extraction / guard clauses / flattening, with tests passing, so SonarCloud clears every finding on the next commit-stage run.
+**Why:** SonarCloud flags `go:S3776` "Cognitive Complexity too high" (>15) on gh-optivem functions; each needs a genuine refactor in orchestration-critical Go, so they were excluded from the auto-fix run.
+**End result:** Production functions reduced to CC <= 15 via helper extraction / guard clauses; test-function findings triaged (see decision) rather than churned.
 
-## ▶ Next executable step (resume here)
+## Status (re-pulled from SonarCloud 2026-11-03)
 
-Previous batch (8 items, CC=19–21, one per distinct file) done and verified — see git history. Next batch (next-easiest wins, 8 items, each the *only* remaining item in its file so they fully clear that file and can run as parallel subagents with no edit conflicts): `internal/atdd/process/actions/fix_progress_test.go` L14 (CC=21), `internal/atdd/runtime/driver/scoped_test.go` L17 (CC=21), `internal/build/componenttest/run_test.go` L43 (CC=21), `internal/build/runner/testcount_test.go` L12 (CC=21), `internal/build/runner/testnames_test.go` L15 (CC=21), `internal/kernel/approval/approval.go` L159 (CC=21), `output_commands_test.go` L342 (CC=22), `internal/engine/statemachine/invariants.go` L93 (CC=23). Read each, extract helpers, run package tests, commit.
+Open S3776 findings now: 73 (72 after the doctor_orphans fix lands) (was 123 in the original run; line numbers in older revisions of this plan were stale and have been replaced). The other open SonarCloud rules (S1135 TODO, S978 builtin shadowing, S4036 PATH, S1192, shell/PowerShell/docs-mockup findings) are NOT part of this plan.
 
-**Run started:** 2026-06-25 09:44 UTC
-**Source:** `/fix-sonar-warnings` run on `gh-optivem` (SonarCloud project `optivem_gh-optivem`).
+Done this pass: `doctor_orphans.go` `loadPidMarkers` (extracted `loadRunDirMarkers`; behavior unchanged, root package tests pass).
 
-## Why deferred
+## Decisions
 
-The same run auto-fixed 119 mechanical + security issues (constants, empty-func
-comments, script-injection env hardening, shell `[[`, godre smells) and committed
-them. The 123 `go:S3776` "Cognitive Complexity too high" findings were **not**
-auto-fixed: each is a genuine function refactor (extract helpers, flatten nested
-branching, split responsibilities) in orchestration-critical Go. Batch-refactoring
-them autonomously risks silent behavioral regressions in the ATDD engine, so they
-are deferred for human-gated execution via `/execute-plan`.
+- **Test functions (`*_test.go`): not worth refactoring.** Table-style test bodies with nested asserts score high on CC but splitting them hurts readability and gains nothing; mark these Won't Fix / accept in SonarCloud (needs a human with project admin rights) rather than churn test code. Listed below for completeness.
+- **Production functions:** worth fixing, one function at a time, highest-risk first only with a dedicated test run. Line numbers are as reported by SonarCloud on its last analysed revision and may be a few lines off.
 
 ## How to execute
 
-Work one function at a time. For each:
-1. Read the function and its tests.
-2. Reduce cognitive complexity below 15 — typically by extracting cohesive
-   sub-steps into named helpers, replacing nested `if` ladders with early returns
-   / guard clauses, or hoisting a switch body into a map. **Behavior must not
-   change.**
-3. Run the package's existing tests (scoped — never unbounded `go test ./...` on
-   Windows; use `-p 2` or a single package) plus `go build ./...` and
-   `go vet ./...`.
-4. Check the box. Remove completed items from this file as you go (per plan-
-   processing rules); delete the file when empty.
+For each production function: read it and its tests, extract cohesive helpers / guard clauses with no behavior change, run the package tests (scoped, `-p 2`) plus `go build ./...` and `go vet ./...`, commit, and delete the item from this file. Delete the file when empty.
 
-Group by file to amortize context. SonarCloud re-analysis clears each finding on
-the next commit-stage run — no API mutation needed.
+## Production items
 
-## Items (68 findings across 40 files)
+- `claude_commands.go` — L386 (CC 24)
+- `cleanup_commands.go` — L396 (CC 23)
+- `compile_summary.go` — L76 (CC 28)
+- `config_commands.go` — L560 (CC 23)
+- `cross_repo_commands.go` — L150 (CC 31), L330 (CC 25), L559 (CC 49)
+- `internal/atdd/process/actions/command.go` — L95 (CC 23)
+- `internal/atdd/process/actions/outputs.go` — L122 (CC 36)
+- `internal/atdd/process/actions/scope.go` — L164 (CC 25)
+- `internal/atdd/process/clauderun/clauderun.go` — L836 (CC 26), L1153 (CC 49), L2282 (CC 34)
+- `internal/atdd/runtime/driver/driver.go` — L278 (CC 33), L750 (CC 19), L1245 (CC 37), L2170 (CC 22)
+- `internal/atdd/runtime/driver/summary_sidecar.go` — L356 (CC 25)
+- `internal/atdd/runtime/intake/parse.go` — L337 (CC 16)
+- `internal/atdd/runtime/preflight/preflight.go` — L132 (CC 26), L266 (CC 33), L355 (CC 20), L502 (CC 37), L701 (CC 26)
+- `internal/build/componenttest/config.go` — L94 (CC 28)
+- `internal/build/runner/tests.go` — L78 (CC 28)
+- `internal/config/config.go` — L712 (CC 29)
+- `internal/config/configinit/prompt.go` — L345 (CC 22)
+- `internal/config/token_auth.go` — L468 (CC 19)
+- `internal/devworkflow/ghbulk/ghbulk.go` — L157 (CC 23)
+- `internal/diagrams/diagram/expanded.go` — L149 (CC 25)
+- `internal/engine/statemachine/invariants.go` — L93 (CC 23)
+- `internal/engine/statemachine/load.go` — L175 (CC 23), L347 (CC 28)
+- `internal/engine/statemachine/run.go` — L51 (CC 25), L249 (CC 30)
+- `internal/kernel/approval/approval.go` — L159 (CC 19)
+- `internal/kernel/projectconfig/config.go` — L767 (CC 102), L1352 (CC 24)
+- `internal/kernel/shell/sonarcloud.go` — L34 (CC 17)
+- `internal/scaffolding/steps/verify.go` — L456 (CC 16)
+- `internal/spec/config.go` — L89 (CC 17)
+- `internal/spec/gate.go` — L95 (CC 28)
+- `internal/spec/render.go` — L307 (CC 27)
+- `internal/spec/report.go` — L121 (CC 36)
 
-### `claude_commands.go` (1)
-- [ ] L386 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
+## Test-file items (decision: do not refactor; accept in SonarCloud)
 
-### `cleanup_commands.go` (1)
-- [ ] L363 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
-
-### `compile_summary.go` (1)
-- [ ] L76 — Refactor this method to reduce its Cognitive Complexity from 28 to the 15 allowed.
-
-### `config_commands.go` (1)
-- [ ] L405 — Refactor this method to reduce its Cognitive Complexity from 23 to the 15 allowed.
-
-### `config_commands_test.go` (1)
-- [ ] L111 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
-
-### `cross_repo_commands.go` (3)
-- [ ] L150 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
-- [ ] L511 — Refactor this method to reduce its Cognitive Complexity from 52 to the 15 allowed.
-- [ ] L289 — Refactor this method to reduce its Cognitive Complexity from 37 to the 15 allowed.
-
-### `doctor_orphans.go` (1)
-- [ ] L161 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
-
-### `internal/atdd/phase_scopes_test.go` (1)
-- [ ] L303 — Refactor this method to reduce its Cognitive Complexity from 28 to the 15 allowed.
-
-### `internal/atdd/process/actions/bindings_test.go` (5)
-- [ ] L475 — Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed.
-- [ ] L392 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
-- [ ] L1024 — Refactor this method to reduce its Cognitive Complexity from 27 to the 15 allowed.
-- [ ] L2393 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
-- [ ] L2473 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
-
-### `internal/atdd/process/actions/command.go` (1)
-- [ ] L95 — Refactor this method to reduce its Cognitive Complexity from 23 to the 15 allowed.
-
-### `internal/atdd/process/actions/fix_progress_test.go` (1)
-- [ ] L14 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
-
-### `internal/atdd/process/actions/outputs.go` (1)
-- [ ] L122 — Refactor this method to reduce its Cognitive Complexity from 42 to the 15 allowed.
-
-### `internal/atdd/process/actions/scope.go` (1)
-- [ ] L164 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
-
-### `internal/atdd/process/clauderun/clauderun.go` (3)
-- [ ] L1122 — Refactor this method to reduce its Cognitive Complexity from 49 to the 15 allowed.
-- [ ] L805 — Refactor this method to reduce its Cognitive Complexity from 31 to the 15 allowed.
-- [ ] L2251 — Refactor this method (`formatStreamEvent`) to reduce its Cognitive Complexity from 39 to the 15 allowed.
-
-### `internal/atdd/process/gates/bindings_test.go` (4)
-- [ ] L565 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
-- [ ] L641 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
-- [ ] L711 — Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed.
-- [ ] L799 — Refactor this method to reduce its Cognitive Complexity from 29 to the 15 allowed.
-
-### `internal/atdd/process/run_default_test.go` (4)
-- [ ] L37 — Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed.
-- [ ] L165 — Refactor this method to reduce its Cognitive Complexity from 51 to the 15 allowed.
-- [ ] L292 — Refactor this method to reduce its Cognitive Complexity from 33 to the 15 allowed.
-- [ ] L388 — Refactor this method to reduce its Cognitive Complexity from 39 to the 15 allowed.
-
-### `internal/atdd/process/transitions_test.go` (3)
-- [ ] L365 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
-- [ ] L541 — Refactor this method to reduce its Cognitive Complexity from 33 to the 15 allowed.
-- [ ] L689 — Refactor this method to reduce its Cognitive Complexity from 33 to the 15 allowed.
-
-### `internal/atdd/runtime/driver/driver.go` (3)
-- [ ] L256 — Refactor this method to reduce its Cognitive Complexity from 55 to the 15 allowed.
-- [ ] L2117 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
-- [ ] L1200 — Refactor this method to reduce its Cognitive Complexity from 48 to the 15 allowed.
-
-### `internal/atdd/runtime/driver/scoped_test.go` (1)
-- [ ] L17 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
-
-### `internal/atdd/runtime/driver/summary_sidecar.go` (1)
-- [ ] L356 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
-
-### `internal/atdd/runtime/driver/summary_sidecar_test.go` (1)
-- [ ] L27 — Refactor this method to reduce its Cognitive Complexity from 28 to the 15 allowed.
-
-### `internal/atdd/runtime/preflight/preflight.go` (5)
-- [ ] L355 — Refactor this method to reduce its Cognitive Complexity from 23 to the 15 allowed.
-- [ ] L502 — Refactor this method to reduce its Cognitive Complexity from 37 to the 15 allowed.
-- [ ] L266 — Refactor this method to reduce its Cognitive Complexity from 41 to the 15 allowed.
-- [ ] L701 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
-- [ ] L132 — Refactor this method to reduce its Cognitive Complexity from 37 to the 15 allowed.
-
-### `internal/build/compiler/compiler_test.go` (1)
-- [ ] L119 — Refactor this method to reduce its Cognitive Complexity from 27 to the 15 allowed.
-
-### `internal/build/componenttest/config.go` (1)
-- [ ] L84 — Refactor this method to reduce its Cognitive Complexity from 28 to the 15 allowed.
-
-### `internal/build/componenttest/run_test.go` (1)
-- [ ] L43 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
-
-### `internal/build/runner/testcount_test.go` (1)
-- [ ] L12 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
-
-### `internal/build/runner/testnames_test.go` (1)
-- [ ] L15 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
-
-### `internal/build/runner/tests.go` (2)
-- [ ] L441 — Refactor this method (`runOneSuite`) to reduce its Cognitive Complexity from 25 to the 15 allowed.
-- [ ] L73 — Refactor this method to reduce its Cognitive Complexity from 35 to the 15 allowed.
-
-### `internal/config/config.go` (1)
-- [ ] L707 — Refactor this method to reduce its Cognitive Complexity from 29 to the 15 allowed.
-
-### `internal/config/configinit/prompt.go` (1)
-- [ ] L336 — Refactor this method to reduce its Cognitive Complexity from 26 to the 15 allowed.
-
-### `internal/config/optivemyaml/optivemyaml_test.go` (1)
-- [ ] L252 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
-
-### `internal/devworkflow/ghbulk/ghbulk.go` (1)
-- [ ] L157 — Refactor this method to reduce its Cognitive Complexity from 32 to the 15 allowed.
-
-### `internal/diagrams/diagram/expanded.go` (1)
-- [ ] L149 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
-
-### `internal/engine/statemachine/invariants.go` (1)
-- [ ] L93 — Refactor this method to reduce its Cognitive Complexity from 23 to the 15 allowed.
-
-### `internal/engine/statemachine/load.go` (2)
-- [ ] L347 — Refactor this method to reduce its Cognitive Complexity from 32 to the 15 allowed.
-- [ ] L175 — Refactor this method to reduce its Cognitive Complexity from 30 to the 15 allowed.
-
-### `internal/engine/statemachine/run.go` (2)
-- [ ] L249 — Refactor this method (`runProcess`) to reduce its Cognitive Complexity from 32 to the 15 allowed.
-- [ ] L51 — Refactor this method to reduce its Cognitive Complexity from 33 to the 15 allowed.
-
-### `internal/kernel/approval/approval.go` (1)
-- [ ] L159 — Refactor this method to reduce its Cognitive Complexity from 21 to the 15 allowed.
-
-### `internal/kernel/projectconfig/config.go` (3)
-- [ ] L1139 — Refactor this method to reduce its Cognitive Complexity from 24 to the 15 allowed.
-- [ ] L1247 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
-- [ ] L673 — Refactor this method to reduce its Cognitive Complexity from 124 to the 15 allowed.
-
-### `internal/kernel/shell/retrycore_test.go` (1)
-- [ ] L15 — Refactor this method to reduce its Cognitive Complexity from 34 to the 15 allowed.
-
-### `internal/kernel/shell/sonarcloud.go` (1)
-- [ ] L34 — Refactor this method to reduce its Cognitive Complexity from 25 to the 15 allowed.
-
-### `output_commands_test.go` (1)
-- [ ] L342 — Refactor this method to reduce its Cognitive Complexity from 22 to the 15 allowed.
-
+- `config_commands_test.go` — L111 (CC 19)
+- `internal/atdd/phase_scopes_test.go` — L303 (CC 28)
+- `internal/atdd/process/actions/bindings_test.go` — L1091 (CC 27), L2503 (CC 21)
+- `internal/atdd/process/actions/fix_progress_test.go` — L14 (CC 21)
+- `internal/atdd/process/gates/bindings_test.go` — L575 (CC 22), L651 (CC 25), L721 (CC 26), L809 (CC 29)
+- `internal/atdd/process/run_default_test.go` — L37 (CC 23), L165 (CC 42), L292 (CC 24), L388 (CC 30)
+- `internal/atdd/process/transitions_test.go` — L372 (CC 22), L548 (CC 33), L696 (CC 32)
+- `internal/atdd/runtime/driver/scoped_test.go` — L17 (CC 21)
+- `internal/atdd/runtime/driver/summary_sidecar_test.go` — L27 (CC 25)
+- `internal/build/compiler/compiler_test.go` — L119 (CC 16)
+- `internal/build/componenttest/run_test.go` — L43 (CC 18), L103 (CC 17)
+- `internal/config/optivemyaml/optivemyaml_test.go` — L285 (CC 24)
+- `internal/kernel/shell/retrycore_test.go` — L15 (CC 32), L131 (CC 20)
+- `internal/scaffolding/steps/keycloak_realm_test.go` — L41 (CC 20)
+- `internal/spec/junit_test.go` — L24 (CC 26)
+- `internal/spec/usecase_test.go` — L36 (CC 23)

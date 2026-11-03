@@ -201,58 +201,7 @@ func loadPidMarkers(runsDir string) ([]pidMarkerFile, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		dirName := entry.Name()
-		dirMatch := runDirRe.FindStringSubmatch(dirName)
-		if dirMatch == nil {
-			continue
-		}
-		runTs := dirMatch[1]
-		dirParentPid, convErr := strconv.Atoi(dirMatch[2])
-		if convErr != nil {
-			continue
-		}
-
-		runDir := filepath.Join(runsDir, dirName)
-		pidEntries, err := os.ReadDir(runDir)
-		if err != nil {
-			continue
-		}
-		for _, pidEntry := range pidEntries {
-			if pidEntry.IsDir() {
-				continue
-			}
-			fileMatch := pidFileRe.FindStringSubmatch(pidEntry.Name())
-			if fileMatch == nil {
-				continue
-			}
-			seq, convErr := strconv.Atoi(fileMatch[1])
-			if convErr != nil {
-				continue
-			}
-			path := filepath.Join(runDir, pidEntry.Name())
-			body, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			var marker userstate.PidMarker
-			if err := json.Unmarshal(body, &marker); err != nil {
-				continue
-			}
-			info, err := pidEntry.Info()
-			var mod time.Time
-			if err == nil {
-				mod = info.ModTime()
-			}
-			out = append(out, pidMarkerFile{
-				Path:         path,
-				Marker:       marker,
-				RunTimestamp: runTs,
-				DirParentPid: dirParentPid,
-				Seq:          seq,
-				Agent:        fileMatch[2],
-				ModTime:      mod,
-			})
-		}
+		out = append(out, loadRunDirMarkers(runsDir, entry.Name())...)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].RunTimestamp != out[j].RunTimestamp {
@@ -261,6 +210,62 @@ func loadPidMarkers(runsDir string) ([]pidMarkerFile, error) {
 		return out[i].Seq < out[j].Seq
 	})
 	return out, nil
+}
+
+// loadRunDirMarkers reads every parseable pid marker in one run directory.
+// A directory whose name does not match runDirRe, or any unreadable or
+// malformed entry, is skipped.
+func loadRunDirMarkers(runsDir, dirName string) []pidMarkerFile {
+	dirMatch := runDirRe.FindStringSubmatch(dirName)
+	if dirMatch == nil {
+		return nil
+	}
+	dirParentPid, convErr := strconv.Atoi(dirMatch[2])
+	if convErr != nil {
+		return nil
+	}
+	runDir := filepath.Join(runsDir, dirName)
+	pidEntries, err := os.ReadDir(runDir)
+	if err != nil {
+		return nil
+	}
+	var out []pidMarkerFile
+	for _, pidEntry := range pidEntries {
+		if pidEntry.IsDir() {
+			continue
+		}
+		fileMatch := pidFileRe.FindStringSubmatch(pidEntry.Name())
+		if fileMatch == nil {
+			continue
+		}
+		seq, convErr := strconv.Atoi(fileMatch[1])
+		if convErr != nil {
+			continue
+		}
+		path := filepath.Join(runDir, pidEntry.Name())
+		body, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var marker userstate.PidMarker
+		if err := json.Unmarshal(body, &marker); err != nil {
+			continue
+		}
+		var mod time.Time
+		if info, err := pidEntry.Info(); err == nil {
+			mod = info.ModTime()
+		}
+		out = append(out, pidMarkerFile{
+			Path:         path,
+			Marker:       marker,
+			RunTimestamp: dirMatch[1],
+			DirParentPid: dirParentPid,
+			Seq:          seq,
+			Agent:        fileMatch[2],
+			ModTime:      mod,
+		})
+	}
+	return out
 }
 
 // killProcess sends a hard kill to pid. os.Process.Kill maps to
