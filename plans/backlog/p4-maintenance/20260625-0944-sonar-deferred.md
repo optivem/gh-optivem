@@ -35,7 +35,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 - `internal/atdd/runtime/driver/summary_sidecar.go` — L356 (CC 25)
 - `internal/atdd/runtime/intake/parse.go` — L337 (CC 16)
 - `internal/atdd/runtime/preflight/preflight.go` — L132 (CC 26), L266 (CC 33), L355 (CC 20), L502 (CC 37), L701 (CC 26)
-- `internal/build/runner/tests.go` — L78 (CC 28)
 - `internal/config/config.go` — L712 (CC 29)
 - `internal/config/configinit/prompt.go` — L345 (CC 22)
 - `internal/diagrams/diagram/expanded.go` — L149 (CC 25)

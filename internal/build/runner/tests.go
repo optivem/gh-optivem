@@ -78,10 +78,8 @@ type SuiteResult struct {
 func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string, opts TestOptions) error {
 	_ = systemCwd
 	if sys != nil {
-		for _, s := range sys.Systems {
-			if !IsAnyURLUp(s, opts.Health) {
-				return fmt.Errorf("system %s is not running — start it first with `gh optivem system start`", s.Label)
-			}
+		if err := requireSystemsUp(sys, opts); err != nil {
+			return err
 		}
 		exportKeycloakURLs(sys)
 	}
@@ -102,8 +100,7 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 	// resolved to nothing, so a verify would green (or spin a fixer) without
 	// exercising a single test. We fail the run below so it routes to the same
 	// infra halt as the non-zero-exit runners.
-	anyCounted := false
-	totalExecuted := 0
+	var tally suiteTally
 
 	// Presence check for named verifies. A category like `acceptance` fans
 	// out to partitioned sub-suites (isolated vs non-isolated, API vs UI), and
@@ -114,15 +111,13 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 	// run somewhere. anyNamed gates this so a config with no TestCountPath
 	// can't false-fail (back-compat: no report source → no presence enforcement).
 	wantNames := len(opts.Test) > 0
-	anyNamed := false
-	executedNames := map[string]bool{}
+	tally.executedNames = map[string]bool{}
 
 	// firstErr holds the first suite command failure. The runner continues
 	// running all remaining suites rather than aborting on the first failure
 	// so that every partition writes its report to disk — validate-channels-
 	// registered reads those reports after the runner exits, and an early
 	// abort leaves the isolated partitions' reports absent (plan 20260629-1726).
-	var firstErr error
 
 	for _, suite := range suites {
 		start := time.Now()
@@ -137,28 +132,13 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 			Status:   status,
 			Duration: dur,
 		})
-		if err != nil {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("suite %s: %w", suite.Name, err)
-			}
-			continue
-		}
-		if counted {
-			anyCounted = true
-			totalExecuted += executed
-		}
-		if wantNames && suite.TestCountPath != "" {
-			anyNamed = true
-			for n := range names {
-				executedNames[n] = true
-			}
-		}
+		tally.record(suite, executed, counted, names, err, wantNames)
 	}
 
 	// A suite command failure (e.g. RED verify) takes priority over the
 	// presence and zero-count checks, which are only meaningful for a clean run.
-	if firstErr != nil {
-		return firstErr
+	if tally.firstErr != nil {
+		return tally.firstErr
 	}
 
 	// For a named run with an observable report, the presence check subsumes
@@ -166,13 +146,8 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 	// definition. A requested name that ran in NO partition is a wiring/typo/
 	// gated-off fault, not a red — surfaced with a fixed prefix the verify
 	// classifier routes to the infra halt.
-	if wantNames && anyNamed {
-		var missing []string
-		for _, want := range opts.Test {
-			if !nameExecuted(want, executedNames) {
-				missing = append(missing, want)
-			}
-		}
+	if wantNames && tally.anyNamed {
+		missing := missingNames(opts.Test, tally.executedNames)
 		if len(missing) == 0 {
 			return nil
 		}
@@ -199,10 +174,61 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 		return nil
 	}
 
-	if anyCounted && totalExecuted == 0 {
+	if tally.anyCounted && tally.totalExecuted == 0 {
 		return fmt.Errorf("0 tests executed for the given selection — the suite/test filter matched nothing on any selected suite; check --suite / --test against the available tests")
 	}
 	return nil
+}
+
+// suiteTally accumulates per-suite outcomes across a RunTests loop.
+type suiteTally struct {
+	anyCounted    bool
+	totalExecuted int
+	anyNamed      bool
+	executedNames map[string]bool
+	firstErr      error
+}
+
+// record folds one suite's result into the tally. A failed suite only records
+// the first error; counts and names are taken from clean suites.
+func (t *suiteTally) record(suite Suite, executed int, counted bool, names map[string]bool, err error, wantNames bool) {
+	if err != nil {
+		if t.firstErr == nil {
+			t.firstErr = fmt.Errorf("suite %s: %w", suite.Name, err)
+		}
+		return
+	}
+	if counted {
+		t.anyCounted = true
+		t.totalExecuted += executed
+	}
+	if wantNames && suite.TestCountPath != "" {
+		t.anyNamed = true
+		for n := range names {
+			t.executedNames[n] = true
+		}
+	}
+}
+
+// requireSystemsUp errors if any system does not answer its health probe.
+func requireSystemsUp(sys *SystemConfig, opts TestOptions) error {
+	for _, s := range sys.Systems {
+		if !IsAnyURLUp(s, opts.Health) {
+			return fmt.Errorf("system %s is not running — start it first with `gh optivem system start`", s.Label)
+		}
+	}
+	return nil
+}
+
+// missingNames returns the requested names that did not execute.
+func missingNames(wanted []string, executed map[string]bool) []string {
+	var missing []string
+	for _, want := range wanted {
+		if !nameExecuted(want, executed) {
+			missing = append(missing, want)
+		}
+	}
+	return missing
 }
 
 // NamesExecutedIn runs the given suite ids (resolved against tests) filtered to
