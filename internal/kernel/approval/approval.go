@@ -158,54 +158,13 @@ const defaultFloorWhenAuto = CategoryHuman
 // ergonomics).
 func Resolve(auto bool, autoChanged bool, confirm string, confirmChanged bool, env func(string) string) (Resolved, error) {
 	r := Resolved{}
+	r.Auto, r.AutoSource = resolveAuto(auto, autoChanged, env)
 
-	// Auto: flag > env > default(false).
-	switch {
-	case autoChanged:
-		r.Auto = auto
-		r.AutoSource = "flag"
-	default:
-		if envVal := env(EnvAuto); envVal != "" {
-			if v, ok := promptio.ParseYN(envVal); ok && v {
-				r.Auto = true
-				r.AutoSource = "env"
-			}
-		}
-		if r.AutoSource == "" {
-			r.AutoSource = "default"
-		}
-	}
-
-	// Confirm: flag > env > default.
-	// Default-when-Auto floor is `human` (truly autonomous). When Auto is
-	// off the floor is unused at confirmation time (every call prompts), so
-	// the zero value is fine.
-	var (
-		confirmRaw    string
-		confirmSource string
-	)
-	switch {
-	case confirmChanged:
-		confirmRaw = confirm
-		confirmSource = "flag"
-	default:
-		if envVal := env(EnvConfirm); envVal != "" {
-			confirmRaw = envVal
-			confirmSource = "env"
-		} else {
-			confirmSource = "default"
-			if r.Auto {
-				confirmRaw = defaultFloorWhenAuto.String()
-			}
-		}
-	}
+	confirmRaw, confirmSource := resolveConfirmRaw(r.Auto, confirm, confirmChanged, env)
 	r.ConfirmSource = confirmSource
 
 	if confirmRaw != "" {
-		if strings.Contains(confirmRaw, ",") {
-			return Resolved{}, fmt.Errorf("--confirm takes a single tier (threshold), not a comma list: %q; valid: %s", confirmRaw, validList())
-		}
-		c, err := ParseCategory(confirmRaw)
+		c, err := parseConfirmTier(confirmRaw)
 		if err != nil {
 			return Resolved{}, err
 		}
@@ -213,6 +172,44 @@ func Resolve(auto bool, autoChanged bool, confirm string, confirmChanged bool, e
 	}
 
 	return r, nil
+}
+
+// resolveAuto applies flag > env > default(false) precedence for --auto.
+func resolveAuto(auto, autoChanged bool, env func(string) string) (bool, string) {
+	if autoChanged {
+		return auto, "flag"
+	}
+	if envVal := env(EnvAuto); envVal != "" {
+		if v, ok := promptio.ParseYN(envVal); ok && v {
+			return true, "env"
+		}
+	}
+	return false, "default"
+}
+
+// resolveConfirmRaw applies flag > env > default precedence for --confirm and
+// returns the raw value plus its source. The default-when-Auto floor is
+// `human` (truly autonomous). When Auto is off the floor is unused at
+// confirmation time (every call prompts), so the raw value stays empty.
+func resolveConfirmRaw(auto bool, confirm string, confirmChanged bool, env func(string) string) (string, string) {
+	if confirmChanged {
+		return confirm, "flag"
+	}
+	if envVal := env(EnvConfirm); envVal != "" {
+		return envVal, "env"
+	}
+	if auto {
+		return defaultFloorWhenAuto.String(), "default"
+	}
+	return "", "default"
+}
+
+// parseConfirmTier parses a single --confirm tier, rejecting comma lists.
+func parseConfirmTier(confirmRaw string) (Category, error) {
+	if strings.Contains(confirmRaw, ",") {
+		return 0, fmt.Errorf("--confirm takes a single tier (threshold), not a comma list: %q; valid: %s", confirmRaw, validList())
+	}
+	return ParseCategory(confirmRaw)
 }
 
 // ConfirmFloorString returns the token name of r's confirm floor. Used by
