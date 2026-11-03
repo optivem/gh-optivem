@@ -149,6 +149,28 @@ func TestValidateChannelsRegistered_TestInAConfiguredChannel_OK(t *testing.T) {
 	}
 }
 
+// TestValidateChannelsRegistered_IsolatedOnlyTest_OK: an @isolated test never
+// appears in the parallel (non-isolated) reports; it executes only in the
+// acceptance-isolated-<ch> partition. The validator must read those reports
+// too, so an isolated test is not flagged as an orphan channel.
+func TestValidateChannelsRegistered_IsolatedOnlyTest_OK(t *testing.T) {
+	dir := t.TempDir()
+	tests := &runner.TestsConfig{Suites: []runner.Suite{
+		stageChannelReport(t, dir, "acceptance-parallel-api"),
+		stageChannelReport(t, dir, "acceptance-parallel-ui"),
+		stageChannelReport(t, dir, "acceptance-isolated-api", "cannotCancelOnBlackout"),
+		stageChannelReport(t, dir, "acceptance-isolated-ui"),
+	}}
+	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
+	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
+
+	ctx := statemachine.NewContext()
+	ctx.Set("test-names", "cannotCancelOnBlackout")
+	if out := a.validateChannelsRegistered(ctx); out.Err != nil {
+		t.Fatalf("validate-channels-registered: isolated-only test flagged as orphan: %v", out.Err)
+	}
+}
+
 // TestValidateChannelsRegistered_OrphanTestFailsLoud: a ticket test that ran in
 // NO configured channel (registers for an unconfigured channel, or does not
 // exist) must hard-error — never silently vanish through every per-channel gate.
