@@ -99,9 +99,6 @@ Tier 3 is why this plan does not delete the README's setup section — it shorte
 
 *(Blocked on the Open questions above. Written against the recommended answers.)*
 
-- [ ] **Step 3 — Handle the two PATH cases explicitly.**
-  Same file. After installing Claude Code, ensure `%USERPROFILE%\.local\bin` is on the user's PATH; after installing Go, ensure `$(go env GOPATH)/bin` is, before attempting the actionlint `go install`. Persist to `HKCU:\Environment` on Windows *and* update the current process env so the rest of the run sees it. Print exactly what was changed and where. Do not enumerate or log other values under that key.
-
 - [ ] **Step 4 — Add the `environment setup` command.**
   File: `environment_commands.go`, sibling to `verify` at `:98`.
   Takes `--lang`, parsed by the same helper `verify` uses (`internal/config/verify_flags.go`). Order: install tier 1, then tier 2, then run the existing `VerifyEnvironment` to report the true remaining state. Finish with a "what's left for you" block covering only what is genuinely outstanding — Docker if absent, `gh auth login` if unauthenticated, `claude` sign-in (always, since it is unprovable — say so), and any missing credentials from `requiredEnvVars()`.

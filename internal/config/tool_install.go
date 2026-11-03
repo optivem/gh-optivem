@@ -15,6 +15,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -180,6 +181,9 @@ type installer struct {
 	run func(name string, args ...string) (string, error)
 	// refreshPath re-reads the persisted PATH into this process.
 	refreshPath func() error
+	// persistPath adds dir to the user's persisted PATH, idempotently, and
+	// reports whether it changed anything.
+	persistPath func(dir string) (added bool, err error)
 	// say prints one line of progress.
 	say func(format string, args ...any)
 }
@@ -236,6 +240,18 @@ func (r *installer) ensure(t installTool) (installOutcome, error) {
 	if r.probe(t) == nil {
 		return outcomeAlreadyInstalled, nil
 	}
+	// Installed earlier into a directory the installer never put on PATH
+	// (Claude Code's ~/.local/bin, Go's GOPATH/bin): fix PATH rather than
+	// reinstalling. A failure to resolve the directory is not an error here -
+	// the tool may simply be absent, and the install below follows.
+	if dir, derr := r.installDir(t); derr == nil && dirExists(dir) {
+		if err := r.ensurePath(dir); err != nil {
+			return 0, fmt.Errorf("%s: %w", t.label, err)
+		}
+		if r.probe(t) == nil {
+			return outcomeAlreadyInstalled, nil
+		}
+	}
 	if t.kind == installWinget && r.packageInstalled(t.winget) {
 		r.say("%s: in the winget package database (%s) but not runnable from this shell - refreshing PATH and asking again.", t.label, t.winget)
 		if err := r.refreshPath(); err != nil {
@@ -267,7 +283,21 @@ func (r *installer) ensure(t installTool) (installOutcome, error) {
 	if err := r.refreshPath(); err != nil {
 		return 0, fmt.Errorf("%s: could not refresh PATH after install: %w", t.label, err)
 	}
+	// Declined-PATH installers: the directory exists now, so put it on PATH
+	// before the re-probe. A failure to resolve it is only fatal if the
+	// re-probe fails too (it then names both causes).
+	var pathErr error
+	if dir, derr := r.installDir(t); derr != nil {
+		if !errors.Is(derr, errNoPathDir) {
+			pathErr = derr
+		}
+	} else if err := r.ensurePath(dir); err != nil {
+		pathErr = err
+	}
 	if perr := r.probe(t); perr != nil {
+		if pathErr != nil {
+			perr = fmt.Errorf("%v; PATH fix also failed: %v", perr, pathErr)
+		}
 		return 0, fmt.Errorf("%s is still not runnable after the install (%v; install exit: %v).\n    Install output:\n%s\n    Install by hand: %s",
 			t.label, perr, runErr, strings.TrimSpace(out), t.docURL)
 	}
@@ -281,6 +311,7 @@ func newInstaller(say func(format string, args ...any)) *installer {
 		lookPath:    exec.LookPath,
 		run:         execRun,
 		refreshPath: refreshProcessPath,
+		persistPath: persistUserPath,
 		say:         say,
 	}
 }
@@ -334,4 +365,62 @@ func refreshProcessPath() error {
 		return fmt.Errorf("PATH read back from the registry was empty")
 	}
 	return os.Setenv("PATH", mergePath(os.Getenv("PATH"), persisted, ";", true))
+}
+
+// installDir returns the declined-PATH directory for t, or ("", nil) when the
+// tool's installer handles PATH itself.
+func (r *installer) installDir(t installTool) (string, error) {
+	if t.pathDir == nil {
+		return "", errNoPathDir
+	}
+	return t.pathDir(r)
+}
+
+var errNoPathDir = errors.New("tool has no declined-PATH directory")
+
+func dirExists(dir string) bool {
+	st, err := os.Stat(dir)
+	return err == nil && st.IsDir()
+}
+
+// ensurePath makes dir resolve in this run and in every future shell, and says
+// exactly what it did and where. Only dir is ever named: the rest of the PATH
+// value is neither read back to the user nor logged.
+func (r *installer) ensurePath(dir string) error {
+	added, err := r.persistPath(dir)
+	if err != nil {
+		return fmt.Errorf("could not add %s to the user PATH: %w", dir, err)
+	}
+	if added {
+		r.say("PATH: added %s to the user PATH (HKCU\\Environment, value Path).", dir)
+	} else {
+		r.say("PATH: %s is already on the user PATH.", dir)
+	}
+	return os.Setenv("PATH", mergePath(os.Getenv("PATH"), dir, ";", true))
+}
+
+// persistUserPath appends dir to the user PATH in HKCU\Environment unless an
+// equivalent entry (case-insensitive, trailing backslash ignored) is already
+// there. Only the user scope is written: no elevation, and machine PATH is
+// not ours to edit. Note [Environment]::SetEnvironmentVariable stores the
+// value as a plain string, so a %VAR% reference in the user PATH is kept as
+// written but no longer re-expanded by the registry type.
+func persistUserPath(dir string) (bool, error) {
+	quoted := strings.ReplaceAll(dir, "'", "''")
+	script := `$d='` + quoted + `'; ` +
+		`$cur=[Environment]::GetEnvironmentVariable('Path','User'); if ($null -eq $cur) { $cur='' }; ` +
+		`$has=$false; foreach ($e in $cur -split ';') { if ($e.Trim().TrimEnd('\') -ieq $d.TrimEnd('\')) { $has=$true } }; ` +
+		`if ($has) { 'present' } else { ` +
+		`[Environment]::SetEnvironmentVariable('Path', ($cur.TrimEnd(';') + ';' + $d).TrimStart(';'), 'User'); 'added' }`
+	out, err := execRun("powershell.exe", "-NoProfile", "-Command", script)
+	if err != nil {
+		return false, fmt.Errorf("%w\n%s", err, strings.TrimSpace(out))
+	}
+	switch strings.TrimSpace(out) {
+	case "added":
+		return true, nil
+	case "present":
+		return false, nil
+	}
+	return false, fmt.Errorf("unexpected output from the PATH update: %q", strings.TrimSpace(out))
 }
