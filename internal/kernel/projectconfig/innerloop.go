@@ -148,3 +148,21 @@ func (c *Config) InnerLoopForChannel(channel string) (InnerLoop, string) {
 	}
 	return InnerLoop{}, ""
 }
+
+// InnerLoopForComponent returns the inner-loop declaration of the component the
+// component-test runner knows by name (monolith / backend / frontend), or the
+// zero value for any other name.
+func (c *Config) InnerLoopForComponent(name string) InnerLoop {
+	if c == nil {
+		return InnerLoop{}
+	}
+	switch name {
+	case "monolith":
+		return c.System.InnerLoop
+	case "backend":
+		return c.System.Backend.InnerLoop
+	case "frontend":
+		return c.System.Frontend.InnerLoop
+	}
+	return InnerLoop{}
+}

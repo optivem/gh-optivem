@@ -18,6 +18,7 @@
 package main
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/spf13/cobra"
@@ -40,6 +41,7 @@ func newComponentTestCmd() *cobra.Command {
 		newComponentTestRunCmd(),
 		newComponentTestSetupCmd(),
 		newComponentTestCompileCmd(),
+		newComponentTestMutationCmd(),
 	)
 	return cmd
 }
@@ -144,6 +146,58 @@ func newComponentTestCompileCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringSliceVar(&components, "component", nil, "Compile only the component(s) with these name(s); omit for every component")
+	return cmd
+}
+
+// newComponentTestMutationCmd implements:
+//
+//	gh optivem component-test mutation --component name [--threshold n] [--all]
+//
+// The inner-loop mutation gate. It runs the component's `mutation` suite
+// (component-tests.yaml) scoped to the production classes changed since HEAD
+// (or the whole component with --all, the nightly baseline), scores the PIT
+// report, prints only the surviving mutants, and fails when the score is below
+// the threshold. The threshold defaults to the component's
+// inner-loop.mutation-threshold in gh-optivem.yaml.
+func newComponentTestMutationCmd() *cobra.Command {
+	var (
+		components []string
+		threshold  int
+		all        bool
+	)
+	cmd := &cobra.Command{
+		Use:   "mutation",
+		Short: "Run the mutation gate on the changed classes of a component",
+		Long: `Run the mutation gate for a component: its component-tests.yaml 'mutation' suite,
+scoped to the production classes changed since HEAD (--all mutates the whole
+component, for the nightly baseline). Prints the mutation score and only the
+surviving mutants, and exits non-zero when the score is below the threshold.
+
+The threshold defaults to the component's inner-loop.mutation-threshold in
+gh-optivem.yaml; with none configured the run reports only. The suite command
+receives the classes to mutate in the PIT_TARGET_CLASSES environment variable.`,
+		Example: `  gh optivem component-test mutation --component backend
+  gh optivem component-test mutation --component backend --all`,
+		Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			cfg, _, err := loadProjectConfigForRunner()
+			exitOnError(err)
+			if len(components) != 1 {
+				exitOnError(fmt.Errorf("--component is required and takes exactly one component name (the mutation gate is per component)"))
+			}
+			if !cmd.Flags().Changed("threshold") {
+				threshold = cfg.InnerLoopForComponent(components[0]).MutationThreshold
+			}
+			exitOnError(componenttest.Mutation(discoverComponents(cfg), componenttest.MutationOptions{
+				Components: components,
+				Threshold:  threshold,
+				All:        all,
+			}))
+		},
+	}
+	cmd.Flags().StringSliceVar(&components, "component", nil, "The component to mutate (e.g. backend); required")
+	cmd.Flags().IntVar(&threshold, "threshold", 0, "Minimum mutation score (0-100); defaults to the component's inner-loop.mutation-threshold")
+	cmd.Flags().BoolVar(&all, "all", false, "Mutate the whole component, not just the classes changed since HEAD (nightly baseline)")
 	return cmd
 }
 

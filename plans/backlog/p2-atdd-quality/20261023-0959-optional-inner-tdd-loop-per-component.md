@@ -207,25 +207,16 @@ component:
 
 ## ▶ Next executable step (resume here)
 
-Steps 1, 2 and 3 are shipped:
-- schema + `Validate` (`internal/kernel/projectconfig/innerloop.go`);
-- the `component-test` tier path key (`atdd.TierPathKeysInScope`);
-- the flow: `RESOLVE_INNER_LOOP` -> `GATE_INNER_LOOP` -> `verify-inner-loop` in
-  `implement-and-verify-system`, plus the `${inner-loop-section}` prompt chunk
-  (`runtime/shared/inner-loop-test-after.md`).
-
-`verify-inner-loop` runs `gh optivem component-test run --component <c> --suite
-component`, then `gh optivem component-test mutation --component <c>`. The
-second command does NOT exist yet: it is Step 4. Until it lands, a
-`test-after` component fails loudly at the mutation node (unknown command).
-Resume at Step 4.
-
-Follow-ups noted while building Step 3 (not yet steps):
+Slice 1 is shipped except two pieces: Step 1b (flag/prompt plumbing) and the
+remainder of Step 4 (nightly CI + threshold). Both are listed under Slice 1
+below. Notes for whoever resumes:
+- `verify-inner-loop` runs `component-test run --suite component`, then
+  `component-test mutation` (suite ids `component` / `mutation` are the
+  component-tests.yaml convention).
 - Whole-system `redesign-*` / `refactor-*` cycles (no `channel`) stamp mode
   `none`; Decision 2 ("existing inner tests must pass") is not yet enforced
   there. Add as a step before Slice 3.
-- The `component` / `mutation` suite ids are a component-tests.yaml
-  convention; the runner command names them directly.
+- Compare modes across runs with `gh optivem run compare-modes`.
 
 ## Steps
 
@@ -245,19 +236,15 @@ component tests.
   plumbing (`internal/config/config.go` RawFlags -> yaml writer,
   `internal/config/configinit/prompt.go`) is a separate, wide change. Hand-editing
   `inner-loop:` works meanwhile, so this does not block Steps 2-5.
-- [ ] Step 4: Wire PIT into shop `backend-clean-java` (domain-core target only).
-  Add a `gh optivem` runner command/suite for it that local users run the same
-  way CI does. Use PIT's changed-code mode (`scmMutationCoverage`, or an
-  explicit `targetClasses` list) for the inner gate. Run the full domain core
-  nightly in CI, outside the agent loop. That run catches the cross-class decline
-  the changed-only gate misses, and supplies the baseline for the threshold.
-  Verify the exact flag names against the current PIT version; the same applies
-  later to Stryker.NET `--since` and StrykerJS `--incremental`.
-- [ ] Step 5: Tests:
-  - statemachine/transition tests for the new gateway (audit loopback edges for
-    the deadlock hazard first);
-  - render-matrix coverage for the new placeholder.
-
+- [ ] Step 4 (remaining): the runner command (`gh optivem component-test
+  mutation`), the PIT wiring in shop `backend-java` and the changed-only
+  measurement shipped. Left: (a) add the nightly CI workflow in shop running
+  `gh optivem component-test mutation --component backend --all`, outside the
+  agent loop; (b) take the first full-baseline score from it and set
+  `inner-loop.mutation-threshold` in `gh-optivem-multitier-java.yaml` (unset =
+  report-only today). The shop commit `backend-java: PIT mutation suite and
+  test-after inner-loop pilot config` is local and unpushed; push it with the
+  shop plan flow. Verify the PIT flag names again when Stryker is added.
 ### Slice 2 — `tdd` mode
 
 - [ ] Step 6: Add a unit-test-writer agent and a red → green (→ refactor) inner
@@ -565,6 +552,11 @@ ticket, plus a script that aggregates across runs.
     run on `backend-java` before the mutation gate is relied on. If too slow,
     fall back to "component tests pass + coverage of changed lines" for Slice 1
     and record the measurement here.
+    **Measured 2026-11-03 (backend-java, Windows, Docker up):** a changed-only run
+    on one 90-line class (`CouponService`, 23 mutants) took 1m44s end to end
+    (coverage ~36s, mutation analysis ~43s, rest Gradle). Affordable, so the
+    mutation gate stays in Slice 1; no fallback needed. A full-backend run is
+    slower and is the nightly job's concern.
 
 ## Open questions
 
