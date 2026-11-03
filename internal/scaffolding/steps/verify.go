@@ -512,13 +512,7 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 		log.Info("Triggering acceptance stage (latest)...")
 	}
 
-	shell.CheckRateLimit()
-	gh.WorkflowRun("acceptance-stage.yml", nil)
-
-	if includeLegacy {
-		shell.CheckRateLimit()
-		gh.WorkflowRun("acceptance-stage-legacy.yml", nil)
-	}
+	triggerAcceptanceStages(gh, includeLegacy)
 
 	// Give GitHub a moment to register both runs before we start watching,
 	// otherwise the `gh run list` lookup can return an older run.
@@ -545,8 +539,24 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 
 	wg.Wait()
 
-	// Report both results before any fatal, so the user sees the legacy status
-	// even when latest failed first (or vice versa).
+	reportAcceptanceResults(gh, includeLegacy, latestErr, legacyErr)
+}
+
+// triggerAcceptanceStages dispatches the latest (and optionally legacy)
+// acceptance-stage workflows.
+func triggerAcceptanceStages(gh *shell.GitHub, includeLegacy bool) {
+	shell.CheckRateLimit()
+	gh.WorkflowRun("acceptance-stage.yml", nil)
+
+	if includeLegacy {
+		shell.CheckRateLimit()
+		gh.WorkflowRun("acceptance-stage-legacy.yml", nil)
+	}
+}
+
+// reportAcceptanceResults reports both results before any fatal, so the user
+// sees the legacy status even when latest failed first (or vice versa).
+func reportAcceptanceResults(gh *shell.GitHub, includeLegacy bool, latestErr, legacyErr error) {
 	reportParallelResult(latestErr, "Acceptance stage", gh.Repo)
 	if includeLegacy {
 		reportParallelResult(legacyErr, "Acceptance stage legacy", gh.Repo)

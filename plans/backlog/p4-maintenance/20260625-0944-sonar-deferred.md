@@ -47,7 +47,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 - `internal/engine/statemachine/run.go` — L51 (CC 25), L249 (CC 30)
 - `internal/kernel/approval/approval.go` — L159 (CC 19)
 - `internal/kernel/projectconfig/config.go` — L767 (CC 102), L1352 (CC 24)
-- `internal/scaffolding/steps/verify.go` — L456 (CC 16)
 - `internal/spec/gate.go` — L95 (CC 28)
 - `internal/spec/render.go` — L307 (CC 27)
 - `internal/spec/report.go` — L121 (CC 36)
