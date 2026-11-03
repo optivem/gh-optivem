@@ -16,12 +16,11 @@ const (
 	workflowPath          = "/actions/workflows"
 	githubBaseURL         = "https://github.com/"
 	testLangFmt           = "- **Test language:** %s\n"
-	badgeFmt              = "[![%s](%s/badge.svg)](%s)\n"
+	badgeFmt              = "[![%s](%s/badge.svg%s)](%s)\n"
 	acceptanceStage       = "acceptance-stage"
 	acceptanceStageLegacy = "acceptance-stage-legacy"
-	qaStage               = "qa-stage"
-	qaSignoff             = "qa-signoff"
-	prodStage             = "prod-stage"
+	eventPush             = "push"
+	eventSchedule         = "schedule"
 	commitStage           = "commit-stage"
 )
 
@@ -54,27 +53,30 @@ func docsSection() string {
 		"- [Project Registration](docs/project-registration.md)\n\n"
 }
 
-// pipelineBadges returns badge [url, label] pairs for the shared pipeline stages.
+// pipelineBadges returns badge [url, label, event] triples for the shared pipeline stages.
+// Only stages with a recurring trigger get a badge: dispatch-only stages never
+// produce a default-event run and would read "no status" forever.
 // The acceptance-stage-legacy badge tracks addLegacyWorkflow: docker deploy only,
 // and never under --no-legacy (the workflow is not scaffolded then).
-func pipelineBadges(base string, cfg *config.Config) [][2]string {
-	badges := [][2]string{
-		{base + "/" + acceptanceStage + ".yml", acceptanceStage},
+func pipelineBadges(base string, cfg *config.Config) [][3]string {
+	badges := [][3]string{
+		{base + "/" + acceptanceStage + ".yml", acceptanceStage, eventSchedule},
 	}
 	if cfg.Deploy == "docker" && !cfg.NoLegacy {
-		badges = append(badges, [2]string{base + "/" + acceptanceStageLegacy + ".yml", acceptanceStageLegacy})
+		badges = append(badges, [3]string{base + "/" + acceptanceStageLegacy + ".yml", acceptanceStageLegacy, eventSchedule})
 	}
-	badges = append(badges,
-		[2]string{base + "/" + qaStage + ".yml", qaStage},
-		[2]string{base + "/" + qaSignoff + ".yml", qaSignoff},
-		[2]string{base + "/" + prodStage + ".yml", prodStage},
-	)
 	return badges
 }
 
-func writeBadges(b *strings.Builder, items [][2]string) {
+// writeBadges emits one badge per [url, label, event] item. An empty event
+// yields an unfiltered badge URL.
+func writeBadges(b *strings.Builder, items [][3]string) {
 	for _, item := range items {
-		fmt.Fprintf(b, badgeFmt, item[1], item[0], item[0])
+		query := ""
+		if item[2] != "" {
+			query = "?event=" + item[2]
+		}
+		fmt.Fprintf(b, badgeFmt, item[1], item[0], query, item[0])
 	}
 }
 
@@ -125,8 +127,8 @@ func writeMonolithMultirepoReadme(cfg *config.Config) {
 	systemBase := actionsBase(cfg.SystemFullRepo)
 
 	var badges strings.Builder
-	writeBadges(&badges, [][2]string{
-		{systemBase + "/commit-stage.yml", commitStage},
+	writeBadges(&badges, [][3]string{
+		{systemBase + "/commit-stage.yml", commitStage, eventPush},
 	})
 	writeBadges(&badges, pipelineBadges(base, cfg))
 
@@ -160,9 +162,9 @@ func writeMultitierMultirepoReadme(cfg *config.Config) {
 	frontendBase := actionsBase(cfg.FrontendFullRepo)
 
 	var badges strings.Builder
-	writeBadges(&badges, [][2]string{
-		{backendBase + "/backend-commit-stage.yml", "backend-commit-stage"},
-		{frontendBase + "/frontend-commit-stage.yml", "frontend-commit-stage"},
+	writeBadges(&badges, [][3]string{
+		{backendBase + "/backend-commit-stage.yml", "backend-commit-stage", eventPush},
+		{frontendBase + "/frontend-commit-stage.yml", "frontend-commit-stage", eventPush},
 	})
 	writeBadges(&badges, pipelineBadges(base, cfg))
 
@@ -203,8 +205,8 @@ func writeComponentReadme(repoDir, systemName, componentLabel, fullRepo, _, lice
 	base := actionsBase(fullRepo)
 
 	var badges strings.Builder
-	writeBadges(&badges, [][2]string{
-		{base + "/" + wfName, commitStage},
+	writeBadges(&badges, [][3]string{
+		{base + "/" + wfName, commitStage, eventPush},
 	})
 
 	content := fmt.Sprintf("# %s — %s\n\n%s\n%s",
@@ -215,15 +217,15 @@ func writeComponentReadme(repoDir, systemName, componentLabel, fullRepo, _, lice
 func generateBadges(cfg *config.Config) string {
 	base := actionsBase(cfg.FullRepo)
 
-	var commitStages [][2]string
+	var commitStages [][3]string
 	if cfg.Arch == "monolith" {
-		commitStages = [][2]string{
-			{base + "/commit-stage.yml", commitStage},
+		commitStages = [][3]string{
+			{base + "/commit-stage.yml", commitStage, eventPush},
 		}
 	} else {
-		commitStages = [][2]string{
-			{base + "/backend-commit-stage.yml", "backend-commit-stage"},
-			{base + "/frontend-commit-stage.yml", "frontend-commit-stage"},
+		commitStages = [][3]string{
+			{base + "/backend-commit-stage.yml", "backend-commit-stage", eventPush},
+			{base + "/frontend-commit-stage.yml", "frontend-commit-stage", eventPush},
 		}
 	}
 
