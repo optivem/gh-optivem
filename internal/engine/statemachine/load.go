@@ -194,57 +194,80 @@ func buildProcess(id string, rp rawProcess) (*Process, error) {
 		Edges:                 make([]Edge, 0, len(rp.SequenceFlows)),
 		OutgoingByNode:        make(map[string][]Edge),
 	}
-	for _, rn := range rp.Nodes {
-		if rn.ID == "" {
-			return nil, fmt.Errorf("process %q: node missing `id:`", id)
-		}
-		if _, dup := process.Nodes[rn.ID]; dup {
-			return nil, fmt.Errorf("process %q: duplicate node id %q", id, rn.ID)
-		}
-		kind, err := parseKind(rn.Type)
-		if err != nil {
-			return nil, fmt.Errorf("process %q node %q: %w", id, rn.ID, err)
-		}
-		if err := validateNodeName(id, rn, kind); err != nil {
-			return nil, err
-		}
-		if err := validateTDDStage(id, rn); err != nil {
-			return nil, err
-		}
-		process.Nodes[rn.ID] = Node{ID: rn.ID, Kind: kind, Raw: rn}
+	if err := addNodes(id, rp, process); err != nil {
+		return nil, err
 	}
 	if _, ok := process.Nodes[rp.Start]; !ok {
 		return nil, fmt.Errorf("process %q: start node %q not in nodes list", id, rp.Start)
 	}
-	// Per-node visit caps: max-visits and on-max-visits are declared
-	// together, and on-max-visits must target a node in this process
-	// (runProcess routes there in place of the over-cap dispatch).
+	if err := validateVisitCaps(id, rp, process); err != nil {
+		return nil, err
+	}
+	if err := addEdges(id, rp, process); err != nil {
+		return nil, err
+	}
+	return process, nil
+}
+
+// addNodes validates each raw node and registers it in process.Nodes.
+func addNodes(id string, rp rawProcess, process *Process) error {
+	for _, rn := range rp.Nodes {
+		if rn.ID == "" {
+			return fmt.Errorf("process %q: node missing `id:`", id)
+		}
+		if _, dup := process.Nodes[rn.ID]; dup {
+			return fmt.Errorf("process %q: duplicate node id %q", id, rn.ID)
+		}
+		kind, err := parseKind(rn.Type)
+		if err != nil {
+			return fmt.Errorf("process %q node %q: %w", id, rn.ID, err)
+		}
+		if err := validateNodeName(id, rn, kind); err != nil {
+			return err
+		}
+		if err := validateTDDStage(id, rn); err != nil {
+			return err
+		}
+		process.Nodes[rn.ID] = Node{ID: rn.ID, Kind: kind, Raw: rn}
+	}
+	return nil
+}
+
+// validateVisitCaps checks per-node visit caps. max-visits and on-max-visits are declared
+// together, and on-max-visits must target a node in this process
+// (runProcess routes there in place of the over-cap dispatch).
+func validateVisitCaps(id string, rp rawProcess, process *Process) error {
 	for _, rn := range rp.Nodes {
 		if rn.MaxVisits == 0 && rn.OnMaxVisits == "" {
 			continue
 		}
 		if rn.MaxVisits <= 0 {
-			return nil, fmt.Errorf("process %q node %q: on-max-visits set without a positive max-visits", id, rn.ID)
+			return fmt.Errorf("process %q node %q: on-max-visits set without a positive max-visits", id, rn.ID)
 		}
 		if rn.OnMaxVisits == "" {
-			return nil, fmt.Errorf("process %q node %q: max-visits set without an on-max-visits target", id, rn.ID)
+			return fmt.Errorf("process %q node %q: max-visits set without an on-max-visits target", id, rn.ID)
 		}
 		if _, ok := process.Nodes[rn.OnMaxVisits]; !ok {
-			return nil, fmt.Errorf("process %q node %q: on-max-visits references unknown node %q", id, rn.ID, rn.OnMaxVisits)
+			return fmt.Errorf("process %q node %q: on-max-visits references unknown node %q", id, rn.ID, rn.OnMaxVisits)
 		}
 	}
+	return nil
+}
+
+// addEdges registers each sequence flow, checking both endpoints exist.
+func addEdges(id string, rp rawProcess, process *Process) error {
 	for _, re := range rp.SequenceFlows {
 		if _, ok := process.Nodes[re.From]; !ok {
-			return nil, fmt.Errorf("process %q: edge from unknown node %q", id, re.From)
+			return fmt.Errorf("process %q: edge from unknown node %q", id, re.From)
 		}
 		if _, ok := process.Nodes[re.To]; !ok {
-			return nil, fmt.Errorf("process %q: edge to unknown node %q", id, re.To)
+			return fmt.Errorf("process %q: edge to unknown node %q", id, re.To)
 		}
 		edge := Edge{From: re.From, To: re.To, Predicate: re.When}
 		process.Edges = append(process.Edges, edge)
 		process.OutgoingByNode[re.From] = append(process.OutgoingByNode[re.From], edge)
 	}
-	return process, nil
+	return nil
 }
 
 // parseKind maps the YAML `type:` string onto a NodeKind.
@@ -348,8 +371,8 @@ func validateApprovalCategories(processes map[string]*Process) error {
 	// First pass: index, per primitive process, the call-sites that
 	// supply (a) a literal category and (b) a threaded `${...}` category
 	// from their own params. Keyed by the called primitive's process ID.
-	literalCallers := map[string][]string{}    // primitive → list of literal category values from its callers
-	threadedCallers := map[string][]string{}   // primitive → list of containing-process IDs whose call passes a placeholder
+	literalCallers := map[string][]string{}  // primitive → list of literal category values from its callers
+	threadedCallers := map[string][]string{} // primitive → list of containing-process IDs whose call passes a placeholder
 	for parentID, p := range processes {
 		for _, n := range p.Nodes {
 			if n.Kind != CallActivity {
