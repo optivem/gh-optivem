@@ -100,41 +100,56 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("component-tests config %s: expected a valid YAML file, but content is not valid: %w", path, err)
 	}
-	for i, sc := range cfg.SetupCommands {
-		if sc.Name == "" {
-			return nil, fmt.Errorf("component-tests config %s: setupCommands[%d] missing name", path, i)
+	if err := validateCommands(path, "setupCommands", cfg.SetupCommands); err != nil {
+		return nil, err
+	}
+	if err := validateCommands(path, "compileCommands", cfg.CompileCommands); err != nil {
+		return nil, err
+	}
+	if err := validateSuites(path, cfg.Suites); err != nil {
+		return nil, err
+	}
+	for i := range cfg.Suites {
+		cfg.Suites[i].TestFilter = cfg.TestFilter
+		cfg.Suites[i].TestFilterJoin = cfg.TestFilterJoin
+	}
+	return &cfg, nil
+}
+
+// validateCommands checks every named command entry has a name and command.
+func validateCommands(path, field string, cmds []SetupCommand) error {
+	for i, c := range cmds {
+		if c.Name == "" {
+			return fmt.Errorf("component-tests config %s: %s[%d] missing name", path, field, i)
 		}
-		if sc.Command == "" {
-			return nil, fmt.Errorf("component-tests config %s: setupCommands[%d] (%s) missing command", path, i, sc.Name)
+		if c.Command == "" {
+			return fmt.Errorf("component-tests config %s: %s[%d] (%s) missing command", path, field, i, c.Name)
 		}
 	}
-	for i, cc := range cfg.CompileCommands {
-		if cc.Name == "" {
-			return nil, fmt.Errorf("component-tests config %s: compileCommands[%d] missing name", path, i)
-		}
-		if cc.Command == "" {
-			return nil, fmt.Errorf("component-tests config %s: compileCommands[%d] (%s) missing command", path, i, cc.Name)
-		}
+	return nil
+}
+
+// validateSuites checks the suite list is non-empty and each suite is well formed.
+func validateSuites(path string, suites []Suite) error {
+	if len(suites) == 0 {
+		return fmt.Errorf("component-tests config %s: suites[] is empty", path)
 	}
-	if len(cfg.Suites) == 0 {
-		return nil, fmt.Errorf("component-tests config %s: suites[] is empty", path)
-	}
-	seen := make(map[string]bool, len(cfg.Suites))
-	for i, s := range cfg.Suites {
+	seen := make(map[string]bool, len(suites))
+	for i, s := range suites {
 		if s.ID == "" {
-			return nil, fmt.Errorf("component-tests config %s: suites[%d] missing id", path, i)
+			return fmt.Errorf("component-tests config %s: suites[%d] missing id", path, i)
 		}
 		if s.Name == "" {
-			return nil, fmt.Errorf("component-tests config %s: suites[%d] (%s) missing name", path, i, s.ID)
+			return fmt.Errorf("component-tests config %s: suites[%d] (%s) missing name", path, i, s.ID)
 		}
 		if seen[s.ID] {
-			return nil, fmt.Errorf("component-tests config %s: duplicate suite id %q", path, s.ID)
+			return fmt.Errorf("component-tests config %s: duplicate suite id %q", path, s.ID)
 		}
 		seen[s.ID] = true
 		// A non-pending suite must carry the command that runs it. A pending
 		// suite legitimately has no command — it is a held slot, never executed.
 		if !s.Pending && s.Command == "" {
-			return nil, fmt.Errorf("component-tests config %s: suites[%d] (%s) missing command (set `pending: true` if the level has no tests yet)", path, i, s.ID)
+			return fmt.Errorf("component-tests config %s: suites[%d] (%s) missing command (set `pending: true` if the level has no tests yet)", path, i, s.ID)
 		}
 		// Reject non-portable path separators in the fields the runner resolves
 		// with filepath.Join: a Windows-authored `build\reports` silently fails
@@ -145,15 +160,11 @@ func Load(path string) (*Config, error) {
 			{"testReportPath", s.TestReportPath},
 		} {
 			if strings.Contains(pf.val, "\\") {
-				return nil, fmt.Errorf("component-tests config %s: suites[%d] (%s) %s %q uses a backslash separator — use forward slashes so the path resolves on every OS", path, i, s.ID, pf.key, pf.val)
+				return fmt.Errorf("component-tests config %s: suites[%d] (%s) %s %q uses a backslash separator — use forward slashes so the path resolves on every OS", path, i, s.ID, pf.key, pf.val)
 			}
 		}
 	}
-	for i := range cfg.Suites {
-		cfg.Suites[i].TestFilter = cfg.TestFilter
-		cfg.Suites[i].TestFilterJoin = cfg.TestFilterJoin
-	}
-	return &cfg, nil
+	return nil
 }
 
 // FindSuite returns the suite with the given id, or nil if not found.
