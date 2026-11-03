@@ -130,26 +130,7 @@ type Options struct {
 // but still runs Options.ClaudeCheck when set, since claude readiness is
 // independent of project layout.
 func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
-	var failures []string
-
-	// Required env-var presence. Runs before any cfg-dependent work so it
-	// surfaces even on a nil cfg, and folds into the same aggregated error
-	// block as the structural failures below — one restart fixes every
-	// missing credential at once.
-	if opts.MissingEnvVars != nil {
-		for _, name := range opts.MissingEnvVars() {
-			failures = append(failures, fmt.Sprintf("environment variable %s is not set (required)", name))
-		}
-	}
-
-	// Local-tool check: claude CLI presence. Runs before any cfg-dependent
-	// work so its failure surfaces even on a nil cfg, and folds into the
-	// same aggregated error block as the structural failures below.
-	if opts.ClaudeCheck != nil {
-		if err := opts.ClaudeCheck(ctx); err != nil {
-			failures = append(failures, err.Error())
-		}
-	}
+	failures := cfgIndependentFailures(ctx, opts)
 
 	if cfg == nil {
 		return aggregateFailures(failures)
@@ -162,52 +143,23 @@ func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	// Repo-level local checks.
 	slugs := cfg.Repos()
 	for _, slug := range slugs {
-		path, ok := res.Local[slug]
-		if !ok || path == "" {
-			failures = append(failures, fmt.Sprintf("repo %s: no local path resolved", slug))
-			continue
-		}
-		info, err := os.Stat(path)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				failures = append(failures, fmt.Sprintf("repo %s: local clone %s does not exist", slug, path))
-			} else {
-				failures = append(failures, fmt.Sprintf("repo %s: stat %s: %v", slug, path, err))
-			}
-			continue
-		}
-		if !info.IsDir() {
-			failures = append(failures, fmt.Sprintf("repo %s: %s is not a directory", slug, path))
-			continue
-		}
-		if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
-			failures = append(failures, fmt.Sprintf("repo %s: %s is not a git repository (no .git entry)", slug, path))
+		if msg := repoLocalFailure(slug, res.Local[slug]); msg != "" {
+			failures = append(failures, msg)
 		}
 	}
 
 	// Tier-level local checks. Each tier has a (field-name, repo-slug,
 	// path) triple; we look up the host repo's local clone and join the
 	// tier's path onto it.
-	tiers := collectTiers(cfg)
-	for _, tier := range tiers {
-		hostPath, ok := res.Local[tier.repo]
-		if !ok || hostPath == "" {
+	for _, tier := range collectTiers(cfg) {
+		hostPath := res.Local[tier.repo]
+		if hostPath == "" {
 			// Already reported above as a repo-level failure; skip
 			// the tier-level check to avoid double-counting.
 			continue
 		}
-		full := filepath.Join(hostPath, tier.path)
-		info, err := os.Stat(full)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				failures = append(failures, fmt.Sprintf("%s: %s does not exist", tier.field, full))
-			} else {
-				failures = append(failures, fmt.Sprintf("%s: stat %s: %v", tier.field, full, err))
-			}
-			continue
-		}
-		if !info.IsDir() {
-			failures = append(failures, fmt.Sprintf("%s: %s is not a directory", tier.field, full))
+		if msg := tierLocalFailure(tier, filepath.Join(hostPath, tier.path)); msg != "" {
+			failures = append(failures, msg)
 		}
 	}
 
@@ -234,13 +186,7 @@ func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	// clone. An empty path — no system-test.config declared, or its repo
 	// didn't resolve above (already reported as a repo-level failure) — skips
 	// the check.
-	testsYAML := ""
-	if cfg.SystemTest.Config != "" {
-		if hostPath := res.Local[cfg.SystemTest.Repo]; hostPath != "" {
-			testsYAML = filepath.Join(hostPath, cfg.SystemTest.Config)
-		}
-	}
-	failures = append(failures, runSuiteExistenceChecks(cfg, opts.Engine, testsYAML)...)
+	failures = append(failures, runSuiteExistenceChecks(cfg, opts.Engine, testsYAMLPath(cfg, res.Local))...)
 
 	// Effective-suite resolution sweep (optional; only runs when an engine is
 	// wired). Independent of tests.yaml: it validates that every `${suite}`
@@ -249,6 +195,83 @@ func Run(ctx context.Context, cfg *projectconfig.Config, opts Options) error {
 	failures = append(failures, runEffectiveSuiteResolutionChecks(opts.Engine)...)
 
 	return aggregateFailures(failures)
+}
+
+// cfgIndependentFailures collects the failures that do not depend on project
+// layout: missing required env vars and the claude CLI check.
+func cfgIndependentFailures(ctx context.Context, opts Options) []string {
+	var failures []string
+
+	// Required env-var presence. Runs before any cfg-dependent work so it
+	// surfaces even on a nil cfg, and folds into the same aggregated error
+	// block as the structural failures — one restart fixes every
+	// missing credential at once.
+	if opts.MissingEnvVars != nil {
+		for _, name := range opts.MissingEnvVars() {
+			failures = append(failures, fmt.Sprintf("environment variable %s is not set (required)", name))
+		}
+	}
+
+	// Local-tool check: claude CLI presence. Runs before any cfg-dependent
+	// work so its failure surfaces even on a nil cfg, and folds into the
+	// same aggregated error block as the structural failures.
+	if opts.ClaudeCheck != nil {
+		if err := opts.ClaudeCheck(ctx); err != nil {
+			failures = append(failures, err.Error())
+		}
+	}
+	return failures
+}
+
+// testsYAMLPath returns the system-test repo's tests.yaml path, or "" when no
+// system-test.config is declared or its repo did not resolve.
+func testsYAMLPath(cfg *projectconfig.Config, local map[string]string) string {
+	if cfg.SystemTest.Config == "" {
+		return ""
+	}
+	hostPath := local[cfg.SystemTest.Repo]
+	if hostPath == "" {
+		return ""
+	}
+	return filepath.Join(hostPath, cfg.SystemTest.Config)
+}
+
+// repoLocalFailure checks one repo's resolved local clone path and returns the
+// failure line, or "" when it is a git repository directory.
+func repoLocalFailure(slug, path string) string {
+	if path == "" {
+		return fmt.Sprintf("repo %s: no local path resolved", slug)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Sprintf("repo %s: local clone %s does not exist", slug, path)
+		}
+		return fmt.Sprintf("repo %s: stat %s: %v", slug, path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Sprintf("repo %s: %s is not a directory", slug, path)
+	}
+	if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
+		return fmt.Sprintf("repo %s: %s is not a git repository (no .git entry)", slug, path)
+	}
+	return ""
+}
+
+// tierLocalFailure checks one tier's full path and returns the failure line,
+// or "" when it is an existing directory.
+func tierLocalFailure(tier tierCheck, full string) string {
+	info, err := os.Stat(full)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Sprintf("%s: %s does not exist", tier.field, full)
+		}
+		return fmt.Sprintf("%s: stat %s: %v", tier.field, full, err)
+	}
+	if !info.IsDir() {
+		return fmt.Sprintf("%s: %s is not a directory", tier.field, full)
+	}
+	return ""
 }
 
 // runScopeResolutionChecks iterates every writing-agent MID in the loaded
@@ -269,65 +292,77 @@ func runScopeResolutionChecks(cfg *projectconfig.Config, eng *statemachine.Engin
 	}
 	var failures []string
 	for processName, proc := range eng.Processes {
-		for _, node := range proc.Nodes {
-			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
+		node, ok := firstConcreteMID(proc)
+		if !ok {
+			continue
+		}
+		for _, list := range []struct {
+			name   string
+			layers []string
+		}{
+			{"read", node.Raw.Read},
+			{"write", node.Raw.Write},
+		} {
+			if len(list.layers) == 0 {
 				continue
 			}
-			task := node.Raw.Params["task-name"]
-			if task == "" || strings.Contains(task, "${") {
-				continue
+			if msg := scopeListFailure(processName, list.name, list.layers, cfg); msg != "" {
+				failures = append(failures, msg)
 			}
-			for _, list := range []struct {
-				name   string
-				layers []string
-			}{
-				{"read", node.Raw.Read},
-				{"write", node.Raw.Write},
-			} {
-				if len(list.layers) == 0 {
-					continue
-				}
-				resolved, err := actions.ResolveLayerPaths(list.layers, cfg)
-				if err != nil {
-					failures = append(failures, fmt.Sprintf("MID %s %s scope: %v", processName, list.name, err))
-					continue
-				}
-				// Channel-blind whole-system expansion through the SAME resolver
-				// the runtime scope check uses (actions.AddSystemSurfaceScope with
-				// channel=""): on multitier this appends the system-path layer's
-				// tier surface (both tiers) so a non-empty declared list no longer
-				// collapses to zero paths after ResolveLayerPaths skips the
-				// monolith-only system-path key. No duplicate mapping logic.
-				resolved, err = actions.AddSystemSurfaceScope(list.layers, resolved, "", cfg)
-				if err != nil {
-					failures = append(failures, fmt.Sprintf("MID %s %s scope: %v", processName, list.name, err))
-					continue
-				}
-				// Emptiness gate: a declared, non-empty layer list that resolves
-				// to no real path means the write/read scope silently collapsed —
-				// the bug class this plan closes (a re-introduced monolith-only
-				// skip, or a misconfigured multitier whose tier surfaces are
-				// blank). ResolveLayerPaths errors on a blank Family A/B value, so
-				// the only way an empty string reaches `resolved` is an
-				// architecture-shaped surface collapse — count non-empty paths so
-				// a [""] / ["",""] surface is flagged, not silently treated as a
-				// resolved scope. Surface it statically in <1s instead of leaving
-				// it to a live dispatch's scope-diff halt.
-				hasPath := false
-				for _, p := range resolved {
-					if p != "" {
-						hasPath = true
-						break
-					}
-				}
-				if !hasPath {
-					failures = append(failures, fmt.Sprintf("MID %s %s scope: resolves to no paths on this %s config (layer collapsed)", processName, list.name, cfg.System.Architecture))
-				}
-			}
-			break
 		}
 	}
 	return failures
+}
+
+// firstConcreteMID returns the first execute-agent call-activity in proc whose
+// task-name is a concrete value (non-empty, no ${…} placeholder).
+func firstConcreteMID(proc *statemachine.Process) (statemachine.Node, bool) {
+	for _, node := range proc.Nodes {
+		if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
+			continue
+		}
+		task := node.Raw.Params["task-name"]
+		if task == "" || strings.Contains(task, "${") {
+			continue
+		}
+		return node, true
+	}
+	return statemachine.Node{}, false
+}
+
+// scopeListFailure resolves one non-empty layer list and returns the failure
+// line, or "" when the list resolves to at least one real path.
+func scopeListFailure(processName, listName string, layers []string, cfg *projectconfig.Config) string {
+	resolved, err := actions.ResolveLayerPaths(layers, cfg)
+	if err != nil {
+		return fmt.Sprintf("MID %s %s scope: %v", processName, listName, err)
+	}
+	// Channel-blind whole-system expansion through the SAME resolver
+	// the runtime scope check uses (actions.AddSystemSurfaceScope with
+	// channel=""): on multitier this appends the system-path layer's
+	// tier surface (both tiers) so a non-empty declared list no longer
+	// collapses to zero paths after ResolveLayerPaths skips the
+	// monolith-only system-path key. No duplicate mapping logic.
+	resolved, err = actions.AddSystemSurfaceScope(layers, resolved, "", cfg)
+	if err != nil {
+		return fmt.Sprintf("MID %s %s scope: %v", processName, listName, err)
+	}
+	// Emptiness gate: a declared, non-empty layer list that resolves
+	// to no real path means the write/read scope silently collapsed —
+	// the bug class this plan closes (a re-introduced monolith-only
+	// skip, or a misconfigured multitier whose tier surfaces are
+	// blank). ResolveLayerPaths errors on a blank Family A/B value, so
+	// the only way an empty string reaches `resolved` is an
+	// architecture-shaped surface collapse — count non-empty paths so
+	// a [""] / ["",""] surface is flagged, not silently treated as a
+	// resolved scope. Surface it statically in <1s instead of leaving
+	// it to a live dispatch's scope-diff halt.
+	for _, p := range resolved {
+		if p != "" {
+			return ""
+		}
+	}
+	return fmt.Sprintf("MID %s %s scope: resolves to no paths on this %s config (layer collapsed)", processName, listName, cfg.System.Architecture)
 }
 
 // runScopeRenderChecks renders every writing-agent MID's read:/write: scope
@@ -365,24 +400,18 @@ func runScopeRenderChecks(cfg *projectconfig.Config, eng *statemachine.Engine) [
 	}
 	var failures []string
 	for processName, proc := range eng.Processes {
-		for _, node := range proc.Nodes {
-			if node.Kind != statemachine.CallActivity || node.Raw.Process != "execute-agent" {
-				continue
-			}
-			task := node.Raw.Params["task-name"]
-			if task == "" || strings.Contains(task, "${") {
-				continue
-			}
-			// Mirror the dispatcher's render gate (clauderun renderPrompt): a
-			// scope block is only rendered when both read: and write: are
-			// non-empty, so an empty either side cannot leak `(unresolved)`.
-			if len(node.Raw.Read) == 0 || len(node.Raw.Write) == 0 {
-				break
-			}
-			if _, err := clauderun.RenderScopeBlock(node.Raw.Read, node.Raw.Write, placeholders, "", surface); err != nil {
-				failures = append(failures, fmt.Sprintf("MID %s %v", processName, err))
-			}
-			break
+		node, ok := firstConcreteMID(proc)
+		if !ok {
+			continue
+		}
+		// Mirror the dispatcher's render gate (clauderun renderPrompt): a
+		// scope block is only rendered when both read: and write: are
+		// non-empty, so an empty either side cannot leak `(unresolved)`.
+		if len(node.Raw.Read) == 0 || len(node.Raw.Write) == 0 {
+			continue
+		}
+		if _, err := clauderun.RenderScopeBlock(node.Raw.Read, node.Raw.Write, placeholders, "", surface); err != nil {
+			failures = append(failures, fmt.Sprintf("MID %s %v", processName, err))
 		}
 	}
 	sort.Strings(failures)
@@ -506,6 +535,26 @@ func runEffectiveSuiteResolutionChecks(eng *statemachine.Engine) []string {
 	// Root processes = those never targeted by a call-activity. The walk
 	// starts there with an empty env; concrete `suite:` values are bound at
 	// intermediate call sites and propagate down through `${suite}` forwarders.
+	w := &suiteWalker{
+		eng:      eng,
+		failures: map[string]bool{},
+		visited:  map[string]bool{},
+	}
+	for _, name := range rootProcessNames(eng) {
+		w.walk(name, map[string]string{})
+	}
+
+	out := make([]string, 0, len(w.failures))
+	for f := range w.failures {
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// rootProcessNames returns the processes never targeted by a call-activity,
+// in sorted order for a deterministic walk.
+func rootProcessNames(eng *statemachine.Engine) []string {
 	called := map[string]bool{}
 	for _, proc := range eng.Processes {
 		for _, node := range proc.Nodes {
@@ -514,63 +563,64 @@ func runEffectiveSuiteResolutionChecks(eng *statemachine.Engine) []string {
 			}
 		}
 	}
-
-	failures := map[string]bool{}
-	visited := map[string]bool{}
-	var walk func(procName string, env map[string]string)
-	walk = func(procName string, env map[string]string) {
-		proc, ok := eng.Processes[procName]
-		if !ok {
-			return
-		}
-		// Memoise on (process, effective suite): the suite param is the only
-		// value this sweep cares about, so two invocations that agree on it
-		// explore identically. Bounds the fix-loop / shared-subprocess fan-in.
-		sig := procName + "\x00" + env["suite"]
-		if visited[sig] {
-			return
-		}
-		visited[sig] = true
-
-		for _, node := range proc.Nodes {
-			if raw, ok := node.Raw.Params["suite"]; ok {
-				if _, resolved := resolveParam(raw, env); !resolved {
-					failures[fmt.Sprintf(
-						"node %s in process %q requests a test suite that is not statically resolvable (%q resolves only from runtime state); every verify call site must bind a concrete suite so a bad suite cannot reach the runner",
-						node.ID, procName, raw)] = true
-				}
-			}
-			if node.Raw.Process != "" {
-				childEnv := map[string]string{}
-				for k, v := range node.Raw.Params {
-					if rv, ok := resolveParam(v, env); ok {
-						childEnv[k] = rv
-					}
-					// Unresolved params are omitted so the callee sees the key
-					// as absent (still unresolved) rather than as empty-bound.
-				}
-				walk(node.Raw.Process, childEnv)
-			}
-		}
-	}
-
 	roots := make([]string, 0, len(eng.Processes))
 	for name := range eng.Processes {
 		if !called[name] {
 			roots = append(roots, name)
 		}
 	}
-	sort.Strings(roots) // deterministic walk order
-	for _, name := range roots {
-		walk(name, map[string]string{})
-	}
+	sort.Strings(roots)
+	return roots
+}
 
-	out := make([]string, 0, len(failures))
-	for f := range failures {
-		out = append(out, f)
+// suiteWalker walks the call graph threading each call-site's resolved param
+// environment into the callee, collecting nodes whose `suite` param is not
+// statically resolvable.
+type suiteWalker struct {
+	eng      *statemachine.Engine
+	failures map[string]bool
+	visited  map[string]bool
+}
+
+func (w *suiteWalker) walk(procName string, env map[string]string) {
+	proc, ok := w.eng.Processes[procName]
+	if !ok {
+		return
 	}
-	sort.Strings(out)
-	return out
+	// Memoise on (process, effective suite): the suite param is the only
+	// value this sweep cares about, so two invocations that agree on it
+	// explore identically. Bounds the fix-loop / shared-subprocess fan-in.
+	sig := procName + "\x00" + env["suite"]
+	if w.visited[sig] {
+		return
+	}
+	w.visited[sig] = true
+
+	for _, node := range proc.Nodes {
+		if raw, ok := node.Raw.Params["suite"]; ok {
+			if _, resolved := resolveParam(raw, env); !resolved {
+				w.failures[fmt.Sprintf(
+					"node %s in process %q requests a test suite that is not statically resolvable (%q resolves only from runtime state); every verify call site must bind a concrete suite so a bad suite cannot reach the runner",
+					node.ID, procName, raw)] = true
+			}
+		}
+		if node.Raw.Process != "" {
+			w.walk(node.Raw.Process, resolvedChildEnv(node.Raw.Params, env))
+		}
+	}
+}
+
+// resolvedChildEnv resolves a call-site's params against env. Unresolved
+// params are omitted so the callee sees the key as absent (still unresolved)
+// rather than as empty-bound.
+func resolvedChildEnv(params, env map[string]string) map[string]string {
+	childEnv := map[string]string{}
+	for k, v := range params {
+		if rv, ok := resolveParam(v, env); ok {
+			childEnv[k] = rv
+		}
+	}
+	return childEnv
 }
 
 // resolveParam substitutes ${k} occurrences in a YAML param value against env,
@@ -711,6 +761,16 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 			path:  cfg.Component.Path,
 		})
 	}
+	out = append(out, systemTierChecks(cfg)...)
+	if !cfg.SystemTest.IsEmpty() {
+		out = append(out, systemTestTierChecks(cfg)...)
+	}
+	return append(out, externalSystemTierChecks(cfg)...)
+}
+
+// systemTierChecks returns the system.* tiers for cfg's architecture.
+func systemTierChecks(cfg *projectconfig.Config) []tierCheck {
+	var out []tierCheck
 	switch cfg.System.Architecture {
 	case projectconfig.ArchMonolith:
 		if cfg.System.Path != "" || cfg.System.Repo != "" {
@@ -736,52 +796,63 @@ func collectTiers(cfg *projectconfig.Config) []tierCheck {
 			})
 		}
 	}
-	if !cfg.SystemTest.IsEmpty() {
+	return out
+}
+
+// systemTestTierChecks returns the system-test tier plus its testkit paths and
+// per-channel adapter members.
+func systemTestTierChecks(cfg *projectconfig.Config) []tierCheck {
+	var out []tierCheck
+	out = append(out, tierCheck{
+		field: "system-test.path",
+		repo:  cfg.SystemTest.Repo,
+		path:  cfg.SystemTest.Path,
+	})
+	// system-test.paths.* — eight repo-relative testkit locations. Iterate
+	// in CanonicalPathKeys order so error output is stable and matches the
+	// vocabulary doc (internal/projectconfig/path-keys.md). Skip absent
+	// keys: Validate's Rule 22a already requires the full set when
+	// system.architecture is set, so a missing entry here would already
+	// have failed schema validation upstream of preflight.
+	for _, key := range projectconfig.CanonicalPathKeys() {
+		val, ok := cfg.SystemTest.Paths[key]
+		if !ok || val == "" {
+			continue
+		}
 		out = append(out, tierCheck{
-			field: "system-test.path",
+			field: "system-test.paths." + key,
 			repo:  cfg.SystemTest.Repo,
-			path:  cfg.SystemTest.Path,
+			path:  val,
 		})
-		// system-test.paths.* — eight repo-relative testkit locations. Iterate
-		// in CanonicalPathKeys order so error output is stable and matches the
-		// vocabulary doc (internal/projectconfig/path-keys.md). Skip absent
-		// keys: Validate's Rule 22a already requires the full set when
-		// system.architecture is set, so a missing entry here would already
-		// have failed schema validation upstream of preflight.
-		for _, key := range projectconfig.CanonicalPathKeys() {
-			val, ok := cfg.SystemTest.Paths[key]
-			if !ok || val == "" {
-				continue
-			}
-			out = append(out, tierCheck{
-				field: "system-test.paths." + key,
-				repo:  cfg.SystemTest.Repo,
-				path:  val,
-			})
-		}
-		// system-test.system-driver-adapter-channels.* — the per-channel adapter
-		// members live OUTSIDE the flat Paths map / CanonicalPathKeys, so the
-		// loop above never reaches them; stat each one explicitly. Sorted by
-		// channel for stable error output. Validate's Rule 24 already requires a
-		// member per declared channel when architecture is set, so a present
-		// member is one the operator is committed to having on disk.
-		channels := make([]string, 0, len(cfg.SystemTest.SystemDriverAdapterChannels))
-		for ch := range cfg.SystemTest.SystemDriverAdapterChannels {
-			channels = append(channels, ch)
-		}
-		sort.Strings(channels)
-		for _, ch := range channels {
-			val := cfg.SystemTest.SystemDriverAdapterChannels[ch]
-			if val == "" {
-				continue
-			}
-			out = append(out, tierCheck{
-				field: "system-test.system-driver-adapter-channels." + ch,
-				repo:  cfg.SystemTest.Repo,
-				path:  val,
-			})
-		}
 	}
+	// system-test.system-driver-adapter-channels.* — the per-channel adapter
+	// members live OUTSIDE the flat Paths map / CanonicalPathKeys, so the
+	// loop above never reaches them; stat each one explicitly. Sorted by
+	// channel for stable error output. Validate's Rule 24 already requires a
+	// member per declared channel when architecture is set, so a present
+	// member is one the operator is committed to having on disk.
+	channels := make([]string, 0, len(cfg.SystemTest.SystemDriverAdapterChannels))
+	for ch := range cfg.SystemTest.SystemDriverAdapterChannels {
+		channels = append(channels, ch)
+	}
+	sort.Strings(channels)
+	for _, ch := range channels {
+		val := cfg.SystemTest.SystemDriverAdapterChannels[ch]
+		if val == "" {
+			continue
+		}
+		out = append(out, tierCheck{
+			field: "system-test.system-driver-adapter-channels." + ch,
+			repo:  cfg.SystemTest.Repo,
+			path:  val,
+		})
+	}
+	return out
+}
+
+// externalSystemTierChecks returns the external-systems tiers.
+func externalSystemTierChecks(cfg *projectconfig.Config) []tierCheck {
+	var out []tierCheck
 	// External systems — one entry per named system. The stub is always
 	// present; the simulator only when real-kind: simulator (its absence is
 	// the test-instance marker, so there's nothing to stat).

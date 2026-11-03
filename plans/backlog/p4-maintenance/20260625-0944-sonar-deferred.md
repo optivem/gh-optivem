@@ -3,7 +3,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Remaining production items: clauderun, driver, preflight, and `kernel/projectconfig`. Each needs a coverage review of its package tests before refactoring (actions package done). Start with `internal/atdd/process/clauderun/clauderun.go` (CC 26/49/34).
+Remaining production items: only `internal/kernel/projectconfig/config.go` (L767 CC 102, L1352 CC 24) - in progress via subagent; add characterization tests before refactoring. After it lands, only test-file items remain (accept as Won't Fix in SonarCloud by a human).
 
 ## TL;DR
 
@@ -29,10 +29,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 
 ## Production items
 
-- `internal/atdd/process/clauderun/clauderun.go` — L836 (CC 26), L1153 (CC 49), L2282 (CC 34)
-- `internal/atdd/runtime/driver/driver.go` — L278 (CC 33), L750 (CC 19), L1245 (CC 37), L2170 (CC 22)
-- `internal/atdd/runtime/driver/summary_sidecar.go` — L356 (CC 25)
-- `internal/atdd/runtime/preflight/preflight.go` — L132 (CC 26), L266 (CC 33), L355 (CC 20), L502 (CC 37), L701 (CC 26)
 - `internal/kernel/projectconfig/config.go` — L767 (CC 102), L1352 (CC 24)
 
 ## Test-file items (decision: do not refactor; accept in SonarCloud)
