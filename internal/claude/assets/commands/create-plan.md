@@ -70,6 +70,15 @@ What we get out of this — the goals and deliverables:
 - **`## Steps`** is the how. Keep steps coarse at creation time; the discussion sharpens them.
 - Drop **`## Open questions`** if there are none.
 
+### Authoring rules for steps (so any plan can run unattended)
+
+- Each step has a testable acceptance criterion ("done when `<command>` passes" / "file X contains Y"); no vague steps.
+- Self-contained: name files, constraints and the why; never "as discussed".
+- Small and independently verifiable: one checkable change per step.
+- State dependencies and ordering between steps explicitly (dependent run sequentially, independent with disjoint files may run in parallel).
+- Include non-goals and invariants (what must not change).
+- Resolve open questions (`/refine-plan`) before execution; workers never settle design forks.
+
 ## Phase 1 — Draft from the idea
 
 1. Read `$ARGUMENTS`. Do **not** scan the codebase or run tools unless the idea is too vague to draft outcomes from — creating the skeleton should be cheap. If the idea is genuinely ambiguous, ask **one** clarifying question (via `AskUserQuestion`), then draft.
