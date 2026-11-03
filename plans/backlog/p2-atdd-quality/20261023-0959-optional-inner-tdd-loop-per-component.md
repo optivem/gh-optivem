@@ -229,13 +229,24 @@ prerequisite is needed. Slices 1–2 are component level only. In their steps,
 "domain core" means the component's main source, and the inner tests are the
 component tests.
 
-- [ ] Step 1b: Add the `--backend-inner-loop` style flags and the matching
-  init/config prompts for the mode per tier (default `none`), running
-  `projectconfig.ValidateInnerLoopMode` (same validator as `Validate`). The
-  schema, `Validate` rules and tests shipped in Step 1; the flag/prompt
-  plumbing (`internal/config/config.go` RawFlags -> yaml writer,
-  `internal/config/configinit/prompt.go`) is a separate, wide change. Hand-editing
-  `inner-loop:` works meanwhile, so this does not block Steps 2-5.
+- [ ] Step 1b (DEFERRED 2026-11-03, judged not worth building now): the
+  `--backend-inner-loop` style flags and init/config prompts. Reasons:
+  - `Validate` couples the mode to `paths.component-test` (required exactly
+    when the mode is enabled). A mode flag alone would produce an invalid
+    config, so the plumbing must also carry a tier `paths:` map. Neither
+    `RawFlags`, the `optivemyaml` writer nor `configinit/prompt.go` carries
+    tier `paths:` or `inner-loop` today, so this is new surface on three
+    layers, not a flag.
+  - `init` has no deterministic component-test path to write: it exists only
+    in shop `backend-java` (Java/PIT pilot); other languages and templates
+    have no component-test source set or mutation suite (Step 7).
+  - The only consumer is the pilot, which is hand-edited in
+    `gh-optivem-multitier-java.yaml`; the mutation-gate evidence (Decision 10
+    and Step 4) is still pending, so a student-facing prompt is premature.
+  Revisit when Step 7 (other languages) or Step 8 (docs) makes a second
+  tier opt in; then add flag + prompt together with the `paths` plumbing and
+  call `projectconfig.ValidateInnerLoopMode`. Hand-editing `inner-loop:` works
+  meanwhile; nothing else is blocked.
 - [ ] Step 4 (remaining): the runner command (`gh optivem component-test
   mutation`), the PIT wiring in shop `backend-java` and the changed-only
   measurement shipped. Left: (a) add the nightly CI workflow in shop running
