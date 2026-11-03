@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // State keys check-outputs-and-scopes stamps; read by the
@@ -131,15 +132,8 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// an absent stash skips this block entirely.
 	taskName := phaseTaskName(ctx)
 	declared, _ := a.deps.Engine.Outputs(taskName)
-	outputFile, _ := ctx.State["output-file-path"].(string)
-	if outputFile != "" {
-		flattened, err := readOutputsJSONL(outputFile, declared)
-		if err != nil {
-			return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
-		}
-		for k, v := range flattened {
-			ctx.Set(k, v)
-		}
+	if err := flattenOutputsFile(ctx, declared); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
 
 	// CT-path System-Driver fence (plan 20260527-1147 Item 4). A
@@ -160,16 +154,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 
 	// 2. Output presence check — every non-Optional declared key must
 	// be present in ctx.State after the flatten.
-	var missing []string
-	for _, spec := range declared {
-		if spec.Optional {
-			continue
-		}
-		if _, ok := ctx.State[spec.Key]; !ok {
-			missing = append(missing, spec.Key)
-		}
-	}
-	if len(missing) > 0 {
+	if missing := missingOutputKeys(ctx, declared); len(missing) > 0 {
 		ctx.Set(CtxKeyOutputsAndScopesValid, false)
 		ctx.Set(CtxKeyFailureKind, "missing-output")
 		ctx.Set(CtxKeyFailingTaskName, taskName)
@@ -194,15 +179,7 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	if cfg == nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: gh-optivem.yaml not loaded — driver must inject actions.Deps.Config")}
 	}
-	allowed, err := ResolveLayerPaths(write, cfg)
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
-	}
-	allowed, err = narrowAdapterScopeByChannel(write, allowed, ctx.Params["channel"], cfg)
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
-	}
-	allowed, err = AddSystemSurfaceScope(write, allowed, ctx.Params["channel"], cfg)
+	allowed, err := resolveAllowedScope(write, ctx.Params["channel"], cfg)
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("validate-outputs-and-scopes: %w", err)}
 	}
@@ -237,28 +214,9 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	// when the landed verdict is true AND the subset is non-empty, so the
 	// compile-only CT DSL phase (which does not re-change the port) cannot
 	// clobber the AT phase's list.
-	if portChanged, _ := ctx.State["external-driver-port-changed"].(bool); portChanged {
-		if portRoots, perr := ResolveLayerPaths([]string{"external-system-driver-port"}, cfg); perr == nil && len(portRoots) > 0 {
-			portRoot := portRoots[0]
-			var portPaths []string
-			for _, m := range modified {
-				if strings.HasPrefix(m, portRoot+"/") {
-					portPaths = append(portPaths, m)
-				}
-			}
-			if len(portPaths) > 0 {
-				ctx.Set("external-driver-port-changed-paths", strings.Join(portPaths, "\n"))
-			}
-		}
-	}
+	preserveExternalDriverPortPaths(ctx, cfg, modified)
 
-	var violating []string
-	for _, m := range modified {
-		if !pathInScope(m, allowed) {
-			violating = append(violating, m)
-		}
-	}
-	if len(violating) > 0 {
+	if violating := filterOutOfScopePaths(modified, allowed); len(violating) > 0 {
 		ctx.Set(CtxKeyOutputsAndScopesValid, false)
 		ctx.Set(CtxKeyFailureKind, "scope-diff")
 		ctx.Set(CtxKeyFailingTaskName, taskName)
@@ -283,6 +241,73 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 	ctx.Unset("scope-violating-paths")
 	ctx.Set(CtxKeyOutputsAndScopesValid, true)
 	return statemachine.Outcome{}
+}
+
+// flattenOutputsFile reads the per-dispatch JSONL outputs file (when the
+// driver stashed a path) and flattens it into ctx.State. An absent stash is a no-op.
+func flattenOutputsFile(ctx *statemachine.Context, declared []statemachine.OutputSpec) error {
+	outputFile, _ := ctx.State["output-file-path"].(string)
+	if outputFile == "" {
+		return nil
+	}
+	flattened, err := readOutputsJSONL(outputFile, declared)
+	if err != nil {
+		return err
+	}
+	for k, v := range flattened {
+		ctx.Set(k, v)
+	}
+	return nil
+}
+
+// missingOutputKeys returns the declared non-optional keys absent from ctx.State.
+func missingOutputKeys(ctx *statemachine.Context, declared []statemachine.OutputSpec) []string {
+	var missing []string
+	for _, spec := range declared {
+		if spec.Optional {
+			continue
+		}
+		if _, ok := ctx.State[spec.Key]; !ok {
+			missing = append(missing, spec.Key)
+		}
+	}
+	return missing
+}
+
+// resolveAllowedScope resolves the write layers to paths, narrowed by channel
+// and extended with the system surface scope.
+func resolveAllowedScope(write []string, channel string, cfg *projectconfig.Config) ([]string, error) {
+	allowed, err := ResolveLayerPaths(write, cfg)
+	if err != nil {
+		return nil, err
+	}
+	allowed, err = narrowAdapterScopeByChannel(write, allowed, channel, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return AddSystemSurfaceScope(write, allowed, channel, cfg)
+}
+
+// preserveExternalDriverPortPaths stashes the under-port-root subset of the
+// modified paths into a durable flat key for IDENTIFY_EXTERNAL_SYSTEM.
+func preserveExternalDriverPortPaths(ctx *statemachine.Context, cfg *projectconfig.Config, modified []string) {
+	if portChanged, _ := ctx.State["external-driver-port-changed"].(bool); !portChanged {
+		return
+	}
+	portRoots, perr := ResolveLayerPaths([]string{"external-system-driver-port"}, cfg)
+	if perr != nil || len(portRoots) == 0 {
+		return
+	}
+	portRoot := portRoots[0]
+	var portPaths []string
+	for _, m := range modified {
+		if strings.HasPrefix(m, portRoot+"/") {
+			portPaths = append(portPaths, m)
+		}
+	}
+	if len(portPaths) > 0 {
+		ctx.Set("external-driver-port-changed-paths", strings.Join(portPaths, "\n"))
+	}
 }
 
 // phaseTaskName returns the writing-agent MID name to look up scope by.

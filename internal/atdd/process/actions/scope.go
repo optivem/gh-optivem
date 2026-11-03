@@ -164,65 +164,81 @@ func filterOutOfScopePaths(paths, allowed []string) []string {
 func ResolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, error) {
 	out := make([]string, 0, len(layers))
 	for _, layer := range layers {
-		// Monolith-only key on a multitier config: not applicable. The
-		// phases that scope it are monolith-only by construction and never
-		// dispatched here, so the empty backing field (projectconfig.System
-		// polymorphism) is correct, not a misconfiguration. Skip before the
-		// switch so the monolith empty-path error below still fires for an
-		// actually-broken monolith config.
-		if atdd.MonolithOnlyPathKeys[layer] && cfg.System.Architecture == projectconfig.ArchMultitier {
-			continue
+		paths, err := resolveLayer(layer, cfg)
+		if err != nil {
+			return nil, err
 		}
-		// Registry-projected key (external-system simulator / stub stand-in
-		// dir): resolve from the external-systems: registry, not a top-level
-		// field or system-test.paths: entry. An empty result means the
-		// optional registry declares no backing path (no simulator-kind system
-		// / no external-systems: at all) — the layer is not applicable on this
-		// config, so skip it (mirrors the monolith-only skip above). The
-		// always-present shared write keys keep the scope non-empty, so a
-		// registry-less project does not false-fail the preflight collapse gate.
-		if atdd.ExternalRegistryPathKeysInScope[layer] {
-			paths, ok := cfg.ExternalRegistryPaths(layer)
-			if !ok {
-				return nil, fmt.Errorf("layer %q is in ExternalRegistryPathKeysInScope but has no Config projection", layer)
-			}
-			out = append(out, paths...)
-			continue
-		}
-		if atdd.TierPathKeysInScope[layer] {
-			// Optional: absent when no tier opts in to an inner loop, in which
-			// case the layer is not applicable and is skipped (mirrors the
-			// registry-projected keys). Validate guarantees an enabled
-			// inner-loop tier carries the path.
-			if v := cfg.ComponentTestPath(); v != "" {
-				out = append(out, v)
-			}
-			continue
-		}
-		if atdd.FamilyAPathKeysInScope[layer] {
-			switch layer {
-			case "system-path":
-				if cfg.System.Path == "" {
-					return nil, fmt.Errorf("layer %q resolves to empty system.path in gh-optivem.yaml", layer)
-				}
-				out = append(out, cfg.System.Path)
-			case "system-db-migration-path":
-				if cfg.System.DbMigrationPath == "" {
-					return nil, fmt.Errorf("layer %q resolves to empty system.db-migration-path in gh-optivem.yaml", layer)
-				}
-				out = append(out, cfg.System.DbMigrationPath)
-			default:
-				return nil, fmt.Errorf("layer %q is in FamilyAPathKeysInScope but has no Config accessor", layer)
-			}
-			continue
-		}
-		v, ok := cfg.SystemTest.Paths[layer]
-		if !ok || v == "" {
-			return nil, fmt.Errorf("layer %q not present in gh-optivem.yaml system-test.paths:", layer)
-		}
-		out = append(out, v)
+		out = append(out, paths...)
 	}
 	return out, nil
+}
+
+// resolveLayer resolves one layer key to its configured path(s). A layer that
+// is not applicable on this config resolves to no paths.
+func resolveLayer(layer string, cfg *projectconfig.Config) ([]string, error) {
+	// Monolith-only key on a multitier config: not applicable. The
+	// phases that scope it are monolith-only by construction and never
+	// dispatched here, so the empty backing field (projectconfig.System
+	// polymorphism) is correct, not a misconfiguration. Skip before the
+	// family lookup so the monolith empty-path error still fires for an
+	// actually-broken monolith config.
+	if atdd.MonolithOnlyPathKeys[layer] && cfg.System.Architecture == projectconfig.ArchMultitier {
+		return nil, nil
+	}
+	// Registry-projected key (external-system simulator / stub stand-in
+	// dir): resolve from the external-systems: registry, not a top-level
+	// field or system-test.paths: entry. An empty result means the
+	// optional registry declares no backing path (no simulator-kind system
+	// / no external-systems: at all) — the layer is not applicable on this
+	// config, so it is skipped. The always-present shared write keys keep
+	// the scope non-empty, so a registry-less project does not false-fail
+	// the preflight collapse gate.
+	if atdd.ExternalRegistryPathKeysInScope[layer] {
+		paths, ok := cfg.ExternalRegistryPaths(layer)
+		if !ok {
+			return nil, fmt.Errorf("layer %q is in ExternalRegistryPathKeysInScope but has no Config projection", layer)
+		}
+		return paths, nil
+	}
+	if atdd.TierPathKeysInScope[layer] {
+		// Optional: absent when no tier opts in to an inner loop, in which
+		// case the layer is not applicable and is skipped. Validate
+		// guarantees an enabled inner-loop tier carries the path.
+		if v := cfg.ComponentTestPath(); v != "" {
+			return []string{v}, nil
+		}
+		return nil, nil
+	}
+	if atdd.FamilyAPathKeysInScope[layer] {
+		v, err := resolveFamilyAPath(layer, cfg)
+		if err != nil {
+			return nil, err
+		}
+		return []string{v}, nil
+	}
+	v, ok := cfg.SystemTest.Paths[layer]
+	if !ok || v == "" {
+		return nil, fmt.Errorf("layer %q not present in gh-optivem.yaml system-test.paths:", layer)
+	}
+	return []string{v}, nil
+}
+
+// resolveFamilyAPath maps a Family A path-shaped key to its Config accessor.
+func resolveFamilyAPath(layer string, cfg *projectconfig.Config) (string, error) {
+	switch layer {
+	case "system-path":
+		if cfg.System.Path == "" {
+			return "", fmt.Errorf("layer %q resolves to empty system.path in gh-optivem.yaml", layer)
+		}
+		return cfg.System.Path, nil
+	case "system-db-migration-path":
+		if cfg.System.DbMigrationPath == "" {
+			return "", fmt.Errorf("layer %q resolves to empty system.db-migration-path in gh-optivem.yaml", layer)
+		}
+		return cfg.System.DbMigrationPath, nil
+	default:
+		return "", fmt.Errorf("layer %q is in FamilyAPathKeysInScope but has no Config accessor", layer)
+	}
 }
 
 // narrowAdapterScopeByChannel tightens a resolved write-scope so a

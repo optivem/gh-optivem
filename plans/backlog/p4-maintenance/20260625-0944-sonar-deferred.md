@@ -1,8 +1,9 @@
 # 2026-06-25 09:44:47 UTC — SonarCloud go:S3776 cognitive-complexity refactors (deferred)
+> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-11-03T13:28:48Z`
 
 ## ▶ Next executable step (resume here)
 
-Remaining production items are all in the ATDD runtime (actions, clauderun, driver, preflight) and `kernel/projectconfig`. Each needs a coverage review of its package tests before refactoring. Start with `internal/atdd/process/actions/command.go` (CC 23): review `actions` package test coverage, then extract helpers.
+Remaining production items: clauderun, driver, preflight, and `kernel/projectconfig`. Each needs a coverage review of its package tests before refactoring (actions package done). Start with `internal/atdd/process/clauderun/clauderun.go` (CC 26/49/34).
 
 ## TL;DR
 
@@ -28,9 +29,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 
 ## Production items
 
-- `internal/atdd/process/actions/command.go` — L95 (CC 23)
-- `internal/atdd/process/actions/outputs.go` — L122 (CC 36)
-- `internal/atdd/process/actions/scope.go` — L164 (CC 25)
 - `internal/atdd/process/clauderun/clauderun.go` — L836 (CC 26), L1153 (CC 49), L2282 (CC 34)
 - `internal/atdd/runtime/driver/driver.go` — L278 (CC 33), L750 (CC 19), L1245 (CC 37), L2170 (CC 22)
 - `internal/atdd/runtime/driver/summary_sidecar.go` — L356 (CC 25)

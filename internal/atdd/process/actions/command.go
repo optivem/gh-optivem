@@ -106,6 +106,41 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	// would otherwise have those flags rendered into every intermediate
 	// `system build` / `system start` / `commit` shell-out, which the
 	// receiving CLIs reject with "unknown flag: --suite".
+	cmd = appendCommandFlags(ctx, cmd, isTestRun, isCommit)
+	// Lift the permanent WIP gate on the acceptance tests for the
+	// orchestrator's own verify runs only. The gated AT methods key on
+	// GH_OPTIVEM_RUN_WIP_TESTS (see clauderun.renderGateMarkerExample);
+	// we set it to "1" here — and nowhere else — so the child
+	// `gh optivem system-test run`, and the `mvn` / `dotnet` / `playwright` it
+	// shells out to, inherits it through the process environment.
+	// Operator, CI, and IDE invocations never traverse this path, so the
+	// gate keeps the WIP tests silently skipped there. Restored on return
+	// so the var cannot leak into a later non-test dispatch in the same
+	// (single-threaded) orchestrator process.
+	if isTestRun {
+		defer liftWipGate()()
+	}
+	result, err := a.runShell(cmd)
+	succeeded := err == nil
+	ctx.Set("command-succeeded", succeeded)
+	if isTestRun {
+		ctx.Set(CtxKeyTestOutcome, testOutcomeLabel(succeeded))
+	}
+	if err != nil {
+		a.recordCommandFailure(ctx, cmd, result, err)
+	} else {
+		clearCommandDiagnostics(ctx)
+	}
+	if isTestRun && !succeeded {
+		classifyTestRunFailure(ctx, result, err)
+	}
+	return statemachine.Outcome{}
+}
+
+// appendCommandFlags renders the optional `--suite` / `--test` flags onto a
+// `gh optivem system-test run` command and the `message` positional onto a
+// `gh optivem commit` command; any other command is returned unchanged.
+func appendCommandFlags(ctx *statemachine.Context, cmd string, isTestRun, isCommit bool) string {
 	if isTestRun {
 		if suite := strings.TrimSpace(ctx.Params["suite"]); suite != "" {
 			cmd += " --suite=" + shellEscape(suite)
@@ -119,75 +154,67 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 			cmd += " " + shellEscape(msg)
 		}
 	}
-	// Lift the permanent WIP gate on the acceptance tests for the
-	// orchestrator's own verify runs only. The gated AT methods key on
-	// GH_OPTIVEM_RUN_WIP_TESTS (see clauderun.renderGateMarkerExample);
-	// we set it to "1" here — and nowhere else — so the child
-	// `gh optivem system-test run`, and the `mvn` / `dotnet` / `playwright` it
-	// shells out to, inherits it through the process environment.
-	// Operator, CI, and IDE invocations never traverse this path, so the
-	// gate keeps the WIP tests silently skipped there. Restored on return
-	// so the var cannot leak into a later non-test dispatch in the same
-	// (single-threaded) orchestrator process.
-	if isTestRun {
-		if prev, had := os.LookupEnv(wipTestsEnvVar); had {
-			defer os.Setenv(wipTestsEnvVar, prev)
+	return cmd
+}
+
+// liftWipGate sets the WIP-tests env var to "1" and returns a function that
+// restores its previous state (set to the prior value, or unset).
+func liftWipGate() func() {
+	prev, had := os.LookupEnv(wipTestsEnvVar)
+	os.Setenv(wipTestsEnvVar, "1")
+	return func() {
+		if had {
+			os.Setenv(wipTestsEnvVar, prev)
 		} else {
-			defer os.Unsetenv(wipTestsEnvVar)
-		}
-		os.Setenv(wipTestsEnvVar, "1")
-	}
-	result, err := a.runShell(cmd)
-	succeeded := err == nil
-	ctx.Set("command-succeeded", succeeded)
-	if isTestRun {
-		if succeeded {
-			ctx.Set(CtxKeyTestOutcome, "pass")
-		} else {
-			ctx.Set(CtxKeyTestOutcome, "fail")
+			os.Unsetenv(wipTestsEnvVar)
 		}
 	}
-	if err != nil {
-		ctx.Set("failure-kind", "command-failed")
-		ctx.Set("command-line", cmd)
-		ctx.Set("command-exit-code", result.ExitCode)
-		ctx.Set("command-stderr-tail", lastNLines(string(result.Stderr), commandStderrTailLines))
-		fmt.Fprintf(a.deps.Stderr, "run-command: %v\n", err)
-	} else {
-		// Diagnostic keys owned by this action; clear on success so a
-		// later success doesn't carry residue from an earlier failure
-		// into the trace or into a downstream fix-* prompt via
-		// ExpandParams's state-fallback.
-		ctx.Unset("failure-kind")
-		ctx.Unset("command-line")
-		ctx.Unset("command-exit-code")
-		ctx.Unset("command-stderr-tail")
-		ctx.Unset("verify_failure_output")
-		// A green test run ends the verify-tests-pass loop, so the
-		// no-progress baseline (check-fix-progress, plan 20260615-1845 Step 4)
-		// must not survive into a later verify-tests-pass invocation in the
-		// same run, where its first fail would compare against a stale
-		// signature. Cleared here for the same reason verify_failure_output is.
-		ctx.Unset("fix-prev-failure-signature")
-		ctx.Unset(CtxKeyFixLoopEditedFiles)
+}
+
+func testOutcomeLabel(succeeded bool) string {
+	if succeeded {
+		return "pass"
 	}
-	if isTestRun && !succeeded {
-		// Classify the failure so the gateway downstream of run-tests can
-		// distinguish "the runner couldn't start" (infra) from "a test
-		// assertion failed" (red). Pre-classifier, both showed up as
-		// test-outcome="fail" — which the verify-tests-fail phase took as
-		// the expected outcome, silently advancing the pipeline past a
-		// runner that never produced a report. The verify_classify table
-		// is the authoritative pattern set; new infra modes are added as
-		// rows there, not as branches here.
-		isContractSuite := strings.HasPrefix(strings.TrimSpace(ctx.Params["suite"]), "contract")
-		if class, label := classifyShellErr(string(result.Stderr), err, isContractSuite); class == classInfra {
-			ctx.Set(CtxKeyTestOutcome, "infra")
-			ctx.Set("test-infra-label", label)
-		}
-		ctx.Set("verify_failure_output", formatVerifyFailureOutput(result.Stdout, result.Stderr))
+	return "fail"
+}
+
+// recordCommandFailure stamps the diagnostic keys the downstream fix-* prompts read.
+func (a actions) recordCommandFailure(ctx *statemachine.Context, cmd string, result ShellResult, err error) {
+	ctx.Set("failure-kind", "command-failed")
+	ctx.Set("command-line", cmd)
+	ctx.Set("command-exit-code", result.ExitCode)
+	ctx.Set("command-stderr-tail", lastNLines(string(result.Stderr), commandStderrTailLines))
+	fmt.Fprintf(a.deps.Stderr, "run-command: %v\n", err)
+}
+
+// clearCommandDiagnostics clears the diagnostic keys owned by run-command on
+// success so a later success doesn't carry residue from an earlier failure
+// into the trace or into a downstream fix-* prompt via ExpandParams's
+// state-fallback. It also clears the no-progress baseline
+// (check-fix-progress): a green run ends the verify-tests-pass loop, so the
+// baseline must not survive into a later invocation where its first fail
+// would compare against a stale signature.
+func clearCommandDiagnostics(ctx *statemachine.Context) {
+	ctx.Unset("failure-kind")
+	ctx.Unset("command-line")
+	ctx.Unset("command-exit-code")
+	ctx.Unset("command-stderr-tail")
+	ctx.Unset("verify_failure_output")
+	ctx.Unset("fix-prev-failure-signature")
+	ctx.Unset(CtxKeyFixLoopEditedFiles)
+}
+
+// classifyTestRunFailure distinguishes "the runner couldn't start" (infra)
+// from "a test assertion failed" (red) so the gateway downstream of run-tests
+// does not take an infra failure as the expected red outcome. The
+// verify_classify table is the authoritative pattern set.
+func classifyTestRunFailure(ctx *statemachine.Context, result ShellResult, err error) {
+	isContractSuite := strings.HasPrefix(strings.TrimSpace(ctx.Params["suite"]), "contract")
+	if class, label := classifyShellErr(string(result.Stderr), err, isContractSuite); class == classInfra {
+		ctx.Set(CtxKeyTestOutcome, "infra")
+		ctx.Set("test-infra-label", label)
 	}
-	return statemachine.Outcome{}
+	ctx.Set("verify_failure_output", formatVerifyFailureOutput(result.Stdout, result.Stderr))
 }
 
 // formatVerifyFailureOutput builds the ${verify-failure-output} payload the
