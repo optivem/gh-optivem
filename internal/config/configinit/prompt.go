@@ -347,38 +347,15 @@ func askChoice(r *bufio.Reader, out io.Writer, label string, choices []string, d
 		return fmt.Errorf("askChoice %q: defaultIdx %d out of range [0, %d]", label, defaultIdx, len(choices))
 	}
 	for {
-		fmt.Fprintf(out, "  %s:\n", label)
-		for i, c := range choices {
-			if defaultIdx == i+1 {
-				fmt.Fprintf(out, "    [%d] %s (default)\n", i+1, c)
-			} else {
-				fmt.Fprintf(out, "    [%d] %s\n", i+1, c)
-			}
-		}
-		if defaultIdx > 0 {
-			fmt.Fprintf(out, "  Choose [1-%d, ENTER = %d]: ", len(choices), defaultIdx)
-		} else {
-			fmt.Fprintf(out, "  Choose [1-%d]: ", len(choices))
-		}
+		printChoiceMenu(out, label, choices, defaultIdx)
 		line, err := r.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("read %s: %w", label, err)
 		}
-		v := strings.TrimSpace(line)
-		var n int
-		if v == "" {
-			if defaultIdx == 0 {
-				fmt.Fprintf(out, "    please enter a number between 1 and %d\n", len(choices))
-				continue
-			}
-			n = defaultIdx
-		} else {
-			parsed, err := strconv.Atoi(v)
-			if err != nil || parsed < 1 || parsed > len(choices) {
-				fmt.Fprintf(out, "    please enter a number between 1 and %d\n", len(choices))
-				continue
-			}
-			n = parsed
+		n, ok := parseChoiceSelection(strings.TrimSpace(line), len(choices), defaultIdx)
+		if !ok {
+			fmt.Fprintf(out, "    please enter a number between 1 and %d\n", len(choices))
+			continue
 		}
 		chosen := choices[n-1]
 		fmt.Fprintf(out, "    → %s\n", chosen)
@@ -388,4 +365,35 @@ func askChoice(r *bufio.Reader, out io.Writer, label string, choices []string, d
 		}
 		return nil
 	}
+}
+
+// printChoiceMenu prints the numbered options and the selection prompt.
+func printChoiceMenu(out io.Writer, label string, choices []string, defaultIdx int) {
+	fmt.Fprintf(out, "  %s:\n", label)
+	for i, c := range choices {
+		if defaultIdx == i+1 {
+			fmt.Fprintf(out, "    [%d] %s (default)\n", i+1, c)
+		} else {
+			fmt.Fprintf(out, "    [%d] %s\n", i+1, c)
+		}
+	}
+	if defaultIdx > 0 {
+		fmt.Fprintf(out, "  Choose [1-%d, ENTER = %d]: ", len(choices), defaultIdx)
+	} else {
+		fmt.Fprintf(out, "  Choose [1-%d]: ", len(choices))
+	}
+}
+
+// parseChoiceSelection resolves trimmed input to a 1-based choice number.
+// Empty input selects defaultIdx when set; otherwise (or on out-of-range or
+// non-numeric input) ok is false.
+func parseChoiceSelection(v string, numChoices, defaultIdx int) (n int, ok bool) {
+	if v == "" {
+		return defaultIdx, defaultIdx != 0
+	}
+	parsed, err := strconv.Atoi(v)
+	if err != nil || parsed < 1 || parsed > numChoices {
+		return 0, false
+	}
+	return parsed, true
 }
