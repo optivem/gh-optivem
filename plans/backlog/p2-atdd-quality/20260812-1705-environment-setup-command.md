@@ -99,9 +99,6 @@ Tier 3 is why this plan does not delete the README's setup section — it shorte
 
 *(Blocked on the Open questions above. Written against the recommended answers.)*
 
-- [ ] **Step 2 — Port the winget backend from `readme-steps.sh`.**
-  Same file. Reproduce the three behaviours the script's comments document as load-bearing: the PATH-free `winget list --id <id> -e` presence probe (`readme-steps.sh:237`), treating winget's exit code as advisory and letting a re-probe decide the outcome (`:279-282`), and refreshing the process environment's PATH after an install before re-probing (`:265`). Each of those comments records a real guest-run failure; carry the *reasoning* across, not just the code.
-
 - [ ] **Step 3 — Handle the two PATH cases explicitly.**
   Same file. After installing Claude Code, ensure `%USERPROFILE%\.local\bin` is on the user's PATH; after installing Go, ensure `$(go env GOPATH)/bin` is, before attempting the actionlint `go install`. Persist to `HKCU:\Environment` on Windows *and* update the current process env so the rest of the run sees it. Print exactly what was changed and where. Do not enumerate or log other values under that key.
 
