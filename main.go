@@ -391,6 +391,8 @@ const (
 	phasePrepare          = "Prepare"
 	phaseSetupRepo        = "Setup repository"
 	phaseApplyTemplate    = "Apply template"
+	phasePreview          = "Preview"
+	phaseSetupRemote      = "Setup remote resources"
 	phasePushScaffold     = "Push scaffold"
 	phaseLintScaffold     = "Lint scaffold"
 	phaseVerifyLocal      = "Verify local"
@@ -495,7 +497,96 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 		stepDef{name: "Print project registration", phase: phaseFinalize, fn: func() { steps.PrintRegistration(cfg) }},
 	)
 
+	if len(cfg.PreExistingRepos) > 0 {
+		allSteps = withPreview(cfg, allSteps, previewStep(cfg, pc, sc), stepDef{
+			name:  "Rewrite gh-optivem.yaml",
+			phase: phaseSetupRemote,
+			fn:    func() { steps.WriteOptivemYAML(cfg) },
+		})
+	}
+
 	return allSteps
+}
+
+// remoteWriteSteps are the steps that write to GitHub or SonarCloud before the
+// scaffold is pushed. When scaffolding into existing repositories they move
+// behind the Preview phase so nothing remote is written before the operator
+// has seen (and confirmed) what will change.
+var remoteWriteSteps = map[string]bool{
+	"Ensure project board":        true,
+	"Setup environments":          true,
+	"Seed subtype labels":         true,
+	"Setup variables and secrets": true,
+	"Create SonarCloud projects":  true,
+}
+
+// withPreview inserts preview before the Push scaffold phase and moves the
+// remote-write steps behind it (as phaseSetupRemote), followed by rewrite, which
+// re-renders gh-optivem.yaml now that the project board URL is known. It also
+// adds the step that captures each existing repository's content right after
+// cloning, which is what makes the preview exact.
+func withPreview(cfg *config.Config, in []stepDef, preview, rewrite stepDef) []stepDef {
+	var kept, moved []stepDef
+	for _, s := range in {
+		if remoteWriteSteps[s.name] {
+			s.phase = phaseSetupRemote
+			moved = append(moved, s)
+			continue
+		}
+		kept = append(kept, s)
+		if s.name == "Clone repos" {
+			kept = append(kept, stepDef{
+				name:     "Capture existing repository content",
+				phase:    phaseApplyTemplate,
+				failHard: true,
+				fn:       func() { steps.CaptureExistingBaselines(cfg) },
+			})
+		}
+	}
+	moved = append(moved, rewrite)
+
+	out := make([]stepDef, 0, len(in)+2)
+	inserted := false
+	for _, s := range kept {
+		if !inserted && s.phase == phasePushScaffold {
+			out = append(out, preview)
+			out = append(out, moved...)
+			inserted = true
+		}
+		out = append(out, s)
+	}
+	if !inserted {
+		out = append(out, preview)
+		out = append(out, moved...)
+	}
+	return out
+}
+
+// previewStep builds the Preview step: it renders the changes init would make
+// to the existing repositories, then either exits 0 (--dry-run), aborts
+// (declined or no way to confirm), or lets the run continue. It is failHard so
+// a failed preview never reaches the push.
+func previewStep(cfg *config.Config, pc *projectconfig.Config, sc *shell.SonarCloud) stepDef {
+	return stepDef{
+		name:     "Preview changes",
+		phase:    phasePreview,
+		failHard: true,
+		fn: func() {
+			outcome, err := steps.RunPreview(cfg, pc, sc, steps.DefaultPreviewIO())
+			if err != nil {
+				log.Fatalf("%v", err)
+			}
+			switch outcome {
+			case steps.PreviewDryRun:
+				steps.Cleanup(cfg)
+				log.Close()
+				os.Exit(0)
+			case steps.PreviewDeclined:
+				steps.Cleanup(cfg)
+				log.FatalExit("Declined: nothing was pushed to the existing repositories")
+			}
+		},
+	}
 }
 
 // verifyLevelOrder maps --verify-level values to a rank. A step runs when the

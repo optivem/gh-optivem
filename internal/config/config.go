@@ -124,6 +124,7 @@ type Config struct {
 	LogFile      string // optional path to mirror plain-text log output
 	AssumeYes    bool   // skip all interactive confirmations (--report-bug, project-board status-ensure)
 	Overwrite    bool   // opt in to scaffolding into repositories that already exist on GitHub
+	DryRun       bool   // render the preview of changes to existing repositories, then exit before any remote write
 
 	// Approval is the global auto-approve policy resolved from --auto /
 	// --confirm at root command startup. Init reads it in runInit and the
@@ -568,6 +569,7 @@ type RawFlags struct {
 	Quiet        bool
 	AssumeYes    bool
 	Overwrite    bool
+	DryRun       bool
 }
 
 // bindYAMLAffectingFlags binds the subset of init flags that influence the
@@ -637,6 +639,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.StringVar(&f.LogFile, "log-file", "", "Override path for the plain-text log mirror (default: $TEMP/gh-optivem-<timestamp>.log; always written so failures can be attached to bug reports)")
 	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (--report-bug confirmation, project-board status-ensure on supplied --project-url). Expected pattern for CI/unattended runs.")
 	fs.BoolVar(&f.Overwrite, "overwrite", false, "Opt in to scaffolding into repositories that already exist on GitHub: existing repos are reused (not recreated), new files are added, and files that clash with the scaffold are replaced. Without this flag, init fails if any target repository already exists.")
+	fs.BoolVar(&f.DryRun, "dry-run", false, "With --overwrite: build and print the preview of what would change in the existing repositories (files and remote resources), then exit 0 before anything is written to GitHub or SonarCloud. Requires every target repository to already exist. Use --verbose to include full per-file diffs.")
 }
 
 // BindConfigInitFlags binds the YAML-affecting flag subset for `gh optivem
@@ -1155,6 +1158,21 @@ func confirmReposExist(fullRepos []string, overwrite bool) []string {
 	return existing
 }
 
+// requireAllReposExistForDryRun fails the run when --dry-run cannot honour its
+// no-write promise: it needs --overwrite, and every target repository must
+// already exist, because creating a missing repository is itself a remote
+// write that happens before the preview can be shown.
+func requireAllReposExistForDryRun(fullRepos []string, overwrite bool, existing map[string]bool) {
+	if !overwrite {
+		log.FatalExit("--dry-run previews changes to existing repositories and requires --overwrite")
+	}
+	for _, r := range fullRepos {
+		if r != "" && !existing[r] {
+			log.FatalExit(fmt.Sprintf("--dry-run requires every target repository to already exist, but %s does not: creating it would be a remote write. Create it first or drop --dry-run", r))
+		}
+	}
+}
+
 // reposThatExist probes every repo in fullRepos ("<owner>/<name>") via
 // `gh api repos/<fullRepo>` and returns the subset that already exist on
 // GitHub. Prints a "Repo: <owner/name> — available"/"already exists" row as
@@ -1269,6 +1287,14 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	for _, r := range preExisting {
 		preExistingSet[r] = true
 	}
+	if f.DryRun {
+		requireAllReposExistForDryRun([]string{
+			f.Owner + "/" + repoName,
+			mr.backendFullRepo,
+			mr.frontendFullRepo,
+			mr.systemFullRepo,
+		}, f.Overwrite, preExistingSet)
+	}
 
 	// === Phase 3: resolve shop ref (fast API call; actual clone happens in the Prepare step) ===
 	resolvedShopRef := resolveShopRef(f.ShopRef)
@@ -1333,6 +1359,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		LogFile:         logFilePath,
 		AssumeYes:       f.AssumeYes,
 		Overwrite:       f.Overwrite,
+		DryRun:          f.DryRun,
 		Approval:        resolved,
 		WorkDir:         wd,
 		// ShopPath, RepoDir, and the multirepo-component dirs are pre-computed

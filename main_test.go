@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -116,4 +117,40 @@ func chdirForTest(t *testing.T, dir string) {
 	t.Cleanup(func() {
 		_ = os.Chdir(prev)
 	})
+}
+
+func TestWithPreview_ReordersRemoteWritesBehindPreview(t *testing.T) {
+	mk := func(name, phase string) stepDef { return stepDef{name: name, phase: phase} }
+	in := []stepDef{
+		mk("Clone shop template", phasePrepare),
+		mk("Create repositories", phaseSetupRepo),
+		mk("Ensure project board", phaseSetupRepo),
+		mk("Setup environments", phaseSetupRepo),
+		mk("Clone repos", phaseApplyTemplate),
+		mk("Apply template", phaseApplyTemplate),
+		mk("Create SonarCloud projects", phaseApplyTemplate),
+		mk("Commit and push", phasePushScaffold),
+	}
+	got := withPreview(&config.Config{}, in, mk("Preview changes", phasePreview), mk("Rewrite gh-optivem.yaml", phaseSetupRemote))
+
+	var names []string
+	phases := map[string]string{}
+	for _, s := range got {
+		names = append(names, s.name)
+		phases[s.name] = s.phase
+	}
+	want := []string{
+		"Clone shop template", "Create repositories", "Clone repos",
+		"Capture existing repository content", "Apply template",
+		"Preview changes", "Ensure project board", "Setup environments",
+		"Create SonarCloud projects", "Rewrite gh-optivem.yaml", "Commit and push",
+	}
+	if strings.Join(names, "|") != strings.Join(want, "|") {
+		t.Fatalf("order:\n got %v\nwant %v", names, want)
+	}
+	for _, n := range []string{"Ensure project board", "Setup environments", "Create SonarCloud projects"} {
+		if phases[n] != phaseSetupRemote {
+			t.Errorf("%s phase = %q, want %q", n, phases[n], phaseSetupRemote)
+		}
+	}
 }

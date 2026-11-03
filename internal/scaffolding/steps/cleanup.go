@@ -23,6 +23,7 @@ func deleteLocalDirs(cfg *config.Config) {
 	for _, dir := range []string{cfg.RepoDir, cfg.FrontendRepoDir, cfg.BackendRepoDir, cfg.SystemRepoDir} {
 		if dir != "" {
 			os.RemoveAll(dir)
+			os.RemoveAll(baselineDir(dir))
 		}
 	}
 }
