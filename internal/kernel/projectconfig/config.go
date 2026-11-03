@@ -799,10 +799,35 @@ func (c *Config) Validate() error {
 	// 7, 17/18, 22a, 22b, and the channel-adapter join) is a no-op for
 	// kind: component by construction — the cascade is unreachable rather
 	// than separately suppressed.
-	if err := c.validateKindShape(); err != nil {
-		return err
-	}
 
+	steps := []func() error{
+		c.validateKindShape,
+		c.validateFieldShapes,
+		c.validateArchitectureExclusivity,
+		c.validateTiers,
+		c.validateRepoStrategyConsistency,
+		c.validateOverrides,
+		c.validateIdentityEnums,
+		c.validateSonarWhenArchitectureSet,
+		c.validateProvider,
+		c.validateProviderURL,
+		c.validateLocalRepos,
+		c.validateFamilyBPresence,
+		c.validateSystemTestPaths,
+		c.validateTierPathRestrictions,
+		c.validateInnerLoops,
+		c.validateAdapterChannelPlacement,
+		c.validateChannelRules,
+	}
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateFieldShapes() error {
 	// Rule 0b: Config on backend/frontend tiers is meaningless — the runner
 	// systems.yaml path lives on the System block, not on per-tier code
 	// specs. Reject early so a typo'd `system.backend.config:` doesn't
@@ -860,62 +885,84 @@ func (c *Config) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
 
+func (c *Config) validateArchitectureExclusivity() error {
 	// Rule 5: architecture exclusivity.
 	switch c.System.Architecture {
 	case ArchMonolith:
-		if c.System.Path == "" || c.System.Repo == "" || c.System.Lang == "" {
-			return fmt.Errorf("config: system.architecture=%s requires system.{path,repo,lang} all set",
-				ArchMonolith)
-		}
-		if !c.System.Backend.IsEmpty() {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend (multitier-only field)",
-				ArchMonolith)
-		}
-		if !c.System.Frontend.IsEmpty() {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.frontend (multitier-only field)",
-				ArchMonolith)
-		}
-		if len(c.System.BackendServices) != 0 {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend-services (microservices-only field)",
-				ArchMonolith)
-		}
+		return c.validateMonolithExclusivity()
 	case ArchMultitier:
-		if c.System.Path != "" || c.System.Repo != "" || c.System.Lang != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.{path,repo,lang} (monolith-only fields); use system.backend / system.frontend",
-				ArchMultitier)
-		}
-		if c.System.Backend.IsEmpty() {
-			return fmt.Errorf("config: system.architecture=%s requires system.backend",
-				ArchMultitier)
-		}
-		if c.System.Frontend.IsEmpty() {
-			return fmt.Errorf("config: system.architecture=%s requires system.frontend",
-				ArchMultitier)
-		}
-		if len(c.System.BackendServices) != 0 {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend-services (microservices-only field); a multitier backend is a single system.backend",
-				ArchMultitier)
-		}
+		return c.validateMultitierExclusivity()
 	case ArchMicroservices:
-		if c.System.Path != "" || c.System.Repo != "" || c.System.Lang != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.{path,repo,lang} (monolith-only fields); declare each service under system.backend-services",
-				ArchMicroservices)
-		}
-		if !c.System.Backend.IsEmpty() {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend (multitier-only field); declare each service under system.backend-services",
-				ArchMicroservices)
-		}
-		if len(c.System.BackendServices) == 0 {
-			return fmt.Errorf("config: system.architecture=%s requires at least one system.backend-services entry",
-				ArchMicroservices)
-		}
-		if c.System.Frontend.IsEmpty() {
-			return fmt.Errorf("config: system.architecture=%s requires system.frontend (microservices multiplicity is backend-only)",
-				ArchMicroservices)
-		}
+		return c.validateMicroservicesExclusivity()
 	}
 
+	return nil
+}
+
+func (c *Config) validateMonolithExclusivity() error {
+	if c.System.Path == "" || c.System.Repo == "" || c.System.Lang == "" {
+		return fmt.Errorf("config: system.architecture=%s requires system.{path,repo,lang} all set",
+			ArchMonolith)
+	}
+	if !c.System.Backend.IsEmpty() {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.backend (multitier-only field)",
+			ArchMonolith)
+	}
+	if !c.System.Frontend.IsEmpty() {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.frontend (multitier-only field)",
+			ArchMonolith)
+	}
+	if len(c.System.BackendServices) != 0 {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.backend-services (microservices-only field)",
+			ArchMonolith)
+	}
+	return nil
+}
+
+func (c *Config) validateMultitierExclusivity() error {
+	if c.System.Path != "" || c.System.Repo != "" || c.System.Lang != "" {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.{path,repo,lang} (monolith-only fields); use system.backend / system.frontend",
+			ArchMultitier)
+	}
+	if c.System.Backend.IsEmpty() {
+		return fmt.Errorf("config: system.architecture=%s requires system.backend",
+			ArchMultitier)
+	}
+	if c.System.Frontend.IsEmpty() {
+		return fmt.Errorf("config: system.architecture=%s requires system.frontend",
+			ArchMultitier)
+	}
+	if len(c.System.BackendServices) != 0 {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.backend-services (microservices-only field); a multitier backend is a single system.backend",
+			ArchMultitier)
+	}
+	return nil
+}
+
+func (c *Config) validateMicroservicesExclusivity() error {
+	if c.System.Path != "" || c.System.Repo != "" || c.System.Lang != "" {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.{path,repo,lang} (monolith-only fields); declare each service under system.backend-services",
+			ArchMicroservices)
+	}
+	if !c.System.Backend.IsEmpty() {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.backend (multitier-only field); declare each service under system.backend-services",
+			ArchMicroservices)
+	}
+	if len(c.System.BackendServices) == 0 {
+		return fmt.Errorf("config: system.architecture=%s requires at least one system.backend-services entry",
+			ArchMicroservices)
+	}
+	if c.System.Frontend.IsEmpty() {
+		return fmt.Errorf("config: system.architecture=%s requires system.frontend (microservices multiplicity is backend-only)",
+			ArchMicroservices)
+	}
+	return nil
+}
+
+func (c *Config) validateTiers() error {
 	// Rule 6: tier completeness — within any non-empty TierSpec, all three
 	// fields must be set. (Architecture exclusivity above already enforces
 	// this for the system-tier shape; this rule covers system-test, backend,
@@ -940,7 +987,10 @@ func (c *Config) Validate() error {
 	if c.System.Architecture != "" && c.SystemTest.IsEmpty() {
 		return fmt.Errorf("config: system.architecture is set; system-test.{path,repo,lang} are required")
 	}
+	return nil
+}
 
+func (c *Config) validateRepoStrategyConsistency() error {
 	// Rule 8: repo-strategy consistency.
 	if c.RepoStrategy != "" {
 		repos := c.Repos()
@@ -961,7 +1011,10 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
+	return nil
+}
 
+func (c *Config) validateOverrides() error {
 	// Rule 9 (formerly project.url required): empty project.url is now
 	// accepted at validate-time. `gh optivem init` Path A auto-creates a
 	// board and persists the URL on its first run; the ATDD runtime
@@ -1002,7 +1055,10 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("config: node %q appears in both node-extras and node-replacements (replace supersedes extras)", node)
 		}
 	}
+	return nil
+}
 
+func (c *Config) validateIdentityEnums() error {
 	// Rule 14: system-name format. Empty is accepted at the schema layer
 	// so partial configs (project URL + repo-strategy only, no system
 	// scope yet) keep working; `gh optivem init` re-checks presence at
@@ -1027,7 +1083,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: deploy %q must be one of %q, %q",
 			c.Deploy, DeployDocker, DeployCloudRun)
 	}
+	return nil
+}
 
+func (c *Config) validateSonarWhenArchitectureSet() error {
 	// Rules 17/18: SonarCloud presence. The block is optional when no
 	// architecture is set (a partial config — project URL + repo-strategy
 	// only — has no Sonar identities to express). Once architecture is
@@ -1043,7 +1102,10 @@ func (c *Config) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
 
+func (c *Config) validateProvider() error {
 	// Rule 19: project.provider is mandatory and must name a known
 	// tracker backend. The empty case names the migrate command so an
 	// operator with a pre-provider config has a one-shot fix path.
@@ -1057,7 +1119,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: project.provider %q must be one of %q, %q",
 			c.Project.Provider, ProviderGitHub, ProviderMarkdown)
 	}
+	return nil
+}
 
+func (c *Config) validateProviderURL() error {
 	// Rule 20: provider/url shape consistency. A github provider paired
 	// with a non-github URL (or a markdown provider paired with an
 	// HTTP URL) is operator confusion — name both fields so the fix is
@@ -1077,7 +1142,10 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
+	return nil
+}
 
+func (c *Config) validateLocalRepos() error {
 	// Rule 21: repos[] path shape. Each entry's path must be set and
 	// repo-relative — validateRepoPath rejects absolute paths but
 	// (unlike validatePath, which polices intra-repo tier paths)
@@ -1101,7 +1169,10 @@ func (c *Config) Validate() error {
 		}
 		seenRepoPaths[normalized] = struct{}{}
 	}
+	return nil
+}
 
+func (c *Config) validateFamilyBPresence() error {
 	// Rule 22a: when system.architecture is set, every canonical Family B
 	// key must be present in paths: with a non-empty value. The contract
 	// is "explicit only — no defaults anywhere": the scaffolder writes
@@ -1139,7 +1210,10 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("config: system.architecture is set; system.db-migration-path is required (run `gh optivem config migrate` to back-fill the default %q for a pre-this-plan config)",
 			DefaultDbMigrationPath)
 	}
+	return nil
+}
 
+func (c *Config) validateSystemTestPaths() error {
 	// Rule 22: paths.* keys must (a) not shadow reserved Family A
 	// placeholder names, (b) be in the canonical Family B key set
 	// (CanonicalPathKeys — nine names today), and (c) carry fully-
@@ -1171,7 +1245,10 @@ func (c *Config) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
 
+func (c *Config) validateTierPathRestrictions() error {
 	// Rule 22c: paths: is system-test-only today. Reject non-empty Paths on
 	// backend/frontend tiers — they have no canonical Family B vocabulary
 	// to anchor against, and silently accepting the field would let a typo
@@ -1185,7 +1262,10 @@ func (c *Config) Validate() error {
 	if err := validateTierPaths("system.frontend", c.System.Frontend); err != nil {
 		return err
 	}
+	return nil
+}
 
+func (c *Config) validateInnerLoops() error {
 	// Rule 22e: inner-loop is valid on the monolith system, backend/frontend
 	// tiers and microservices (validated below); on system-test it is
 	// meaningless and rejected.
@@ -1210,7 +1290,10 @@ func (c *Config) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
 
+func (c *Config) validateAdapterChannelPlacement() error {
 	// Rule 22d: system-driver-adapter-channels is system-test-only, same as
 	// paths: (Rule 22c) — reject it on backend/frontend so a misplaced block
 	// can't parse as a silent no-op.
@@ -1220,7 +1303,10 @@ func (c *Config) Validate() error {
 	if len(c.System.Frontend.SystemDriverAdapterChannels) > 0 {
 		return fmt.Errorf("config: system.frontend.system-driver-adapter-channels is not a supported field (system-test-only; use system-test.system-driver-adapter-channels)")
 	}
+	return nil
+}
 
+func (c *Config) validateChannelRules() error {
 	// Rule 23: channels: tokens are lowercase canonical members of the
 	// supported channel enum (single canon, no fold layer — see
 	// channels.go). Independent of architecture: the field is optional, but
@@ -1234,7 +1320,6 @@ func (c *Config) Validate() error {
 	if err := c.validateSystemDriverAdapterChannels(); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -1399,51 +1484,70 @@ func (c *Config) validateSonar() error {
 	}
 
 	// Rule 18: per-code-tier sonar-project required.
+	var err error
 	switch c.System.Architecture {
 	case ArchMonolith:
-		if c.System.SonarProject == "" {
-			return fmt.Errorf("config: system.architecture=%s requires system.sonar-project",
-				ArchMonolith)
-		}
-		if c.System.Backend.SonarProject != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.backend.sonar-project (multitier-only)",
-				ArchMonolith)
-		}
-		if c.System.Frontend.SonarProject != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.frontend.sonar-project (multitier-only)",
-				ArchMonolith)
-		}
+		err = c.validateMonolithSonar()
 	case ArchMultitier:
-		if c.System.Backend.SonarProject == "" {
-			return fmt.Errorf("config: system.architecture=%s requires system.backend.sonar-project",
-				ArchMultitier)
-		}
-		if c.System.Frontend.SonarProject == "" {
-			return fmt.Errorf("config: system.architecture=%s requires system.frontend.sonar-project",
-				ArchMultitier)
-		}
-		if c.System.SonarProject != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar-project (monolith-only)",
-				ArchMultitier)
-		}
+		err = c.validateMultitierSonar()
 	case ArchMicroservices:
-		for _, name := range c.BackendServiceNames() {
-			if c.System.BackendServices[name].SonarProject == "" {
-				return fmt.Errorf("config: system.architecture=%s requires system.backend-services.%s.sonar-project",
-					ArchMicroservices, name)
-			}
-		}
-		if c.System.Frontend.SonarProject == "" {
-			return fmt.Errorf("config: system.architecture=%s requires system.frontend.sonar-project",
-				ArchMicroservices)
-		}
-		if c.System.SonarProject != "" {
-			return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar-project (monolith-only)",
-				ArchMicroservices)
-		}
+		err = c.validateMicroservicesSonar()
+	}
+	if err != nil {
+		return err
 	}
 	if c.SystemTest.SonarProject == "" {
 		return fmt.Errorf("config: system.architecture is set; system-test.sonar-project is required")
+	}
+	return nil
+}
+
+func (c *Config) validateMonolithSonar() error {
+	if c.System.SonarProject == "" {
+		return fmt.Errorf("config: system.architecture=%s requires system.sonar-project",
+			ArchMonolith)
+	}
+	if c.System.Backend.SonarProject != "" {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.backend.sonar-project (multitier-only)",
+			ArchMonolith)
+	}
+	if c.System.Frontend.SonarProject != "" {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.frontend.sonar-project (multitier-only)",
+			ArchMonolith)
+	}
+	return nil
+}
+
+func (c *Config) validateMultitierSonar() error {
+	if c.System.Backend.SonarProject == "" {
+		return fmt.Errorf("config: system.architecture=%s requires system.backend.sonar-project",
+			ArchMultitier)
+	}
+	if c.System.Frontend.SonarProject == "" {
+		return fmt.Errorf("config: system.architecture=%s requires system.frontend.sonar-project",
+			ArchMultitier)
+	}
+	if c.System.SonarProject != "" {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar-project (monolith-only)",
+			ArchMultitier)
+	}
+	return nil
+}
+
+func (c *Config) validateMicroservicesSonar() error {
+	for _, name := range c.BackendServiceNames() {
+		if c.System.BackendServices[name].SonarProject == "" {
+			return fmt.Errorf("config: system.architecture=%s requires system.backend-services.%s.sonar-project",
+				ArchMicroservices, name)
+		}
+	}
+	if c.System.Frontend.SonarProject == "" {
+		return fmt.Errorf("config: system.architecture=%s requires system.frontend.sonar-project",
+			ArchMicroservices)
+	}
+	if c.System.SonarProject != "" {
+		return fmt.Errorf("config: system.architecture=%s incompatible with system.sonar-project (monolith-only)",
+			ArchMicroservices)
 	}
 	return nil
 }

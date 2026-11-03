@@ -1,9 +1,8 @@
 # 2026-06-25 09:44:47 UTC — SonarCloud go:S3776 cognitive-complexity refactors (deferred)
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-11-03T13:28:48Z`
 
 ## ▶ Next executable step (resume here)
 
-Remaining production items: only `internal/kernel/projectconfig/config.go` (L767 CC 102, L1352 CC 24) - in progress via subagent; add characterization tests before refactoring. After it lands, only test-file items remain (accept as Won't Fix in SonarCloud by a human).
+All production items are done. Only the test-file items below remain, and the decision is to accept them as Won't Fix in SonarCloud (needs a human with project admin rights). Nothing executable remains for an agent; re-pull SonarCloud to confirm the S3776 count and delete this plan once the test-file findings are accepted.
 
 ## TL;DR
 
@@ -29,7 +28,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 
 ## Production items
 
-- `internal/kernel/projectconfig/config.go` — L767 (CC 102), L1352 (CC 24)
 
 ## Test-file items (decision: do not refactor; accept in SonarCloud)
 
