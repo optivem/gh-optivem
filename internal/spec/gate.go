@@ -105,24 +105,15 @@ func ApplyGate(rep *Report, b *Baseline) error {
 		for j := range rep.UseCases[i].Criteria {
 			c := &rep.UseCases[i].Criteria[j]
 			c.Baselined = b != nil && c.State != StateVerified && b.Contains(c.ID)
-			if c.State == StateFailing {
-				reasons = append(reasons, fmt.Sprintf("%s is Failing", c.ID))
-				continue
+			reason, inVerified, inDenom := gateCriterion(c, rep.Mode)
+			if reason != "" {
+				reasons = append(reasons, reason)
 			}
-			if rep.Mode != ModeStrict || !c.FlagOn {
-				continue
-			}
-			if c.State == StateVerified {
+			if inVerified {
 				verified++
+			}
+			if inDenom {
 				denom++
-				continue
-			}
-			if c.Baselined {
-				continue
-			}
-			denom++
-			if c.State != StateWaived {
-				reasons = append(reasons, fmt.Sprintf("%s is %s (strict requires Verified)", c.ID, c.State))
 			}
 		}
 	}
@@ -137,6 +128,28 @@ func ApplyGate(rep *Report, b *Baseline) error {
 	}
 	rep.Gate = &Gate{Passed: len(reasons) == 0, Reasons: reasons}
 	return nil
+}
+
+// gateCriterion evaluates one criterion (Baselined already set) for the mode.
+// It returns a blocking reason (empty if none) and whether the criterion counts
+// toward the verified numerator and the coverage denominator.
+func gateCriterion(c *ReportCriterion, mode string) (reason string, inVerified, inDenom bool) {
+	if c.State == StateFailing {
+		return fmt.Sprintf("%s is Failing", c.ID), false, false
+	}
+	if mode != ModeStrict || !c.FlagOn {
+		return "", false, false
+	}
+	if c.State == StateVerified {
+		return "", true, true
+	}
+	if c.Baselined {
+		return "", false, false
+	}
+	if c.State != StateWaived {
+		return fmt.Sprintf("%s is %s (strict requires Verified)", c.ID, c.State), false, true
+	}
+	return "", false, true
 }
 
 // ExitCode maps a gated report to an exit code. A report without a verdict is
