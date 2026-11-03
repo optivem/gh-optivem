@@ -339,13 +339,12 @@ func validateBodyStructure(body string) error {
 	inSection, sectionDepth := false, 0
 	for i, line := range lines {
 		depth, text, isHeading := headingDepthAndText(line)
-		if isHeading && depth >= 2 {
-			if inSection && depth > sectionDepth {
-				continue // nested subheading — part of the current section body
-			}
-			if !isCanonicalHeading(text) {
-				return fmt.Errorf("line %d: section %q is not an allowed heading; a ticket body may contain only: %s",
-					i+1, text, strings.Join(CanonicalHeadings, ", "))
+		// A nested subheading is part of the current section body (it falls
+		// through to the inSection skip below).
+		nested := inSection && depth > sectionDepth
+		if isHeading && depth >= 2 && !nested {
+			if err := requireCanonicalHeading(i, text); err != nil {
+				return err
 			}
 			inSection, sectionDepth = true, depth
 			continue
@@ -353,14 +352,32 @@ func validateBodyStructure(body string) error {
 		if inSection || isHeading { // section body, or a tolerated H1 title/divider
 			continue
 		}
-		if strings.TrimSpace(line) == "" {
-			continue // blank / whitespace-only / blanked comment
+		if err := strayContentError(i, line); err != nil {
+			return err
 		}
-		return fmt.Errorf("line %d: stray content %q sits outside any canonical section; "+
-			"every line must be blank, an HTML comment, or inside one of: %s",
-			i+1, strings.TrimSpace(line), strings.Join(CanonicalHeadings, ", "))
 	}
 	return nil
+}
+
+// requireCanonicalHeading errors when the heading text (at 0-based line i) is
+// not one of CanonicalHeadings.
+func requireCanonicalHeading(i int, text string) error {
+	if isCanonicalHeading(text) {
+		return nil
+	}
+	return fmt.Errorf("line %d: section %q is not an allowed heading; a ticket body may contain only: %s",
+		i+1, text, strings.Join(CanonicalHeadings, ", "))
+}
+
+// strayContentError reports non-blank content outside any canonical section;
+// blank / whitespace-only / blanked-comment lines are tolerated (nil).
+func strayContentError(i int, line string) error {
+	if strings.TrimSpace(line) == "" {
+		return nil
+	}
+	return fmt.Errorf("line %d: stray content %q sits outside any canonical section; "+
+		"every line must be blank, an HTML comment, or inside one of: %s",
+		i+1, strings.TrimSpace(line), strings.Join(CanonicalHeadings, ", "))
 }
 
 // checklistItemRE matches any markdown list item: a bullet (`-`, `*`, `+`) or

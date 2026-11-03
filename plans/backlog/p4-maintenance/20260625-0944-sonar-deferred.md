@@ -33,7 +33,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 - `internal/atdd/process/clauderun/clauderun.go` — L836 (CC 26), L1153 (CC 49), L2282 (CC 34)
 - `internal/atdd/runtime/driver/driver.go` — L278 (CC 33), L750 (CC 19), L1245 (CC 37), L2170 (CC 22)
 - `internal/atdd/runtime/driver/summary_sidecar.go` — L356 (CC 25)
-- `internal/atdd/runtime/intake/parse.go` — L337 (CC 16)
 - `internal/atdd/runtime/preflight/preflight.go` — L132 (CC 26), L266 (CC 33), L355 (CC 20), L502 (CC 37), L701 (CC 26)
 - `internal/config/config.go` — L712 (CC 29)
 - `internal/diagrams/diagram/expanded.go` — L149 (CC 25)
