@@ -20,7 +20,7 @@ Older child plans are proposals, not instructions: when an item starts, judge it
 - [ ] **Item 24 (Sonar S3776)** — all production-code findings are done (commits `bb2db1c8`..`bf5db66d`). Only test-file findings remain. A human must mark those Won't Fix in SonarCloud (needs admin rights), then delete `plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md`.
 - **Items 20 (#13) and 21 (#16)** moved to the shop plan `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md` (decisions: #13 Option A, Java only; #16 `/users` customer directory, monolith-java only, refine deferred). Their gh-optivem plans are `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` and `plans/backlog/p3-tooling-cost/20260617-1001-rehearsal-corpus-testinstance-and-refine.md`.
 
-Other backlog plans with no open decision here: `plans/backlog/p2-atdd-quality/20260623-2125-atdd-dispatch-retry-budget-and-resume.md` (build Layer 1 only; Layer 2 resume stays separate), `plans/backlog/p3-tooling-cost/20261002-0817-unattended-plan-execution.md` (Option A: orchestrator plus one subagent per item, headless loop as escape hatch), `plans/backlog/p4-maintenance/20260511-1702-shop-frontend-react-to-typescript-rename.md` (blocked until shop renames its frontend). The `parked/` plans stay parked.
+Other backlog plans with no open decision here: `plans/backlog/p3-tooling-cost/20261002-0817-unattended-plan-execution.md` (Option A: orchestrator plus one subagent per item, headless loop as escape hatch), `plans/backlog/p4-maintenance/20260511-1702-shop-frontend-react-to-typescript-rename.md` (blocked until shop renames its frontend). The `parked/` plans stay parked.
 
 ## Attended verification checklist
 
