@@ -207,9 +207,25 @@ component:
 
 ## ▶ Next executable step (resume here)
 
-Steps 1 and 2 are shipped (`internal/kernel/projectconfig/innerloop.go`; the
-`component-test` tier path key, `Validate` rules and `ResolveLayerPaths` wiring).
-Resume at Step 3 (BPMN gateway + inner-loop phase + prompt section + verify).
+Steps 1, 2 and 3 are shipped:
+- schema + `Validate` (`internal/kernel/projectconfig/innerloop.go`);
+- the `component-test` tier path key (`atdd.TierPathKeysInScope`);
+- the flow: `RESOLVE_INNER_LOOP` -> `GATE_INNER_LOOP` -> `verify-inner-loop` in
+  `implement-and-verify-system`, plus the `${inner-loop-section}` prompt chunk
+  (`runtime/shared/inner-loop-test-after.md`).
+
+`verify-inner-loop` runs `gh optivem component-test run --component <c> --suite
+component`, then `gh optivem component-test mutation --component <c>`. The
+second command does NOT exist yet: it is Step 4. Until it lands, a
+`test-after` component fails loudly at the mutation node (unknown command).
+Resume at Step 4.
+
+Follow-ups noted while building Step 3 (not yet steps):
+- Whole-system `redesign-*` / `refactor-*` cycles (no `channel`) stamp mode
+  `none`; Decision 2 ("existing inner tests must pass") is not yet enforced
+  there. Add as a step before Slice 3.
+- The `component` / `mutation` suite ids are a component-tests.yaml
+  convention; the runner command names them directly.
 
 ## Steps
 
@@ -229,19 +245,6 @@ component tests.
   plumbing (`internal/config/config.go` RawFlags -> yaml writer,
   `internal/config/configinit/prompt.go`) is a separate, wide change. Hand-editing
   `inner-loop:` works meanwhile, so this does not block Steps 2-5.
-- [ ] Step 3: First pin the `component-test` scope key (shipped in Step 2 as
-  `atdd.TierPathKeysInScope`, resolved by `ResolveLayerPaths`) in the inline
-  `read`/`write` scope of the new inner-loop phase in
-  `internal/atdd/process/process-flow.yaml` (scope SSoT now lives there, not in
-  `phase-scopes.yaml`). Then, in `implement-and-verify-system`, add a gateway on the component's
-  mode. For `test-after`, the implementer prompt gains a "design upfront, then
-  domain code + unit tests through the domain API/ports, no mocking inside the
-  domain" section. A new verify step runs the unit suite plus mutation testing,
-  scoped to the domain core. The mutation gate runs **once per ticket, at inner
-  green**, never on every edit (the edit-run cycles use only the fast unit
-  tests), and it mutates **only the domain classes changed by this ticket**.
-  Only the surviving mutants (a short list, not the full report) go back to the
-  fix loop.
 - [ ] Step 4: Wire PIT into shop `backend-clean-java` (domain-core target only).
   Add a `gh optivem` runner command/suite for it that local users run the same
   way CI does. Use PIT's changed-code mode (`scmMutationCoverage`, or an

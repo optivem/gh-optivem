@@ -81,6 +81,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	//     run, no cache (decision #6).
 	r.Register("validate-channels-registered", a.validateChannelsRegistered)
 	r.Register("resolve-channel", a.resolveChannel)
+	// Inner-loop mode of the dispatch's component, stamped for GATE_INNER_LOOP.
+	r.Register("resolve-inner-loop", a.resolveInnerLoop)
 	// MARK_* state-transition service tasks (per plan
 	// 20260526-1220-fix-mark-ticket-state-transition-routing.md). Each
 	// dispatches Tracker.SetStatus against the ticketing-system column the

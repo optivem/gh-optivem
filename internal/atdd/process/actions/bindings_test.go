@@ -3083,12 +3083,12 @@ func TestValidateExternalSystemsRegistered_NilConfig_HardErrors(t *testing.T) {
 
 // TestResolveLayerPaths_TierPathKeysResolveFromTier guards the wiring between
 // atdd.TierPathKeysInScope and the tier-paths branch in ResolveLayerPaths: a
-// configured component-test path resolves, an absent one fails loudly.
+// configured component-test path resolves, an absent one is skipped as not applicable.
 func TestResolveLayerPaths_TierPathKeysResolveFromTier(t *testing.T) {
 	cfg := writePhaseScopeTestConfig(t, t.TempDir())
 	for key := range atdd.TierPathKeysInScope {
-		if _, err := ResolveLayerPaths([]string{key}, cfg); err == nil {
-			t.Errorf("ResolveLayerPaths(%q) on a config with no tier path: want error, got nil", key)
+		if got, err := ResolveLayerPaths([]string{key}, cfg); err != nil || len(got) != 0 {
+			t.Errorf("ResolveLayerPaths(%q) on a config with no tier path: got %v, %v; want skipped (empty, nil)", key, got, err)
 		}
 		cfg.System.Backend.Paths = map[string]string{key: "be/src/componentTest/java"}
 		got, err := ResolveLayerPaths([]string{key}, cfg)

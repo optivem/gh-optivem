@@ -124,3 +124,27 @@ func validateTierPaths(prefix string, t TierSpec) error {
 	}
 	return nil
 }
+
+// InnerLoopForChannel returns the inner-loop declaration governing a system
+// dispatch for the given delivery channel, plus the logical component name the
+// component-test runner knows it by: the monolith's system-level block
+// ("monolith"), or the multitier tier the channel maps to (api -> "backend",
+// ui -> "frontend"). An empty or unmapped channel (whole-system dispatch,
+// microservices) yields the zero value (mode none) and an empty name.
+func (c *Config) InnerLoopForChannel(channel string) (InnerLoop, string) {
+	if c == nil {
+		return InnerLoop{}, ""
+	}
+	switch c.System.Architecture {
+	case ArchMonolith:
+		return c.System.InnerLoop, "monolith"
+	case ArchMultitier:
+		switch channel {
+		case "api":
+			return c.System.Backend.InnerLoop, "backend"
+		case "ui":
+			return c.System.Frontend.InnerLoop, "frontend"
+		}
+	}
+	return InnerLoop{}, ""
+}

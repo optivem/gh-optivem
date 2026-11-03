@@ -215,6 +215,9 @@ func RegisterAll(r *Registry, deps Deps) {
 	// on-disk acceptance-<ch> report); this gate is a pure state-reader, the exact
 	// mirror of external-system-touched.
 	r.Register("channel-touched", b.channelTouched)
+	// Inner-loop mode fork (none | test-after | tdd) for the component a
+	// system dispatch targets; resolve-inner-loop stamps the value.
+	r.Register("inner-loop-mode", b.innerLoopMode)
 	r.Register("refactor-type-choice", b.refactorTypeChoice)
 	r.Register("approval-outcome", b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
@@ -625,6 +628,27 @@ func (b bindings) externalSystemTouched(ctx *statemachine.Context) statemachine.
 // externalSystemTouched.
 func (b bindings) channelTouched(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "channel-touched")
+}
+
+// innerLoopMode is GATE_INNER_LOOP: it routes implement-and-verify-system on
+// the inner-loop mode resolve-inner-loop stamped. Strict — a missing key means
+// the resolver did not run, and a value outside the closed enum is config
+// drift; both halt rather than mis-route.
+func (b bindings) innerLoopMode(ctx *statemachine.Context) statemachine.Outcome {
+	v, ok := ctx.State["inner-loop-mode"]
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("inner-loop-mode: not set in Context — resolve-inner-loop action must run before the gate")}
+	}
+	s, ok := v.(string)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("inner-loop-mode: %T, want string", v)}
+	}
+	switch s {
+	case "none", "test-after", "tdd":
+		return statemachine.Outcome{Value: s}
+	default:
+		return statemachine.Outcome{Err: fmt.Errorf("inner-loop-mode: unrecognised value %q (expected none | test-after | tdd)", s)}
+	}
 }
 
 // stubFidelityTestsPresent is GATE_STUB_FIDELITY_PRESENT, the optional-register

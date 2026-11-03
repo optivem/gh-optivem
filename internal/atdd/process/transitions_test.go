@@ -1011,8 +1011,29 @@ func TestChannelTouchedGuard_Wiring(t *testing.T) {
 		t.Errorf("CHANNEL_SKIPPED kind = %v, want statemachine.EndEvent (a benign skip, not a halt)", n.Kind)
 	}
 	wantEdge(t, sys, "RESOLVE_CHANNEL", "GATE_CHANNEL_TOUCHED", "")
-	wantEdge(t, sys, "GATE_CHANNEL_TOUCHED", "RUN_ACTION", "channel-touched == true")
+	wantEdge(t, sys, "GATE_CHANNEL_TOUCHED", "RESOLVE_INNER_LOOP", "channel-touched == true")
 	wantEdge(t, sys, "GATE_CHANNEL_TOUCHED", "CHANNEL_SKIPPED", "channel-touched == false")
+	wantEdge(t, sys, "RESOLVE_INNER_LOOP", "RUN_ACTION", "")
+	if got := sys.Nodes["RESOLVE_INNER_LOOP"].Raw.Action; got != "resolve-inner-loop" {
+		t.Errorf("RESOLVE_INNER_LOOP action = %q, want resolve-inner-loop", got)
+	}
+	if got := sys.Nodes["GATE_INNER_LOOP"].Raw.Binding; got != "inner-loop-mode" {
+		t.Errorf("GATE_INNER_LOOP binding = %q, want inner-loop-mode", got)
+	}
+	wantEdge(t, sys, "VERIFY_TESTS_PASS", "GATE_INNER_LOOP", "")
+	wantEdge(t, sys, "GATE_INNER_LOOP", "COMMIT_SYSTEM", "inner-loop-mode == none")
+	wantEdge(t, sys, "GATE_INNER_LOOP", "VERIFY_INNER_LOOP", "inner-loop-mode == test-after")
+	wantEdge(t, sys, "GATE_INNER_LOOP", "INNER_LOOP_TDD_UNSUPPORTED", "inner-loop-mode == tdd")
+	wantEdge(t, sys, "VERIFY_INNER_LOOP", "COMMIT_SYSTEM", "")
+	if n := sys.Nodes["INNER_LOOP_TDD_UNSUPPORTED"]; n.Kind != statemachine.ErrorEndEvent {
+		t.Errorf("INNER_LOOP_TDD_UNSUPPORTED kind = %v, want statemachine.ErrorEndEvent (a halt)", n.Kind)
+	}
+	vil, ok := eng.Processes["verify-inner-loop"]
+	if !ok {
+		t.Fatalf("process verify-inner-loop missing")
+	}
+	wantEdge(t, vil, "RUN_COMPONENT_TESTS", "RUN_MUTATION_GATE", "")
+	wantEdge(t, vil, "RUN_MUTATION_GATE", "VERIFY_INNER_LOOP_END", "")
 
 	// Test-side System Driver adapter step (UnrollSystemDriverAdapterChannels
 	// target) — same guard, gating IMPLEMENT_TEST_LAYER.

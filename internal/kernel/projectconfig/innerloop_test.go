@@ -146,3 +146,30 @@ func TestInnerLoop_TierPathsRejections(t *testing.T) {
 		})
 	}
 }
+
+func TestInnerLoopForChannel(t *testing.T) {
+	t.Parallel()
+	cfg := validMultitierBase()
+	cfg.System.Backend.InnerLoop = InnerLoop{Mode: InnerLoopTestAfter}
+	cases := []struct {
+		channel  string
+		wantMode InnerLoopMode
+		wantName string
+	}{
+		{"api", InnerLoopTestAfter, "backend"},
+		{"ui", "", "frontend"},
+		{"", "", ""},
+		{"mobile", "", ""},
+	}
+	for _, tc := range cases {
+		il, name := cfg.InnerLoopForChannel(tc.channel)
+		if il.Mode != tc.wantMode || name != tc.wantName {
+			t.Errorf("channel %q: got (%q, %q), want (%q, %q)", tc.channel, il.Mode, name, tc.wantMode, tc.wantName)
+		}
+	}
+	mono := validMonolithBase()
+	mono.System.InnerLoop = InnerLoop{Mode: InnerLoopTDD}
+	if il, name := mono.InnerLoopForChannel("api"); il.Mode != InnerLoopTDD || name != "monolith" {
+		t.Errorf("monolith: got (%q, %q)", il.Mode, name)
+	}
+}

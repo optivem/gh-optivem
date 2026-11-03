@@ -276,6 +276,13 @@ type Options struct {
 	// silently substituting an empty path.
 	Language string
 
+	// InnerLoopMode is the dispatch's resolved inner-loop mode
+	// (projectconfig.InnerLoopMode as a string). It selects the text rendered
+	// into ${inner-loop-section}: test-after inlines the shared chunk; none /
+	// empty renders nothing. The placeholder is always registered, so prompts
+	// that reference it render cleanly for components that did not opt in.
+	InnerLoopMode string
+
 	// NodeParams carries the YAML node's `params:` block (already expanded
 	// against ctx.Params at dispatch time). Substituted into the prompt
 	// template by name — e.g. `failure_type: compile` on the FIX_COMPILE
@@ -956,6 +963,13 @@ func renderPrompt(opts Options) (string, error) {
 	if ex := renderIsolatedMarkerExample(opts.Language); ex != "" {
 		params["isolated-marker-example"] = ex
 	}
+	// Inner-loop section (system-implementer). Always registered: empty for a
+	// component with no inner loop, so the prompt is unchanged for it.
+	section, err := renderInnerLoopSection(opts.InnerLoopMode)
+	if err != nil {
+		return "", err
+	}
+	params["inner-loop-section"] = section
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
 	// as Language. Only registered when non-empty so an absent value
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
@@ -1161,7 +1175,7 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 	applicable := func(keys []string) []string {
 		out := make([]string, 0, len(keys))
 		for _, k := range keys {
-			if projectconfig.IsExternalRegistryPathKey(k) {
+			if projectconfig.IsExternalRegistryPathKey(k) || projectconfig.IsTierInnerLoopPathKey(k) {
 				if v, ok := paths[k]; !ok || v == "" {
 					continue
 				}
@@ -1356,6 +1370,26 @@ func renderIsolatedMarkerExample(lang string) string {
 		return ""
 	}
 	return strings.TrimRight(string(data), "\n")
+}
+
+// renderInnerLoopSection returns the prompt text for the given inner-loop
+// mode: "" for none/empty, the shared chunk for test-after, and an error for
+// any mode whose section does not exist yet (tdd is a later slice) so a
+// misconfigured component fails the dispatch rather than silently running
+// without its inner loop.
+func renderInnerLoopSection(mode string) (string, error) {
+	switch mode {
+	case "", "none":
+		return "", nil
+	case "test-after":
+		data, err := assets.FS.ReadFile("runtime/shared/inner-loop-test-after.md")
+		if err != nil {
+			return "", fmt.Errorf("clauderun: read inner-loop-test-after chunk: %w", err)
+		}
+		return strings.TrimRight(string(data), "\n"), nil
+	default:
+		return "", fmt.Errorf("clauderun: inner-loop mode %q has no prompt section yet", mode)
+	}
 }
 
 func (o Options) withDefaults() Options {

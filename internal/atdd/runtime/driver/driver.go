@@ -1500,7 +1500,15 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// not a loop, and every downstream consumer no-ops on that.
 		attemptNumber, _ := ctx.Get("visit-count").(int)
 		attemptMax, _ := ctx.Get("visit-max").(int)
+		// Inner-loop mode for this dispatch's component (api -> backend,
+		// ui -> frontend, monolith -> system); empty/none renders nothing.
+		var innerLoopMode string
+		if cfg != nil {
+			il, _ := cfg.InnerLoopForChannel(nodeParams["channel"])
+			innerLoopMode = string(il.EffectiveMode())
+		}
 		cOpts := clauderun.Options{
+			InnerLoopMode:       innerLoopMode,
 			Agent:               agentName,
 			AgentSet:            opts.AgentSet,
 			NodeDescription:     nodeDescription,

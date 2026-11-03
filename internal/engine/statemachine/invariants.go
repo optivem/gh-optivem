@@ -109,7 +109,10 @@ func ruleCommitIsVerified(eng *Engine) []Violation {
 			}
 			for _, pred := range preds {
 				pn := proc.Nodes[pred]
-				if isCallTo(pn, "verify-tests-pass") || isCallTo(pn, "verify-tests-fail") {
+				// verify-inner-loop is the opt-in inner-loop gate (component tests +
+				// mutation) layered after verify-tests-pass; it is itself a suite
+				// verify, so a commit it gates is verified.
+				if isCallTo(pn, "verify-tests-pass") || isCallTo(pn, "verify-tests-fail") || isCallTo(pn, "verify-inner-loop") {
 					continue
 				}
 				// Compile-only route: the idempotent system-start (or the

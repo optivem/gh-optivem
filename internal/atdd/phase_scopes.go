@@ -73,7 +73,7 @@ var ExternalRegistryPathKeysInScope = map[string]bool{
 // TierPathKeysInScope lists the scope keys resolved from a system tier's own
 // `paths:` block (projectconfig.IsTierInnerLoopPathKey) rather than
 // system-test.paths: or a top-level field. Only the inner-loop phase scopes
-// them; ResolveLayerPaths errors loudly when the tier did not configure one.
+// them; ResolveLayerPaths skips the layer when no tier configured one.
 var TierPathKeysInScope = map[string]bool{
 	projectconfig.ComponentTestPathKey: true,
 }

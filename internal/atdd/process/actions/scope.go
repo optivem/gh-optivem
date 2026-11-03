@@ -190,11 +190,13 @@ func ResolveLayerPaths(layers []string, cfg *projectconfig.Config) ([]string, er
 			continue
 		}
 		if atdd.TierPathKeysInScope[layer] {
-			v := cfg.ComponentTestPath()
-			if v == "" {
-				return nil, fmt.Errorf("layer %q resolves to no system.backend.paths.%s (or frontend) in gh-optivem.yaml; the tier's inner-loop needs it", layer, layer)
+			// Optional: absent when no tier opts in to an inner loop, in which
+			// case the layer is not applicable and is skipped (mirrors the
+			// registry-projected keys). Validate guarantees an enabled
+			// inner-loop tier carries the path.
+			if v := cfg.ComponentTestPath(); v != "" {
+				out = append(out, v)
 			}
-			out = append(out, v)
 			continue
 		}
 		if atdd.FamilyAPathKeysInScope[layer] {

@@ -21,6 +21,8 @@ ${scope-block}
 - `channel` — the delivery channel this dispatch must green (e.g. `api`, `ui`). The acceptance run is scoped to this channel's suite (`acceptance-${channel}`), so you only need to satisfy the `${channel}` slice of the failing test.
 - `common` — whether this is the first channel of the cycle. `true` → build the channel-agnostic **common** layer plus the `${channel}` adapter; `false` → the `${channel}` adapter delta only (the common layer already landed in an earlier channel's dispatch).
 
+${inner-loop-section}
+
 ## Steps
 
 1. Read the failing Acceptance Test (`${at-test}`) to see the required behaviour, then trace through the DSL Port (`${dsl-port}`) and DSL Core (`${dsl-core}`) to the System Driver port/adapter pair (`${system-driver-port}`, `${system-driver-adapter}`) to see how the test reaches the production system. If the test stages stub external interactions, also read the External System Driver port/adapter pair (`${external-system-driver-port}`, `${external-system-driver-adapter}`) and the Contract Tests (`${ct-test}`) to see the stub contract the implementation must satisfy.

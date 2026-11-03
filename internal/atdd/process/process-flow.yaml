@@ -1642,6 +1642,14 @@ processes:
         type: end-event
         name: "Channel Untouched — System Cycle Skipped"
 
+      # Stamps the component's inner-loop mode (none | test-after | tdd) and
+      # component name for GATE_INNER_LOOP and the verify commands. Runs only
+      # on a touched channel; non-channel (structural) callers stamp none.
+      - id: RESOLVE_INNER_LOOP
+        type: service-task
+        action: resolve-inner-loop
+        name: "Resolve Inner Loop"
+
       - id: RUN_ACTION
         type: call-activity
         process: ${action}
@@ -1675,6 +1683,23 @@ processes:
           suite: ${suite}
           test-names: ${test-names}
 
+      # Optional inner loop beneath the acceptance run (opt-in per component,
+      # default none). test-after adds component tests + a mutation gate;
+      # tdd is a later slice and halts loudly rather than running without it.
+      - id: GATE_INNER_LOOP
+        type: gateway
+        binding: inner-loop-mode
+        name: "Inner Loop Mode?"
+
+      - id: VERIFY_INNER_LOOP
+        type: call-activity
+        process: verify-inner-loop
+        name: "Verify Inner Loop"
+
+      - id: INNER_LOOP_TDD_UNSUPPORTED
+        type: error-end-event
+        name: "Inner-loop mode tdd is not implemented yet"
+
       - id: COMMIT_SYSTEM
         type: call-activity
         process: commit
@@ -1690,13 +1715,57 @@ processes:
 
     sequence-flows:
       - {from: RESOLVE_CHANNEL, to: GATE_CHANNEL_TOUCHED}
-      - {from: GATE_CHANNEL_TOUCHED, to: RUN_ACTION,      when: "channel-touched == true"}
+      - {from: GATE_CHANNEL_TOUCHED, to: RESOLVE_INNER_LOOP, when: "channel-touched == true"}
       - {from: GATE_CHANNEL_TOUCHED, to: CHANNEL_SKIPPED, when: "channel-touched == false"}
+      - {from: RESOLVE_INNER_LOOP, to: RUN_ACTION}
       - {from: RUN_ACTION, to: BUILD_SYSTEM}
       - {from: BUILD_SYSTEM,      to: START_SYSTEM}
       - {from: START_SYSTEM,      to: VERIFY_TESTS_PASS}
-      - {from: VERIFY_TESTS_PASS, to: COMMIT_SYSTEM}
+      - {from: VERIFY_TESTS_PASS, to: GATE_INNER_LOOP}
+      - {from: GATE_INNER_LOOP,   to: COMMIT_SYSTEM,              when: "inner-loop-mode == none"}
+      - {from: GATE_INNER_LOOP,   to: VERIFY_INNER_LOOP,          when: "inner-loop-mode == test-after"}
+      - {from: GATE_INNER_LOOP,   to: INNER_LOOP_TDD_UNSUPPORTED, when: "inner-loop-mode == tdd"}
+      - {from: VERIFY_INNER_LOOP, to: COMMIT_SYSTEM}
       - {from: COMMIT_SYSTEM,     to: IMPL_AND_VERIFY_SYSTEM_END}
+
+  # Inner-loop verify for a component in test-after mode: the component's own
+  # fast suite must pass, then the mutation gate (changed classes only, once
+  # per ticket) must hold. Both are commands with the execute-command fix
+  # loop, so a failure (red component tests, or the surviving-mutant list the
+  # mutation command prints) goes to the fixer under the implementer's scope,
+  # then re-runs. Suite ids `component` and `mutation` are the component's
+  # component-tests.yaml convention.
+  verify-inner-loop:
+    name: "Verify Inner Loop"
+    start: RUN_COMPONENT_TESTS
+    nodes:
+      - id: RUN_COMPONENT_TESTS
+        type: call-activity
+        process: execute-command
+        name: "Run Component Tests"
+        params:
+          command: "gh optivem component-test run --component ${inner-loop-component} --suite component"
+          task-name: verify-inner-loop
+          scope-task-name: implement-system
+          category: command
+
+      - id: RUN_MUTATION_GATE
+        type: call-activity
+        process: execute-command
+        name: "Run Mutation Gate"
+        params:
+          command: "gh optivem component-test mutation --component ${inner-loop-component}"
+          task-name: verify-inner-loop
+          scope-task-name: implement-system
+          category: command
+
+      - id: VERIFY_INNER_LOOP_END
+        type: end-event
+        name: "Inner Loop Verified"
+
+    sequence-flows:
+      - {from: RUN_COMPONENT_TESTS, to: RUN_MUTATION_GATE}
+      - {from: RUN_MUTATION_GATE,   to: VERIFY_INNER_LOOP_END}
 
   refactor-and-verify-tests:
     name: "Refactor and Verify Tests"

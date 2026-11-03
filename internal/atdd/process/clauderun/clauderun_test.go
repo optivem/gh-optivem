@@ -3035,3 +3035,19 @@ func TestParseClaudeStreamJSON_ErrorResultEventSurfacesText(t *testing.T) {
 		t.Errorf("result text %q must classify as transient", result)
 	}
 }
+
+func TestRenderInnerLoopSection(t *testing.T) {
+	for _, mode := range []string{"", "none"} {
+		got, err := renderInnerLoopSection(mode)
+		if err != nil || got != "" {
+			t.Errorf("mode %q: got %q, %v; want empty, nil", mode, got, err)
+		}
+	}
+	got, err := renderInnerLoopSection("test-after")
+	if err != nil || !strings.Contains(got, "Design upfront") || !strings.Contains(got, "${component-test}") {
+		t.Errorf("test-after: got %q, %v; want the design-upfront section naming ${component-test}", got, err)
+	}
+	if _, err := renderInnerLoopSection("tdd"); err == nil {
+		t.Error("tdd has no section yet and must fail loudly")
+	}
+}

@@ -1104,3 +1104,23 @@ func TestTaskSubtype_NoIssueURL_Halts(t *testing.T) {
 	}
 }
 
+
+func TestInnerLoopModeGate(t *testing.T) {
+	b := newBindings(t, Deps{Prompter: &fakePrompter{}})
+	for _, mode := range []string{"none", "test-after", "tdd"} {
+		ctx := statemachine.NewContext()
+		ctx.Set("inner-loop-mode", mode)
+		if out := b.innerLoopMode(ctx); out.Err != nil || out.Value != mode {
+			t.Errorf("mode %q: got value=%v err=%v", mode, out.Value, out.Err)
+		}
+	}
+	missing := statemachine.NewContext()
+	if out := b.innerLoopMode(missing); out.Err == nil {
+		t.Error("unset inner-loop-mode must halt, got nil error")
+	}
+	bad := statemachine.NewContext()
+	bad.Set("inner-loop-mode", "unit-tests")
+	if out := b.innerLoopMode(bad); out.Err == nil {
+		t.Error("unrecognised inner-loop-mode must halt, got nil error")
+	}
+}
