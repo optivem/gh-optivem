@@ -24,6 +24,8 @@ Run `/execute-plan` on this file. Each item below is one execution unit. To exec
 5. **When an item finishes**, delete it here, update the ▶ Next block, and remove its unit from **Execution units** / **Execution waves**. **When an item is blocked**, write the blocker under it, keep the item, and move on.
 6. **Session budget:** one group per session. At the end of a group, hand back with the `/clear` + `/execute-plan` block so the next group starts with a fresh context.
 
+7. **Judge each older plan before executing it.** The child plans are old and were written under different assumptions. When an item starts, the executing agent evaluates its child plan on the merits. If it is still a good idea, do it. If the agent disagrees with the plan (wrong approach, obsolete premise, or not worth the cost or risk), do not execute it. Instead, say so and give the reasoning. Then either amend the plan, delete it, or park it, and record that outcome here. An old plan is a proposal, not an instruction.
+
 ## Items
 
 ### Group 2 — Wave 1B (parallel)
