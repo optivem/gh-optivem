@@ -59,6 +59,10 @@ Design-only: evaluate the options under Step 1 (read the `execute-plan` skill an
   - Evaluate the process: after the first runs, compare run-log numbers (tokens/item, retries, halts) across options A/B and tune.
 - [ ] Step 11: Document the mode in the skill and in `docs/rules` Plan Processing; dry-run on a small existing plan to verify token usage and resume behavior.
 
+## Open questions
+
+- **Q-9 (resolved 2026-11-02):** Option A (an orchestrator plus one subagent per item) is the default mode; B (headless `claude -p` loop) is the escape hatch for very long plans. C and D are not pursued now.
+
 ## Later (not in scope now)
 
 - Dry-run mode: workers print intended changes without applying them; useful for the first `--unattended` runs.
