@@ -97,6 +97,8 @@ Tier 3 is why this plan does not delete the README's setup section — it shorte
 
 ## Steps
 
+> Steps 1-7 shipped 2026-11-03 (commits `95f1bb46`..`39e245d9`) with unit tests only. Step 8 is blocked on a green clean-room VM run of `gh optivem environment setup`, which was not available to the executing agent; the Verification section below is still the gate.
+
 *(Blocked on the Open questions above. Written against the recommended answers.)*
 
 - [ ] **Step 8 — Collapse `scripts/readme-steps.sh` onto the new command.** *(Only after a green guest run — see Verification.)*
