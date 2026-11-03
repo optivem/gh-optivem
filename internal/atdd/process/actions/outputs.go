@@ -290,6 +290,9 @@ func (a actions) validateOutputsAndScopes(ctx *statemachine.Context) statemachin
 // fix dispatches retain the outer MID's scope identity) and falls back
 // to ctx.Params["task-name"] for the normal path.
 func phaseTaskName(ctx *statemachine.Context) string {
+	if scope := ctx.Params["scope-task-name"]; scope != "" {
+		return scope
+	}
 	if orig := ctx.Params["originating-task-name"]; orig != "" {
 		return orig
 	}

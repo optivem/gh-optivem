@@ -2685,6 +2685,12 @@ processes:
           # task-name: the MID process node, so the step summary's bpmn-step
           # column traces this command row back to the diagram (like agents do).
           task-name: compile-tests
+          # task-name above shadows the surrounding writer MID's identity, so a
+          # compile failure's fixer would resolve no scope. scope-task-name
+          # carries the writer's name (resolved against the caller's params) so
+          # the fixer inherits the writer's read/write scope - including the
+          # testkit DSL - and can repair a half-implemented shared port.
+          scope-task-name: ${task-name}
           # command tier: cheap, no AI cost, no global state mutation.
           category: command
 

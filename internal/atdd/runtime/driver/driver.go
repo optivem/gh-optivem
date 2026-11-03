@@ -1374,7 +1374,15 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 		// dispatch a synthetic user-task without going through the LOW
 		// execute-agent primitive, so neither task-name nor
 		// originating-task-name is populated.
-		scopeKey := ctx.Params["originating-task-name"]
+		//
+		// A command MID that re-pins task-name for step tracing (compile-tests)
+		// would otherwise shadow the surrounding writer's identity, leaving the
+		// fixer with no scope. It threads the writer's name through
+		// `scope-task-name`, which wins over both.
+		scopeKey := ctx.Params["scope-task-name"]
+		if scopeKey == "" {
+			scopeKey = ctx.Params["originating-task-name"]
+		}
 		if scopeKey == "" {
 			scopeKey = ctx.Params["task-name"]
 		}

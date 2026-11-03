@@ -69,6 +69,8 @@ ${acceptance-criteria}
 
    **Design repeatable builders collection-shaped.** When a scenario calls a builder method more than once for distinct entities (e.g. `withLine(sku, quantity)` once per cart line), shape the new `${dsl-port}` surface so it *can* hold all of them: the builder is repeatable (returns the same builder for further calls) and the When/Then stages it feeds model a collection (an order with many lines), not a single entity. The dsl-implementer then fills in the accumulation behind your prototype without having to redesign the port surface.
 
+   **Fan out a widened shared port to every conformant core class.** When you add a method to a **shared** port interface (a `Then*` / `When*` / `Given*` step type that more than one core class implements - e.g. the failure step, which exists once per use case such as place-order and cancel-order), stub the new method on **every** core class that implements that port, not only the one your scenario exercises. A class you skip fails to compile (`TS2416` / `CS0535` / "is not abstract and does not override"). Find them by grepping `${dsl-core}` for the port type name (and for the sibling `*Failure` / `*Success` classes the compiler would list), and give each stub the port method's exact signature as above. After wiring, run `gh optivem system-test compile` and fix any remaining missing-implementation error before declaring done.
+
    If a prior run's edits didn't compile (forgotten stub, typo, signature mismatch in `${dsl-port}` or `${dsl-core}`), fix the named issue minimally — do not change test intent. Limit your dsl-core read to identifying where to append or what to fix — do not read existing method bodies or browse other dsl-core files to "understand the structure".
 
 ## Outputs
