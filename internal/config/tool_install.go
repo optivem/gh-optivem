@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/kernel/log"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
@@ -423,4 +424,111 @@ func persistUserPath(dir string) (bool, error) {
 		return false, nil
 	}
 	return false, fmt.Errorf("unexpected output from the PATH update: %q", strings.TrimSpace(out))
+}
+
+// SetupEnvironment is `gh optivem environment setup`: install every tier-1 and
+// tier-2 tool that is missing, fix the PATH entries the upstream installers
+// decline to write, then run the read-only VerifyEnvironment to report the
+// true remaining state, and finish with what only a human can do.
+//
+// The returned error covers installs that were attempted and failed, or whose
+// prerequisite failed. Items that are merely outstanding for the human
+// (Docker, sign-in, credentials) are reported, not returned: they are the
+// expected end state, not a malfunction of setup.
+func SetupEnvironment(langs []string) error {
+	r := newInstaller(func(format string, args ...any) { log.Infof(format, args...) })
+	return setupEnvironment(r, langs, VerifyEnvironment)
+}
+
+// setupEnvironment is the testable form: the installer and the closing verify
+// are supplied by the caller.
+func setupEnvironment(r *installer, langs []string, verify func([]string) error) error {
+	skipClaude, err := claudeCheckSkipped()
+	if err != nil {
+		return err
+	}
+
+	log.Section("Installing:")
+	var failures []string
+	var manual []installTool
+	failed := map[string]bool{}
+	for _, t := range installTable(langs) {
+		if t.label == "Claude Code" && skipClaude {
+			log.Info("Skipping Claude Code (" + skipClaudeCheckEnv + " set).")
+			continue
+		}
+		if t.needs != "" && failed[t.needs] {
+			failed[t.label] = true
+			failures = append(failures, fmt.Sprintf("%s: not attempted - it needs %s, which could not be installed.", t.label, t.needs))
+			log.Errorf("  %s: skipped (needs %s)", t.label, t.needs)
+			continue
+		}
+		outcome, err := r.ensure(t)
+		switch {
+		case err != nil:
+			failed[t.label] = true
+			failures = append(failures, err.Error())
+			log.Errorf("  %s: FAILED", t.label)
+		case outcome == outcomeAlreadyInstalled:
+			log.Successf("  %s: already installed", t.label)
+		case outcome == outcomeInstalled:
+			log.Successf("  %s: installed", t.label)
+		case outcome == outcomeManual:
+			manual = append(manual, t)
+			log.Warnf("  %s: not automated on %s", t.label, r.goos)
+		}
+	}
+
+	log.Section("Checking the result:")
+	verifyErr := verify(langs)
+
+	printOutstanding(r, manual, skipClaude, verifyErr)
+
+	if len(failures) > 0 {
+		return fmt.Errorf("%d install(s) failed:\n  %s", len(failures), strings.Join(failures, "\n  "))
+	}
+	return nil
+}
+
+// printOutstanding prints only what is genuinely left for the human.
+func printOutstanding(r *installer, manual []installTool, skipClaude bool, verifyErr error) {
+	log.Section("What is left for you:")
+	left := false
+	item := func(format string, args ...any) {
+		left = true
+		log.Infof("  - "+format, args...)
+	}
+	for _, t := range manual {
+		hint := t.docURL
+		if t.unixHint != "" {
+			hint = t.unixHint
+		}
+		item("Install %s (not automated on %s): %s", t.label, r.goos, hint)
+	}
+	if verifyDockerInstalled() != nil || verifyDockerRunning() != nil {
+		item("Docker: install and start Docker Desktop - setup never installs it (licence acceptance, WSL2, reboot): %s", "https://www.docker.com/products/docker-desktop")
+	}
+	var scopes []scopeStatus
+	var scopeErr error
+	if verifyGhInstalled() == nil {
+		if verifyGhAuth(&scopes, &scopeErr) != nil {
+			item("GitHub: run `gh auth login -s project,workflow`")
+		} else if scopeErr != nil {
+			item("GitHub: %s", strings.ReplaceAll(scopeErr.Error(), "\n    ", " "))
+		}
+	}
+	if !skipClaude {
+		item("Claude Code sign-in: run `claude` once and sign in. Setup cannot tell whether you already have - `claude` has no non-interactive sign-in check.")
+	}
+	if missing := MissingRequiredEnvVars(); len(missing) > 0 {
+		item("Set credentials (see docs/setup.md#environment-variables): %s", strings.Join(missing, ", "))
+	}
+	if !left {
+		log.Success("  nothing")
+	}
+	if verifyErr == nil {
+		log.Success("`gh optivem environment verify` passes.")
+	} else {
+		log.Info("Re-run `gh optivem environment verify` once the items above are done.")
+	}
 }

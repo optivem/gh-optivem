@@ -29,6 +29,10 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/log"
 )
 
+// langFlagUsage is the --lang help shared by verify and setup.
+const langFlagUsage = "Languages whose toolchains to check or install: java, dotnet, typescript " +
+	"(comma-separated or repeated). Omit for the language-agnostic tools only."
+
 // newEnvironmentCmd builds the `gh optivem environment` parent. The parent
 // has no Run, so invoking it without a subcommand prints help (Cobra default).
 func newEnvironmentCmd() *cobra.Command {
@@ -42,6 +46,7 @@ on any failure. No repos, secrets, or releases are mutated.`,
 	cmd.AddCommand(
 		newEnvironmentShowCmd(),
 		newEnvironmentVerifyCmd(),
+		newEnvironmentSetupCmd(),
 	)
 	return cmd
 }
@@ -158,8 +163,58 @@ it to check just the language-agnostic tools and tokens.`,
 			log.Successf("All environment variables valid.")
 		},
 	}
-	cmd.Flags().StringSliceVar(&langs, "lang", nil,
-		"Languages to check compilers for: java, dotnet, typescript "+
-			"(comma-separated or repeated). Omit to check only language-agnostic tools.")
+	cmd.Flags().StringSliceVar(&langs, "lang", nil, langFlagUsage)
+	return cmd
+}
+
+// newEnvironmentSetupCmd implements `gh optivem environment setup`. The writing
+// half of the verify/setup pair: installs what is installable, edits the user
+// PATH where upstream installers decline to, then reports what is left.
+//
+// --lang is parsed and validated exactly as `verify` does (same flag text,
+// same config.ValidateVerifyFlags), so the two commands cannot disagree about
+// which toolchains a given --lang value names.
+func newEnvironmentSetupCmd() *cobra.Command {
+	var langs []string
+	cmd := &cobra.Command{
+		Use:   "setup",
+		Short: "Install the missing local tools (writes to your machine)",
+		Long: `Install the local tools gh-optivem needs and fix your PATH, then report what
+is left for you to do. Unlike 'verify', this command WRITES to your machine.
+
+Installs, when missing: Git Bash, Go, actionlint, Claude Code, and (with
+--lang) Node.js, the .NET SDK and a Java JDK. Where an installer declines to
+edit PATH (Claude Code's %USERPROFILE%\.local\bin, Go's GOPATH/bin), setup adds
+the directory to your user PATH and prints exactly what it changed.
+
+Automated on Windows via winget. On other platforms setup installs nothing and
+prints the manual install pointer for each missing tool.
+
+It finishes by running 'verify' and listing only what a human must still do:
+Docker Desktop, 'gh auth login', signing in to Claude Code, and credentials.
+Open a new shell afterwards so every program sees the updated PATH.`,
+		Example: `  gh optivem environment setup
+  gh optivem environment setup --lang typescript
+  gh optivem environment setup --lang typescript,dotnet,java`,
+		Args: cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			if err := log.Init(false, false, ""); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			defer log.Close()
+
+			if err := config.ValidateVerifyFlags(langs); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+
+			if err := config.SetupEnvironment(langs); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+		},
+	}
+	cmd.Flags().StringSliceVar(&langs, "lang", nil, langFlagUsage)
 	return cmd
 }

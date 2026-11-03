@@ -99,10 +99,6 @@ Tier 3 is why this plan does not delete the README's setup section — it shorte
 
 *(Blocked on the Open questions above. Written against the recommended answers.)*
 
-- [ ] **Step 4 — Add the `environment setup` command.**
-  File: `environment_commands.go`, sibling to `verify` at `:98`.
-  Takes `--lang`, parsed by the same helper `verify` uses (`internal/config/verify_flags.go`). Order: install tier 1, then tier 2, then run the existing `VerifyEnvironment` to report the true remaining state. Finish with a "what's left for you" block covering only what is genuinely outstanding — Docker if absent, `gh auth login` if unauthenticated, `claude` sign-in (always, since it is unprovable — say so), and any missing credentials from `requiredEnvVars()`.
-
 - [ ] **Step 5 — Cut the README down.**
   File: `README.md:77-140` ("Local environment setup"), with knock-on edits to `:11-67` ("Prerequisites").
   Prerequisites keeps `gh` only — it is the one thing needed before the extension exists. The setup section becomes: run `gh optivem environment setup --lang …`, then the tier-3 human steps. Delete the per-tool install blocks and both PATH apologies — now one line each rather than paragraphs: Claude Code's at `:48`, Go's at `:105`. Keep `environment verify` documented as the re-check. Note that Prerequisites now also carries the `gh auth login` / `gh auth refresh` scope fork (`:21-40`), which is human-only and survives any cut.
