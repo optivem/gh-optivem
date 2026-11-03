@@ -129,12 +129,7 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 	}
 	flagsOn := append(slices.Clone(cfg.Flags), opts.Flags...)
 
-	waivers := map[string]Waiver{}
-	for _, w := range cfg.Waivers {
-		if !w.Expired(opts.Now) {
-			waivers[w.ID] = w
-		}
-	}
+	waivers := activeWaivers(cfg.Waivers, opts.Now)
 
 	known := map[string]bool{}
 	for _, uc := range useCases {
@@ -142,7 +137,6 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 			known[c.ID] = true
 		}
 	}
-	linked := map[string][]Test{}
 	rep := Report{
 		SchemaVersion: SchemaVersion,
 		Mode:          mode,
@@ -154,6 +148,33 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 	}
 	rep.Validation.Errors = append(rep.Validation.Errors, Validate(useCases)...)
 
+	linked := linkTests(&rep, tests, known)
+
+	for _, uc := range useCases {
+		rep.UseCases = append(rep.UseCases, buildUseCase(uc, linked, waivers, flagsOn, &rep.Summary))
+	}
+	if rep.Summary.Total > 0 {
+		pct := float64(rep.Summary.Verified) * 100 / float64(rep.Summary.Total)
+		rep.Summary.CoveragePercent = math.Round(pct*10) / 10
+	}
+	return rep
+}
+
+// activeWaivers indexes the waivers that have not expired at now.
+func activeWaivers(all []Waiver, now time.Time) map[string]Waiver {
+	waivers := map[string]Waiver{}
+	for _, w := range all {
+		if !w.Expired(now) {
+			waivers[w.ID] = w
+		}
+	}
+	return waivers
+}
+
+// linkTests groups tests by the known criterion IDs they reference, recording
+// orphans and unknown IDs on rep.
+func linkTests(rep *Report, tests []Test, known map[string]bool) map[string][]Test {
+	linked := map[string][]Test{}
 	for _, t := range tests {
 		name := t.Method
 		if t.Class != "" {
@@ -176,49 +197,51 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 			rep.Orphans = append(rep.Orphans, Orphan{name, "no known criterion ID"})
 		}
 	}
+	return linked
+}
 
-	for _, uc := range useCases {
-		ruc := ReportUseCase{ID: uc.ID, Title: uc.Title, Criteria: []ReportCriterion{}}
-		anyTests := false
-		allVerified := len(uc.Criteria) > 0
-		for _, c := range uc.Criteria {
-			rc := buildCriterion(c, linked[c.ID], waivers, flagsOn)
-			ruc.Criteria = append(ruc.Criteria, rc)
-			rep.Summary.Total++
-			switch rc.State {
-			case StateVerified:
-				rep.Summary.Verified++
-			case StateInProgress:
-				rep.Summary.InProgress++
-			case StateFailing:
-				rep.Summary.Failing++
-			case StatePlanned:
-				rep.Summary.Planned++
-			case StateWaived:
-				rep.Summary.Waived++
-			}
-			if len(rc.Tests) > 0 {
-				anyTests = true
-			}
-			if rc.State != StateVerified {
-				allVerified = false
-			}
-		}
-		switch {
-		case allVerified:
-			ruc.State = StateVerified
-		case anyTests:
-			ruc.State = StateInProgress
-		default:
-			ruc.State = StatePlanned
-		}
-		rep.UseCases = append(rep.UseCases, ruc)
+// count records one criterion state in the summary tallies.
+func (s *Summary) count(state State) {
+	s.Total++
+	switch state {
+	case StateVerified:
+		s.Verified++
+	case StateInProgress:
+		s.InProgress++
+	case StateFailing:
+		s.Failing++
+	case StatePlanned:
+		s.Planned++
+	case StateWaived:
+		s.Waived++
 	}
-	if rep.Summary.Total > 0 {
-		pct := float64(rep.Summary.Verified) * 100 / float64(rep.Summary.Total)
-		rep.Summary.CoveragePercent = math.Round(pct*10) / 10
+}
+
+// buildUseCase builds one use case's report entry and tallies its criteria into sum.
+func buildUseCase(uc UseCase, linked map[string][]Test, waivers map[string]Waiver, flagsOn []string, sum *Summary) ReportUseCase {
+	ruc := ReportUseCase{ID: uc.ID, Title: uc.Title, Criteria: []ReportCriterion{}}
+	anyTests := false
+	allVerified := len(uc.Criteria) > 0
+	for _, c := range uc.Criteria {
+		rc := buildCriterion(c, linked[c.ID], waivers, flagsOn)
+		ruc.Criteria = append(ruc.Criteria, rc)
+		sum.count(rc.State)
+		if len(rc.Tests) > 0 {
+			anyTests = true
+		}
+		if rc.State != StateVerified {
+			allVerified = false
+		}
 	}
-	return rep
+	switch {
+	case allVerified:
+		ruc.State = StateVerified
+	case anyTests:
+		ruc.State = StateInProgress
+	default:
+		ruc.State = StatePlanned
+	}
+	return ruc
 }
 
 func buildCriterion(c Criterion, tests []Test, waivers map[string]Waiver, flagsOn []string) ReportCriterion {

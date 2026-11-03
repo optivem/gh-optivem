@@ -40,7 +40,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 - `internal/engine/statemachine/load.go` — L175 (CC 23), L347 (CC 28)
 - `internal/engine/statemachine/run.go` — L51 (CC 25), L249 (CC 30)
 - `internal/kernel/projectconfig/config.go` — L767 (CC 102), L1352 (CC 24)
-- `internal/spec/report.go` — L121 (CC 36)
 
 ## Test-file items (decision: do not refactor; accept in SonarCloud)
 
