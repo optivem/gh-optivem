@@ -531,16 +531,7 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// scopeResults is empty when gh never got far enough to report scopes
 	// (not found, not authenticated, or a token type that carries none) —
 	// nothing to show as its own section in that case.
-	if len(scopeResults) > 0 {
-		log.Section("Scopes:")
-		for _, s := range scopeResults {
-			if s.granted {
-				log.Successf("  %s: granted", s.name)
-			} else {
-				log.Errorf("  %s: missing", s.name)
-			}
-		}
-	}
+	logScopeResults(scopeResults)
 	if scopeErr != nil {
 		toolFailures = append(toolFailures, checkResult{name: "gh CLI", err: scopeErr})
 	}
@@ -554,12 +545,7 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// requiredEnvVars is the single source shared with the presence-only
 	// preflight check (MissingRequiredEnvVars), so both surfaces agree on
 	// which credentials count as required.
-	var missing []string
-	for _, r := range requiredEnvVars() {
-		if r.val == "" {
-			missing = append(missing, r.name)
-		}
-	}
+	missing := missingRequiredEnvNames()
 
 	// Live HTTP checks only run when every required env var is present —
 	// each one needs its token value. Missing-var errors are reported
@@ -595,17 +581,48 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// rather than as each check's own goroutine resolves — otherwise a fast
 	// token (e.g. GHCR_TOKEN) can log its expiry warning before a
 	// still-running sibling (e.g. SONAR_TOKEN) has even printed its OK line.
-	for _, w := range []string{ghcrWarn, workflowWarn, repoWarn} {
-		if w != "" {
-			log.Warn(w)
-		}
-	}
+	logNonEmptyWarnings(ghcrWarn, workflowWarn, repoWarn)
 
 	failures := append(toolFailures, envFailures...)
 	if len(missing) == 0 && len(failures) == 0 {
 		return nil
 	}
 	return buildEnvVerifyError(missing, failures)
+}
+
+// logScopeResults prints the "Scopes:" section; nothing is printed when empty.
+func logScopeResults(scopeResults []scopeStatus) {
+	if len(scopeResults) == 0 {
+		return
+	}
+	log.Section("Scopes:")
+	for _, s := range scopeResults {
+		if s.granted {
+			log.Successf("  %s: granted", s.name)
+		} else {
+			log.Errorf("  %s: missing", s.name)
+		}
+	}
+}
+
+// missingRequiredEnvNames returns the names of required env vars that are unset.
+func missingRequiredEnvNames() []string {
+	var missing []string
+	for _, r := range requiredEnvVars() {
+		if r.val == "" {
+			missing = append(missing, r.name)
+		}
+	}
+	return missing
+}
+
+// logNonEmptyWarnings logs each non-empty warning in order.
+func logNonEmptyWarnings(warnings ...string) {
+	for _, w := range warnings {
+		if w != "" {
+			log.Warn(w)
+		}
+	}
 }
 
 // runChecks runs the given checks concurrently among themselves, logs one
