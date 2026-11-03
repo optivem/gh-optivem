@@ -1769,8 +1769,8 @@ func TestDispatch_RetriesTransientUntilCapThenFails(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error after exhausting retries, got nil")
 	}
-	if claudeFake.calls != 4 {
-		t.Errorf("expected 4 attempts (the canonical retry cap), got %d", claudeFake.calls)
+	if claudeFake.calls != dispatchRetryAttempts {
+		t.Errorf("expected %d attempts (the dispatch retry cap), got %d", dispatchRetryAttempts, claudeFake.calls)
 	}
 	if !strings.Contains(err.Error(), "exited non-zero") {
 		t.Errorf("a transient that never clears falls through to the generic wrapper, got %q", err.Error())
@@ -2986,5 +2986,52 @@ func TestRenderScopeBlock_CollapsedSurfaceErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "system-path") {
 		t.Errorf("error must name system-path, got: %v", err)
+	}
+}
+
+// Regression for the rehearsal-#65 shape: headless, the API 529 arrives only in
+// the stream-json result event (is_error:true, subtype:"success"), stderr is
+// empty and the process exits non-zero. The dispatch must keep re-dispatching
+// up to the dispatch cap on the dispatch-specific backoff, then fail loud.
+func TestDispatch_ResultEvent529WithEmptyStderrRetriesToDispatchCap(t *testing.T) {
+	var sleeps []time.Duration
+	defer shell.SetSleepForTest(func(d time.Duration) { sleeps = append(sleeps, d) })()
+
+	gitFake := &fakeGit{out: [][]byte{[]byte("aaaa\n")}}
+	claudeFake := &scriptedClaude{responses: []scriptedResponse{
+		{resultText: "API Error: 529 Overloaded. This is a server-side issue, try again.", err: errors.New("exit status 1")},
+	}}
+
+	opts := newOpts()
+	opts.Headless = true
+	_, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts)
+	if err == nil {
+		t.Fatalf("expected an error once the retry budget is exhausted, got nil")
+	}
+	if claudeFake.calls != dispatchRetryAttempts {
+		t.Errorf("expected %d dispatch attempts, got %d", dispatchRetryAttempts, claudeFake.calls)
+	}
+	want := []time.Duration{30 * time.Second, 60 * time.Second, 120 * time.Second, 120 * time.Second}
+	if len(sleeps) != len(want) {
+		t.Fatalf("backoff sleeps = %v, want %v", sleeps, want)
+	}
+	for i := range want {
+		if sleeps[i] != want[i] {
+			t.Fatalf("backoff sleeps = %v, want %v", sleeps, want)
+		}
+	}
+	if dispatchRetryAttempts <= 4 || sleeps[len(sleeps)-1] < 120*time.Second {
+		t.Errorf("dispatch budget must be wider than the shared 4-attempt, 45s-tail default")
+	}
+}
+
+// The live headless path depends on parseClaudeStreamJSON surfacing the result
+// text of an error result event (is_error:true, subtype:"success") so the
+// retry classifier can see the 529 when stderr is empty.
+func TestParseClaudeStreamJSON_ErrorResultEventSurfacesText(t *testing.T) {
+	stream := `{"type":"result","subtype":"success","is_error":true,"result":"API Error: 529 Overloaded.","total_cost_usd":0,"usage":{"input_tokens":0,"output_tokens":0}}` + "\n"
+	_, result := parseClaudeStreamJSON([]byte(stream))
+	if !transientStderrRegex.MatchString(result) {
+		t.Errorf("result text %q must classify as transient", result)
 	}
 }

@@ -652,7 +652,8 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 	// remedy is simply to re-dispatch the identical prompt after a short
 	// backoff. The agent is headless and never commits, so a clean re-dispatch
 	// loses nothing (a failed attempt reports 0 in / 0 out / $0). Wrap the call
-	// in the canonical shell.RetryWithPolicy backoff (4 attempts, 5s→15s→45s):
+	// in shell.RetryWithPolicy with the dispatch-specific schedule
+	// (dispatchRetryAttempts / dispatchRetryDelays, wider than the shared default):
 	// hardFail (rate-limit / auth) wins over transient and fast-fails; generic
 	// errors match neither regex and are not retried — preserving today's
 	// behaviour for real agent failures. See
@@ -678,7 +679,8 @@ func Dispatch(ctx context.Context, deps Deps, opts Options) (RunResult, error) {
 		return lastClassifyText, runErr
 	}
 
-	if _, runErr := shell.RetryWithPolicy(transientStderrRegex, hardFailStderrRegex, "clauderun", attempt); runErr != nil {
+	if _, runErr := shell.RetryWithPolicy(transientStderrRegex, hardFailStderrRegex, "clauderun", attempt,
+		shell.WithSchedule(dispatchRetryAttempts, dispatchRetryDelays...)); runErr != nil {
 		if classified := classifyRunError([]byte(lastClassifyText)); classified != nil {
 			return runResult, fmt.Errorf("clauderun: %s: %w", opts.Agent, classified)
 		}
@@ -722,6 +724,18 @@ func resolveDispatchPrompt(opts Options) (string, error) {
 	}
 	return prompt, nil
 }
+
+// dispatchRetryAttempts / dispatchRetryDelays are the agent-dispatch retry
+// schedule, deliberately wider than the canonical shell default (4 attempts,
+// 5s -> 15s -> 45s) that gh/docker/sonar share. A sustained API outage
+// (observed: a 529 "overloaded" window of about 3.5 min) outlasts a 65s
+// backoff tail. Worst case on a genuinely dead API: 5 attempts, each already
+// bounded by the CLI's own internal retries (about 210s), plus 30s+60s+120s+120s
+// of backoff, roughly 23 min before the dispatch gives up and fails loud.
+var (
+	dispatchRetryAttempts = 5
+	dispatchRetryDelays   = []time.Duration{30 * time.Second, 60 * time.Second, 120 * time.Second}
+)
 
 // runDispatchAttempt runs a single agent subprocess attempt for Dispatch's
 // shell.RetryWithPolicy loop and reports back the classification text
