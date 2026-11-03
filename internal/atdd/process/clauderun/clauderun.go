@@ -845,43 +845,15 @@ func renderPrompt(opts Options) (string, error) {
 	if set == nil {
 		set = agents.DefaultAgentSet()
 	}
-	var body string
-	if opts.PromptOverride != "" {
-		body = opts.PromptOverride
-	} else {
+	body := opts.PromptOverride
+	if body == "" {
 		var err error
 		body, err = set.Prompt(opts.Agent)
 		if err != nil {
 			return "", err
 		}
 	}
-	params := map[string]string{}
-	// Project-wide placeholders are seeded first so NodeParams and the
-	// fixed-schema set can both override them on key collision. Empty
-	// values are skipped — `findUnfilledPlaceholders` then catches a
-	// missing-but-referenced key rather than silently substituting "".
-	for k, v := range opts.Placeholders {
-		if v != "" {
-			params[k] = v
-		}
-	}
-	for k, v := range opts.NodeParams {
-		params[k] = v
-	}
-	// Fixed-schema placeholders win on key collision with NodeParams so a
-	// node author can't accidentally shadow ticket context by reusing a
-	// reserved name in YAML.
-	for k, v := range map[string]string{
-		"issue-num":       strconv.Itoa(opts.IssueNum),
-		"issue-title":     opts.IssueTitle,
-		"phase":           opts.NodeDescription,
-		"architecture":    opts.Architecture,
-		"subtype":         opts.Subtype,
-		"changed-files":   opts.ChangedFiles,
-		"re-entry-policy": rendererReEntryPolicy,
-	} {
-		params[k] = v
-	}
+	params := seedPromptParams(opts)
 	// VerifyFailureOutput is load-bearing for fix-unexpected-{failing,passing}-tests
 	// — same rationale as CommandLine. Only registered when non-empty so
 	// an absent value surfaces via findUnfilledPlaceholders rather than
@@ -889,9 +861,7 @@ func renderPrompt(opts Options) (string, error) {
 	// `### Verify results to address` block. ChangedFiles stays
 	// unconditional because fix-command-failed legitimately dispatches
 	// with an empty working tree.
-	if opts.VerifyFailureOutput != "" {
-		params["verify-failure-output"] = opts.VerifyFailureOutput
-	}
+	registerIfNonEmpty(params, "verify-failure-output", opts.VerifyFailureOutput)
 	// Per-phase scope block (plan 20260526-1448 Item 4). Rendered from the
 	// BPMN node's read: / write: lists joined against the same path map
 	// the inline ${key} annotations resolve through (opts.Placeholders —
@@ -925,16 +895,12 @@ func renderPrompt(opts Options) (string, error) {
 	// a value. An empty value would silently substitute, masking a config
 	// bug; instead we leave `${language}` unfilled so findUnfilledPlaceholders
 	// reports it after substitution.
-	if opts.Language != "" {
-		params["language"] = opts.Language
-	}
+	registerIfNonEmpty(params, "language", opts.Language)
 	// TicketID feeds the ${ticket-id} placeholder consumed by the shared
 	// preamble. Same registration shape as Language — only registered when
 	// non-empty so an absent value surfaces via findUnfilledPlaceholders
 	// rather than silently substituting "" when the prompt references it.
-	if opts.TicketID != "" {
-		params["ticket-id"] = opts.TicketID
-	}
+	registerIfNonEmpty(params, "ticket-id", opts.TicketID)
 	// WIP-gate marker (acceptance-test-writer). The gate is permanent
 	// and ticket-independent — it keys on the GH_OPTIVEM_RUN_WIP_TESTS
 	// env var, not a per-ticket reason — so the renderer takes only the
@@ -947,9 +913,7 @@ func renderPrompt(opts Options) (string, error) {
 	// is out of scope and the agent was forced to grep in-scope tests
 	// to reverse-engineer the syntax (3-5 wasted tool calls per
 	// dispatch).
-	if ex := renderGateMarkerExample(opts.Language); ex != "" {
-		params["gate-marker-example"] = ex
-	}
+	registerIfNonEmpty(params, "gate-marker-example", renderGateMarkerExample(opts.Language))
 	// Isolation marker (acceptance-test-writer). Mirrors the Gherkin
 	// `@isolated` tag in the Acceptance Criteria onto the test's
 	// language isolation shape (class-level @Isolated("reason") in Java,
@@ -960,9 +924,7 @@ func renderPrompt(opts Options) (string, error) {
 	// prompt references ${isolated-marker-example}. The per-language
 	// shapes are non-obvious and live outside the agent's read scope, so
 	// they are injected rather than reverse-engineered.
-	if ex := renderIsolatedMarkerExample(opts.Language); ex != "" {
-		params["isolated-marker-example"] = ex
-	}
+	registerIfNonEmpty(params, "isolated-marker-example", renderIsolatedMarkerExample(opts.Language))
 	// Inner-loop section (system-implementer). Always registered: empty for a
 	// component with no inner loop, so the prompt is unchanged for it.
 	section, err := renderInnerLoopSection(opts.InnerLoopMode, opts.Placeholders[projectconfig.ComponentTestPathKey])
@@ -973,9 +935,7 @@ func renderPrompt(opts Options) (string, error) {
 	// AcceptanceCriteria is load-bearing for write-acceptance-tests — same rationale
 	// as Language. Only registered when non-empty so an absent value
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
-	if opts.AcceptanceCriteria != "" {
-		params["acceptance-criteria"] = opts.AcceptanceCriteria
-	}
+	registerIfNonEmpty(params, "acceptance-criteria", opts.AcceptanceCriteria)
 	// Checklist is load-bearing for the four task subtypes whose cycles
 	// consume ${checklist} (system-redesign, external-system-redesign,
 	// system-refactor, test-refactor). Same rationale as
@@ -983,15 +943,11 @@ func renderPrompt(opts Options) (string, error) {
 	// value surfaces via findUnfilledPlaceholders rather than substituting
 	// "". Catches the bug class where parse-ticket failed to populate or
 	// the ticket-kind expected a Checklist but the body declared AC.
-	if opts.Checklist != "" {
-		params["checklist"] = opts.Checklist
-	}
+	registerIfNonEmpty(params, "checklist", opts.Checklist)
 	// ParsedConcepts is load-bearing for refine-acceptance-criteria —
 	// same rationale as AcceptanceCriteria. Only registered when
 	// non-empty so an absent value surfaces via findUnfilledPlaceholders.
-	if opts.ParsedConcepts != "" {
-		params["parsed-concepts"] = opts.ParsedConcepts
-	}
+	registerIfNonEmpty(params, "parsed-concepts", opts.ParsedConcepts)
 	// Command-failure payload — load-bearing for fix-command-failed.
 	// CommandLine gates the trio: when present, all three placeholders
 	// are registered together; when absent, the prompt body's
@@ -1009,15 +965,9 @@ func renderPrompt(opts Options) (string, error) {
 	// its own. Kebab-cased placeholder names mirror the kebab state keys
 	// the action stashes (failing-task-name, missing-outputs,
 	// scope-violating-paths).
-	if opts.FailingTaskName != "" {
-		params["failing-task-name"] = opts.FailingTaskName
-	}
-	if opts.MissingOutputs != "" {
-		params["missing-outputs"] = opts.MissingOutputs
-	}
-	if opts.ViolatingPaths != "" {
-		params["violating-paths"] = opts.ViolatingPaths
-	}
+	registerIfNonEmpty(params, "failing-task-name", opts.FailingTaskName)
+	registerIfNonEmpty(params, "missing-outputs", opts.MissingOutputs)
+	registerIfNonEmpty(params, "violating-paths", opts.ViolatingPaths)
 	// Expected outputs (plan 20260526-2118). Always set — empty when the
 	// MID declared none, so ${expected-outputs} in the prompt body
 	// substitutes to an empty string rather than tripping
@@ -1030,6 +980,13 @@ func renderPrompt(opts Options) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	rendered = appendPromptSuffixes(rendered, opts, set)
+	return rendered, nil
+}
+
+// appendPromptSuffixes appends the override text and the interactive or
+// headless operator hint to the rendered prompt.
+func appendPromptSuffixes(rendered string, opts Options, set *agents.AgentSet) string {
 	if opts.OverrideText != "" {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + opts.OverrideText + "\n"
 	}
@@ -1049,7 +1006,47 @@ func renderPrompt(opts Options) (string, error) {
 	if opts.Headless {
 		rendered = strings.TrimRight(rendered, "\n") + "\n\n" + set.HeadlessSuffix() + "\n"
 	}
-	return rendered, nil
+	return rendered
+}
+
+// seedPromptParams builds the base placeholder map: project-wide placeholders,
+// then NodeParams, then the fixed-schema set.
+func seedPromptParams(opts Options) map[string]string {
+	params := map[string]string{}
+	// Project-wide placeholders are seeded first so NodeParams and the
+	// fixed-schema set can both override them on key collision. Empty
+	// values are skipped — `findUnfilledPlaceholders` then catches a
+	// missing-but-referenced key rather than silently substituting "".
+	for k, v := range opts.Placeholders {
+		registerIfNonEmpty(params, k, v)
+	}
+	for k, v := range opts.NodeParams {
+		params[k] = v
+	}
+	// Fixed-schema placeholders win on key collision with NodeParams so a
+	// node author can't accidentally shadow ticket context by reusing a
+	// reserved name in YAML.
+	for k, v := range map[string]string{
+		"issue-num":       strconv.Itoa(opts.IssueNum),
+		"issue-title":     opts.IssueTitle,
+		"phase":           opts.NodeDescription,
+		"architecture":    opts.Architecture,
+		"subtype":         opts.Subtype,
+		"changed-files":   opts.ChangedFiles,
+		"re-entry-policy": rendererReEntryPolicy,
+	} {
+		params[k] = v
+	}
+	return params
+}
+
+// registerIfNonEmpty sets params[key] = value only when value is non-empty, so
+// an absent value surfaces via findUnfilledPlaceholders rather than
+// substituting "".
+func registerIfNonEmpty(params map[string]string, key, value string) {
+	if value != "" {
+		params[key] = value
+	}
 }
 
 // RenderPrompt is the public counterpart to renderPrompt: it returns the
@@ -1172,44 +1169,8 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 	// registry, so dropping the key here — rather than failing as unresolved —
 	// is correct, mirroring ResolveLayerPaths' not-applicable skip. A registry
 	// key WITH a configured path stays and resolves normally below.
-	applicable := func(keys []string) []string {
-		out := make([]string, 0, len(keys))
-		for _, k := range keys {
-			if projectconfig.IsExternalRegistryPathKey(k) || projectconfig.IsTierInnerLoopPathKey(k) {
-				if v, ok := paths[k]; !ok || v == "" {
-					continue
-				}
-			}
-			out = append(out, k)
-		}
-		return out
-	}
-	read = applicable(read)
-	write = applicable(write)
-	resolve := func(key string) (string, bool) {
-		if paths != nil {
-			if v, ok := paths[key]; ok && v != "" {
-				return v, true
-			}
-		}
-		// Multitier system-path: empty in the placeholder map by
-		// construction (PlaceholderMap emits the monolith-only key), so it
-		// resolves from the driver-supplied tier surface instead. Filter blank
-		// tier paths first — a fully-collapsed surface (["",""]) must fall
-		// through to the unresolved error, not render as a bare ", " join.
-		if key == "system-path" && len(systemSurface) > 0 {
-			nonEmpty := make([]string, 0, len(systemSurface))
-			for _, p := range systemSurface {
-				if strings.TrimSpace(p) != "" {
-					nonEmpty = append(nonEmpty, p)
-				}
-			}
-			if len(nonEmpty) > 0 {
-				return strings.Join(nonEmpty, ", "), true
-			}
-		}
-		return "", false
-	}
+	read = filterApplicableScopeKeys(read, paths)
+	write = filterApplicableScopeKeys(write, paths)
 	// Resolve every distinct read/write key up front; a key that names no
 	// real path is a hard error rather than a `(unresolved)` sentinel.
 	resolved := map[string]string{}
@@ -1220,7 +1181,7 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 			continue
 		}
 		seen[k] = true
-		v, ok := resolve(k)
+		v, ok := resolveScopeKey(k, paths, systemSurface)
 		if !ok {
 			unresolved = append(unresolved, k)
 			continue
@@ -1230,27 +1191,11 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 	if len(unresolved) > 0 {
 		return "", fmt.Errorf("scope block: %d scope key(s) resolve to no path: %s — every read:/write: key must name a real path (the monolith-only system-path is resolved from the tier surface on multitier)", len(unresolved), strings.Join(unresolved, ", "))
 	}
-	maxKeyLen := func(keys []string) int {
-		n := 0
-		for _, k := range keys {
-			if len(k) > n {
-				n = len(k)
-			}
-		}
-		return n
-	}
-	writeBlock := func(b *strings.Builder, keys []string) {
-		pad := maxKeyLen(keys)
-		for _, k := range keys {
-			fmt.Fprintf(b, "- `%s`:%s %s\n", k, strings.Repeat(" ", pad-len(k)), resolved[k])
-		}
-	}
-
 	var b strings.Builder
 	b.WriteString("You may **read** files under these paths:\n\n")
-	writeBlock(&b, read)
+	writeScopeKeyList(&b, read, resolved)
 	b.WriteString("\nYou may **modify** files under these paths:\n\n")
-	writeBlock(&b, write)
+	writeScopeKeyList(&b, write, resolved)
 
 	// Auto-derive the asymmetry annotation: any key in `write:` but not
 	// `read:` is write-only. Surface this as a generic rule on the
@@ -1259,16 +1204,7 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 	// also declares scope-rationale:, tack the per-MID *why* on as a
 	// "Why:" tail (the test-writer MIDs use this; others may but don't
 	// today). Preserves write-order for stable output.
-	readSet := map[string]bool{}
-	for _, k := range read {
-		readSet[k] = true
-	}
-	var writeOnly []string
-	for _, k := range write {
-		if !readSet[k] {
-			writeOnly = append(writeOnly, k)
-		}
-	}
+	writeOnly := writeOnlyScopeKeys(read, write)
 	if len(writeOnly) > 0 {
 		fmt.Fprintf(&b, "\nWrite-only paths (in `write:` but not `read:`): %s. "+
 			"Treat these as append-only or edit-by-location — do not read their "+
@@ -1280,6 +1216,75 @@ func renderScopeBlock(read, write []string, paths map[string]string, rationale s
 
 	b.WriteString("\nReading or writing outside this set requires a `scope_exception` block.")
 	return b.String(), nil
+}
+
+// filterApplicableScopeKeys drops registry/inner-loop scope keys that have no
+// configured path in paths.
+func filterApplicableScopeKeys(keys []string, paths map[string]string) []string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if projectconfig.IsExternalRegistryPathKey(k) || projectconfig.IsTierInnerLoopPathKey(k) {
+			if v, ok := paths[k]; !ok || v == "" {
+				continue
+			}
+		}
+		out = append(out, k)
+	}
+	return out
+}
+
+// resolveScopeKey resolves a scope key to a non-empty path, or false.
+func resolveScopeKey(key string, paths map[string]string, systemSurface []string) (string, bool) {
+	if paths != nil {
+		if v, ok := paths[key]; ok && v != "" {
+			return v, true
+		}
+	}
+	// Multitier system-path: empty in the placeholder map by
+	// construction (PlaceholderMap emits the monolith-only key), so it
+	// resolves from the driver-supplied tier surface instead. Filter blank
+	// tier paths first — a fully-collapsed surface (["",""]) must fall
+	// through to the unresolved error, not render as a bare ", " join.
+	if key == "system-path" {
+		nonEmpty := make([]string, 0, len(systemSurface))
+		for _, p := range systemSurface {
+			if strings.TrimSpace(p) != "" {
+				nonEmpty = append(nonEmpty, p)
+			}
+		}
+		if len(nonEmpty) > 0 {
+			return strings.Join(nonEmpty, ", "), true
+		}
+	}
+	return "", false
+}
+
+// writeScopeKeyList writes one aligned "- `key`: path" line per key.
+func writeScopeKeyList(b *strings.Builder, keys []string, resolved map[string]string) {
+	pad := 0
+	for _, k := range keys {
+		if len(k) > pad {
+			pad = len(k)
+		}
+	}
+	for _, k := range keys {
+		fmt.Fprintf(b, "- `%s`:%s %s\n", k, strings.Repeat(" ", pad-len(k)), resolved[k])
+	}
+}
+
+// writeOnlyScopeKeys returns the keys in write but not read, in write order.
+func writeOnlyScopeKeys(read, write []string) []string {
+	readSet := map[string]bool{}
+	for _, k := range read {
+		readSet[k] = true
+	}
+	var out []string
+	for _, k := range write {
+		if !readSet[k] {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // RenderScopeBlock is the public counterpart to renderScopeBlock: it renders
@@ -2336,73 +2341,92 @@ func formatStreamEvent(line []byte) (string, bool) {
 	case "rate_limit_event":
 		return "", true
 	case "assistant", "user":
-		var env struct {
-			Message struct {
-				Role    string `json:"role"`
-				Content []struct {
-					Type     string          `json:"type"`
-					Text     string          `json:"text,omitempty"`
-					Thinking string          `json:"thinking,omitempty"`
-					Name     string          `json:"name,omitempty"`
-					Input    json.RawMessage `json:"input,omitempty"`
-					Content  json.RawMessage `json:"content,omitempty"`
-				} `json:"content"`
-			} `json:"message"`
-		}
-		if err := json.Unmarshal(line, &env); err != nil {
-			return "", false
-		}
-		var b strings.Builder
-		for _, c := range env.Message.Content {
-			switch c.Type {
-			case "text":
-				if c.Text != "" {
-					b.WriteString(c.Text)
-					if !strings.HasSuffix(c.Text, "\n") {
-						b.WriteByte('\n')
-					}
-				}
-			case "thinking":
-				if c.Thinking != "" {
-					b.WriteString("[thinking] ")
-					b.WriteString(oneLine(c.Thinking, 400))
-					b.WriteByte('\n')
-				}
-			case "tool_use":
-				b.WriteString("[tool ")
-				b.WriteString(c.Name)
-				if summary := summarizeToolInput(c.Name, c.Input); summary != "" {
-					b.WriteString("] ")
-					b.WriteString(summary)
-				} else {
-					b.WriteByte(']')
-				}
-				b.WriteByte('\n')
-			case "tool_result":
-				if snippet := summarizeToolResult(c.Content); snippet != "" {
-					b.WriteString("[tool_result] ")
-					b.WriteString(snippet)
-					b.WriteByte('\n')
-				}
-			}
-		}
-		return b.String(), true
+		return formatMessageEvent(line)
 	case "result":
-		var env struct {
-			Result string `json:"result"`
-		}
-		if err := json.Unmarshal(line, &env); err != nil {
-			return "", false
-		}
-		if env.Result == "" {
-			return resultDivider, true
-		}
-		if strings.HasSuffix(env.Result, "\n") {
-			return resultDivider + env.Result, true
-		}
-		return resultDivider + env.Result + "\n", true
+		return formatResultEvent(line)
 	}
 	return "", true
+}
+
+// streamContentBlock is one entry of an assistant/user message's content
+// array in the stream-json transcript.
+type streamContentBlock struct {
+	Type     string          `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	Thinking string          `json:"thinking,omitempty"`
+	Name     string          `json:"name,omitempty"`
+	Input    json.RawMessage `json:"input,omitempty"`
+	Content  json.RawMessage `json:"content,omitempty"`
+}
+
+// formatMessageEvent renders an assistant/user stream-json line; ("", false)
+// on a parse failure so the caller falls back to raw passthrough.
+func formatMessageEvent(line []byte) (string, bool) {
+	var env struct {
+		Message struct {
+			Role    string               `json:"role"`
+			Content []streamContentBlock `json:"content"`
+		} `json:"message"`
+	}
+	if err := json.Unmarshal(line, &env); err != nil {
+		return "", false
+	}
+	var b strings.Builder
+	for _, c := range env.Message.Content {
+		writeStreamContentBlock(&b, c)
+	}
+	return b.String(), true
+}
+
+func writeStreamContentBlock(b *strings.Builder, c streamContentBlock) {
+	switch c.Type {
+	case "text":
+		if c.Text != "" {
+			b.WriteString(c.Text)
+			if !strings.HasSuffix(c.Text, "\n") {
+				b.WriteByte('\n')
+			}
+		}
+	case "thinking":
+		if c.Thinking != "" {
+			b.WriteString("[thinking] ")
+			b.WriteString(oneLine(c.Thinking, 400))
+			b.WriteByte('\n')
+		}
+	case "tool_use":
+		b.WriteString("[tool ")
+		b.WriteString(c.Name)
+		if summary := summarizeToolInput(c.Name, c.Input); summary != "" {
+			b.WriteString("] ")
+			b.WriteString(summary)
+		} else {
+			b.WriteByte(']')
+		}
+		b.WriteByte('\n')
+	case "tool_result":
+		if snippet := summarizeToolResult(c.Content); snippet != "" {
+			b.WriteString("[tool_result] ")
+			b.WriteString(snippet)
+			b.WriteByte('\n')
+		}
+	}
+}
+
+// formatResultEvent renders a final "result" stream-json line.
+func formatResultEvent(line []byte) (string, bool) {
+	var env struct {
+		Result string `json:"result"`
+	}
+	if err := json.Unmarshal(line, &env); err != nil {
+		return "", false
+	}
+	if env.Result == "" {
+		return resultDivider, true
+	}
+	if strings.HasSuffix(env.Result, "\n") {
+		return resultDivider + env.Result, true
+	}
+	return resultDivider + env.Result + "\n", true
 }
 
 // summarizeToolInput renders the tool_use input map as a one-line
