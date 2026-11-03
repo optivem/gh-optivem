@@ -331,6 +331,7 @@ func TestRetryPatternsMatchVendoredRetrySh(t *testing.T) {
 	}{
 		{"_RETRY_RETRYABLE", retryTransient},
 		{"_RETRY_HARD_FAIL", retryHardFail},
+		{"_RETRY_FORCE_RETRY", retryForceRetry},
 	} {
 		m := regexp.MustCompile(tc.bashVar + `='([^']*)'`).FindSubmatch(src)
 		if m == nil {

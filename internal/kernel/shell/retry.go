@@ -59,6 +59,20 @@ var (
 			`! \[remote rejected\]|pre-receive hook declined|fatal: protocol|fatal: bad refspec`)
 )
 
+// retryForceRetry mirrors _RETRY_FORCE_RETRY in retry.sh: phrasings that match
+// the hard-fail list but are known-transient infra failures (SonarCloud JRE
+// provisioning / CDN 403s, GitHub secondary rate limit, 5xx push rejections).
+// Plug into RetryWithPolicy via WithForceRetry.
+var retryForceRetry = regexp.MustCompile(
+	`(?i)` +
+		`Failed to query JRE metadata|/analysis/jres|scanner\.sonarcloud\.io/jres|binaries\.sonarsource\.com|` +
+		`exceeded a secondary rate limit|` +
+		`\[remote rejected\].*\((Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)\)`)
+
+// RetryForceRetry is the unified force-retry override regex. Exported
+// alongside RetryTransient / RetryHardFail.
+func RetryForceRetry() *regexp.Regexp { return retryForceRetry }
+
 // RetryTransient is the unified transient-pattern regex. Exported so callers
 // in sibling packages (internal/sonar, internal/config) can plug it into
 // RetryWithPolicy without redefining the pattern.

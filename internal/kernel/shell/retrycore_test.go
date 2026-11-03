@@ -187,3 +187,74 @@ func TestRetryWithPolicy_WithSchedule(t *testing.T) {
 		}
 	})
 }
+
+func TestRetryWithPolicy_ForceRetryAndMessageLines(t *testing.T) {
+	transient := RetryTransient()
+	hardFail := RetryHardFail()
+	failingFn := func(out string, attempts *int) func() (string, error) {
+		return func() (string, error) {
+			*attempts++
+			return out, errors.New("exit 1")
+		}
+	}
+
+	t.Run("force-retry beats hard-fail", func(t *testing.T) {
+		var sleeps []time.Duration
+		withFakeSleep(t, &sleeps)
+		n := 0
+		out := "failed with HTTP 403 Forbidden: https://api.sonarcloud.io/analysis/jres"
+		_, _ = RetryWithPolicy(transient, hardFail, "t", failingFn(out, &n),
+			WithSchedule(3, time.Second), WithForceRetry(RetryForceRetry()))
+		if n != 3 {
+			t.Fatalf("attempts = %d, want 3 (force-retry must override hard-fail)", n)
+		}
+	})
+
+	t.Run("without force-retry the same output hard-fails", func(t *testing.T) {
+		var sleeps []time.Duration
+		withFakeSleep(t, &sleeps)
+		n := 0
+		out := "failed with HTTP 403 Forbidden: https://api.sonarcloud.io/analysis/jres"
+		_, _ = RetryWithPolicy(transient, hardFail, "t", failingFn(out, &n), WithSchedule(3, time.Second))
+		if n != 1 {
+			t.Fatalf("attempts = %d, want 1", n)
+		}
+	})
+
+	frames := "Error 504 on https://api.sonarcloud.io/analysis/analyses : {\"message\": \"Endpoint request timed out\"}\n" +
+		"\tat org.sonar.scanner.http.DefaultScannerWsClient.failIfUnauthorized(DefaultScannerWsClient.java:87)\n" +
+		"\t... 12 more\n"
+
+	t.Run("stack-frame identifier hijacks classification without WithMessageLines", func(t *testing.T) {
+		var sleeps []time.Duration
+		withFakeSleep(t, &sleeps)
+		n := 0
+		_, _ = RetryWithPolicy(transient, hardFail, "t", failingFn(frames, &n), WithSchedule(3, time.Second))
+		if n != 1 {
+			t.Fatalf("attempts = %d, want 1 (documents the trap WithMessageLines fixes)", n)
+		}
+	})
+
+	t.Run("WithMessageLines retries a transient behind a failIfUnauthorized frame", func(t *testing.T) {
+		var sleeps []time.Duration
+		withFakeSleep(t, &sleeps)
+		n := 0
+		_, _ = RetryWithPolicy(transient, hardFail, "t", failingFn(frames, &n),
+			WithSchedule(3, time.Second), WithMessageLines())
+		if n != 3 {
+			t.Fatalf("attempts = %d, want 3", n)
+		}
+	})
+
+	t.Run("WithMessageLines still hard-fails a genuine message-line 401", func(t *testing.T) {
+		var sleeps []time.Duration
+		withFakeSleep(t, &sleeps)
+		n := 0
+		out := "HttpException: Error 401 on https://sonarcloud.io/batch/project\n\tat a.b.C.d(C.java:1)\n"
+		_, _ = RetryWithPolicy(transient, hardFail, "t", failingFn(out, &n),
+			WithSchedule(3, time.Second), WithMessageLines())
+		if n != 1 {
+			t.Fatalf("attempts = %d, want 1", n)
+		}
+	})
+}

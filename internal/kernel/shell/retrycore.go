@@ -3,6 +3,7 @@ package shell
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/optivem/gh-optivem/internal/kernel/log"
@@ -88,8 +89,46 @@ func runWithRetryLoop(
 type RetryOption func(*retryPolicy)
 
 type retryPolicy struct {
-	attempts int
-	delays   []time.Duration
+	attempts     int
+	delays       []time.Duration
+	forceRetry   *regexp.Regexp
+	messageLines bool
+}
+
+// WithForceRetry adds a force-retry override: a failed attempt whose output
+// matches re is retried even if it also matches the hard-fail regex (and even
+// if it matches no transient pattern). For known-transient infra calls that
+// phrase their failure like a hard-fail (e.g. SonarCloud's JRE-provisioning
+// endpoint printing `HTTP 403 Forbidden` under load). Checked before hard-fail.
+func WithForceRetry(re *regexp.Regexp) RetryOption {
+	return func(p *retryPolicy) { p.forceRetry = re }
+}
+
+// WithMessageLines classifies on failure messages only: JVM stack-frame lines
+// are dropped from the text the force-retry / hard-fail / transient regexes
+// see. A frame such as `at ...DefaultScannerWsClient.failIfUnauthorized(...)`
+// is a code identifier, not a failure message, yet matches the hard-fail
+// pattern `unauthorized` and would otherwise suppress the retry of a transient
+// 5xx. The caller still receives the complete unfiltered output.
+func WithMessageLines() RetryOption {
+	return func(p *retryPolicy) { p.messageLines = true }
+}
+
+// stackFrameLine matches a Java/JVM stack-frame line (`at pkg.Class.method(`)
+// or its elision marker (`... 12 more`, `... 5 common frames omitted`).
+var stackFrameLine = regexp.MustCompile(
+	`^[ \t]*(at [A-Za-z_$][A-Za-z0-9_.$/]*\(|\.\.\.[ \t]+[0-9]+[ \t]+(common frames omitted|more)[ \t]*$)`)
+
+// StripStackFrames returns out without its JVM stack-frame lines.
+func StripStackFrames(out string) string {
+	lines := strings.Split(out, "\n")
+	kept := lines[:0]
+	for _, l := range lines {
+		if !stackFrameLine.MatchString(strings.TrimRight(l, "\r")) {
+			kept = append(kept, l)
+		}
+	}
+	return strings.Join(kept, "\n")
 }
 
 // WithSchedule overrides the backoff schedule for one RetryWithPolicy call:
@@ -134,6 +173,12 @@ func RetryWithPolicy(
 		opt(&policy)
 	}
 	classify := func(out string, _ error) bool {
+		if policy.messageLines {
+			out = StripStackFrames(out)
+		}
+		if policy.forceRetry != nil && policy.forceRetry.MatchString(out) {
+			return true
+		}
 		if hardFail != nil && hardFail.MatchString(out) {
 			return false
 		}

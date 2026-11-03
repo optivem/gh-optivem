@@ -1,0 +1,10 @@
+> Task :sonar FAILED
+[ERROR] Error during SonarScanner execution
+java.lang.IllegalStateException: Failed to upload report
+	at org.sonar.scanner.report.ReportPublisher.upload(ReportPublisher.java:150)
+	at org.sonar.scanner.report.ReportPublisher.execute(ReportPublisher.java:114)
+Caused by: com.sonarsource.scanner.engine.webapi.client.HttpException: Error 504 on https://api.sonarcloud.io/analysis/analyses : {"message": "Endpoint request timed out"}
+	at org.sonar.scanner.http.DefaultScannerWsClient.failIfUnauthorized(DefaultScannerWsClient.java:87)
+	at org.sonar.scanner.http.DefaultScannerWsClient.call(DefaultScannerWsClient.java:68)
+	... 12 more
+FAILURE: Build failed with an exception.

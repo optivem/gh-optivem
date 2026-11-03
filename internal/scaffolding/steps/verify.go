@@ -839,7 +839,9 @@ func isWindowsPrivilegeError(err error) bool {
 // earlier in the same run. The token is picked up from $SONAR_TOKEN by each
 // script (already validated and set on the parent process env). Requires bash
 // on PATH (Git Bash on Windows). Skipped entirely when --no-local-sonar is set
-// (the gate lives in main.go).
+// (the gate lives in main.go). Each scan retries transient SonarCloud faults
+// (5xx, timeouts, JRE / CDN 403s) up to 3 attempts; hard-fail classes (bad
+// token, missing project key) fail on the first attempt. See runSonarScan.
 func VerifyLocalSonar(cfg *config.Config) {
 	log.Info("Running local SonarCloud scans...")
 
@@ -856,8 +858,37 @@ func VerifyLocalSonar(cfg *config.Config) {
 	sonarComponent("system tests", systemTestDir(cfg))
 }
 
+// sonarScanSchedule is the retry schedule for the scanner subprocess. Each
+// attempt re-runs a full scan (about 1-2 minutes), so the canonical 4-attempt
+// schedule would add up to three extra scans per component on a persistent
+// SonarCloud outage. Three attempts with a longer first backoff ride out a
+// brief endpoint fault without tripling the cost of a real failure.
+var (
+	sonarScanAttempts = 3
+	sonarScanDelays   = []time.Duration{15 * time.Second, 45 * time.Second}
+)
+
+// sonarRunFn is the seam for the scanner subprocess; tests substitute it.
+var sonarRunFn = shell.Run
+
+// runSonarScan runs run-sonar.sh in dir, retrying transient SonarCloud faults.
+// Classification reads failure message lines only (JVM stack frames such as
+// failIfUnauthorized are identifiers, not auth failures) and honours the
+// shared force-retry list (SonarCloud JRE / CDN 403s). A definitive failure
+// (401, missing project key) is returned on the first attempt. The final
+// error and the full scanner output are returned unchanged on exhaustion.
+func runSonarScan(dir string) (string, error) {
+	return shell.RetryWithPolicy(
+		shell.RetryTransient(), shell.RetryHardFail(), "sonar-scan",
+		func() (string, error) { return sonarRunFn("bash ./run-sonar.sh", true, dir) },
+		shell.WithSchedule(sonarScanAttempts, sonarScanDelays...),
+		shell.WithForceRetry(shell.RetryForceRetry()),
+		shell.WithMessageLines(),
+	)
+}
+
 func sonarComponent(label, dir string) {
-	out, err := shell.Run("bash ./run-sonar.sh", true, dir)
+	out, err := runSonarScan(dir)
 	if err != nil {
 		log.Fatalf("SonarCloud scan failed for %s in %s: %v\n%s", label, dir, err, out)
 	}
