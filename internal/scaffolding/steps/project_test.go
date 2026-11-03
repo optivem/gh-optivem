@@ -350,12 +350,32 @@ func TestEnsureProjectBoard_PathA_Reuse(t *testing.T) {
 	if got := stub.calledViaContaining("RunCapture", "project create"); len(got) != 0 {
 		t.Errorf("expected 0 project create calls on reuse, got %d", len(got))
 	}
-	if got := stub.calledViaContaining("RunStdin", "gh api graphql"); len(got) != 1 {
-		t.Errorf("expected 1 graphql mutation call (canonical re-apply), got %d", len(got))
+	if got := stub.calledViaContaining("RunStdin", "gh api graphql"); len(got) != 0 {
+		t.Errorf("expected 0 graphql mutation calls when the reused board is complete (a replace would reset card statuses), got %d", len(got))
 	}
 	if got := stub.calledViaContaining("Run", "project link"); len(got) != 1 {
 		t.Errorf("expected 1 project link call on reuse, got %d", len(got))
 	}
+}
+
+// TestEnsureProjectBoard_PathA_ReuseAddsMissingAdditively: a reused board
+// missing some canonical options gets them added without dropping extras.
+func TestEnsureProjectBoard_PathA_ReuseAddsMissingAdditively(t *testing.T) {
+	stub := newStubRunner(t)
+	stub.captureResp["project list"] = `{"projects":[{"id":"PVT_E","number":3,"title":"Page Turner","url":"https://github.com/users/acme/projects/3"}]}`
+	stub.captureResp["project field-list"] = `{"fields":[{"id":"PVTSSF_S","name":"Status","type":"ProjectV2SingleSelectField","options":[{"id":"o1","name":"Ready"},{"id":"o2","name":"Blocked"}]}]}`
+	stub.runOutput["project link"] = "Linked"
+	stub.install()
+
+	cfg := &config.Config{Owner: "acme", FullRepo: "acme/page-turner", SystemName: "Page Turner", RepoStrategy: "monorepo", Arch: "monolith"}
+	EnsureProjectBoard(cfg, nil)
+
+	mut := stub.calledViaContaining("RunStdin", "gh api graphql")
+	if len(mut) != 1 {
+		t.Fatalf("expected 1 graphql mutation, got %d", len(mut))
+	}
+	names := captureGraphqlOptions(t, mut[0].stdin)
+	containsAll(t, names, "Ready", "Blocked", "Backlog", "In QA", "Done")
 }
 
 // TestEnsureProjectBoard_PathA_Multirepo: multitier multirepo links both

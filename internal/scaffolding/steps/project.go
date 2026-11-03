@@ -163,12 +163,16 @@ func ensureProjectBoardAutoCreate(cfg *config.Config) {
 	if err != nil {
 		log.Fatalf(projectBoardErrFmt, err)
 	}
-	added, err := setStatusOptions(statusField.ID, canonicalStatusOptions)
-	if err != nil {
-		log.Fatalf("project board: set Status options: %v", err)
-	}
-	if len(added) > 0 {
-		log.Successf("Set project Status options: %s", strings.Join(added, ", "))
+	if created {
+		added, err := setStatusOptions(statusField.ID, canonicalStatusOptions)
+		if err != nil {
+			log.Fatalf("project board: set Status options: %v", err)
+		}
+		if len(added) > 0 {
+			log.Successf("Set project Status options: %s", strings.Join(added, ", "))
+		}
+	} else {
+		ensureReusedBoardStatuses(statusField)
 	}
 
 	for _, repo := range reposToLink(cfg) {
@@ -177,6 +181,28 @@ func ensureProjectBoardAutoCreate(cfg *config.Config) {
 
 	cfg.ProjectURL = pr.URL
 	persistProjectURLToSourceConfig(cfg)
+}
+
+// ensureReusedBoardStatuses makes a reused board carry the canonical Status
+// set without replacing it. updateProjectV2Field rewrites the option list
+// wholesale, which discards the existing option IDs and with them the status of
+// every card on the board, so a re-run must not issue it when nothing is
+// missing. When options are missing it adds them and keeps the existing ones.
+func ensureReusedBoardStatuses(statusField *projectField) {
+	current := make([]string, 0, len(statusField.Options))
+	for _, o := range statusField.Options {
+		current = append(current, o.Name)
+	}
+	missing := missingOptions(current, canonicalStatusOptions)
+	if len(missing) == 0 {
+		log.Success("Project Status options already complete")
+		return
+	}
+	merged := append(append([]string{}, current...), missing...)
+	if _, err := setStatusOptions(statusField.ID, merged); err != nil {
+		log.Fatalf("project board: add missing statuses: %v", err)
+	}
+	log.Successf("Added project statuses: %s", strings.Join(missing, ", "))
 }
 
 // persistProjectURLToSourceConfig writes cfg.ProjectURL back into the

@@ -82,17 +82,29 @@ var subtypeLabels = []struct {
 	{"subtype:system-implementation-refactoring", "5319e7", "Refactoring of system internals (no boundary or behavioral change)"},
 }
 
-// SetupVariablesAndSecrets sets GitHub Actions variables and secrets.
-func SetupVariablesAndSecrets(cfg *config.Config, gh *shell.GitHub) {
-	log.Info("Setting variables and secrets...")
+type nameValue struct{ name, value string }
 
-	setVariable(gh, "DOCKERHUB_USERNAME", cfg.DockerHubUsername)
-	setSecret(gh, "DOCKERHUB_TOKEN", cfg.DockerHubToken)
-	setSecret(gh, "SONAR_TOKEN", cfg.SonarToken)
-	setSecret(gh, "WORKFLOW_TOKEN", cfg.WorkflowToken)
-	setSecret(gh, "GHCR_TOKEN", cfg.GHCRToken)
-	setSecret(gh, "REPO_TOKEN", cfg.RepoToken)
+// settingsPlan is the Actions variables and secrets init sets on one repo.
+type settingsPlan struct {
+	Repo      string
+	Variables []nameValue
+	Secrets   []nameValue
+}
 
+// variableSecretPlan lists, per repo, what SetupVariablesAndSecrets sets. It is
+// the single source for both the setup step and the read-only remote probes.
+func variableSecretPlan(cfg *config.Config) []settingsPlan {
+	plans := []settingsPlan{{
+		Repo:      cfg.FullRepo,
+		Variables: []nameValue{{"DOCKERHUB_USERNAME", cfg.DockerHubUsername}},
+		Secrets: []nameValue{
+			{"DOCKERHUB_TOKEN", cfg.DockerHubToken},
+			{"SONAR_TOKEN", cfg.SonarToken},
+			{"WORKFLOW_TOKEN", cfg.WorkflowToken},
+			{"GHCR_TOKEN", cfg.GHCRToken},
+			{"REPO_TOKEN", cfg.RepoToken},
+		},
+	}}
 	if cfg.RepoStrategy == "multirepo" {
 		var componentRepos []string
 		if cfg.Arch == "multitier" {
@@ -101,15 +113,42 @@ func SetupVariablesAndSecrets(cfg *config.Config, gh *shell.GitHub) {
 			componentRepos = []string{cfg.SystemFullRepo}
 		}
 		for _, fullRepo := range componentRepos {
-			ghComp := gh.ForRepo(fullRepo)
-			setVariable(ghComp, "DOCKERHUB_USERNAME", cfg.DockerHubUsername)
-			setSecret(ghComp, "DOCKERHUB_TOKEN", cfg.DockerHubToken)
-			setSecret(ghComp, "SONAR_TOKEN", cfg.SonarToken)
-			setSecret(ghComp, "GHCR_TOKEN", cfg.GHCRToken)
+			p := settingsPlan{
+				Repo:      fullRepo,
+				Variables: []nameValue{{"DOCKERHUB_USERNAME", cfg.DockerHubUsername}},
+				Secrets: []nameValue{
+					{"DOCKERHUB_TOKEN", cfg.DockerHubToken},
+					{"SONAR_TOKEN", cfg.SonarToken},
+					{"GHCR_TOKEN", cfg.GHCRToken},
+				},
+			}
+			if cfg.Arch == "multitier" && fullRepo == cfg.FrontendFullRepo {
+				p.Secrets = append(p.Secrets, nameValue{"REPO_TOKEN", cfg.RepoToken})
+			}
+			plans = append(plans, p)
 		}
-		if cfg.Arch == "multitier" {
-			setSecret(gh.ForRepo(cfg.FrontendFullRepo), "REPO_TOKEN", cfg.RepoToken)
+	}
+	return plans
+}
+
+// SetupVariablesAndSecrets sets GitHub Actions variables and secrets. Re-running
+// is safe: `gh variable set` and `gh secret set` overwrite an existing value.
+func SetupVariablesAndSecrets(cfg *config.Config, gh *shell.GitHub) {
+	log.Info("Setting variables and secrets...")
+
+	for i, plan := range variableSecretPlan(cfg) {
+		target := gh
+		if i > 0 {
+			target = gh.ForRepo(plan.Repo)
 		}
+		for _, v := range plan.Variables {
+			setVariable(target, v.name, v.value)
+		}
+		for _, s := range plan.Secrets {
+			setSecret(target, s.name, s.value)
+		}
+	}
+	if cfg.RepoStrategy == "multirepo" {
 		log.Success("Set variables and secrets on component repositories")
 	}
 

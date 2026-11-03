@@ -8,7 +8,7 @@
 
 ## Next step (resume here)
 
-Decisions are settled (see Decisions below). Steps 2-3 are done (`--overwrite` flag, `confirmReposExist` returns the pre-existing set, `Config.PreExistingRepos`, `CreateRepos` skips them). Step 4 is done (`steps.BuildPreview(scaffoldDir, repoDir) ([]PreviewEntry, error)` in `preview.go`; renames report as NEW+KEPT, case-only matches carry `ExistingPath`). Start at Step 5.
+Decisions are settled (see Decisions below). Steps 2-3 are done (`--overwrite` flag, `confirmReposExist` returns the pre-existing set, `Config.PreExistingRepos`, `CreateRepos` skips them). Step 4 is done (`steps.BuildPreview(scaffoldDir, repoDir) ([]PreviewEntry, error)` in `preview.go`; renames report as NEW+KEPT, case-only matches carry `ExistingPath`). Step 5 is done (`steps.ProbeRemote(cfg, RemoteTargets) ([]RemoteEntry, error)` in `remote_preview.go`: environments, labels, variables/secrets, project board, Sonar, classes create/reuse/differs; repos not in `PreExistingRepos` are all-create with no calls; every indeterminate response returns an error naming the resource and likely fix; existing secrets report `differs` since values are unreadable; `variableSecretPlan` is shared with `SetupVariablesAndSecrets`; reused project boards now get an additive Status merge instead of a wholesale replace, which would reset card statuses). Start at Step 6, wiring `ProbeRemote` output into the render alongside `BuildPreview`.
 
 ## Design
 
@@ -39,7 +39,6 @@ The same classification applies to remote resources, each probed read-only: envi
 ## Steps
 
 - [x] Step 1: Resolve open questions (done, see Decisions).
-- [ ] Step 5: Remote probes for environments, variables/secrets, labels, project board, Sonar. Each is read-only and each fails hard on an indeterminate response (auth/5xx), never "doesn't exist", per the check-* rule. Existing steps (`SetupEnvironments`, `SeedSubtypeLabels`, `SetupVariablesAndSecrets`, `EnsureProjectBoard`) must be idempotent on re-run, so audit and fix any that error on "already exists".
 - [ ] Step 6: Render and confirm (and implement `--dry-run`: render, then exit 0 before any write). Print the summary + OVERWRITE list, prompt via `promptio`, honour `--yes`, and fail on non-TTY without `--yes`. Insert as a new phase "Preview" after "Apply template" and before "Push scaffold" in `buildSteps` (main.go). The local scaffold is already built by then, so the preview is free of remote writes.
 - [ ] Step 7: Finalize for pre-existing repos: push to the default branch (no new write path). Allow a clean tree for pre-existing repos (re-running on an already-adopted repo exits 0 with "nothing to change", no commit), and keep clean-tree-is-an-error for fresh repos.
 - [ ] Step 8: Verify stages run as for fresh repos, against the default branch after the push, honouring `--verify-level`. Local verify first.
