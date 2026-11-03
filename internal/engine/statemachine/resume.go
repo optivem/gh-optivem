@@ -215,7 +215,7 @@ func (e *Engine) trySkipUnit(ctx *Context, unit string) (bool, error) {
 		return false, fmt.Errorf("resume: unit %q: %w", unit, err)
 	}
 	if !clean {
-		e.logResume("resume: re-running %s: commit %s marks it done but the working tree has uncommitted changes", unit, shortSHA(commit.SHA))
+		e.logResume("resume: re-running %s: commit %s marks it done but the working tree has uncommitted changes (restore or commit them, e.g. git checkout HEAD -- <file>, to skip this unit instead of re-running it)", unit, shortSHA(commit.SHA))
 		return false, nil
 	}
 	if err := e.restoreState(ctx, commit.State); err != nil {

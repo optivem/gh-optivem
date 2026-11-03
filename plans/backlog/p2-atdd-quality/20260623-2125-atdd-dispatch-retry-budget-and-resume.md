@@ -18,7 +18,6 @@ Layers 1 and 2 are implemented and verified on shop #76 (2026-11-03 rehearsal, m
 
 ## Steps
 
-- [ ] Decide the tracked-partial-edit case. A crash mid-way through the next unit leaves tracked edits (e.g. a half-written `OrderService.java`), the tree is dirty, and resume re-runs the finished unit instead of skipping it (`resume: re-running …: working tree has uncommitted changes`). Today the operator must `git checkout HEAD -- <file>` first. Options: leave as is and document it, or have resume discard the partial unit's tracked edits itself (destructive — needs a decision).
 - [ ] Optional: confirm a fresh clone resumes from the trailer alone (should now work since the reports are in `Atdd-State`).
 
 
