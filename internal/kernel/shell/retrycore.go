@@ -1,6 +1,7 @@
 package shell
 
 import (
+	"fmt"
 	"regexp"
 	"time"
 
@@ -82,9 +83,40 @@ func runWithRetryLoop(
 	return out, err
 }
 
+// RetryOption customises one RetryWithPolicy call. Without options the call
+// uses the canonical defaultRetryAttempts / defaultRetryDelays schedule.
+type RetryOption func(*retryPolicy)
+
+type retryPolicy struct {
+	attempts int
+	delays   []time.Duration
+}
+
+// WithSchedule overrides the backoff schedule for one RetryWithPolicy call:
+// attempts is the total number of tries, delays[i] the sleep after try i+1
+// (the last delay repeats for any tail attempts). Use it for call sites whose
+// cost per attempt or outage profile differs from the canonical cheap-HTTP
+// schedule (a minutes-long scanner run, a multi-minute API outage). It panics
+// on attempts < 1 or empty delays: a malformed schedule is a programming error
+// and must not silently fall back to the default.
+func WithSchedule(attempts int, delays ...time.Duration) RetryOption {
+	if attempts < 1 {
+		panic(fmt.Sprintf("shell.WithSchedule: attempts must be >= 1, got %d", attempts))
+	}
+	if len(delays) == 0 {
+		panic("shell.WithSchedule: at least one delay is required")
+	}
+	return func(p *retryPolicy) {
+		p.attempts = attempts
+		p.delays = append([]time.Duration(nil), delays...)
+	}
+}
+
 // RetryWithPolicy is the generic retry engine for tool-specific wrappers. Pass
 // a transient regex, an optional hard-fail regex, a log prefix, and the
-// function to retry. Returns the last attempt's output and error.
+// function to retry. Returns the last attempt's output and error. Optional
+// RetryOptions (e.g. WithSchedule) tune the call; the default is the canonical
+// 4 attempts, 5s -> 15s -> 45s.
 //
 // Mirrors retry_with_policy in optivem/actions/shared/retry-core.sh so adding
 // a new transient pattern is a one-line edit in one place — not five. Use this
@@ -95,12 +127,17 @@ func RetryWithPolicy(
 	transient, hardFail *regexp.Regexp,
 	prefix string,
 	fn func() (string, error),
+	opts ...RetryOption,
 ) (string, error) {
+	policy := retryPolicy{attempts: defaultRetryAttempts, delays: defaultRetryDelays}
+	for _, opt := range opts {
+		opt(&policy)
+	}
 	classify := func(out string, _ error) bool {
 		if hardFail != nil && hardFail.MatchString(out) {
 			return false
 		}
 		return transient.MatchString(out)
 	}
-	return runWithRetryLoop(fn, classify, defaultRetryAttempts, defaultRetryDelays, prefix)
+	return runWithRetryLoop(fn, classify, policy.attempts, policy.delays, prefix)
 }

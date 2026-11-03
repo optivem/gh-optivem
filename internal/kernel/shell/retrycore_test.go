@@ -127,3 +127,63 @@ func TestRetryWithPolicy(t *testing.T) {
 		}
 	})
 }
+
+func TestRetryWithPolicy_WithSchedule(t *testing.T) {
+	transient := regexp.MustCompile(`(?i)timeout`)
+
+	t.Run("custom attempts and delays are honoured, last delay repeats", func(t *testing.T) {
+		var sleeps []time.Duration
+		withFakeSleep(t, &sleeps)
+
+		attempts := 0
+		fn := func() (string, error) {
+			attempts++
+			return "timeout", errors.New("exit 1")
+		}
+		_, err := RetryWithPolicy(transient, nil, "test", fn,
+			WithSchedule(4, 1*time.Second, 2*time.Second))
+		if err == nil || attempts != 4 {
+			t.Fatalf("got attempts=%d err=%v, want attempts=4 and a final error", attempts, err)
+		}
+		want := []time.Duration{1 * time.Second, 2 * time.Second, 2 * time.Second}
+		if len(sleeps) != len(want) {
+			t.Fatalf("sleeps = %v, want %v", sleeps, want)
+		}
+		for i := range want {
+			if sleeps[i] != want[i] {
+				t.Fatalf("sleeps = %v, want %v", sleeps, want)
+			}
+		}
+	})
+
+	t.Run("single attempt never sleeps", func(t *testing.T) {
+		var sleeps []time.Duration
+		withFakeSleep(t, &sleeps)
+
+		attempts := 0
+		fn := func() (string, error) {
+			attempts++
+			return "timeout", errors.New("exit 1")
+		}
+		_, _ = RetryWithPolicy(transient, nil, "test", fn, WithSchedule(1, time.Second))
+		if attempts != 1 || len(sleeps) != 0 {
+			t.Fatalf("attempts=%d sleeps=%v, want 1 attempt and no sleeps", attempts, sleeps)
+		}
+	})
+
+	t.Run("malformed schedule panics instead of defaulting", func(t *testing.T) {
+		for name, build := range map[string]func(){
+			"zero attempts": func() { WithSchedule(0, time.Second) },
+			"no delays":     func() { WithSchedule(3) },
+		} {
+			func() {
+				defer func() {
+					if recover() == nil {
+						t.Errorf("%s: expected panic", name)
+					}
+				}()
+				build()
+			}()
+		}
+	})
+}
