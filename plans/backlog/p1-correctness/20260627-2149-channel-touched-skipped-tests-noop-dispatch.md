@@ -20,41 +20,16 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
-Decide which layer(s) to implement (see **Options** — Option A is recommended and self-sufficient), then start at Option A · Step 1. Nothing has been implemented yet; this plan is diagnosis-only.
-
-## Options (pick layer(s) — A recommended)
-
-The defect is preventable at three layers (defense in depth). **Option A alone fully prevents recurrence**; B and C are optional hardening.
-
-### Option A — BPMN/interpreter: exclude skipped tests from channel-touched  ⭐ RECOMMENDED
-
-Catches the whole class and removes both the wasted dispatch and the scope-diff. One file, well-scoped (the only caller of `executedTestNames` is `NamesInReport`, which is channel-touched-only).
-
-- [ ] **Step 1** — In `internal/build/runner/testnames.go`, make the JUnit parser exclude testcases that carry a `<skipped/>` child. Add a `Skipped *struct{}` (xml `"skipped"`) field to `junitCase` and skip cases where it is non-nil in `namesJUnitBytes` (both the `<testsuites>` and bare `<testsuite>` branches, lines ~99-112).
-- [ ] **Step 2** — Apply the equivalent exclusion to the other two formats so the semantics match: TRX (`namesTRX`, ~158-172) drop `UnitTestResult` with `outcome="NotExecuted"`; Playwright JSON (`collectPwSpecs`, ~190-197) drop specs whose result status is `skipped`. (Add the needed attrs/fields to the structs.)
-- [ ] **Step 3** — Update the doc comments on `executedTestNames` (`testnames.go:13-30`) and `NamesInReport` (`tests.go:240-259`) to state explicitly that skipped testcases are excluded, and cross-reference the run-side net (`tests.go:161-181`).
-- [ ] **Step 4** — Tests: extend `internal/build/runner/tests_test.go` (`TestNamesInReport_*`) and/or `testnames` coverage with a JUnit report containing a `<testcase><skipped/></testcase>` and assert the skipped name is **absent** from the union. Add the TRX `NotExecuted` and Playwright `skipped` analogues. Add a channel-level assertion in `internal/atdd/process/actions/channel_test.go` (a skipped-on-UI test → `channel-touched=false`).
-- [ ] **Step 5** — Confirm `executedTestNames` has no other callers (grep), so the change stays channel-touched-scoped and does not perturb `gh optivem system-test run` counting.
-
-### Option B — agent: `system-implementer` must not pollute the working tree
-
-Defense-in-depth: stops the scope-diff even if a no-op channel is still dispatched for some other reason. Does **not** remove the wasted dispatch.
-
-- [ ] **Step 1** — In `internal/atdd/assets/runtime/agents/atdd/system-implementer.md`, add explicit prohibitions: never extract dependency jars / write scratch or temp files **inside the repo** (use an OS temp dir outside the worktree, or don't); never touch `system-test/**` (test code is out of a system-implementer's scope); and on a no-op conclusion, leave the working tree **pristine** (no untracked debris).
-- [ ] **Step 2** — Verify this doesn't duplicate an existing shared-chunk rule (`internal/atdd/assets/runtime/shared/scope*.md`); if a scope chunk already owns "stay within declared paths," extend it there instead of restating in the agent body.
-
-### Option C — command/validator: scope-diff debris handling  (weakest — not recommended alone)
-
-- [ ] **Step 1** — Evaluate (do **not** auto-implement) whether `validate-outputs-and-scopes` should distinguish untracked build/extraction *debris* from a deliberate out-of-scope *edit*. Risk: this softens the fail-loud scope guard and could mask genuine violations.
-- [ ] **Note** — The human-approval gate on the `fix` process (`category:human`, `flow.txt:1541-1544`) is **intentional** — a scope violation is a serious event that warrants human eyes, and the unattended no-TTY halt is the expected rehearsal behaviour. **Do not** propose removing that gate.
+Option A shipped (all steps removed). Options B and C were not selected and are dropped. Only the operator verification below remains.
 
 ## Verification (operator)
 
 - [ ] Re-run the #76 rehearsal loop with Option A applied and confirm the UI channel routes to `CHANNEL_SKIPPED` (no UI `system-implementer` dispatched), the run reaches GREEN/commit without a scope-diff, and the worktree is left clean.
+  - Skipped by the unattended executor: a full shop rehearsal is not feasible unattended. Unit coverage (`TestExecutedTestNames_ExcludesSkipped`, `TestNamesInReport_SkippedTestsAreNotPresent`, `TestResolveChannel_SkippedOnChannel_Untouched`) passes.
 
 ## Notes
 
 - Halt path: `flow.txt:1529` (`failure-kind=scope-diff`, `scope-violating-paths=system-test/java/com/`) → `flow.txt:1539-1545` (`FIX → APPROVE_PRE category=human → ASK_HUMAN`, no TTY).
 - The UI implementer's own self-report (003 event log) concluded *"the acceptance-ui slice is fully green … No changes to frontend-react are required"* — i.e. it correctly found nothing to do; the only working-tree delta was the `jar -xf` debris from inspecting why the tests skip.
 - Channel-touched membership shipped 2026-06-19 (plan 20260619-1139, commit 78a283b); this plan closes the skipped-test gap left in that probe. The run-side twin already handles it (`tests.go:161-181`); Option A brings the report-read side to parity.
-- `executedTestNames` callers: only `NamesInReport` (`tests.go:271`) and `namesJUnitDir` (same package) — confirm in Step 5 before landing.
+- Step 5 finding: `executedTestNames` is ALSO called by `runOneSuite` (named-run presence check), not only `NamesInReport`. Skipped names are now excluded there too: a requested test skipped in every selected suite now fails loud as "never executed" (previously it silently passed); a test skipped on one channel but executed on another is unaffected. Count semantics (`countExecutedTests`) were already skipped-exclusive, so the two are now consistent.

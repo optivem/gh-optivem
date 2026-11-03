@@ -497,6 +497,26 @@ func TestNamesInReport_ReadsExistingReportsWithoutRunning(t *testing.T) {
 	}
 }
 
+// TestNamesInReport_SkippedTestsAreNotPresent: a testcase recorded as skipped
+// in a channel's report did not execute there, so it must not appear in the
+// union (the rehearsal-#76 shape: a backend-only ticket's tests skipped on UI).
+func TestNamesInReport_SkippedTestsAreNotPresent(t *testing.T) {
+	dir := t.TempDir()
+	tests := &TestsConfig{Suites: []Suite{
+		stageSuite(t, dir, "acceptance-parallel-ui", `<testsuite tests="2"><testcase name="cancelBlackout [Channel: UI]"><skipped/></testcase><testcase name="otherTest [Channel: UI]"/></testsuite>`),
+	}}
+	got, err := NamesInReport(tests, dir, []string{"acceptance-parallel-ui"})
+	if err != nil {
+		t.Fatalf("NamesInReport: %v", err)
+	}
+	if got["cancelBlackout"] {
+		t.Errorf("skipped test must be absent, got %v", got)
+	}
+	if !got["otherTest"] {
+		t.Errorf("executed test must be present, got %v", got)
+	}
+}
+
 // TestNamesExecutedInEmptyNamesRunsNothing: empty names short-circuit before
 // suite resolution, so even a nonexistent suite id can't surface an error.
 func TestNamesExecutedInEmptyNamesRunsNothing(t *testing.T) {

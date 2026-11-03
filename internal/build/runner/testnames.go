@@ -24,6 +24,12 @@ import (
 // lands in the union regardless of how many invocations or which sub-suite
 // produced it.
 //
+// Skipped testcases are NOT executed and are excluded from the set (JUnit
+// `<skipped/>`, TRX `outcome="NotExecuted"`, Playwright specs whose every test
+// has status "skipped"), matching countExecutedTests. A method that is skipped
+// in a partition (e.g. a test registered for another channel) therefore does
+// not read as present there; only a failing-but-executed test does.
+//
 // A report file that does not exist contributes the empty set, not an error —
 // same rationale as countExecutedTests: a sub-suite whose filter matched
 // nothing may never write a report, and "absent here" is a normal partition
@@ -71,7 +77,8 @@ func bareMethod(s string) string {
 // are bare method names, matching gradle's `--tests *.<method>` semantics).
 
 type junitCase struct {
-	Name string `xml:"name,attr"`
+	Name    string    `xml:"name,attr"`
+	Skipped *struct{} `xml:"skipped"`
 }
 
 type junitSuiteCases struct {
@@ -98,6 +105,9 @@ func namesJUnitBytes(data []byte, path string) (map[string]bool, error) {
 	if err := xml.Unmarshal(data, &multi); err == nil && len(multi.Suites) > 0 {
 		for _, s := range multi.Suites {
 			for _, c := range s.Cases {
+				if c.Skipped != nil {
+					continue
+				}
 				out[bareMethod(c.Name)] = true
 			}
 		}
@@ -108,6 +118,9 @@ func namesJUnitBytes(data []byte, path string) (map[string]bool, error) {
 		return nil, fmt.Errorf("parse JUnit report %s: %w", path, err)
 	}
 	for _, c := range single.Cases {
+		if c.Skipped != nil {
+			continue
+		}
 		out[bareMethod(c.Name)] = true
 	}
 	return out, nil
@@ -141,6 +154,7 @@ type trxResults struct {
 	Results struct {
 		UnitTests []struct {
 			TestName string `xml:"testName,attr"`
+			Outcome  string `xml:"outcome,attr"`
 		} `xml:"UnitTestResult"`
 	} `xml:"Results"`
 }
@@ -166,6 +180,9 @@ func namesTRX(path string) (map[string]bool, error) {
 	}
 	out := map[string]bool{}
 	for _, ut := range r.Results.UnitTests {
+		if ut.Outcome == "NotExecuted" {
+			continue
+		}
 		out[bareMethodTRX(ut.TestName)] = true
 	}
 	return out, nil
@@ -176,10 +193,29 @@ func namesTRX(path string) (map[string]bool, error) {
 // Channel is a Playwright project, not part of the spec title, so the title is
 // the bare test name; suites nest, so walk recursively.
 
+type pwSpec struct {
+	Title string `json:"title"`
+	Tests []struct {
+		Status string `json:"status"`
+	} `json:"tests"`
+}
+
+// skipped reports whether the spec has test entries and every one is skipped.
+// A spec with no test entries is treated as executed (older/minimal reports).
+func (s pwSpec) skipped() bool {
+	if len(s.Tests) == 0 {
+		return false
+	}
+	for _, t := range s.Tests {
+		if t.Status != "skipped" {
+			return false
+		}
+	}
+	return true
+}
+
 type pwSuite struct {
-	Specs []struct {
-		Title string `json:"title"`
-	} `json:"specs"`
+	Specs []pwSpec `json:"specs"`
 	Suites []pwSuite `json:"suites"`
 }
 
@@ -189,6 +225,9 @@ type pwNamesReport struct {
 
 func collectPwSpecs(s pwSuite, out map[string]bool) {
 	for _, spec := range s.Specs {
+		if spec.skipped() {
+			continue
+		}
 		out[strings.TrimSpace(spec.Title)] = true
 	}
 	for _, child := range s.Suites {

@@ -78,6 +78,57 @@ func TestExecutedTestNames(t *testing.T) {
 	}
 }
 
+// TestExecutedTestNames_ExcludesSkipped pins that skipped testcases are not
+// counted as executed in any report format, while a test that executed (even a
+// failing one) is. A method skipped on one channel but executed on another
+// still lands in the set via the executed invocation.
+func TestExecutedTestNames_ExcludesSkipped(t *testing.T) {
+	junit := `<testsuite name="A">
+  <testcase name="skippedOnUi [Channel: UI]"><skipped/></testcase>
+  <testcase name="failingOnUi [Channel: UI]"><failure message="boom"/></testcase>
+  <testcase name="mixed [Channel: UI]"><skipped/></testcase>
+  <testcase name="mixed [Channel: API]"/>
+</testsuite>`
+	junitWrapped := `<testsuites><testsuite name="A"><testcase name="skippedOnUi [Channel: UI]"><skipped message="x"/></testcase><testcase name="ran"/></testsuite></testsuites>`
+	trx := `<TestRun id="x" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Results>
+    <UnitTestResult testName="SkippedOnUi(channel: UI)" outcome="NotExecuted" />
+    <UnitTestResult testName="FailingOnUi(channel: UI)" outcome="Failed" />
+    <UnitTestResult testName="Passing(channel: API)" outcome="Passed" />
+  </Results>
+</TestRun>`
+	pw := `{"suites":[{"specs":[
+  {"title":"skippedOnUi","tests":[{"status":"skipped"}]},
+  {"title":"failingOnUi","tests":[{"status":"unexpected"}]},
+  {"title":"mixed","tests":[{"status":"skipped"},{"status":"expected"}]}
+]}]}`
+
+	cases := []struct {
+		file, content string
+		want          []string
+	}{
+		{"r.xml", junit, []string{"failingOnUi", "mixed"}},
+		{"w.xml", junitWrapped, []string{"ran"}},
+		{"r.trx", trx, []string{"FailingOnUi", "Passing"}},
+		{"r.json", pw, []string{"failingOnUi", "mixed"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.file, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tc.file)
+			if err := os.WriteFile(path, []byte(tc.content), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got, err := executedTestNames(path)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if g := keys(got); !equalSets(g, tc.want) {
+				t.Fatalf("names: got %v, want %v", g, tc.want)
+			}
+		})
+	}
+}
+
 // TestExecutedTestNames_JUnitDir exercises the directory path: gradle drops one
 // TEST-*.xml per class, so a directory must union names across files.
 func TestExecutedTestNames_JUnitDir(t *testing.T) {

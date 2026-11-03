@@ -266,6 +266,12 @@ func NamesExecutedIn(tests *TestsConfig, testsCwd string, suiteIDs, testNames []
 // partition, and a failing test still appears as a <testcase> in it, so
 // membership is read straight off the file: RED-tolerant by construction.
 //
+// Skipped testcases are excluded (see executedTestNames): a test skipped on a
+// channel did not execute there, so that channel reads as not touched. This is
+// the report-read counterpart of the run-side cross-channel skip net in
+// RunTests. WIP-gated tests stay counted because the RED verify runs with
+// GH_OPTIVEM_RUN_WIP_TESTS=1, so they execute (and fail) rather than skip.
+//
 // Only suites the project actually declares AND that carry a TestCountPath
 // contribute names; an unknown id (or a TestCountPath-less suite) is skipped,
 // and a report file that does not exist contributes the empty set — the same

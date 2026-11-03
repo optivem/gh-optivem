@@ -95,6 +95,31 @@ func TestResolveChannel_APIOnlyTicket_APITouched(t *testing.T) {
 	}
 }
 
+// TestResolveChannel_SkippedOnChannel_Untouched: the ticket's test is recorded
+// in the UI report but as skipped (it never executed on UI) → the UI channel
+// must read as untouched so no UI implementer is dispatched.
+func TestResolveChannel_SkippedOnChannel_Untouched(t *testing.T) {
+	dir := t.TempDir()
+	body := `<testsuite tests="1"><testcase name="shouldRejectQty100 [Channel: UI]"><skipped/></testcase></testsuite>`
+	if err := os.WriteFile(filepath.Join(dir, "acceptance-parallel-ui.xml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tests := &runner.TestsConfig{Suites: []runner.Suite{
+		{ID: "acceptance-parallel-ui", Name: "acceptance-parallel-ui", Path: ".", TestCountPath: "acceptance-parallel-ui.xml"},
+		{ID: "acceptance-isolated-ui", Name: "acceptance-isolated-ui", Path: ".", TestCountPath: "acceptance-isolated-ui.xml"},
+	}}
+	cfg := &projectconfig.Config{Channels: []string{"api", "ui"}}
+	a := newActions(Deps{Config: cfg, TestsConfig: tests, TestsCwd: dir})
+
+	ctx := channelCtx("ui", "shouldRejectQty100")
+	if out := a.resolveChannel(ctx); out.Err != nil {
+		t.Fatalf("resolve-channel(ui): %v", out.Err)
+	}
+	if got, _ := ctx.State["channel-touched"].(bool); got {
+		t.Errorf("channel-touched(ui): got true, want false (test skipped on UI)")
+	}
+}
+
 // TestResolveChannel_NoChannelParam_RunsNormally covers the structural callers
 // (redesign/refactor reuse implement-and-verify-system with no channel unroll):
 // an empty channel means "not a per-channel clone" → touched=true, inert guard.
