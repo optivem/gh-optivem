@@ -193,10 +193,9 @@ func classifyPostCreatePush(out string, err error) bool {
 // branch-protection (including `! [remote rejected]` on its own) — is permanent
 // and fails fast.
 //
-// Use ONLY for the initial template push to a freshly-created repo
-// (commitAndPushRepo in internal/scaffolding/steps/finalize.go — every repo
-// reaching it is freshly created, since confirmReposExist in
-// internal/config/config.go fails the run before this point otherwise).
+// Use ONLY for the initial template push (stageCommitAndPush in
+// internal/scaffolding/steps/finalize.go): either to a repo created moments
+// ago by this run, or, under --overwrite, to a repo that already existed.
 // Subsequent fast-forward pushes against settled repos must use plain
 // shell.Run; the lag class does not apply there.
 //

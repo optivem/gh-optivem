@@ -244,19 +244,19 @@ func CommitAndPush(cfg *config.Config, failureNote string) {
 		log.Warnf("Committing partial scaffold for troubleshooting (failed at %s)", failureNote)
 	}
 
-	commitAndPushRepo(cfg.RepoDir, cfg.FullRepo, commitMsg)
+	commitAndPushRepo(cfg, cfg.RepoDir, cfg.FullRepo, commitMsg)
 
 	if cfg.RepoStrategy == "multirepo" {
 		if cfg.Arch == "multitier" {
-			commitAndPushRepo(cfg.BackendRepoDir, cfg.BackendFullRepo, commitMsg)
-			commitAndPushRepo(cfg.FrontendRepoDir, cfg.FrontendFullRepo, commitMsg)
+			commitAndPushRepo(cfg, cfg.BackendRepoDir, cfg.BackendFullRepo, commitMsg)
+			commitAndPushRepo(cfg, cfg.FrontendRepoDir, cfg.FrontendFullRepo, commitMsg)
 		} else {
-			commitAndPushRepo(cfg.SystemRepoDir, cfg.SystemFullRepo, commitMsg)
+			commitAndPushRepo(cfg, cfg.SystemRepoDir, cfg.SystemFullRepo, commitMsg)
 		}
 	}
 }
 
-func commitAndPushRepo(repoDir, fullRepo, commitMsg string) {
+func commitAndPushRepo(cfg *config.Config, repoDir, fullRepo, commitMsg string) {
 	// Skip cleanly when the local clone never landed (earlier scaffold step
 	// failed before clone). Without this guard, `git add -A` cd's into a
 	// non-existent dir and surfaces a misleading "chdir ... no such file or
@@ -267,27 +267,44 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string) {
 			fullRepo, repoDir)
 		return
 	}
+	pushed, err := stageCommitAndPush(repoDir, fullRepo, commitMsg, cfg.PreExistingRepos[fullRepo])
+	if err != nil {
+		log.Fatalf("%v", err)
+	}
+	if !pushed {
+		log.Successf("Nothing to change in %s: the scaffold matches what is already there", fullRepo)
+		return
+	}
+	log.Successf("Pushed template to %s", fullRepo)
+}
+
+// stageCommitAndPush stages everything in repoDir, commits and pushes to main.
+// It returns pushed=false (and no error) only for a clean tree in a repo that
+// already existed before this run: re-running on an already-adopted repo has
+// nothing to change. For a repo created by this run a clean tree means the
+// template apply produced nothing, which is a bug and returns an error.
+func stageCommitAndPush(repoDir, fullRepo, commitMsg string, preExisting bool) (pushed bool, err error) {
 	if _, err := shell.Run("git add -A", true, repoDir); err != nil {
-		log.Fatalf("git add failed in %s: %v", fullRepo, err)
+		return false, fmt.Errorf("git add failed in %s: %w", fullRepo, err)
 	}
 	// Fix executable permissions for shell scripts (Windows doesn't track the +x
 	// bit). Scan every tracked path — scripts like gradlew can live in nested
 	// subprojects (e.g. system/gradlew, system-test/gradlew in a monorepo).
-	fixExecBits(repoDir, fullRepo)
+	if err := fixExecBits(repoDir, fullRepo); err != nil {
+		return false, err
+	}
 	status, err := shell.RunCapture("git status --porcelain", repoDir)
 	if err != nil {
-		log.Fatalf("git status failed in %s: %v", fullRepo, err)
+		return false, fmt.Errorf("git status failed in %s: %w", fullRepo, err)
 	}
-	cleanTree := strings.TrimSpace(status) == ""
-	if cleanTree {
-		// Every repo reaching finalize() was freshly created — confirmReposExist
-		// (internal/config/config.go) fails the run before this point if any
-		// target repo already exists. A clean tree here means the template apply
-		// produced nothing, which is a real bug — fail loudly.
-		log.Fatalf("git tree is clean in freshly created repo %s -- template apply produced no changes (bug)", fullRepo)
+	if strings.TrimSpace(status) == "" {
+		if preExisting {
+			return false, nil
+		}
+		return false, fmt.Errorf("git tree is clean in newly created repo %s -- template apply produced no changes (bug)", fullRepo)
 	}
 	if _, err := shell.Run(fmt.Sprintf(`git commit -m %q`, commitMsg), true, repoDir); err != nil {
-		log.Fatalf("git commit failed in %s: %v", fullRepo, err)
+		return false, fmt.Errorf("git commit failed in %s: %w", fullRepo, err)
 	}
 	// shell.MustRunPostCreatePush retries narrowly on the two GitHub ref-store
 	// replica-lag messages ("cannot lock ref" / "reference already exists")
@@ -296,12 +313,14 @@ func commitAndPushRepo(repoDir, fullRepo, commitMsg string) {
 	// was falsified by that run. The retry is bounded (4 attempts, 5s→15s→45s)
 	// and classifier-pinned (TestMustRunPostCreatePush_Classifier in
 	// shell/retry_test.go); auth, permission, non-fast-forward, and
-	// branch-protection failures still fail fast on the first attempt.
+	// branch-protection failures still fail fast on the first attempt. The
+	// same push serves repos that already existed (--overwrite): it is a
+	// direct push to the default branch, and the retry stays narrow.
 	shell.MustRunPostCreatePush("git push -u origin main", repoDir)
-	log.Successf("Pushed template to %s", fullRepo)
+	return true, nil
 }
 
-func fixExecBits(repoDir, fullRepo string) {
+func fixExecBits(repoDir, fullRepo string) error {
 	execNames := map[string]bool{
 		"gradlew":         true,
 		"setup-gcp.sh":    true,
@@ -310,7 +329,7 @@ func fixExecBits(repoDir, fullRepo string) {
 	}
 	out, err := shell.RunCapture("git ls-files", repoDir)
 	if err != nil {
-		log.Fatalf("git ls-files failed in %s: %v", fullRepo, err)
+		return fmt.Errorf("git ls-files failed in %s: %w", fullRepo, err)
 	}
 	for _, path := range strings.Split(out, "\n") {
 		path = strings.TrimSpace(path)
@@ -321,4 +340,5 @@ func fixExecBits(repoDir, fullRepo string) {
 			shell.MustRun(fmt.Sprintf(`git update-index --chmod=+x "%s"`, path), repoDir)
 		}
 	}
+	return nil
 }
