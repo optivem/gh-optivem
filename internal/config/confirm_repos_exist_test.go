@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"os/exec"
 	"reflect"
 	"runtime"
 	"strings"
@@ -92,4 +94,57 @@ func TestConfirmReposExist_NoneExistWithoutOverwrite(t *testing.T) {
 	if got := confirmReposExist([]string{"acme/repo-one"}, false); len(got) != 0 {
 		t.Fatalf("expected no existing repos, got %v", got)
 	}
+}
+
+// runFatalHelper re-executes the test binary running only the named helper
+// test, because log.FatalExit calls os.Exit. It returns the combined output
+// and whether the child exited non-zero.
+func runFatalHelper(t *testing.T, helper string) (string, bool) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^"+helper+"$")
+	cmd.Env = append(os.Environ(), "OPTIVEM_FATAL_HELPER=1")
+	out, err := cmd.CombinedOutput()
+	return string(out), err != nil
+}
+
+func TestConfirmReposExist_ExistingWithoutOverwriteFailsFast(t *testing.T) {
+	if os.Getenv("OPTIVEM_FATAL_HELPER") == "1" {
+		dir := mkPathDir(t)
+		writeStubOSSpecific(t, dir, "gh", reposExistStubBody(t, []string{"acme/backend"}))
+		confirmReposExist([]string{"acme/backend", "acme/frontend"}, false)
+		return
+	}
+	out, failed := runFatalHelper(t, "TestConfirmReposExist_ExistingWithoutOverwriteFailsFast")
+	if !failed {
+		t.Fatalf("expected non-zero exit without --overwrite, got success: %s", out)
+	}
+	if !strings.Contains(out, "acme/backend") || !strings.Contains(out, "--overwrite") {
+		t.Fatalf("error must name the repo and point at --overwrite, got: %s", out)
+	}
+}
+
+func TestRequireAllReposExistForDryRun_NeedsOverwrite(t *testing.T) {
+	if os.Getenv("OPTIVEM_FATAL_HELPER") == "1" {
+		requireAllReposExistForDryRun([]string{"acme/a"}, false, map[string]bool{"acme/a": true})
+		return
+	}
+	out, failed := runFatalHelper(t, "TestRequireAllReposExistForDryRun_NeedsOverwrite")
+	if !failed || !strings.Contains(out, "requires --overwrite") {
+		t.Fatalf("expected --overwrite requirement failure, failed=%v out=%s", failed, out)
+	}
+}
+
+func TestRequireAllReposExistForDryRun_MissingRepoFails(t *testing.T) {
+	if os.Getenv("OPTIVEM_FATAL_HELPER") == "1" {
+		requireAllReposExistForDryRun([]string{"acme/a", "acme/b"}, true, map[string]bool{"acme/a": true})
+		return
+	}
+	out, failed := runFatalHelper(t, "TestRequireAllReposExistForDryRun_MissingRepoFails")
+	if !failed || !strings.Contains(out, "acme/b") {
+		t.Fatalf("expected failure naming acme/b, failed=%v out=%s", failed, out)
+	}
+}
+
+func TestRequireAllReposExistForDryRun_AllExistPasses(t *testing.T) {
+	requireAllReposExistForDryRun([]string{"acme/a", "", "acme/b"}, true, map[string]bool{"acme/a": true, "acme/b": true})
 }

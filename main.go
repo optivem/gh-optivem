@@ -243,9 +243,24 @@ file is written in place before scaffolding continues. The init command
 itself only takes per-invocation flags — verify-level, workdir, etc.
 
 If project.url is empty, init will auto-create the project board and write
-the URL back into gh-optivem.yaml.`,
-		Example: `  gh optivem init`,
-		Args:    cobra.NoArgs,
+the URL back into gh-optivem.yaml.
+
+By default init fails if any target repository already exists. To adopt
+existing repositories, pass --overwrite: it opts in to reusing existing
+repos and remote resources (environments, labels, variables, project board,
+SonarCloud projects), adding NEW files and replacing files that clash with
+the scaffold. init then prints a preview (NEW / OVERWRITE / KEPT files and
+remote create/reuse/differs) and asks for confirmation before anything is
+written; the scaffold is pushed directly to the default branch, which must
+be main. --yes skips the confirmation prompt only (the preview is still
+printed, and --overwrite is still required). --dry-run (requires
+--overwrite and that every target repo exists) prints the preview and exits
+without writing anything; add --verbose for full per-file diffs. Without
+--yes, a non-interactive run cannot confirm and fails.`,
+		Example: `  gh optivem init
+  gh optivem init --overwrite --dry-run
+  gh optivem init --overwrite`,
+		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			// `init` scaffolds a whole SUT from the shop template — repos,
 			// compose stack, system-test tier, pipeline workflows. That is

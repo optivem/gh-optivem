@@ -56,6 +56,8 @@ For example:
 gh optivem init --owner valentinajemuovic --repo book-shop --system-name "Book Shop" --repo-strategy monorepo --arch multitier --backend-lang dotnet --frontend-lang typescript --test-lang java
 ```
 
+**Already have the repository?** By default `init` refuses to touch an existing repo. Pass `--overwrite` to scaffold into it: new files are added, files that clash with the template are replaced, and existing remote resources (environments, labels, variables, project board, SonarCloud projects) are reused. `init` prints a preview of exactly what would change and asks for confirmation before writing; the scaffold is pushed straight to the default branch, which must be `main`. Run `gh optivem init --overwrite --dry-run ...` first to see the preview and exit without writing anything (add `--verbose` for full diffs). `--yes` skips the confirmation prompt only; it never implies `--overwrite`.
+
 **Expect this to run for a long time** — `init` watches the generated pipelines on GitHub Actions until they go green, which takes tens of minutes, printing a heartbeat every 5 minutes. Leave it running until it reports success; interrupting it stops the watching, not the pipeline.
 
 ## Clone project repository

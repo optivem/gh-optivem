@@ -153,7 +153,9 @@ Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `in
 - `--workdir` — working directory for local clones (default: temp dir).
 - `--keep-local` — keep the local scaffolded clone dir on success instead of deleting it.
 - `--report-bug` — on failure, auto-create a GitHub issue in `optivem/gh-optivem` with scaffold config. Off by default.
-- `--yes` / `-y` — skip all interactive confirmations (existing-repo prompt, bug-report confirmation). Expected for CI/unattended runs.
+- `--overwrite` — opt in to scaffolding into repositories that already exist. Existing repos and remote resources are reused (not recreated), NEW files are added, and clashing files are replaced. Without it, `init` fails if any target repo exists. `init` prints a preview (NEW / OVERWRITE / KEPT files; remote create / reuse / differs) and asks for confirmation, then pushes directly to the default branch (must be `main`). A re-run on an already-adopted repo is a no-op.
+- `--dry-run` — with `--overwrite`: print the preview and exit 0 before anything is written. Requires every target repo to already exist. Add `--verbose` for full per-file diffs.
+- `--yes` / `-y` — skip interactive confirmations (bug-report confirmation, the `--overwrite` preview prompt). Does not imply `--overwrite` and still prints the preview. Without `--yes`, a non-interactive `--overwrite` run fails. Expected for CI/unattended runs.
 - `--log-file` — override path for the plain-text log mirror (default: `$TEMP/gh-optivem-<timestamp>.log`; always written).
 - `--verbose` / `-v` — enable debug output (retry/wait chatter, diagnostics).
 - `--quiet` / `-q` — suppress info-level output (warnings and errors still shown).

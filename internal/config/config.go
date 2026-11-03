@@ -637,7 +637,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	fs.BoolVarP(&f.Verbose, "verbose", "v", false, "Enable debug output (retry/wait chatter, diagnostics)")
 	fs.BoolVarP(&f.Quiet, "quiet", "q", false, "Suppress info-level output (warnings and errors still shown)")
 	fs.StringVar(&f.LogFile, "log-file", "", "Override path for the plain-text log mirror (default: $TEMP/gh-optivem-<timestamp>.log; always written so failures can be attached to bug reports)")
-	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip all interactive confirmations (--report-bug confirmation, project-board status-ensure on supplied --project-url). Expected pattern for CI/unattended runs.")
+	fs.BoolVarP(&f.AssumeYes, "yes", "y", false, "Skip interactive confirmations (--report-bug confirmation, project-board status-ensure on supplied --project-url, and the --overwrite preview prompt). Does not imply --overwrite and still prints the preview. Expected pattern for CI/unattended runs.")
 	fs.BoolVar(&f.Overwrite, "overwrite", false, "Opt in to scaffolding into repositories that already exist on GitHub: existing repos are reused (not recreated), new files are added, and files that clash with the scaffold are replaced. Without this flag, init fails if any target repository already exists.")
 	fs.BoolVar(&f.DryRun, "dry-run", false, "With --overwrite: build and print the preview of what would change in the existing repositories (files and remote resources), then exit 0 before anything is written to GitHub or SonarCloud. Requires every target repository to already exist. Use --verbose to include full per-file diffs.")
 }
