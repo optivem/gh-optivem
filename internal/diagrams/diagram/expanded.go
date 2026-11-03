@@ -148,13 +148,6 @@ func writeSubgraphKid(b *strings.Builder, kid *subgraphKid) {
 //     parent are rewired to originate from here (one edge per exit).
 func expandProcess(acc *expandAcc, eng *statemachine.Engine, proc *statemachine.Process, scopePrefix string, visited map[string]bool, depth int) (*subgraphTree, string, []string) {
 	tree := &subgraphTree{}
-
-	// entryExit caches the rewired (entry, exits) for each call-activity in
-	// this process so edge rewiring below can look them up by original node ID.
-	type entryExit struct {
-		entry string
-		exits []string
-	}
 	expansions := map[string]entryExit{}
 
 	for _, id := range flowOrderedNodeIDs(proc) {
@@ -195,21 +188,30 @@ func expandProcess(acc *expandAcc, eng *statemachine.Engine, proc *statemachine.
 		expansions[id] = entryExit{entry: innerEntry, exits: innerExits}
 	}
 
-	// Rewire edges: replace call-activity endpoints with their expansion's
-	// entry/exit node IDs. For a call-activity with N normal exits and M
-	// outgoing edges in the parent, emit N×M rewired edges.
+	rewireEdges(acc, proc, scopePrefix, expansions)
+
+	return tree, scopePrefix + proc.Start, endEventExitIDs(proc, scopePrefix)
+}
+
+// entryExit caches the rewired (entry, exits) for each call-activity in a
+// process so edge rewiring can look them up by original node ID.
+type entryExit struct {
+	entry string
+	exits []string
+}
+
+// rewireEdges replaces call-activity endpoints with their expansion's
+// entry/exit node IDs. For a call-activity with N normal exits and M
+// outgoing edges in the parent, it emits N×M rewired edges.
+func rewireEdges(acc *expandAcc, proc *statemachine.Process, scopePrefix string, expansions map[string]entryExit) {
 	for _, e := range proc.Edges {
-		var froms []string
+		froms := []string{scopePrefix + e.From}
 		if exp, ok := expansions[e.From]; ok {
 			froms = exp.exits
-		} else {
-			froms = []string{scopePrefix + e.From}
 		}
-		var to string
+		to := scopePrefix + e.To
 		if exp, ok := expansions[e.To]; ok {
 			to = exp.entry
-		} else {
-			to = scopePrefix + e.To
 		}
 		for _, from := range froms {
 			if e.Predicate == "" {
@@ -219,9 +221,10 @@ func expandProcess(acc *expandAcc, eng *statemachine.Engine, proc *statemachine.
 			}
 		}
 	}
+}
 
-	entryID := scopePrefix + proc.Start
-	var exitIDs []string
+// endEventExitIDs returns the scoped IDs of proc's normal end events, sorted.
+func endEventExitIDs(proc *statemachine.Process, scopePrefix string) []string {
 	endKeys := make([]string, 0)
 	for id, n := range proc.Nodes {
 		if n.Kind == statemachine.EndEvent {
@@ -229,10 +232,11 @@ func expandProcess(acc *expandAcc, eng *statemachine.Engine, proc *statemachine.
 		}
 	}
 	sort.Strings(endKeys)
+	var exitIDs []string
 	for _, id := range endKeys {
 		exitIDs = append(exitIDs, scopePrefix+id)
 	}
-	return tree, entryID, exitIDs
+	return exitIDs
 }
 
 // expandNodeDecl returns a Mermaid node declaration line (4-space indent)

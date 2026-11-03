@@ -46,6 +46,30 @@ func (e *Engine) Bind() error {
 	return nil
 }
 
+// resolveNamedFn binds a service-task action or user-task agent by name. A
+// name containing "${" is expanded at dispatch time against ctx.Params and
+// ctx.State; a static name is looked up immediately and must be registered.
+func resolveNamedFn(taskKind, label, ref string, lookup func(string) NodeFn) (NodeFn, error) {
+	if !strings.Contains(ref, "${") {
+		fn := lookup(ref)
+		if fn == nil {
+			return nil, fmt.Errorf("%s %s %q not registered", taskKind, label, ref)
+		}
+		return fn, nil
+	}
+	return func(ctx *Context) Outcome {
+		name, err := ExpandParams(ref, ctx.Params, ctx.State)
+		if err != nil {
+			return Outcome{Err: fmt.Errorf("%s %s template %q: %w", taskKind, label, ref, err)}
+		}
+		fn := lookup(name)
+		if fn == nil {
+			return Outcome{Err: fmt.Errorf("%s %s %q (from template %q) not registered", taskKind, label, name, ref)}
+		}
+		return fn(ctx)
+	}, nil
+}
+
 // resolve picks the right NodeFn for one node based on its kind and the
 // engine's registries.
 func (e *Engine) resolve(node Node) (NodeFn, error) {
@@ -59,26 +83,7 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 		// Templated action names (e.g. ${compile_action} in red_phase_cycle)
 		// are resolved at dispatch time once Context.Params is set by the
 		// calling call-activity. Bind validates only static names.
-		if strings.Contains(node.Raw.Action, "${") {
-			ref := node.Raw.Action
-			lookup := e.ActionFn
-			return func(ctx *Context) Outcome {
-				name, err := ExpandParams(ref, ctx.Params, ctx.State)
-				if err != nil {
-					return Outcome{Err: fmt.Errorf("service-task action template %q: %w", ref, err)}
-				}
-				fn := lookup(name)
-				if fn == nil {
-					return Outcome{Err: fmt.Errorf("service-task action %q (from template %q) not registered", name, ref)}
-				}
-				return fn(ctx)
-			}, nil
-		}
-		fn := e.ActionFn(node.Raw.Action)
-		if fn == nil {
-			return nil, fmt.Errorf("service-task action %q not registered", node.Raw.Action)
-		}
-		return fn, nil
+		return resolveNamedFn("service-task", "action", node.Raw.Action, e.ActionFn)
 	case UserTask:
 		if e.AgentFn == nil {
 			return nil, fmt.Errorf("AgentFn registry is nil but node is user-task")
@@ -86,26 +91,7 @@ func (e *Engine) resolve(node Node) (NodeFn, error) {
 		// Templated agent names (e.g. ${agent} in structural_cycle) are
 		// resolved at dispatch time once Context.Params is set by the calling
 		// call-activity. Bind validates only static names.
-		if strings.Contains(node.Raw.Agent, "${") {
-			ref := node.Raw.Agent
-			lookup := e.AgentFn
-			return func(ctx *Context) Outcome {
-				name, err := ExpandParams(ref, ctx.Params, ctx.State)
-				if err != nil {
-					return Outcome{Err: fmt.Errorf("user-task agent template %q: %w", ref, err)}
-				}
-				fn := lookup(name)
-				if fn == nil {
-					return Outcome{Err: fmt.Errorf("user-task agent %q (from template %q) not registered", name, ref)}
-				}
-				return fn(ctx)
-			}, nil
-		}
-		fn := e.AgentFn(node.Raw.Agent)
-		if fn == nil {
-			return nil, fmt.Errorf("user-task agent %q not registered", node.Raw.Agent)
-		}
-		return fn, nil
+		return resolveNamedFn("user-task", "agent", node.Raw.Agent, e.AgentFn)
 	case Gateway:
 		if e.GateFn == nil {
 			return nil, fmt.Errorf("GateFn registry is nil but node is gateway")
@@ -246,6 +232,27 @@ func (e *Engine) RunProcess(name string, ctx *Context) error {
 	return e.runProcess(process, ctx)
 }
 
+// pushVisitContext writes the visit count and cap into ctx.State and returns
+// a function that restores the prior values (or unsets the keys if absent).
+func pushVisitContext(ctx *Context, count, maxVisits int) func() {
+	prevCount, hadCount := ctx.State[visitCountKey]
+	prevMax, hadMax := ctx.State[visitMaxKey]
+	ctx.Set(visitCountKey, count)
+	ctx.Set(visitMaxKey, maxVisits)
+	return func() {
+		if hadCount {
+			ctx.Set(visitCountKey, prevCount)
+		} else {
+			ctx.Unset(visitCountKey)
+		}
+		if hadMax {
+			ctx.Set(visitMaxKey, prevMax)
+		} else {
+			ctx.Unset(visitMaxKey)
+		}
+	}
+}
+
 func (e *Engine) runProcess(process *Process, ctx *Context) error {
 	maps.Copy(ctx.State, process.PresetState)
 	cur := process.Start
@@ -288,17 +295,9 @@ func (e *Engine) runProcess(process *Process, ctx *Context) error {
 		// count survives down to the dispatch, and a non-looped dispatch
 		// outside any loop frame sees no count (so it renders no attempt
 		// label). visits[cur] is 1-based here (incremented above).
-		var (
-			prevCount, prevMax   any
-			hadCount, hadMax     bool
-			restoreVisitOnReturn bool
-		)
+		restoreVisit := func() {}
 		if node.Raw.MaxVisits > 0 {
-			prevCount, hadCount = ctx.State[visitCountKey]
-			prevMax, hadMax = ctx.State[visitMaxKey]
-			ctx.Set(visitCountKey, visits[cur])
-			ctx.Set(visitMaxKey, node.Raw.MaxVisits)
-			restoreVisitOnReturn = true
+			restoreVisit = pushVisitContext(ctx, visits[cur], node.Raw.MaxVisits)
 		}
 		if node.Fn == nil {
 			return fmt.Errorf("process %q node %q: NodeFn not bound (call Bind first)", process.ID, cur)
@@ -311,18 +310,7 @@ func (e *Engine) runProcess(process *Process, ctx *Context) error {
 		// the count; restore now so the following primary re-dispatch sees
 		// none. Restore even on the error path below — it returns immediately,
 		// but keeping ctx clean costs nothing.
-		if restoreVisitOnReturn {
-			if hadCount {
-				ctx.Set(visitCountKey, prevCount)
-			} else {
-				ctx.Unset(visitCountKey)
-			}
-			if hadMax {
-				ctx.Set(visitMaxKey, prevMax)
-			} else {
-				ctx.Unset(visitMaxKey)
-			}
-		}
+		restoreVisit()
 		if out.Err != nil {
 			return fmt.Errorf("process %q node %q: %w", process.ID, cur, out.Err)
 		}

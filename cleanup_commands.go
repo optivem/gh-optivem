@@ -393,7 +393,7 @@ be overridden with SONAR_API_URL.`,
 	return cmd
 }
 
-func runCleanupSonarProjects(client *sonar.Client, organization, prefix string, explicit []string, opt ghbulk.Options) error {
+func printSonarCleanupHeader(organization, prefix string, explicit []string, opt ghbulk.Options) {
 	fmt.Println(cleanupSeparator)
 	fmt.Println("  SonarCloud Project Cleanup")
 	fmt.Printf("  Organization: %s\n", organization)
@@ -407,8 +407,38 @@ func runCleanupSonarProjects(client *sonar.Client, organization, prefix string, 
 		fmt.Println(dryRunModeLine)
 	}
 	fmt.Println(cleanupSeparator)
+}
 
-	pageSize := 100
+func deleteSonarProjectsByPrefix(client *sonar.Client, organization, prefix string, deleteOne func(string) error) error {
+	const pageSize = 100
+	foundAny := false
+	for page := 1; ; page++ {
+		resp, err := client.SearchProjects(organization, page, pageSize)
+		if err != nil {
+			return err
+		}
+		for _, p := range resp.Components {
+			if !strings.HasPrefix(p.Key, prefix) {
+				continue
+			}
+			foundAny = true
+			if err := deleteOne(p.Key); err != nil {
+				return err
+			}
+		}
+		if page >= sonar.MaxPage(resp.Paging.Total, pageSize) {
+			break
+		}
+	}
+	if !foundAny {
+		fmt.Printf("  No projects found matching prefix '%s' under %s.\n", prefix, organization)
+	}
+	return nil
+}
+
+func runCleanupSonarProjects(client *sonar.Client, organization, prefix string, explicit []string, opt ghbulk.Options) error {
+	printSonarCleanupHeader(organization, prefix, explicit, opt)
+
 	deleted := 0
 
 	deleteOne := func(key string) error {
@@ -427,31 +457,8 @@ func runCleanupSonarProjects(client *sonar.Client, organization, prefix string, 
 	}
 
 	if prefix != "" {
-		foundAny := false
-		for page := 1; ; page++ {
-			resp, err := client.SearchProjects(organization, page, pageSize)
-			if err != nil {
-				return err
-			}
-			matched := 0
-			for _, p := range resp.Components {
-				if !strings.HasPrefix(p.Key, prefix) {
-					continue
-				}
-				matched++
-				foundAny = true
-				if err := deleteOne(p.Key); err != nil {
-					return err
-				}
-			}
-			maxPage := sonar.MaxPage(resp.Paging.Total, pageSize)
-			if page >= maxPage {
-				break
-			}
-			_ = matched
-		}
-		if !foundAny {
-			fmt.Printf("  No projects found matching prefix '%s' under %s.\n", prefix, organization)
+		if err := deleteSonarProjectsByPrefix(client, organization, prefix, deleteOne); err != nil {
+			return err
 		}
 	}
 	for _, key := range explicit {

@@ -94,43 +94,12 @@ func (s *compileSummary) Print() {
 	color.New(color.FgCyan, color.Bold).Println(title)
 	color.New(color.Faint).Println(rule)
 
-	// Group rows by phase, preserving first-seen order.
-	var phaseOrder []string
-	byPhase := map[string][]compileRow{}
-	for _, r := range s.rows {
-		if _, seen := byPhase[r.phase]; !seen {
-			phaseOrder = append(phaseOrder, r.phase)
-		}
-		byPhase[r.phase] = append(byPhase[r.phase], r)
-	}
-
+	phaseOrder, byPhase := s.groupByPhase()
 	for i, phase := range phaseOrder {
 		if i > 0 {
 			fmt.Println()
 		}
-		fmt.Printf("  %s\n", phase)
-		fmt.Println()
-		tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		for _, r := range byPhase[phase] {
-			status := color.New(color.FgGreen, color.Bold).Sprint("OK  ")
-			if r.err != nil {
-				status = color.New(color.FgRed, color.Bold).Sprint("FAIL")
-			}
-			dur := color.New(color.Faint).Sprint(formatDuration(r.dur))
-			fmt.Fprintf(tw, "    %s\t%s\t(%s)\t%s\t%s\n",
-				status, r.tier, r.lang, r.path, dur)
-		}
-		_ = tw.Flush()
-		// Print the error message under each failing row, indented to align
-		// with the tier column. Done after Flush so tabwriter doesn't try to
-		// align the multi-character error line into the table.
-		for _, r := range byPhase[phase] {
-			if r.err != nil {
-				fmt.Printf("          %s %s\n",
-					color.New(color.Faint).Sprint("└─"),
-					color.New(color.Faint).Sprint(r.err.Error()))
-			}
-		}
+		printPhaseRows(phase, byPhase[phase])
 	}
 
 	if len(s.skipped) > 0 && len(phaseOrder) > 0 {
@@ -142,6 +111,49 @@ func (s *compileSummary) Print() {
 
 	fmt.Println()
 	color.New(color.Faint).Println(rule)
+	fmt.Println(s.totalsLine(ok, fail))
+}
+
+// groupByPhase groups rows by phase, preserving first-seen order.
+func (s *compileSummary) groupByPhase() ([]string, map[string][]compileRow) {
+	var phaseOrder []string
+	byPhase := map[string][]compileRow{}
+	for _, r := range s.rows {
+		if _, seen := byPhase[r.phase]; !seen {
+			phaseOrder = append(phaseOrder, r.phase)
+		}
+		byPhase[r.phase] = append(byPhase[r.phase], r)
+	}
+	return phaseOrder, byPhase
+}
+
+func printPhaseRows(phase string, rows []compileRow) {
+	fmt.Printf("  %s\n", phase)
+	fmt.Println()
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	for _, r := range rows {
+		status := color.New(color.FgGreen, color.Bold).Sprint("OK  ")
+		if r.err != nil {
+			status = color.New(color.FgRed, color.Bold).Sprint("FAIL")
+		}
+		dur := color.New(color.Faint).Sprint(formatDuration(r.dur))
+		fmt.Fprintf(tw, "    %s\t%s\t(%s)\t%s\t%s\n",
+			status, r.tier, r.lang, r.path, dur)
+	}
+	_ = tw.Flush()
+	// Print the error message under each failing row, indented to align
+	// with the tier column. Done after Flush so tabwriter doesn't try to
+	// align the multi-character error line into the table.
+	for _, r := range rows {
+		if r.err != nil {
+			fmt.Printf("          %s %s\n",
+				color.New(color.Faint).Sprint("└─"),
+				color.New(color.Faint).Sprint(r.err.Error()))
+		}
+	}
+}
+
+func (s *compileSummary) totalsLine(ok, fail int) string {
 	parts := []string{}
 	if ok > 0 {
 		parts = append(parts, color.New(color.FgGreen, color.Bold).Sprintf("%d OK", ok))
@@ -153,7 +165,7 @@ func (s *compileSummary) Print() {
 		parts = append(parts, color.New(color.Faint).Sprintf("%d skipped", len(s.skipped)))
 	}
 	parts = append(parts, color.New(color.Faint).Sprintf("%s total", formatDuration(time.Since(s.start))))
-	fmt.Println(strings.Join(parts, color.New(color.Faint).Sprint(" · ")))
+	return strings.Join(parts, color.New(color.Faint).Sprint(" · "))
 }
 
 // Wall-clock durations use the package-level formatDuration in main.go.

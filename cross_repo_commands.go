@@ -147,12 +147,7 @@ Interactively neither flag is needed: you confirm against the printed file list.
 	return cmd
 }
 
-func runCommit(msg string, opts commitOptions) error {
-	scope, err := workspace.Resolve(workspaceFlagValue)
-	if err != nil {
-		return err
-	}
-
+func printCommitBanner(scope workspace.Scope, msg string, opts commitOptions) {
 	fmt.Println(workspaceSeparator)
 	fmt.Printf("  %s\n", scopeBannerLine(scope))
 	if opts.Repo != "" {
@@ -171,102 +166,124 @@ func runCommit(msg string, opts commitOptions) error {
 		fmt.Printf("  Message: %s\n", msg)
 	}
 	fmt.Println(workspaceSeparator)
+}
+
+// commitAndSyncRepo handles one repo: commit first, then pull, then push,
+// recording the terminal outcome in c.
+func commitAndSyncRepo(repo, msg string, opts commitOptions, c *commitCounts) error {
+	hasUp := hasUpstream(repo)
+	workingClean, err := workingTreeClean(repo)
+	if err != nil {
+		return fmt.Errorf("git status in %s: %w", repo, err)
+	}
+
+	// Idle: nothing to do — no upstream to sync with and no local
+	// changes to commit. Skip the banner entirely.
+	if workingClean && !hasUp {
+		c.idle++
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Printf("--- %s ---\n", relOrSelf(repo))
+	fmt.Printf("  %s\n", tbdModeBanner(repo))
+
+	// Commit FIRST, then pull, then push. Order matters: pulling
+	// before committing on a dirty tree would require a stash
+	// detour (stash → pull → pop), and a pop conflict leaves a
+	// half-applied working tree plus a leftover stash entry —
+	// classic silent footgun. Commit-first guarantees the tree is
+	// clean before any pull/push touches it, so a rebase conflict
+	// is over a real commit the operator can `git rebase --abort`
+	// cleanly, with no stash detritus to chase.
+	didCommit, err := commitOneRepo(repo, msg, opts)
+	if err != nil {
+		return err
+	}
+
+	// Pull + push only when the tree is clean — i.e. the repo was
+	// already clean, or our commit just landed. A declined commit
+	// on a dirty repo skips sync entirely; rerun after dealing
+	// with the dirty state. This is the behaviour change the new
+	// order enforces: declined = nothing happens, no hidden
+	// pull/push side-effect.
+	// On a pull/rebase or push failure we no longer abort the whole
+	// run. If our commit already landed, the repo is committed-but-
+	// unpushed: name it distinctly (so the operator knows to finish the
+	// push) and keep going for the remaining repos — a stranded commit
+	// in one repo is independent of the others. runCommit returns a
+	// non-zero error at the end when any repo was stranded, so the
+	// overall exit code still fails loud.
+	didPush := false
+	if hasUp && (didCommit || workingClean) {
+		if !pullAndPushRepo(repo, didCommit, c) {
+			return nil
+		}
+		didPush = true
+	}
+
+	switch {
+	case didCommit && didPush:
+		c.committed++
+		c.pushed++
+		fmt.Println("  ✓ Pulled and pushed")
+	case didCommit && !didPush:
+		c.committed++
+		c.localOnly++
+		fmt.Println("  ✓ Committed (local only — no upstream branch)")
+	case !didCommit && workingClean:
+		c.cleanSynced++
+		fmt.Println("  ✓ Pulled and pushed (clean)")
+	default:
+		// Dirty + declined. "✗ Skipped" already printed by commitOneRepo.
+		// No pull/push attempted — the tree is still dirty and
+		// we refuse to stash it away under the operator.
+		c.declined++
+	}
+	return nil
+}
+
+// pullAndPushRepo pulls (rebase) then pushes repo. On failure it records the
+// stranded/sync-failed outcome in c, prints the warning, and returns false.
+func pullAndPushRepo(repo string, didCommit bool, c *commitCounts) bool {
+	if err := pullRebaseUpstream(repo); err != nil {
+		reportSyncFailure(repo, "pull/rebase", didCommit, err, c)
+		return false
+	}
+	if err := pushWithRebaseRetry(repo); err != nil {
+		reportSyncFailure(repo, "push", didCommit, err, c)
+		return false
+	}
+	return true
+}
+
+func reportSyncFailure(repo, step string, didCommit bool, err error, c *commitCounts) {
+	if didCommit {
+		c.committed++
+		c.committedNotPushed++
+		fmt.Printf("  ⚠ Committed but NOT pushed — %s failed: %v\n", step, err)
+		fmt.Printf("     Finish the push: re-run `gh optivem commit`, or `git -C %s push`.\n", repo)
+		return
+	}
+	c.syncFailed++
+	fmt.Printf("  ⚠ Not synced — %s failed (nothing committed locally): %v\n", step, err)
+}
+
+func runCommit(msg string, opts commitOptions) error {
+	scope, err := workspace.Resolve(workspaceFlagValue)
+	if err != nil {
+		return err
+	}
+
+	printCommitBanner(scope, msg, opts)
 
 	var c commitCounts
 	for _, repo := range scope.Folders {
 		if opts.Repo != "" && repoBaseName(repo) != opts.Repo {
 			continue
 		}
-
-		hasUp := hasUpstream(repo)
-		workingClean, err := workingTreeClean(repo)
-		if err != nil {
-			return fmt.Errorf("git status in %s: %w", repo, err)
-		}
-
-		// Idle: nothing to do — no upstream to sync with and no local
-		// changes to commit. Skip the banner entirely.
-		if workingClean && !hasUp {
-			c.idle++
-			continue
-		}
-
-		fmt.Println()
-		fmt.Printf("--- %s ---\n", relOrSelf(repo))
-		fmt.Printf("  %s\n", tbdModeBanner(repo))
-
-		// Commit FIRST, then pull, then push. Order matters: pulling
-		// before committing on a dirty tree would require a stash
-		// detour (stash → pull → pop), and a pop conflict leaves a
-		// half-applied working tree plus a leftover stash entry —
-		// classic silent footgun. Commit-first guarantees the tree is
-		// clean before any pull/push touches it, so a rebase conflict
-		// is over a real commit the operator can `git rebase --abort`
-		// cleanly, with no stash detritus to chase.
-		didCommit, err := commitOneRepo(repo, msg, opts)
-		if err != nil {
+		if err := commitAndSyncRepo(repo, msg, opts, &c); err != nil {
 			return err
-		}
-
-		// Pull + push only when the tree is clean — i.e. the repo was
-		// already clean, or our commit just landed. A declined commit
-		// on a dirty repo skips sync entirely; rerun after dealing
-		// with the dirty state. This is the behaviour change the new
-		// order enforces: declined = nothing happens, no hidden
-		// pull/push side-effect.
-		// On a pull/rebase or push failure we no longer abort the whole
-		// run. If our commit already landed, the repo is committed-but-
-		// unpushed: name it distinctly (so the operator knows to finish the
-		// push) and keep going for the remaining repos — a stranded commit
-		// in one repo is independent of the others. runCommit returns a
-		// non-zero error at the end when any repo was stranded, so the
-		// overall exit code still fails loud.
-		didPush := false
-		if hasUp && (didCommit || workingClean) {
-			if err := pullRebaseUpstream(repo); err != nil {
-				if didCommit {
-					c.committed++
-					c.committedNotPushed++
-					fmt.Printf("  ⚠ Committed but NOT pushed — pull/rebase failed: %v\n", err)
-					fmt.Printf("     Finish the push: re-run `gh optivem commit`, or `git -C %s push`.\n", repo)
-					continue
-				}
-				c.syncFailed++
-				fmt.Printf("  ⚠ Not synced — pull/rebase failed (nothing committed locally): %v\n", err)
-				continue
-			}
-			if err := pushWithRebaseRetry(repo); err != nil {
-				if didCommit {
-					c.committed++
-					c.committedNotPushed++
-					fmt.Printf("  ⚠ Committed but NOT pushed — push failed: %v\n", err)
-					fmt.Printf("     Finish the push: re-run `gh optivem commit`, or `git -C %s push`.\n", repo)
-					continue
-				}
-				c.syncFailed++
-				fmt.Printf("  ⚠ Not synced — push failed (nothing committed locally): %v\n", err)
-				continue
-			}
-			didPush = true
-		}
-
-		switch {
-		case didCommit && didPush:
-			c.committed++
-			c.pushed++
-			fmt.Println("  ✓ Pulled and pushed")
-		case didCommit && !didPush:
-			c.committed++
-			c.localOnly++
-			fmt.Println("  ✓ Committed (local only — no upstream branch)")
-		case !didCommit && workingClean:
-			c.cleanSynced++
-			fmt.Println("  ✓ Pulled and pushed (clean)")
-		default:
-			// Dirty + declined. "✗ Skipped" already printed by commitOneRepo.
-			// No pull/push attempted — the tree is still dirty and
-			// we refuse to stash it away under the operator.
-			c.declined++
 		}
 	}
 
@@ -329,43 +346,69 @@ func workingTreeClean(repo string) (bool, error) {
 // the user declined.
 func commitOneRepo(repo, msg string, opts commitOptions) (bool, error) {
 	if opts.Paths != "" {
-		pathArgs := splitPaths(opts.Paths)
-		if err := runGit(repo, append([]string{"add", "--"}, pathArgs...)...); err != nil {
-			return false, fmt.Errorf("git add in %s: %w", repo, err)
-		}
-		if cleanCached, _ := gitCachedClean(repo); cleanCached {
-			fmt.Printf("  (no staged changes under: %s)\n", opts.Paths)
-			return false, nil
-		}
-		if msg == "" {
-			return false, errMissingMsg()
-		}
-		out, err := captureGit(repo, "diff", "--cached", "--name-only")
-		if err != nil {
-			return false, fmt.Errorf("git diff in %s: %w", repo, err)
-		}
-		for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
-			if line != "" {
-				fmt.Printf("  %s\n", line)
-			}
-		}
-		ok, err := confirmCommit(repo, opts)
-		if err != nil {
-			return false, err
-		}
-		if !ok {
-			resetArgs := append([]string{"reset", gitFlagQuiet, "--"}, pathArgs...)
-			_ = runGit(repo, resetArgs...)
-			fmt.Println("  ✗ Skipped (unstaged)")
-			return false, nil
-		}
-		if err := runGitCommit(repo, msg); err != nil {
-			return false, err
-		}
-		fmt.Println("  ✓ Committed")
-		return true, nil
+		return commitPathsInRepo(repo, msg, opts)
 	}
+	return commitAllInRepo(repo, msg, opts)
+}
 
+// commitPathsInRepo is the --paths branch of commitOneRepo: stage only the
+// given paths, confirm, and commit.
+func commitPathsInRepo(repo, msg string, opts commitOptions) (bool, error) {
+	pathArgs := splitPaths(opts.Paths)
+	if err := runGit(repo, append([]string{"add", "--"}, pathArgs...)...); err != nil {
+		return false, fmt.Errorf("git add in %s: %w", repo, err)
+	}
+	if cleanCached, _ := gitCachedClean(repo); cleanCached {
+		fmt.Printf("  (no staged changes under: %s)\n", opts.Paths)
+		return false, nil
+	}
+	if msg == "" {
+		return false, errMissingMsg()
+	}
+	out, err := captureGit(repo, "diff", "--cached", "--name-only")
+	if err != nil {
+		return false, fmt.Errorf("git diff in %s: %w", repo, err)
+	}
+	for line := range strings.SplitSeq(strings.TrimRight(out, "\n"), "\n") {
+		if line != "" {
+			fmt.Printf("  %s\n", line)
+		}
+	}
+	ok, err := confirmCommit(repo, opts)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		resetArgs := append([]string{"reset", gitFlagQuiet, "--"}, pathArgs...)
+		_ = runGit(repo, resetArgs...)
+		fmt.Println("  ✗ Skipped (unstaged)")
+		return false, nil
+	}
+	if err := runGitCommit(repo, msg); err != nil {
+		return false, err
+	}
+	fmt.Println("  ✓ Committed")
+	return true, nil
+}
+
+// untrackedRefusalError builds the --yes refusal error naming the untracked
+// entries.
+func untrackedRefusalError(untracked []string) error {
+	var b strings.Builder
+	b.WriteString("--yes refuses to stage untracked files. Either clean them up,\n")
+	b.WriteString("       commit them via --paths, or pass --include-untracked to opt in.\n")
+	b.WriteString("       Untracked entries:\n")
+	for _, line := range untracked {
+		b.WriteString("         ")
+		b.WriteString(line)
+		b.WriteString("\n")
+	}
+	return errors.New(b.String())
+}
+
+// commitAllInRepo is the no---paths branch of commitOneRepo: stage everything
+// (git add -A), confirm, and commit.
+func commitAllInRepo(repo, msg string, opts commitOptions) (bool, error) {
 	status, err := captureGit(repo, "status", "--short")
 	if err != nil {
 		return false, fmt.Errorf("git status in %s: %w", repo, err)
@@ -390,18 +433,8 @@ func commitOneRepo(repo, msg string, opts commitOptions) (bool, error) {
 		return false, errSweepNeedsAll()
 	}
 	if opts.Yes && !opts.IncludeUntracked {
-		untracked := untrackedLines(status)
-		if len(untracked) > 0 {
-			var b strings.Builder
-			b.WriteString("--yes refuses to stage untracked files. Either clean them up,\n")
-			b.WriteString("       commit them via --paths, or pass --include-untracked to opt in.\n")
-			b.WriteString("       Untracked entries:\n")
-			for _, line := range untracked {
-				b.WriteString("         ")
-				b.WriteString(line)
-				b.WriteString("\n")
-			}
-			return false, errors.New(b.String())
+		if untracked := untrackedLines(status); len(untracked) > 0 {
+			return false, untrackedRefusalError(untracked)
 		}
 	}
 	ok, err := confirmCommit(repo, opts)
@@ -585,53 +618,7 @@ func runActionsStatus() error {
 			nwo = strings.TrimSpace(out)
 		}
 
-		repoPassing, repoFailing, repoInProgress := 0, 0, 0
-		var repoFailures []workflowFailure
-
-		for line := range strings.SplitSeq(strings.TrimRight(workflows, "\n"), "\n") {
-			fields := strings.Split(line, "\t")
-			if len(fields) < 3 {
-				continue
-			}
-			wfName, wfID := fields[0], fields[2]
-			if wfName == "" {
-				continue
-			}
-
-			latest, err := shell.RunWithRetry(fmt.Sprintf(`gh run list --workflow %s --limit 1`, wfID), false, repo)
-			if err != nil || strings.TrimSpace(latest) == "" {
-				continue
-			}
-			firstLine := strings.SplitN(strings.TrimRight(latest, "\n"), "\n", 2)[0]
-			cols := strings.Split(firstLine, "\t")
-			// columns: status, conclusion, title, workflow, branch, event, id, elapsed, date
-			if len(cols) < 7 {
-				continue
-			}
-			status, conclusion, title, workflowCol, runID := cols[0], cols[1], cols[2], cols[3], cols[6]
-
-			switch {
-			case status == "in_progress" || status == "queued":
-				repoInProgress++
-			case conclusion == "failure":
-				repoFailing++
-				errSnippet := failureSnippet(repo, runID)
-				runURL := ""
-				if nwo != "" {
-					runURL = fmt.Sprintf("https://github.com/%s/actions/runs/%s", nwo, runID)
-				}
-				repoFailures = append(repoFailures, workflowFailure{
-					Repo:     relOrSelf(repo),
-					Workflow: workflowCol,
-					Title:    title,
-					RunID:    runID,
-					RunURL:   runURL,
-					Errors:   errSnippet,
-				})
-			default:
-				repoPassing++
-			}
-		}
+		repoPassing, repoFailing, repoInProgress, repoFailures := scanRepoWorkflows(repo, workflows, nwo)
 
 		if repoFailing > 0 {
 			totalFailing++
@@ -660,24 +647,78 @@ func runActionsStatus() error {
 	fmt.Printf("  Summary: %d passing, %d failing, %d no workflows\n", totalPassing, totalFailing, noWorkflows)
 	fmt.Println(workspaceSeparator)
 
-	if len(failures) > 0 {
-		fmt.Println()
-		fmt.Println("Failure details:")
-		for _, f := range failures {
-			fmt.Println()
-			fmt.Printf("  ❌ %s / %s\n", f.Repo, f.Workflow)
-			fmt.Printf("     Commit: %s\n", f.Title)
-			if f.RunURL != "" {
-				fmt.Printf("     Run:    %s\n", f.RunURL)
+	printWorkflowFailures(failures)
+	return nil
+}
+
+// scanRepoWorkflows inspects the latest run of each listed workflow and
+// returns the passing / failing / in-progress counts plus failure details.
+func scanRepoWorkflows(repo, workflows, nwo string) (passing, failing, inProgress int, failures []workflowFailure) {
+	for line := range strings.SplitSeq(strings.TrimRight(workflows, "\n"), "\n") {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 3 {
+			continue
+		}
+		wfName, wfID := fields[0], fields[2]
+		if wfName == "" {
+			continue
+		}
+
+		latest, err := shell.RunWithRetry(fmt.Sprintf(`gh run list --workflow %s --limit 1`, wfID), false, repo)
+		if err != nil || strings.TrimSpace(latest) == "" {
+			continue
+		}
+		firstLine := strings.SplitN(strings.TrimRight(latest, "\n"), "\n", 2)[0]
+		cols := strings.Split(firstLine, "\t")
+		// columns: status, conclusion, title, workflow, branch, event, id, elapsed, date
+		if len(cols) < 7 {
+			continue
+		}
+		status, conclusion, title, workflowCol, runID := cols[0], cols[1], cols[2], cols[3], cols[6]
+
+		switch {
+		case status == "in_progress" || status == "queued":
+			inProgress++
+		case conclusion == "failure":
+			failing++
+			runURL := ""
+			if nwo != "" {
+				runURL = fmt.Sprintf("https://github.com/%s/actions/runs/%s", nwo, runID)
 			}
-			fmt.Println("     Errors:")
-			fmt.Print(f.Errors)
-			if !strings.HasSuffix(f.Errors, "\n") {
-				fmt.Println()
-			}
+			failures = append(failures, workflowFailure{
+				Repo:     relOrSelf(repo),
+				Workflow: workflowCol,
+				Title:    title,
+				RunID:    runID,
+				RunURL:   runURL,
+				Errors:   failureSnippet(repo, runID),
+			})
+		default:
+			passing++
 		}
 	}
-	return nil
+	return passing, failing, inProgress, failures
+}
+
+func printWorkflowFailures(failures []workflowFailure) {
+	if len(failures) == 0 {
+		return
+	}
+	fmt.Println()
+	fmt.Println("Failure details:")
+	for _, f := range failures {
+		fmt.Println()
+		fmt.Printf("  ❌ %s / %s\n", f.Repo, f.Workflow)
+		fmt.Printf("     Commit: %s\n", f.Title)
+		if f.RunURL != "" {
+			fmt.Printf("     Run:    %s\n", f.RunURL)
+		}
+		fmt.Println("     Errors:")
+		fmt.Print(f.Errors)
+		if !strings.HasSuffix(f.Errors, "\n") {
+			fmt.Println()
+		}
+	}
 }
 
 // failureSnippet returns the last three `##[error]` lines from the failed-log

@@ -567,30 +567,20 @@ func inferRepos(doc *yaml.Node) []string {
 	testNode := mappingValue(doc, "system-test")
 	externalNode := mappingValue(doc, "external-systems")
 
+	// mappingValue is nil- and kind-safe, so absent or non-mapping nodes
+	// yield "" and are skipped by the empty-slug filter below.
+	candidates := []string{
+		scalarValue(mappingValue(systemNode, "repo")),
+		scalarValue(mappingValue(mappingValue(systemNode, "backend"), "repo")),
+		scalarValue(mappingValue(mappingValue(systemNode, "frontend"), "repo")),
+		scalarValue(mappingValue(testNode, "repo")),
+		scalarValue(mappingValue(mappingValue(externalNode, "stubs"), "repo")),
+		scalarValue(mappingValue(mappingValue(externalNode, "simulators"), "repo")),
+	}
 	var slugs []string
-	collect := func(s string) {
+	for _, s := range candidates {
 		if s != "" {
 			slugs = append(slugs, s)
-		}
-	}
-	if systemNode != nil && systemNode.Kind == yaml.MappingNode {
-		collect(scalarValue(mappingValue(systemNode, "repo")))
-		if backend := mappingValue(systemNode, "backend"); backend != nil {
-			collect(scalarValue(mappingValue(backend, "repo")))
-		}
-		if frontend := mappingValue(systemNode, "frontend"); frontend != nil {
-			collect(scalarValue(mappingValue(frontend, "repo")))
-		}
-	}
-	if testNode != nil && testNode.Kind == yaml.MappingNode {
-		collect(scalarValue(mappingValue(testNode, "repo")))
-	}
-	if externalNode != nil && externalNode.Kind == yaml.MappingNode {
-		if stubs := mappingValue(externalNode, "stubs"); stubs != nil {
-			collect(scalarValue(mappingValue(stubs, "repo")))
-		}
-		if sims := mappingValue(externalNode, "simulators"); sims != nil {
-			collect(scalarValue(mappingValue(sims, "repo")))
 		}
 	}
 

@@ -373,50 +373,50 @@ func validateApprovalCategories(processes map[string]*Process) error {
 	// from their own params. Keyed by the called primitive's process ID.
 	literalCallers := map[string][]string{}  // primitive → list of literal category values from its callers
 	threadedCallers := map[string][]string{} // primitive → list of containing-process IDs whose call passes a placeholder
-	for parentID, p := range processes {
-		for _, n := range p.Nodes {
-			if n.Kind != CallActivity {
-				continue
-			}
-			if !approvalPrimitives[n.Raw.Process] {
-				continue
-			}
-			cat := strings.TrimSpace(n.Raw.Params["category"])
-			switch {
-			case cat == "":
-				// Will be flagged in the second pass.
-			case isPlaceholder(cat):
-				threadedCallers[n.Raw.Process] = append(threadedCallers[n.Raw.Process], parentID)
-			default:
-				literalCallers[n.Raw.Process] = append(literalCallers[n.Raw.Process], cat)
-			}
+	_ = forEachApprovalCall(processes, func(parentID string, n Node, cat string) error {
+		switch {
+		case cat == "":
+			// Will be flagged in the second pass.
+		case isPlaceholder(cat):
+			threadedCallers[n.Raw.Process] = append(threadedCallers[n.Raw.Process], parentID)
+		default:
+			literalCallers[n.Raw.Process] = append(literalCallers[n.Raw.Process], cat)
 		}
-	}
+		return nil
+	})
 
 	// Second pass: validate each call-activity.
+	return forEachApprovalCall(processes, func(parentID string, n Node, cat string) error {
+		switch {
+		case cat == "":
+			return fmt.Errorf("process %q node %q: call to %q has no category resolved (params.category required); valid: %s",
+				parentID, n.ID, n.Raw.Process, approvalValidList())
+		case isPlaceholder(cat):
+			if !resolvesToLiteral(parentID, literalCallers, threadedCallers, map[string]bool{}) {
+				return fmt.Errorf("process %q node %q: call to %q threads category %s but no ancestor caller of %q provides a literal category",
+					parentID, n.ID, n.Raw.Process, cat, parentID)
+			}
+		default:
+			if _, err := approval.ParseCategory(cat); err != nil {
+				return fmt.Errorf("process %q node %q: call to %q: %w",
+					parentID, n.ID, n.Raw.Process, err)
+			}
+		}
+		return nil
+	})
+}
+
+// forEachApprovalCall invokes visit for every call-activity that targets an
+// approval primitive, passing the trimmed `category:` param. It stops at and
+// returns the first error visit returns.
+func forEachApprovalCall(processes map[string]*Process, visit func(parentID string, n Node, cat string) error) error {
 	for parentID, p := range processes {
 		for _, n := range p.Nodes {
-			if n.Kind != CallActivity {
+			if n.Kind != CallActivity || !approvalPrimitives[n.Raw.Process] {
 				continue
 			}
-			if !approvalPrimitives[n.Raw.Process] {
-				continue
-			}
-			cat := strings.TrimSpace(n.Raw.Params["category"])
-			switch {
-			case cat == "":
-				return fmt.Errorf("process %q node %q: call to %q has no category resolved (params.category required); valid: %s",
-					parentID, n.ID, n.Raw.Process, approvalValidList())
-			case isPlaceholder(cat):
-				if !resolvesToLiteral(parentID, literalCallers, threadedCallers, map[string]bool{}) {
-					return fmt.Errorf("process %q node %q: call to %q threads category %s but no ancestor caller of %q provides a literal category",
-						parentID, n.ID, n.Raw.Process, cat, parentID)
-				}
-			default:
-				if _, err := approval.ParseCategory(cat); err != nil {
-					return fmt.Errorf("process %q node %q: call to %q: %w",
-						parentID, n.ID, n.Raw.Process, err)
-				}
+			if err := visit(parentID, n, strings.TrimSpace(n.Raw.Params["category"])); err != nil {
+				return err
 			}
 		}
 	}

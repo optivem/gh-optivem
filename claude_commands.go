@@ -384,52 +384,62 @@ func mergeClaudeSettings(claudeDir string) error {
 // claudeSettingsMerge unions permissions.allow entries and adds missing hook
 // event keys from src into dst. Returns true if dst was modified.
 func claudeSettingsMerge(dst, src map[string]interface{}) bool {
-	changed := false
+	permsChanged := mergePermissionsAllow(dst, src)
+	hooksChanged := mergeHookEvents(dst, src)
+	return permsChanged || hooksChanged
+}
 
-	// Union permissions.allow
+// mergePermissionsAllow unions permissions.allow entries from src into dst.
+func mergePermissionsAllow(dst, src map[string]interface{}) bool {
 	srcPerms, _ := src["permissions"].(map[string]interface{})
 	srcAllow, _ := srcPerms["allow"].([]interface{})
-	if len(srcAllow) > 0 {
-		dstPerms, _ := dst["permissions"].(map[string]interface{})
-		if dstPerms == nil {
-			dstPerms = map[string]interface{}{}
-			dst["permissions"] = dstPerms
-		}
-		dstAllow, _ := dstPerms["allow"].([]interface{})
-		seen := make(map[string]bool, len(dstAllow))
-		for _, v := range dstAllow {
-			if s, ok := v.(string); ok {
-				seen[s] = true
-			}
-		}
-		for _, v := range srcAllow {
-			if s, ok := v.(string); ok && !seen[s] {
-				dstAllow = append(dstAllow, s)
-				seen[s] = true
-				changed = true
-			}
-		}
-		if changed {
-			dstPerms["allow"] = dstAllow
+	if len(srcAllow) == 0 {
+		return false
+	}
+	dstPerms, _ := dst["permissions"].(map[string]interface{})
+	if dstPerms == nil {
+		dstPerms = map[string]interface{}{}
+		dst["permissions"] = dstPerms
+	}
+	dstAllow, _ := dstPerms["allow"].([]interface{})
+	seen := make(map[string]bool, len(dstAllow))
+	for _, v := range dstAllow {
+		if s, ok := v.(string); ok {
+			seen[s] = true
 		}
 	}
+	changed := false
+	for _, v := range srcAllow {
+		if s, ok := v.(string); ok && !seen[s] {
+			dstAllow = append(dstAllow, s)
+			seen[s] = true
+			changed = true
+		}
+	}
+	if changed {
+		dstPerms["allow"] = dstAllow
+	}
+	return changed
+}
 
-	// Add hook event types not already present
+// mergeHookEvents adds hook event types from src not already present in dst.
+func mergeHookEvents(dst, src map[string]interface{}) bool {
 	srcHooks, _ := src["hooks"].(map[string]interface{})
-	if len(srcHooks) > 0 {
-		dstHooks, _ := dst["hooks"].(map[string]interface{})
-		if dstHooks == nil {
-			dstHooks = map[string]interface{}{}
-			dst["hooks"] = dstHooks
-		}
-		for event, entry := range srcHooks {
-			if _, ok := dstHooks[event]; !ok {
-				dstHooks[event] = entry
-				changed = true
-			}
+	if len(srcHooks) == 0 {
+		return false
+	}
+	dstHooks, _ := dst["hooks"].(map[string]interface{})
+	if dstHooks == nil {
+		dstHooks = map[string]interface{}{}
+		dst["hooks"] = dstHooks
+	}
+	changed := false
+	for event, entry := range srcHooks {
+		if _, ok := dstHooks[event]; !ok {
+			dstHooks[event] = entry
+			changed = true
 		}
 	}
-
 	return changed
 }
 

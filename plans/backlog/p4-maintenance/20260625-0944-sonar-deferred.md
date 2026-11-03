@@ -1,5 +1,9 @@
 # 2026-06-25 09:44:47 UTC — SonarCloud go:S3776 cognitive-complexity refactors (deferred)
 
+## ▶ Next executable step (resume here)
+
+Remaining production items are all in the ATDD runtime (actions, clauderun, driver, preflight) and `kernel/projectconfig`. Each needs a coverage review of its package tests before refactoring. Start with `internal/atdd/process/actions/command.go` (CC 23): review `actions` package test coverage, then extract helpers.
+
 ## TL;DR
 
 **Why:** SonarCloud flags `go:S3776` "Cognitive Complexity too high" (>15) on gh-optivem functions; each needs a genuine refactor in orchestration-critical Go, so they were excluded from the auto-fix run.
@@ -11,7 +15,7 @@ Open S3776 findings now: 73 (72 after the doctor_orphans fix lands) (was 123 in 
 
 Done this pass: `doctor_orphans.go` `loadPidMarkers` (extracted `loadRunDirMarkers`; behavior unchanged, root package tests pass).
 
-Done (2026-11-03 autonomous pass, behaviour-preserving helper extraction, package tests pass): spec/config.go, kernel/shell/sonarcloud.go, scaffolding/steps/verify.go, kernel/approval/approval.go, config/token_auth.go, devworkflow/ghbulk/ghbulk.go, build/componenttest/config.go, build/runner/tests.go, configinit/prompt.go, intake/parse.go, spec/gate.go, spec/render.go, spec/report.go, statemachine/invariants.go, statemachine/load.go (L175 only; L347 remains). Plan line numbers were stale in several files; functions were located by content. Not attempted yet: the ATDD engine/driver/clauderun/preflight/actions items and kernel/projectconfig (CC 102) - those need dedicated coverage review first.
+Done (2026-11-03 autonomous pass, behaviour-preserving helper extraction, package tests pass): spec/config.go, kernel/shell/sonarcloud.go, scaffolding/steps/verify.go, kernel/approval/approval.go, config/token_auth.go, devworkflow/ghbulk/ghbulk.go, build/componenttest/config.go, build/runner/tests.go, configinit/prompt.go, intake/parse.go, spec/gate.go, spec/render.go, spec/report.go, statemachine/invariants.go, statemachine/load.go (L175 only; L347 remains). Plan line numbers were stale in several files; functions were located by content. Also done (later 2026-11-03 pass, build/vet/tests pass, CC<=15 not re-confirmed in Sonar): root-package commands (claude/cleanup/config/cross_repo/compile_summary), internal/config/config.go, diagrams/expanded.go, statemachine load.go L347 + run.go. Not attempted yet: the ATDD engine/driver/clauderun/preflight/actions items and kernel/projectconfig (CC 102) - those need dedicated coverage review first.
 
 ## Decisions
 
@@ -24,11 +28,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 
 ## Production items
 
-- `claude_commands.go` — L386 (CC 24)
-- `cleanup_commands.go` — L396 (CC 23)
-- `compile_summary.go` — L76 (CC 28)
-- `config_commands.go` — L560 (CC 23)
-- `cross_repo_commands.go` — L150 (CC 31), L330 (CC 25), L559 (CC 49)
 - `internal/atdd/process/actions/command.go` — L95 (CC 23)
 - `internal/atdd/process/actions/outputs.go` — L122 (CC 36)
 - `internal/atdd/process/actions/scope.go` — L164 (CC 25)
@@ -36,10 +35,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 - `internal/atdd/runtime/driver/driver.go` — L278 (CC 33), L750 (CC 19), L1245 (CC 37), L2170 (CC 22)
 - `internal/atdd/runtime/driver/summary_sidecar.go` — L356 (CC 25)
 - `internal/atdd/runtime/preflight/preflight.go` — L132 (CC 26), L266 (CC 33), L355 (CC 20), L502 (CC 37), L701 (CC 26)
-- `internal/config/config.go` — L712 (CC 29)
-- `internal/diagrams/diagram/expanded.go` — L149 (CC 25)
-- `internal/engine/statemachine/load.go` — L347 (CC 28)
-- `internal/engine/statemachine/run.go` — L51 (CC 25), L249 (CC 30)
 - `internal/kernel/projectconfig/config.go` — L767 (CC 102), L1352 (CC 24)
 
 ## Test-file items (decision: do not refactor; accept in SonarCloud)

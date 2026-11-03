@@ -709,52 +709,67 @@ func collectLangs(lc langChoice) []string {
 	return out
 }
 
+var validLangs = map[string]bool{"java": true, "dotnet": true, "typescript": true}
+
+// requireTestLang fatals when testLang is empty (with the tier-specific
+// missingMsg) or not a supported language, and returns it otherwise.
+func requireTestLang(testLang, missingMsg string) string {
+	if testLang == "" {
+		log.FatalExit(missingMsg)
+	}
+	if !validLangs[testLang] {
+		log.FatalExit(errTestLangInvalid)
+	}
+	return testLang
+}
+
 func resolveLangs(f *RawFlags) langChoice {
-	validLangs := map[string]bool{"java": true, "dotnet": true, "typescript": true}
+	switch f.Arch {
+	case "microservices":
+		return resolveMicroservicesLangs(f)
+	case "monolith":
+		return resolveMonolithLangs(f)
+	}
+	return resolveMultitierLangs(f)
+}
+
+// Microservices is YAML-authored (D7): langs come from the loaded
+// backend-services: map + the single frontend, not from --backend-lang.
+// FillRawFlagsFromYAML already populated these; validate them here.
+func resolveMicroservicesLangs(f *RawFlags) langChoice {
 	var c langChoice
-	if f.Arch == "microservices" {
-		// Microservices is YAML-authored (D7): langs come from the loaded
-		// backend-services: map + the single frontend, not from --backend-lang.
-		// FillRawFlagsFromYAML already populated these; validate them here.
-		if len(f.BackendServices) == 0 {
-			log.FatalExit("microservices architecture requires at least one backend service in gh-optivem.yaml's backend-services:")
-		}
-		for _, svc := range f.BackendServices {
-			if !validLangs[svc.Lang] {
-				log.FatalExit("backend-services." + svc.Name + ".lang must be java, dotnet, or typescript")
-			}
-			c.serviceLangs = append(c.serviceLangs, svc.Lang)
-		}
-		if f.FrontendLang != "typescript" {
-			log.FatalExit("microservices frontend lang must be typescript")
-		}
-		c.frontendLang = f.FrontendLang
-		if f.TestLang == "" {
-			log.FatalExit("--test-lang is required (the system-test tier's language is not derived from the backend services)")
-		}
-		if !validLangs[f.TestLang] {
-			log.FatalExit(errTestLangInvalid)
-		}
-		c.testLang = f.TestLang
-		return c
+	if len(f.BackendServices) == 0 {
+		log.FatalExit("microservices architecture requires at least one backend service in gh-optivem.yaml's backend-services:")
 	}
-	if f.Arch == "monolith" {
-		if f.Lang == "" {
-			log.FatalExit("--monolith-lang is required for monolith architecture")
+	for _, svc := range f.BackendServices {
+		if !validLangs[svc.Lang] {
+			log.FatalExit("backend-services." + svc.Name + ".lang must be java, dotnet, or typescript")
 		}
-		if !validLangs[f.Lang] {
-			log.FatalExit("--monolith-lang must be java, dotnet, or typescript")
-		}
-		c.lang = f.Lang
-		if f.TestLang == "" {
-			log.FatalExit("--test-lang is required (the system-test tier's language is not derived from --monolith-lang)")
-		}
-		if !validLangs[f.TestLang] {
-			log.FatalExit(errTestLangInvalid)
-		}
-		c.testLang = f.TestLang
-		return c
+		c.serviceLangs = append(c.serviceLangs, svc.Lang)
 	}
+	if f.FrontendLang != "typescript" {
+		log.FatalExit("microservices frontend lang must be typescript")
+	}
+	c.frontendLang = f.FrontendLang
+	c.testLang = requireTestLang(f.TestLang, "--test-lang is required (the system-test tier's language is not derived from the backend services)")
+	return c
+}
+
+func resolveMonolithLangs(f *RawFlags) langChoice {
+	var c langChoice
+	if f.Lang == "" {
+		log.FatalExit("--monolith-lang is required for monolith architecture")
+	}
+	if !validLangs[f.Lang] {
+		log.FatalExit("--monolith-lang must be java, dotnet, or typescript")
+	}
+	c.lang = f.Lang
+	c.testLang = requireTestLang(f.TestLang, "--test-lang is required (the system-test tier's language is not derived from --monolith-lang)")
+	return c
+}
+
+func resolveMultitierLangs(f *RawFlags) langChoice {
+	var c langChoice
 	if f.BackendLang == "" {
 		log.FatalExit("--backend-lang is required for multitier architecture")
 	}
@@ -769,13 +784,7 @@ func resolveLangs(f *RawFlags) langChoice {
 	}
 	c.backendLang = f.BackendLang
 	c.frontendLang = f.FrontendLang
-	if f.TestLang == "" {
-		log.FatalExit("--test-lang is required (the system-test tier's language is not derived from --backend-lang)")
-	}
-	if !validLangs[f.TestLang] {
-		log.FatalExit(errTestLangInvalid)
-	}
-	c.testLang = f.TestLang
+	c.testLang = requireTestLang(f.TestLang, "--test-lang is required (the system-test tier's language is not derived from --backend-lang)")
 	return c
 }
 
