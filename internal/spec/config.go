@@ -102,25 +102,33 @@ func ParseConfig(data []byte) (Config, error) {
 	if c.Threshold != nil && (*c.Threshold < 0 || *c.Threshold > 100) {
 		return Config{}, fmt.Errorf("spec.yaml: threshold %v must be between 0 and 100", *c.Threshold)
 	}
+	if err := validateWaivers(c.Waivers); err != nil {
+		return Config{}, err
+	}
+	return c, nil
+}
+
+// validateWaivers checks each waiver is complete, has a valid date and a unique id.
+func validateWaivers(waivers []Waiver) error {
 	seen := map[string]bool{}
-	for i, w := range c.Waivers {
+	for i, w := range waivers {
 		required := []struct{ name, value string }{
 			{"id", w.ID}, {"reason", w.Reason}, {"approver", w.Approver}, {"until", w.Until},
 		}
 		for _, f := range required {
 			if f.value == "" {
-				return Config{}, fmt.Errorf("spec.yaml: waivers[%d] is missing %s", i, f.name)
+				return fmt.Errorf("spec.yaml: waivers[%d] is missing %s", i, f.name)
 			}
 		}
 		if _, err := time.Parse(dateLayout, w.Until); err != nil {
-			return Config{}, fmt.Errorf("spec.yaml: waivers[%d] (%s) has invalid until %q (expected YYYY-MM-DD)", i, w.ID, w.Until)
+			return fmt.Errorf("spec.yaml: waivers[%d] (%s) has invalid until %q (expected YYYY-MM-DD)", i, w.ID, w.Until)
 		}
 		if seen[w.ID] {
-			return Config{}, fmt.Errorf("spec.yaml: duplicate waiver for %s", w.ID)
+			return fmt.Errorf("spec.yaml: duplicate waiver for %s", w.ID)
 		}
 		seen[w.ID] = true
 	}
-	return c, nil
+	return nil
 }
 
 // LoadConfig reads and parses the spec.yaml file at file.

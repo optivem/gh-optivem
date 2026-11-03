@@ -49,7 +49,6 @@ For each production function: read it and its tests, extract cohesive helpers / 
 - `internal/kernel/projectconfig/config.go` — L767 (CC 102), L1352 (CC 24)
 - `internal/kernel/shell/sonarcloud.go` — L34 (CC 17)
 - `internal/scaffolding/steps/verify.go` — L456 (CC 16)
-- `internal/spec/config.go` — L89 (CC 17)
 - `internal/spec/gate.go` — L95 (CC 28)
 - `internal/spec/render.go` — L307 (CC 27)
 - `internal/spec/report.go` — L121 (CC 36)
