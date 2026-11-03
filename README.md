@@ -18,11 +18,11 @@ I originally hand-rolled this as a single AI agent that owned the entire ATDD pr
 
 # Setup
 
-One-time, before your first project: install the prerequisites, `gh-optivem` itself, and your local tooling, then set your credentials. Full walkthrough: **[docs/setup.md](docs/setup.md)**.
+One-time, before your first project: install `gh`, `gh-optivem` itself and your local tooling (`environment setup` does the latter), then set your credentials. Full walkthrough: **[docs/setup.md](docs/setup.md)**.
 
 ```bash
 gh extension install optivem/gh-optivem
-gh optivem environment verify
+gh optivem environment setup
 gh optivem claude setup
 ```
 

@@ -10,7 +10,7 @@ One-time, before you can create your first project. See the [README](../README.m
 
 ## Prerequisites
 
-- **[GitHub CLI](https://cli.github.com/)**
+- **[GitHub CLI](https://cli.github.com/)** — the one thing needed before the extension exists.
 
   ```bash
   winget install --id GitHub.cli -e --source winget   # Windows
@@ -37,34 +37,6 @@ One-time, before you can create your first project. See the [README](../README.m
   gh auth refresh -s project,workflow
   ```
 
-- **[Claude Code](https://claude.com/claude-code), installed and signed in** — you need an active Claude subscription; the free Claude.ai plan does not include Claude Code.
-
-  On Windows, install it from PowerShell — `claude.ai/install.sh` is the macOS / Linux / WSL installer:
-
-  ```powershell
-  irm https://claude.ai/install.ps1 | iex
-  ```
-
-  It puts `claude.exe` in `%USERPROFILE%\.local\bin` without editing your `PATH` — add that directory yourself if the check below comes back "not found".
-
-  On macOS and Linux:
-
-  ```bash
-  curl -fsSL https://claude.ai/install.sh | bash
-  ```
-
-  Then, from a **fresh** shell:
-
-  ```bash
-  claude --version
-  ```
-
-  Sign in by starting it once. It opens a browser; type `/exit` when you are back:
-
-  ```bash
-  claude
-  ```
-
 ## Install
 
 Install `gh-optivem`:
@@ -78,67 +50,39 @@ See [the full reference](cli-reference.md#install) for upgrade/uninstall and the
 
 ## Local environment setup
 
-Start here — it reports every missing tool and credential in one pass:
+One command installs everything installable and fixes your `PATH`:
+
+```bash
+gh optivem environment setup --lang java,dotnet,typescript
+```
+
+Name only the languages you scaffold with — each one installs a multi-gigabyte toolchain. Omit `--lang` to install just the language-agnostic tools.
+
+It installs, when missing: Git Bash, Go, actionlint, [Claude Code](https://claude.com/claude-code) and the `--lang` toolchains (Java 21, .NET 8, Node.js 22). Where an upstream installer declines to edit `PATH` — Claude Code's `%USERPROFILE%\.local\bin`, Go's `$(go env GOPATH)/bin` — setup adds the directory to your user `PATH` itself and prints exactly what it changed.
+
+Automated on Windows, via `winget`. On macOS and Linux it installs nothing and prints each missing tool's install pointer. Open a fresh shell afterwards so every program sees the new `PATH`.
+
+It then runs `verify` and lists what is left, which is only what a human can do:
+
+- **Docker** — install and start [Docker Desktop](https://docs.docker.com/get-started/get-docker/). Setup never installs it: it needs a licence acceptance, WSL2 and a reboot.
+- **Claude Code sign-in** — you need an active Claude subscription; the free Claude.ai plan does not include Claude Code. Start it once, which opens a browser, and type `/exit` when you are back:
+
+  ```bash
+  claude
+  ```
+
+  Setup cannot tell whether you have already signed in — `claude` has no non-interactive sign-in check — so it lists this every time.
+- **GitHub sign-in**, if the Prerequisites step above is not done.
+- **Credentials** — see [Environment variables](#environment-variables).
+
+Re-check at any time, without changing anything:
 
 ```bash
 gh optivem environment verify
+gh optivem environment verify --lang java,dotnet,typescript
 ```
 
-If it flags a missing tool, install it from the list below; if it flags a missing credential, see [Environment variables](#environment-variables). Then re-run it until it passes.
-
-Two things it does *not* check on its own: Go, and your language toolchains — name those with `--lang`, see below.
-
-The install commands below are the Windows ones, via `winget`. On macOS and Linux, follow each bullet's download link. Either way `PATH` is written for *new* shells, so open a fresh one before the version check.
-
-- **Bash** — on Windows, use Git Bash (bundled with [Git for Windows](https://git-scm.com/download/win)); on macOS and Linux it is already there.
-
-  Install it from PowerShell:
-
-  ```powershell
-  winget install --id Git.Git -e --source winget
-  ```
-
-  Then, from Git Bash:
-
-  ```bash
-  bash --version
-  ```
-
-- **[Go](https://go.dev/dl/)** — add `$(go env GOPATH)/bin` (usually `~/go/bin`) to your `PATH` yourself; the Go installer does not, and the actionlint check below comes back "not found" without it.
-
-  ```bash
-  winget install --id GoLang.Go -e --source winget   # Windows
-  go version
-  ```
-
-- **[actionlint](https://github.com/rhysd/actionlint)**
-
-  ```bash
-  go install github.com/rhysd/actionlint/cmd/actionlint@v1
-  actionlint --version
-  ```
-
-- **[Docker](https://docs.docker.com/get-started/get-docker/)**
-
-  ```bash
-  docker --version
-  ```
-
-- **Your project's language toolchain** — [Java](https://adoptium.net/), [.NET](https://dotnet.microsoft.com/download), or [Node.js](https://nodejs.org/). Install and check only the ones you scaffold with; these are the versions the pipeline builds with:
-
-  ```bash
-  winget install --id EclipseAdoptium.Temurin.21.JDK -e --source winget   # Java 21, Windows
-  winget install --id Microsoft.DotNet.SDK.8 -e --source winget           # .NET 8, Windows
-  winget install --id OpenJS.NodeJS.22 -e --source winget                 # Node.js 22, Windows
-  ```
-
-  ```bash
-  java -version     # Java
-  dotnet --version  # .NET
-  npm --version     # Node.js
-  ```
-
-  To have `verify` check them for you, name them: `gh optivem environment verify --lang java,dotnet,typescript`.
+`setup` writes to your machine; `verify` only reads.
 
 ## Environment variables
 
