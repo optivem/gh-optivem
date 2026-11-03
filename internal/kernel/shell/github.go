@@ -436,6 +436,11 @@ func waitForRateLimitReset(remaining int, waitSecs int64) {
 // GitHub wraps gh CLI calls for a specific repo.
 type GitHub struct {
 	Repo string
+	// MinRunID, when positive, makes the run-watching helpers ignore every run
+	// whose ID is not strictly greater. A repository that existed before init
+	// already has runs, so "the newest run of this workflow" would otherwise be
+	// a stale one from before this scaffold. Run IDs grow monotonically.
+	MinRunID int64
 }
 
 func NewGitHub(fullRepo string) *GitHub {
@@ -444,6 +449,36 @@ func NewGitHub(fullRepo string) *GitHub {
 
 func (g *GitHub) ForRepo(fullRepo string) *GitHub {
 	return &GitHub{Repo: fullRepo}
+}
+
+// WithMinRunID returns a copy of g that only accepts runs newer than id.
+func (g *GitHub) WithMinRunID(id int64) *GitHub {
+	c := *g
+	c.MinRunID = id
+	return &c
+}
+
+// LatestRunID returns the ID of the newest workflow run in the repository, or 0
+// when it has none. Any failure to list is returned: an unreadable run history
+// is not the same as an empty one.
+func (g *GitHub) LatestRunID() (int64, error) {
+	out, err := RunCaptureWithRetry(g.latestRunListCmd(""), "")
+	if err != nil {
+		return 0, fmt.Errorf("cannot list workflow runs of %s: %w", g.Repo, err)
+	}
+	return parseRunID(out)
+}
+
+func parseRunID(out string) (int64, error) {
+	s := strings.TrimSpace(out)
+	if s == "" || s == "null" {
+		return 0, nil
+	}
+	id, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("unexpected run id %q", s)
+	}
+	return id, nil
 }
 
 func (g *GitHub) run(cmd string) (string, error) {
@@ -671,6 +706,17 @@ func (g *GitHub) latestRunListCmd(workflow string) string {
 	return fmt.Sprintf("gh run list --repo %s --limit 1 --json databaseId --jq .[0].databaseId", g.Repo)
 }
 
+// isNewRun reports whether the run ID in out is newer than MinRunID. An
+// unparseable ID counts as not new, so the poll keeps waiting and ends in the
+// normal "run did not appear" path rather than watching a run of unknown age.
+func (g *GitHub) isNewRun(out string) bool {
+	if g.MinRunID <= 0 {
+		return true
+	}
+	id, err := parseRunID(out)
+	return err == nil && id > g.MinRunID
+}
+
 // waitForRunToAppear polls (runAppearAttempts × runAppearPollSecs) for the
 // newest run of workflow to become visible and returns its run ID. The bool is
 // false when no run shows up within the window. The per-poll `gh run list` is
@@ -682,7 +728,7 @@ func (g *GitHub) waitForRunToAppear(workflow string) (string, bool) {
 
 	for attempt := 1; attempt <= runAppearAttempts; attempt++ {
 		out, err := RunCaptureWithRetry(listCmd, "")
-		if err == nil && strings.TrimSpace(out) != "" {
+		if err == nil && strings.TrimSpace(out) != "" && g.isNewRun(out) {
 			return strings.TrimSpace(out), true
 		}
 		sp.Update(fmt.Sprintf("attempt %d/%d", attempt, runAppearAttempts))

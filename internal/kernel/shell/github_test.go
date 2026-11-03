@@ -894,3 +894,37 @@ func TestRunWatchWorkflow_NonStartupFailureIsNotReDispatched(t *testing.T) {
 		t.Fatalf("dispatch calls = %d, want 0 — a real workflow failure must not be re-fired", got)
 	}
 }
+
+// TestWaitForRunToAppear_IgnoresRunsAtOrBelowMinRunID pins the stale-run guard
+// for repositories that existed before init: the newest run of the workflow is
+// an old one, so it must not be reported as this scaffold's run.
+func TestWaitForRunToAppear_IgnoresRunsAtOrBelowMinRunID(t *testing.T) {
+	var sleeps []time.Duration
+	withFakeSleep(t, &sleeps)
+
+	newest := "400"
+	orig := runCaptureFn
+	runCaptureFn = func(_, _ string) (string, error) { return newest, nil }
+	t.Cleanup(func() { runCaptureFn = orig })
+
+	gh := (&GitHub{Repo: "myorg/myrepo"}).WithMinRunID(500)
+	if id, found := gh.waitForRunToAppear("ci.yml"); found {
+		t.Fatalf("stale run %s accepted", id)
+	}
+
+	newest = "501"
+	if id, found := gh.waitForRunToAppear("ci.yml"); !found || id != "501" {
+		t.Fatalf("newer run not accepted: id=%q found=%v", id, found)
+	}
+}
+
+func TestParseRunID(t *testing.T) {
+	for in, want := range map[string]int64{"": 0, "null\n": 0, " 42\n": 42} {
+		if got, err := parseRunID(in); err != nil || got != want {
+			t.Errorf("parseRunID(%q) = %d, %v; want %d", in, got, err, want)
+		}
+	}
+	if _, err := parseRunID("oops"); err == nil {
+		t.Error("non-numeric run id must be an error")
+	}
+}

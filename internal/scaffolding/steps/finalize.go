@@ -267,11 +267,17 @@ func commitAndPushRepo(cfg *config.Config, repoDir, fullRepo, commitMsg string) 
 			fullRepo, repoDir)
 		return
 	}
+	if cfg.PreExistingRepos[fullRepo] {
+		if err := recordRunBaseline(fullRepo); err != nil {
+			log.Fatalf("%v; cannot tell this scaffold's workflow runs from earlier ones, fix access to the repository's Actions and retry", err)
+		}
+	}
 	pushed, err := stageCommitAndPush(repoDir, fullRepo, commitMsg, cfg.PreExistingRepos[fullRepo])
 	if err != nil {
 		log.Fatalf("%v", err)
 	}
 	if !pushed {
+		recordUnchanged(fullRepo)
 		log.Successf("Nothing to change in %s: the scaffold matches what is already there", fullRepo)
 		return
 	}

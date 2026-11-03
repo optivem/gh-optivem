@@ -209,6 +209,7 @@ func TestCheckRepoAccess_DistinctCauses(t *testing.T) {
 		{"other", "", errors.New("connection reset"), "cannot determine"},
 		{"no push", "false\tmain\n", nil, "no push access"},
 		{"no default branch", "true\t\n", nil, "no default branch"},
+		{"non-main default", "true\tmaster\n", nil, "default branch \"master\""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

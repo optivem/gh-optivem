@@ -53,6 +53,10 @@ func repoTargets(cfg *config.Config) []repoTarget {
 	return out
 }
 
+// scaffoldBranch is the branch init pushes to and whose workflows the verify
+// stages watch.
+const scaffoldBranch = "main"
+
 // baselineDir is where the pre-scaffold content of dir is parked.
 func baselineDir(dir string) string { return dir + ".baseline" }
 
@@ -82,6 +86,9 @@ func checkRepoAccess(fullRepo string) error {
 	fields := strings.Split(strings.TrimSpace(raw), "\t")
 	if len(fields) < 2 || fields[1] == "" {
 		return fmt.Errorf("unexpected response reading repository %s (no default branch): %q", fullRepo, strings.TrimSpace(raw))
+	}
+	if fields[1] != scaffoldBranch {
+		return fmt.Errorf("repository %s has default branch %q, but init pushes the scaffold to %q and its workflows run there; rename the default branch to %q (or use a repository whose default is %q) and retry", fullRepo, fields[1], scaffoldBranch, scaffoldBranch, scaffoldBranch)
 	}
 	if fields[0] != "true" {
 		return fmt.Errorf("the token has no push access to repository %s; init pushes the scaffold to its default branch %q, so grant write access and retry", fullRepo, fields[1])

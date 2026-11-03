@@ -504,6 +504,7 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 // internally when dispatched with an empty version, so no RC lookup is needed
 // here.
 func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
+	gh = scopeToThisRun(gh)
 	includeLegacy := !cfg.NoLegacy
 
 	if includeLegacy {
@@ -643,6 +644,10 @@ func verifyCleanupIn(gh *shell.GitHub, label string) {
 // trigger (GitHub startup_failure flake) is recovered via workflow_dispatch
 // rather than failing the whole scaffold.
 func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalSecs int) {
+	if skipUnchangedPushStage(gh.Repo, label) {
+		return
+	}
+	gh = scopeToThisRun(gh)
 	shell.CheckRateLimit()
 	err := gh.RunWatchPushWorkflow(workflowFile, intervalSecs)
 	handleWorkflowResult(err, label, gh.Repo)
@@ -653,6 +658,7 @@ func verifyNamedWorkflow(gh *shell.GitHub, label, workflowFile string, intervalS
 // with those same inputs, and dropping them would re-fire cleanup.yml without
 // its `dry-run=true`.
 func verifyWorkflow(gh *shell.GitHub, label, triggerWorkflow string, fields map[string]string, intervalSecs int) {
+	gh = scopeToThisRun(gh)
 	shell.CheckRateLimit()
 	if triggerWorkflow != "" {
 		gh.WorkflowRun(triggerWorkflow, fields)
