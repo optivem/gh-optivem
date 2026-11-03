@@ -1,5 +1,4 @@
 # 2026-11-03 11:00 — `gh optivem init` into an existing repo (preview, warn, confirm)
-> 🤖 **Picked up by agent** — `ValentinaLaptop` at `2026-11-03T15:40:19Z`
 
 ## TL;DR
 
@@ -39,7 +38,7 @@ The same classification applies to remote resources, each probed read-only: envi
 ## Steps
 
 - [x] Step 1: Resolve open questions (done, see Decisions).
-- [ ] Step 10: Attended check against a throwaway repo that has (a) unrelated files, (b) a conflicting `README.md` and workflow, (c) pre-existing environments. Needs the user to name or approve a throwaway repo.
+- [ ] Step 10: Attended check against a throwaway repo that has (a) unrelated files, (b) a conflicting `README.md` and workflow, (c) pre-existing environments. Partly done: `--overwrite --dry-run` against `optivem/zeltio` (2026-11-03) worked end to end: 465 new, 1 OVERWRITE (`README.md` +19 -144), 16 kept, 14 remote creates, nothing written. Remaining: a real (non-dry) run on a genuinely throwaway repo that has a conflicting workflow and pre-existing environments (`zeltio` is a real product repo, so don't use it). Needs the user to name one.
 
 ## Decisions
 
