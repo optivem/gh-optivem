@@ -301,21 +301,9 @@ section.uc{display:flex;flex-direction:column;gap:8px}
 @media (max-width:600px){.wrap{padding-left:16px;padding-right:16px}}
 `
 
-// RenderHTML renders the self-contained static HTML report for product owners.
-// generated is the timestamp shown in the header; the output is otherwise
-// deterministic.
-func RenderHTML(rep Report, generated time.Time) string {
+// renderGateBanner writes the gate verdict banner.
+func renderGateBanner(w func(string, ...any), rep Report) {
 	esc := html.EscapeString
-	var b strings.Builder
-	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
-
-	w("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n")
-	w("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
-	w("<title>Spec coverage report</title>\n<style>%s</style>\n</head>\n<body>\n", htmlCSS)
-	w("<header><div class=\"wrap\"><strong>gh optivem spec</strong> <span class=\"muted\">Report generated %s</span></div></header>\n",
-		esc(generated.UTC().Format("2006-01-02 15:04 UTC")))
-	w("<main class=\"wrap\">\n<h1>Spec coverage report</h1>\n")
-
 	switch {
 	case rep.Gate == nil:
 		w("<section class=\"banner none\" role=\"status\"><h2>Gate not evaluated</h2><p class=\"muted\">Mode %s, threshold %.1f%%.</p></section>\n", esc(rep.Mode), rep.Threshold)
@@ -328,23 +316,11 @@ func RenderHTML(rep Report, generated time.Time) string {
 		}
 		w("</ul></section>\n")
 	}
+}
 
-	s := rep.Summary
-	w("<section class=\"tiles\" aria-label=\"Summary\">\n")
-	tile := func(label, value string) {
-		w("<div class=\"card tile\"><span class=\"l\">%s</span><span class=\"v\">%s</span></div>\n", esc(label), esc(value))
-	}
-	tile("Spec coverage", fmt.Sprintf("%.1f%%", s.CoveragePercent))
-	tile("Criteria verified", fmt.Sprintf("%d of %d", s.Verified, s.Total))
-	tile("Use cases verified", fmt.Sprintf("%d of %d", useCasesVerified(rep), len(rep.UseCases)))
-	for _, st := range allStates[1:] {
-		tile(string(st), fmt.Sprint(stateCount(s, st)))
-	}
-	w("</section>\n")
-
-	w("<section class=\"card\">\n<h2>%s</h2>\n", esc(coverageLine(rep)))
-	w("<div class=\"bar\" role=\"img\" aria-label=\"%d verified, %d in progress, %d failing, %d planned, %d waived criteria\">",
-		s.Verified, s.InProgress, s.Failing, s.Planned, s.Waived)
+// renderStateBarAndLegend writes the proportional state bar segments and the legend.
+func renderStateBarAndLegend(w func(string, ...any), s Summary) {
+	esc := html.EscapeString
 	for _, st := range allStates {
 		if n := stateCount(s, st); n > 0 {
 			w("<div style=\"flex:%d 1 0;background:%s\" title=\"%s (%d)\"></div>", n, stateColors[st], esc(string(st)), n)
@@ -354,16 +330,11 @@ func RenderHTML(rep Report, generated time.Time) string {
 	for _, st := range allStates {
 		w("<span><span class=\"dot\" style=\"background:%s\"></span>%s (%d)</span>", stateColors[st], esc(string(st)), stateCount(s, st))
 	}
-	w("</div>\n<p class=\"note\">Threshold %.1f%% applies in strict mode.</p>\n</section>\n", rep.Threshold)
+}
 
-	w("<section class=\"card\">\n<h2>Criterion lifecycle</h2>\n")
-	w("<p class=\"muted\">Each acceptance criterion moves through these states as its acceptance test is added and the feature is built. A use case is Verified when all its criteria are.</p>\n<div class=\"life\">\n")
-	for _, st := range allStates {
-		w("<div class=\"item\"><span class=\"pill\" style=\"background:%s\">%s</span> <strong>%d</strong><br><span class=\"note\">%s</span></div>\n",
-			stateColors[st], esc(string(st)), stateCount(s, st), esc(stateRules[st]))
-	}
-	w("</div>\n</section>\n")
-
+// renderUseCaseSections writes one card per use case with its criteria table.
+func renderUseCaseSections(w func(string, ...any), rep Report) {
+	esc := html.EscapeString
 	for _, uc := range rep.UseCases {
 		v := 0
 		for _, c := range uc.Criteria {
@@ -387,6 +358,53 @@ func RenderHTML(rep Report, generated time.Time) string {
 		}
 		w("</tbody></table></div>\n</section>\n")
 	}
+}
+
+// RenderHTML renders the self-contained static HTML report for product owners.
+// generated is the timestamp shown in the header; the output is otherwise
+// deterministic.
+func RenderHTML(rep Report, generated time.Time) string {
+	esc := html.EscapeString
+	var b strings.Builder
+	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
+
+	w("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n")
+	w("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
+	w("<title>Spec coverage report</title>\n<style>%s</style>\n</head>\n<body>\n", htmlCSS)
+	w("<header><div class=\"wrap\"><strong>gh optivem spec</strong> <span class=\"muted\">Report generated %s</span></div></header>\n",
+		esc(generated.UTC().Format("2006-01-02 15:04 UTC")))
+	w("<main class=\"wrap\">\n<h1>Spec coverage report</h1>\n")
+
+	renderGateBanner(w, rep)
+
+	s := rep.Summary
+	w("<section class=\"tiles\" aria-label=\"Summary\">\n")
+	tile := func(label, value string) {
+		w("<div class=\"card tile\"><span class=\"l\">%s</span><span class=\"v\">%s</span></div>\n", esc(label), esc(value))
+	}
+	tile("Spec coverage", fmt.Sprintf("%.1f%%", s.CoveragePercent))
+	tile("Criteria verified", fmt.Sprintf("%d of %d", s.Verified, s.Total))
+	tile("Use cases verified", fmt.Sprintf("%d of %d", useCasesVerified(rep), len(rep.UseCases)))
+	for _, st := range allStates[1:] {
+		tile(string(st), fmt.Sprint(stateCount(s, st)))
+	}
+	w("</section>\n")
+
+	w("<section class=\"card\">\n<h2>%s</h2>\n", esc(coverageLine(rep)))
+	w("<div class=\"bar\" role=\"img\" aria-label=\"%d verified, %d in progress, %d failing, %d planned, %d waived criteria\">",
+		s.Verified, s.InProgress, s.Failing, s.Planned, s.Waived)
+	renderStateBarAndLegend(w, s)
+	w("</div>\n<p class=\"note\">Threshold %.1f%% applies in strict mode.</p>\n</section>\n", rep.Threshold)
+
+	w("<section class=\"card\">\n<h2>Criterion lifecycle</h2>\n")
+	w("<p class=\"muted\">Each acceptance criterion moves through these states as its acceptance test is added and the feature is built. A use case is Verified when all its criteria are.</p>\n<div class=\"life\">\n")
+	for _, st := range allStates {
+		w("<div class=\"item\"><span class=\"pill\" style=\"background:%s\">%s</span> <strong>%d</strong><br><span class=\"note\">%s</span></div>\n",
+			stateColors[st], esc(string(st)), stateCount(s, st), esc(stateRules[st]))
+	}
+	w("</div>\n</section>\n")
+
+	renderUseCaseSections(w, rep)
 
 	list := func(title string, n int, item func(int) string) {
 		if n == 0 {
