@@ -95,8 +95,8 @@ for configs that declare the group.`,
 	}
 	cmd.Flags().StringSliceVar(&suites, "suite", nil, "Run only the suite(s) with these id(s); repeatable, also accepts comma-separated values and a `suiteGroups` alias (e.g. `all`)")
 	cmd.Flags().StringSliceVar(&components, "component", nil, "Run only the component(s) with these name(s) (e.g. backend, frontend); repeatable, also accepts comma-separated values; omit to run every component")
-	cmd.Flags().StringSliceVar(&test, "test", nil, "Narrow execution to the given test name(s); repeatable, also accepts comma-separated values (substituted into the suite's testFilter)")
-	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")
+	cmd.Flags().StringSliceVar(&test, "test", nil, "Narrow execution to the given test name(s); repeatable, also accepts comma-separated values (substituted into the config's testFilter; replaces any filter flag already in the suite command; fails if no testFilter is declared)")
+	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name (fails for a suite without one)")
 	cmd.Flags().BoolVar(&list, "list", false, "Print each component's suite ids and exit without running")
 	return cmd
 }

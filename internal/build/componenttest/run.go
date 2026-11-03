@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -116,10 +117,10 @@ func runSuite(c Component, s Suite, opts Options) (result, error) {
 	if s.Path != "" && s.Path != "." {
 		cwd = filepath.Join(c.Path, s.Path)
 	}
-	// Component configs reuse the same <test> placeholder semantics as
-	// tests.yaml; TestFilter/TestFilterJoin live at the config level there too,
-	// but the per-suite filter here is supplied via the shared runner helper.
-	cmd := runner.ApplyTestFilter(s.Command, "", "", pickFilterValue(s, opts))
+	cmd, err := buildCommand(s, opts)
+	if err != nil {
+		return result{c.Name, s.Name, "FAILED", 0}, err
+	}
 
 	fmt.Fprintf(os.Stdout, "\n--- Running %s ---\n", s.Name)
 	start := time.Now()
@@ -136,6 +137,42 @@ func runSuite(c Component, s Suite, opts Options) (result, error) {
 		return result{c.Name, s.Name, "FAILED", dur}, runErr
 	}
 	return result{c.Name, s.Name, "PASSED", dur}, nil
+}
+
+// buildCommand returns the shell command for a suite, narrowed to the
+// --test/--sample names when any were requested. A requested narrowing that
+// cannot be delivered (no sampleTest for --sample, or no testFilter declared in
+// the config) is an error rather than a silent full run.
+//
+// When the filter is a flag (e.g. `--tests '*.<test>'`) and the suite command
+// already carries that flag, the existing occurrences are dropped first:
+// runners such as Gradle OR repeated flags, so appending would widen the run
+// instead of narrowing it.
+func buildCommand(s Suite, opts Options) (string, error) {
+	names := pickFilterValue(s, opts)
+	if len(names) == 0 {
+		if opts.Sample && len(opts.Test) == 0 {
+			return "", fmt.Errorf("--sample requested but suite %q declares no sampleTest, so it cannot be narrowed", s.ID)
+		}
+		return s.Command, nil
+	}
+	if s.TestFilter == "" {
+		return "", fmt.Errorf("test filter requested for suite %q but the config declares no testFilter, so the run cannot be narrowed", s.ID)
+	}
+	cmd := s.Command
+	if strings.HasPrefix(s.TestFilter, "-") {
+		if flag := strings.Fields(s.TestFilter)[0]; flag != "" {
+			cmd = stripFlag(cmd, flag)
+		}
+	}
+	return runner.ApplyTestFilter(cmd, s.TestFilter, s.TestFilterJoin, names), nil
+}
+
+// stripFlag removes every `<flag> <value>` pair (value single-quoted,
+// double-quoted, or a bare word) from command.
+func stripFlag(command, flag string) string {
+	re := regexp.MustCompile(`\s+` + regexp.QuoteMeta(flag) + `(?:\s+|=)(?:'[^']*'|"[^"]*"|\S+)`)
+	return re.ReplaceAllString(command, "")
 }
 
 // pickFilterValue chooses the test-name filter for a suite: an explicit --test

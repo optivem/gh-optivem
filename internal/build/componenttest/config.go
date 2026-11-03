@@ -82,6 +82,12 @@ type Suite struct {
 	// and fails fast with a clear message when Docker is unavailable, instead of
 	// surfacing a cryptic Testcontainers stack trace mid-run.
 	RequiresDocker bool `yaml:"requiresDocker,omitempty"`
+
+	// TestFilter and TestFilterJoin are the config-level testFilter /
+	// testFilterJoin, copied onto each suite at load time so a suite carries
+	// everything needed to build its narrowed command.
+	TestFilter     string `yaml:"-"`
+	TestFilterJoin string `yaml:"-"`
 }
 
 // Load reads and validates a component-tests.yaml from path.
@@ -142,6 +148,10 @@ func Load(path string) (*Config, error) {
 				return nil, fmt.Errorf("component-tests config %s: suites[%d] (%s) %s %q uses a backslash separator — use forward slashes so the path resolves on every OS", path, i, s.ID, pf.key, pf.val)
 			}
 		}
+	}
+	for i := range cfg.Suites {
+		cfg.Suites[i].TestFilter = cfg.TestFilter
+		cfg.Suites[i].TestFilterJoin = cfg.TestFilterJoin
 	}
 	return &cfg, nil
 }

@@ -40,6 +40,66 @@ func TestPickFilterValue(t *testing.T) {
 	})
 }
 
+func TestBuildCommand(t *testing.T) {
+	gradle := Suite{
+		ID:         "external-contract",
+		Command:    "gradlew contractTest --tests '*StubParityContractTest' --tests '*StubConsumabilityContractTest'",
+		SampleTest: "getProduct",
+		TestFilter: "--tests '*.<test>'",
+	}
+	t.Run("no request leaves command untouched", func(t *testing.T) {
+		got, err := buildCommand(gradle, Options{})
+		if err != nil || got != gradle.Command {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("sample replaces existing --tests flags", func(t *testing.T) {
+		got, err := buildCommand(gradle, Options{Sample: true})
+		want := "gradlew contractTest --tests '*.getProduct'"
+		if err != nil || got != want {
+			t.Fatalf("got %q, %v; want %q", got, err, want)
+		}
+	})
+	t.Run("test on a bare command appends", func(t *testing.T) {
+		s := Suite{ID: "unit", Command: "gradlew test", TestFilter: "--tests '*.<test>'"}
+		got, err := buildCommand(s, Options{Test: []string{"a"}})
+		if err != nil || got != "gradlew test --tests '*.a'" {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("repeat join with several names", func(t *testing.T) {
+		s := Suite{ID: "unit", Command: "gradlew test --tests 'x.*'", TestFilter: "--tests '*.<test>'", TestFilterJoin: "repeat"}
+		got, err := buildCommand(s, Options{Test: []string{"a", "b"}})
+		if err != nil || got != "gradlew test --tests '*.a' --tests '*.b'" {
+			t.Fatalf("got %q, %v", got, err)
+		}
+	})
+	t.Run("filter requested without testFilter fails loud", func(t *testing.T) {
+		s := Suite{ID: "unit", Command: "gradlew test", SampleTest: "x"}
+		if _, err := buildCommand(s, Options{Sample: true}); err == nil || !strings.Contains(err.Error(), "no testFilter") {
+			t.Fatalf("expected no-testFilter error, got %v", err)
+		}
+	})
+	t.Run("sample without sampleTest fails loud", func(t *testing.T) {
+		s := Suite{ID: "unit", Command: "gradlew test", TestFilter: "--tests '*.<test>'"}
+		if _, err := buildCommand(s, Options{Sample: true}); err == nil || !strings.Contains(err.Error(), "no sampleTest") {
+			t.Fatalf("expected no-sampleTest error, got %v", err)
+		}
+	})
+}
+
+func TestLoadCopiesTestFilterOntoSuites(t *testing.T) {
+	cfg, err := Load(writeConfig(t, validConfig))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range cfg.Suites {
+		if s.TestFilter != cfg.TestFilter || s.TestFilterJoin != cfg.TestFilterJoin {
+			t.Errorf("suite %s did not inherit testFilter", s.ID)
+		}
+	}
+}
+
 func TestSelectComponents(t *testing.T) {
 	all := []Component{
 		{Name: "backend", Path: "be"},
