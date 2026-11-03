@@ -51,34 +51,15 @@ appending `--tests '*.<name>'` *widens* rather than narrows. Whatever the fix, i
 against a suite whose command already has a `--tests` flag, not only against a bare one like
 `unit`.
 
-## Problem 2 — bare `run` runs every suite, not `suiteGroups.all`
+## Open questions
 
-`internal/build/componenttest/config.go` `selectSuites`: "Empty requested means every declared
-suite (the full, gate-equivalent set)." So:
-
-- `gh optivem component-test run -c <cfg>` → all 6 suites, including `external-contract-real`
-- `gh optivem component-test run -c <cfg> --suite all` → 5 suites, real-mode correctly excluded
-
-Both shop component configs declare `suiteGroups.all` specifically to keep `external-contract-real`
-opt-in (it builds a Docker image and is slow). The bare form defeats that, and the bare form is what
-a contributor types.
-
-This is deliberate, documented behaviour — but it makes `suiteGroups.all` mean nothing for the most
-common invocation, and it diverges from the system-test tier's handling of the same key.
-
-**Decide:** either (a) bare `run` resolves `all` when the config declares it, falling back to every
-suite when it does not — matching what the key plainly promises; or (b) keep current semantics and
-say so in `component-test run --help` plus the `suiteGroups` doc comment, so the divergence is at
-least discoverable. **(a) is recommended** — a group named `all` that the default invocation ignores
-is a trap, and the fallback keeps configs without the key working exactly as today.
+- **Q-4 (Problem 2) — DECIDED: option (a).** A bare `run` resolves `suiteGroups.all` when the config declares it, falling back to every declared suite when it does not.
 
 ## Verification
 
 - A component suite with `--sample` executes one test (assert on the JUnit XML count, not on
   `PASSED`) — including for a suite whose command already carries a `--tests` flag.
 - `--test <name>` narrows the same way; `--test` naming nothing that exists fails loud.
-- Bare `run` and `--suite all` agree for a config declaring `suiteGroups.all`; a config without the
-  key still runs every suite.
 - Existing `componenttest` unit tests still pass.
 
 ## Related

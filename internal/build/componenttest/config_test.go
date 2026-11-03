@@ -204,6 +204,24 @@ func TestSelectSuites(t *testing.T) {
 	})
 }
 
+func TestSelectSuites_BareRunUsesAllGroup(t *testing.T) {
+	cfg := &Config{
+		Suites:      []Suite{{ID: "unit"}, {ID: "slow"}, {ID: "contract"}},
+		SuiteGroups: map[string][]string{"all": {"unit", "contract"}},
+	}
+	bare := suiteIDsOf(mustSelect(t, cfg, nil))
+	explicit := suiteIDsOf(mustSelect(t, cfg, []string{"all"}))
+	want := []string{"unit", "contract"}
+	if !reflect.DeepEqual(bare, want) || !reflect.DeepEqual(explicit, want) {
+		t.Errorf("bare = %v, --suite all = %v, want both %v", bare, explicit, want)
+	}
+
+	noAll := &Config{Suites: []Suite{{ID: "unit"}, {ID: "slow"}}}
+	if got := suiteIDsOf(mustSelect(t, noAll, nil)); !reflect.DeepEqual(got, []string{"unit", "slow"}) {
+		t.Errorf("config without an all group should run every suite, got %v", got)
+	}
+}
+
 func mustSelect(t *testing.T, cfg *Config, req []string) []Suite {
 	t.Helper()
 	suites, err := cfg.selectSuites(req)

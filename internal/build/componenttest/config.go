@@ -28,6 +28,10 @@ import (
 // system-test tier.
 const ConfigFileName = "component-tests.yaml"
 
+// DefaultGroup is the suiteGroups key a bare `run` resolves when the config
+// declares it.
+const DefaultGroup = "all"
+
 // Config is the parsed component-tests.yaml.
 type Config struct {
 	SetupCommands   []SetupCommand      `yaml:"setupCommands"`
@@ -190,12 +194,17 @@ func (c *Config) expandGroups(names []string) []string {
 }
 
 // selectSuites resolves the requested suite ids/groups against this config and
-// returns the matching suites in declaration order. Empty requested means every
-// declared suite (the full, gate-equivalent set). Unknown ids fail loud with the
-// available set, so a typo can't silently run nothing.
+// returns the matching suites in declaration order. Empty requested means the
+// default gate: the `all` suite group when the config declares one (so suites
+// deliberately left out of `all` stay opt-in), otherwise every declared suite.
+// Unknown ids fail loud with the available set, so a typo can't silently run
+// nothing.
 func (c *Config) selectSuites(requested []string) ([]Suite, error) {
 	if len(requested) == 0 {
-		return c.Suites, nil
+		if _, ok := c.SuiteGroups[DefaultGroup]; !ok {
+			return c.Suites, nil
+		}
+		requested = []string{DefaultGroup}
 	}
 	expanded := c.expandGroups(requested)
 	want := make(map[string]bool, len(expanded))

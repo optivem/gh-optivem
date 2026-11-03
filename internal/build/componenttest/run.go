@@ -33,9 +33,10 @@ func (c Component) label() string {
 	return fmt.Sprintf("%s (%s)", c.Name, c.Lang)
 }
 
-// Options narrows a component-test run. Empty Suites means every suite; empty
-// Components means every discovered component — so bare `run` (neither set) is
-// every suite × every component, the CI-gate-equivalent full set.
+// Options narrows a component-test run. Empty Suites means the config's `all`
+// suite group when declared, else every suite; empty Components means every
+// discovered component — so bare `run` (neither set) is the default gate for
+// every component.
 type Options struct {
 	Suites     []string
 	Components []string

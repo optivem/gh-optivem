@@ -48,7 +48,8 @@ func newComponentTestCmd() *cobra.Command {
 //
 //	gh optivem component-test run [--suite id] [--component name] [--sample] [--test name] [--list]
 //
-// Bare `run` is every suite × every component — the full set CI gates on. The
+// Bare `run` is each component's `suiteGroups.all` (every suite when the config
+// declares no `all` group) × every component — the set CI gates on. The
 // runner is lighter than `system-test run`: no compose, no system start/stop, no health
 // probe; for each component it just resolves the requested suites and runs each
 // suite's command in the component directory. `--suite` and `--component` narrow
@@ -66,6 +67,12 @@ func newComponentTestRunCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Run component suites from each component's component-tests.yaml",
+		Long: `Run component suites from each component's component-tests.yaml.
+
+With no --suite, each component runs its suiteGroups.all group when the config
+declares one (suites left out of it stay opt-in via an explicit --suite), and
+every declared suite when it does not. --suite all is equivalent to a bare run
+for configs that declare the group.`,
 		Example: `  gh optivem component-test run
   gh optivem component-test run --suite unit
   gh optivem component-test run --suite component --component backend
