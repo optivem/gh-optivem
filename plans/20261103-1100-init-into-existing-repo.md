@@ -38,7 +38,7 @@ The same classification applies to remote resources, each probed read-only: envi
 ## Steps
 
 - [x] Step 1: Resolve open questions (done, see Decisions).
-- [ ] Step 10: Only user cleanup remains. Idempotent re-run verified (2026-11-04: "Nothing to change", exit 0, no new commit). The user deletes `valentinajemuovic/init-overwrite-throwaway` and the 2 SonarCloud projects (`valentinajemuovic_init-overwrite-throwaway-system`, `-system-test`); the token lacks `delete_repo`. Note: the repo's hourly scheduled `acceptance-stage*` runs fail in the `Get Last Workflow Run` check step (no prior successful run to find; not caused by the scaffold push). Deleting the repo ends them.
+- [ ] Step 10: Idempotent re-run verified (2026-11-04: "Nothing to change", exit 0). Only the throwaway cleanup remains; tracked in `plans/20261104-1030-delete-init-overwrite-throwaway.md`. Delete this plan when that one completes.
 
 ## Decisions
 
