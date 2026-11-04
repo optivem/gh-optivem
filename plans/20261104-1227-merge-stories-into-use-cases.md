@@ -23,11 +23,10 @@
 
 ## ▶ Next executable step (resume here)
 
-Steps 1-6 and the unit/flow tests of Step 8 are implemented (Priority 0 unit U2). Remaining, held back by the meta-plan: Step 7 (docs, one session with the kickoff docs in Wave 2) and the attended rehearsal.
+Steps 1-6 and the unit/flow tests of Step 8 are implemented (Priority 0 unit U2). Step 7 docs shipped (README, docs/cli-reference.md). Remaining: the attended rehearsal (Step 8).
 
 ## Steps
 
-- [ ] Step 7: Docs (ATDD process docs + README + `docs/cli-reference.md`): stories are increments, use cases are the current spec, merge is one-way. Cover what shipped: the `merge-story-into-use-cases` step (no-op passes without approval, otherwise the human approves the diff), the **Changed** criterion state, `gh optivem spec record [--refresh <id>]`, and the fingerprints in `<specDir>/.spec-baseline.json`.
 - [ ] Step 8 (remaining): one attended rehearsal on a throwaway repo: a story that adds behaviour (merge diff approved, tests tagged with the merged `UC-NNN.M` ids), a kickoff-style story whose scenarios name existing criteria (merge skipped, no approval), and an edited criterion showing `Changed` in `gh optivem spec status`. Also decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet).
 
 ## Resolved decisions
