@@ -177,7 +177,7 @@ Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `in
 | `prototype` | An agent builds linked static HTML screens, covering normal and edge/empty states. You give feedback in plain language until you approve. The prototype is a throwaway spec; the real UI is built later by the ATDD agents in the scaffolded frontend tech. | `docs/prototype/` |
 | `use-case-diagram` | From the approved prototype: a screen to use case table and the use case diagram, with the external systems as secondary actors. | `docs/use-cases.md` |
 | `use-cases` | From the approved diagram: one narrative per use case with `UC-NNN.M` criteria, validated with `gh optivem spec validate`. The sample `UC-001-place-order.md` is deleted first. | `docs/use-cases/UC-NNN-<slug>.md` |
-| `remove-sample` | Deterministic code deletes the shop examples and keeps the test architecture. | not available yet |
+| `remove-sample` | Deterministic code deletes the shop examples and keeps the test architecture. Not implemented yet: this phase fails loud (`shop removal is not implemented yet`) because it waits on an empty variant of the shop template, so kickoff does not currently run end to end. | none |
 | `stories` | One ticket per use case slice (main scenario, each extension), in ATDD intake format, referencing the `UC-NNN.M` ids it covers; drafts are validated with the intake parser and every criterion must be covered. | tracker issues labelled `kickoff` (GitHub: type Story, added to the board) |
 
 ```bash
@@ -197,6 +197,8 @@ gh optivem kickoff --status             # show progress from the local files
 - **External systems** are recorded only in the approved diagram. Nothing is written to `gh-optivem.yaml` and no driver or simulator is scaffolded here; ATDD sets each one up when a story first needs it.
 - **Languages**: screen labels follow the language of your description; use case structure, criteria and tests are English.
 - The phases are also reachable as hidden `gh optivem kickoff phase <name>` subcommands for tests and debugging.
+
+The path is `init` → describe → prototype → use cases → stories; the README summarises it in [Build your own product](../README.md#build-your-own-product-kickoff). Each story names the `UC-NNN.M` criteria it covers with a `@UC-NNN.M` tag on its scenarios, so `implement` skips the story-merge approval for it (see [Stories and the merge step](#stories-and-the-merge-step)).
 
 Stories are created in the `system-test` repo (the repo `implement` works in) and, for the markdown provider, in the board's `ready/` column as `story-kickoff-NNN-<slug>.md`.
 
@@ -669,7 +671,7 @@ gh optivem hooks install                       # install a pre-push hook that re
 
 ## Spec-coverage gate (`spec`)
 
-`gh optivem spec` derives the lifecycle state of each acceptance criterion (Planned, In progress, Verified, Failing, Waived) from use-case markdown plus JUnit XML, and gates on it. Concepts, ID format, tag syntax per stack, waivers, flags and `spec.yaml` are defined in [spec-gate/convention.md](spec-gate/convention.md).
+`gh optivem spec` derives the lifecycle state of each acceptance criterion (Planned, In progress, Verified, Failing, Waived, Changed) from use-case markdown plus JUnit XML, and gates on it. Concepts, ID format, tag syntax per stack, waivers, flags and `spec.yaml` are defined in [spec-gate/convention.md](spec-gate/convention.md).
 
 | Subcommand | Purpose |
 |---|---|
@@ -677,8 +679,9 @@ gh optivem hooks install                       # install a pre-push hook that re
 | `spec status` | Same report as `check`, but a failing gate verdict is shown, not enforced (exit `0`). |
 | `spec check` | Evaluate the gate for `--mode` and exit non-zero when it fails. |
 | `spec adopt` | Write the adoption baseline (`<specDir>/.spec-baseline.json`) of currently unverified criteria; in strict mode they stop blocking, new regressions still fail. |
+| `spec record` | Record a fingerprint of each Verified criterion's text in the same state file (run it after a story's tests are green). A criterion whose text later differs from its fingerprint is reported as **Changed** (unverified). Nothing runs it automatically yet. |
 
-Flags (`check` and `status`): `--config <path>` (default `spec.yaml`), `--mode lenient|strict` (default `lenient`), `--threshold <0-100>` (strict only; overrides `spec.yaml`, default 100), `--json` (versioned report, `schemaVersion: 1`), `--html <path>` (self-contained report for product owners), `--pr-comment` (print the sticky PR-comment markdown, marker `<!-- gh-optivem-spec -->`; never posted), `--flag <name>` (repeatable; feature flag considered on). `validate` and `adopt` take `--config` (and `--flag` for `adopt`). When `GITHUB_STEP_SUMMARY` is set, `check` also appends a Markdown summary to it.
+Flags (`check` and `status`): `--config <path>` (default `spec.yaml`), `--mode lenient|strict` (default `lenient`), `--threshold <0-100>` (strict only; overrides `spec.yaml`, default 100), `--json` (versioned report, `schemaVersion: 1`), `--html <path>` (self-contained report for product owners), `--pr-comment` (print the sticky PR-comment markdown, marker `<!-- gh-optivem-spec -->`; never posted), `--flag <name>` (repeatable; feature flag considered on). `validate`, `adopt` and `record` take `--config` (and `--flag` for `adopt` and `record`); `record --refresh <id>` (repeatable) accepts the edited text of a Changed criterion once its test has been re-checked. When `GITHUB_STEP_SUMMARY` is set, `check` also appends a Markdown summary to it.
 
 **Exit codes:** `0` pass, `1` gate failed, `2` usage or configuration error.
 
@@ -688,6 +691,10 @@ Flags (`check` and `status`): `--config <path>` (default `spec.yaml`), `--mode l
 gh optivem spec check --mode lenient
 gh optivem spec check --mode strict --threshold 90 --json > spec-report.json
 ```
+
+### Stories and the merge step
+
+`gh optivem implement` runs a `merge-story-into-use-cases` step for stories (not bugs or tasks) before the acceptance tests. Use cases are the current spec; the story is an increment; the merge is one-way (only the use cases are edited). If every scenario of the story names an existing criterion (a `@UC-001.4` tag, or the id in a comment line above the scenario, its title or steps), the merge is a no-op and needs no approval. Otherwise the `use-case-merger` agent proposes the narrative and `UC-NNN.M` changes, and the diff needs your approval (human tier: `--auto` does not skip it). The run fails on a contradiction with existing criteria, an unmapped scenario, or invalid merged use cases.
 
 ## Methodology assets
 
