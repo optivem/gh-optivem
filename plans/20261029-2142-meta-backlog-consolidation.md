@@ -7,16 +7,16 @@
 
 ## Next step (resume here)
 
-Nothing unattended is left except what is listed below. Everything else needs an attended session (rehearsal, VM run, shop push OK, or SonarCloud admin rights). Several items have local, unpushed commits (Item 15: shop `32e90dcb`, gh-optivem `15b30e6c`; Items 22 and 23); run `/sync` to push gh-optivem (and shop, with OK).
+Nothing unattended is left except what is listed below. Everything else needs an attended session (rehearsal, VM run, shop push OK, or SonarCloud admin rights). All commits referenced below are pushed (verified 2026-11-04).
 
 Older child plans are proposals, not instructions: when an item starts, judge its plan on the merits and amend, delete or park it if the premise is obsolete.
 
 ## Open items
 
 - [ ] **Item 13 (#12 remainder)** `[rehearsal]` `[shop-push]` — code shipped (#12 `59450e7d`). Remaining in `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`: step 6 (Gradle `--warning-mode none`, a shop edit in `system-test/java/tests*.yaml` plus shop push, needs OK) and the attended rehearsal check.
-- [ ] **Item 15 (#21)** `[rehearsal]` `[shop-push]` — code shipped locally (shop `32e90dcb`, gh-optivem `15b30e6c`, unpushed, compile-checked only). Remaining in `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`: push shop `main` (needs OK), attended runtime check of `cannotPlaceOrderWithNonExistentCoupon` on monolith + multitier x3 languages, rehearsal check of the `scope-task-name` fixer change, then Step 6 (restore #68's criterion).
-- [ ] **Item 22 (#20)** — Steps 1-7 shipped (`95f1bb46`..`39e245d9`, unpushed). Step 8 (collapse `scripts/readme-steps.sh`) needs a green clean-room VM run first. Plan: `plans/backlog/p2-atdd-quality/20260812-1705-environment-setup-command.md`.
-- [ ] **Item 23 (#42 Slice 1)** — partly shipped (`90fb81e2`..`fa21df35`, shop `cf2869ad`, unpushed). Step 1b (`--backend-inner-loop` flags and init prompts) deferred until a second tier opts in. Left in `plans/backlog/p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component.md`: the nightly mutation CI workflow in shop (push needs OK) and setting `mutation-threshold` from a full `--all` baseline. Slices 2-4 untouched.
+- [ ] **Item 15 (#21)** `[rehearsal]` `[shop-push]` — code shipped and pushed (shop `32e90dcb`, gh-optivem `15b30e6c`, compile-checked only). Remaining in `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`: attended runtime check of `cannotPlaceOrderWithNonExistentCoupon` on monolith + multitier x3 languages, rehearsal check of the `scope-task-name` fixer change, then Step 6 (restore #68's criterion).
+- [ ] **Item 22 (#20)** — Steps 1-7 shipped (`95f1bb46`..`39e245d9`). Step 8 (collapse `scripts/readme-steps.sh`) needs a green clean-room VM run first. Plan: `plans/backlog/p2-atdd-quality/20260812-1705-environment-setup-command.md`.
+- [ ] **Item 23 (#42 Slice 1)** — partly shipped (`90fb81e2`..`fa21df35`, shop `cf2869ad`). Step 1b (`--backend-inner-loop` flags and init prompts) deferred until a second tier opts in. Left in `plans/backlog/p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component.md`: the nightly mutation CI workflow in shop (push needs OK) and setting `mutation-threshold` from a full `--all` baseline. Slices 2-4 untouched.
 - [ ] **Item 24 (Sonar S3776)** — all production-code findings are done (commits `bb2db1c8`..`bf5db66d`). Only test-file findings remain. A human must mark those Won't Fix in SonarCloud (needs admin rights), then delete `plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md`.
 - **Items 20 (#13) and 21 (#16)** moved to the shop plan `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md` (decisions: #13 Option A, Java only; #16 `/users` customer directory, monolith-java only, refine deferred). Their gh-optivem plans are `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` and `plans/backlog/p3-tooling-cost/20260617-1001-rehearsal-corpus-testinstance-and-refine.md`.
 
@@ -53,7 +53,7 @@ Shared-resource rule: `gh optivem system start` and rehearsals bind fixed docker
 
 ## Wave order
 
-1. Attended verification checklist and the push of local commits (`/sync`, shop push with OK).
+1. Attended verification checklist.
 2. Items 13 and 15 (shop-push + rehearsal), one at a time under the rehearsal lock.
 3. Items 22 and 23 remainders (VM run; second tier opts in; mutation workflow in shop).
 4. Item 24 human step (Won't Fix in SonarCloud, then delete the sonar-deferred plan).
