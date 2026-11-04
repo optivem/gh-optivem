@@ -137,6 +137,8 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"move-to-in-progress",
 		"move-to-in-acceptance",
 		"parse-ticket",
+		"check-story-merge-needed",
+		"verify-story-merge",
 		"check-fix-progress",
 		"categorize-scope-exception",
 	}

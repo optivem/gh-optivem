@@ -183,6 +183,10 @@ func RegisterAll(r *Registry, deps Deps) {
 	// the sole entry signal; the broken port-changed fallback is removed.
 	// parse-ticket stamps the bool into State; this gate is a pure state-reader.
 	r.Register("ticket-has-escc", b.ticketHasESCC)
+	// Story-merge gate (GATE_STORY_MERGE_NEEDED): check-story-merge-needed
+	// stamps the bool; a story whose scenarios already name existing use case
+	// criteria skips the merge agent and its approval.
+	r.Register("story-merge-needed", b.storyMergeNeeded)
 	// Cover-path mode-aware acceptance-test verify gate + its case-D
 	// terminal-verify gate (plan 20260606-1518). The shared verify gate
 	// routes on at-verify-expectation so the cover path expects AT green
@@ -487,6 +491,13 @@ func (b bindings) externalDriverPortChanged(ctx *statemachine.Context) statemach
 // wiring bug, not a default no.
 func (b bindings) ticketHasESCC(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "ticket-has-escc")
+}
+
+// storyMergeNeeded is GATE_STORY_MERGE_NEEDED in merge-story-into-use-cases.
+// check-story-merge-needed always stamps ctx.State["story-merge-needed"]
+// immediately upstream, so an unset key is a wiring bug, not a default no.
+func (b bindings) storyMergeNeeded(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "story-merge-needed")
 }
 
 // atVerifyExpectation is the mode-aware acceptance-test verify gate (plan

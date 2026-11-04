@@ -100,6 +100,13 @@ func RegisterAll(r *Registry, deps Deps) {
 	// required-section enforcement happens at dispatch time via the load-bearing
 	// placeholder check in clauderun.go.
 	r.Register("parse-ticket", a.parseTicket)
+	// Story-merge step on the story branch of implement-ticket. The check
+	// decides whether the story must be merged into the use cases at all (a
+	// story whose scenarios already name existing UC-NNN.M criteria needs no
+	// merge and no approval); verify-story-merge is the consistency check after
+	// the merge agent. See story_merge.go.
+	r.Register("check-story-merge-needed", a.checkStoryMergeNeeded)
+	r.Register("verify-story-merge", a.verifyStoryMerge)
 	// verify-tests-pass no-progress guard (plan 20260615-1845 Step 4). Runs
 	// on the gateway's fail branch before re-dispatching the fixer; stamps
 	// fix-loop-progressing from a per-pass failure fingerprint so

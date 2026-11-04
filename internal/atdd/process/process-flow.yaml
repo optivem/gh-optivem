@@ -217,7 +217,7 @@ processes:
   # Two-level gateway shape (Item 11):
   #
   #   GATE_TICKET_KIND (binding: ticket-kind, values: story | bug | task)
-  #     story → change-system-behavior
+  #     story → merge-story-into-use-cases → change-system-behavior
   #     bug   → change-system-behavior
   #     task  → GATE_TASK_SUBTYPE
   #
@@ -292,6 +292,16 @@ processes:
         binding: task-subtype
         name: "Task Subtype?"
 
+      # Story branch only: a story is an increment, the use cases are the
+      # current spec. Before any test is written the story's scenarios are
+      # merged into docs/use-cases (narrative + UC-NNN.M criteria), so the
+      # acceptance tests trace to the updated criteria. Bugs mean the system
+      # departs from the spec and tasks are refactors/infra, so neither merges.
+      - id: MERGE_STORY_INTO_USE_CASES
+        type: call-activity
+        process: merge-story-into-use-cases
+        name: "Merge Story Into Use Cases"
+
       - id: CHANGE_SYSTEM_BEHAVIOR
         type: call-activity
         process: change-system-behavior
@@ -343,7 +353,8 @@ processes:
       - {from: SETUP_TESTS,                 to: MARK_IN_PROGRESS}
       - {from: MARK_IN_PROGRESS,            to: PARSE_TICKET}
       - {from: PARSE_TICKET,                to: GATE_TICKET_KIND}
-      - {from: GATE_TICKET_KIND, to: CHANGE_SYSTEM_BEHAVIOR, when: "ticket-kind == story"}
+      - {from: GATE_TICKET_KIND, to: MERGE_STORY_INTO_USE_CASES, when: "ticket-kind == story"}
+      - {from: MERGE_STORY_INTO_USE_CASES, to: CHANGE_SYSTEM_BEHAVIOR}
       - {from: GATE_TICKET_KIND, to: CHANGE_SYSTEM_BEHAVIOR, when: "ticket-kind == bug"}
       - {from: GATE_TICKET_KIND, to: GATE_TASK_SUBTYPE,      when: "ticket-kind == task"}
       - {from: GATE_TICKET_KIND, to: UNKNOWN_TICKET_KIND}
@@ -2707,6 +2718,94 @@ processes:
 
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFINE_AC_END}
+
+  # Story branch of implement-ticket: merge the story's Gherkin scenarios into
+  # the use cases (narrative + UC-NNN.M criteria) before any test is written.
+  # The merge is one-way and one-time - the story is never re-edited, so the
+  # use cases stay the single current spec.
+  #
+  #   CHECK_STORY_MERGE_NEEDED  deterministic: a story whose every scenario
+  #                             already names an existing UC-NNN.M criterion
+  #                             (kickoff-generated stories) needs no merge and
+  #                             SKIPS the agent and its approval, so unattended
+  #                             runs do not stall.
+  #   MERGE_USE_CASES           the merge agent proposes the use case change;
+  #                             its human-tier PRE/POST approval is the user's
+  #                             approval of the use case diff (POST rejection
+  #                             halts the run).
+  #   VERIFY_STORY_MERGE        consistency check: no contradiction raised, the
+  #                             use cases validate, every story scenario maps to
+  #                             a criterion that now exists. Fails loudly on any
+  #                             gap; stamps `merged-criteria` for traceability.
+  #
+  # No loop-back edges: the only cycle reachable from here is execute-agent's
+  # own capped FIX -> RUN_AGENT loop (max-visits 2).
+  merge-story-into-use-cases:
+    name: "Merge Story Into Use Cases"
+    start: CHECK_STORY_MERGE_NEEDED
+    nodes:
+      - id: CHECK_STORY_MERGE_NEEDED
+        type: service-task
+        action: check-story-merge-needed
+        name: "Story Needs Merge?"
+
+      - id: GATE_STORY_MERGE_NEEDED
+        type: gateway
+        binding: story-merge-needed
+        name: "Merge Needed?"
+
+      - id: MERGE_USE_CASES
+        type: call-activity
+        process: merge-use-cases
+        name: "Merge Into Use Cases"
+
+      - id: VERIFY_STORY_MERGE
+        type: service-task
+        action: verify-story-merge
+        name: "Verify Story Merge"
+
+      - id: MERGE_STORY_END
+        type: end-event
+        name: "Story Merged"
+
+    sequence-flows:
+      - {from: CHECK_STORY_MERGE_NEEDED, to: GATE_STORY_MERGE_NEEDED}
+      - {from: GATE_STORY_MERGE_NEEDED,  to: MERGE_USE_CASES,  when: "story-merge-needed == true"}
+      - {from: GATE_STORY_MERGE_NEEDED,  to: MERGE_STORY_END,  when: "story-merge-needed == false"}
+      - {from: MERGE_USE_CASES,          to: VERIFY_STORY_MERGE}
+      - {from: VERIFY_STORY_MERGE,       to: MERGE_STORY_END}
+
+  # Artifact-only in the doctrinal sense of `scope: none`: the agent edits the
+  # use case markdown (spec, not code), which no code-layer scope key covers;
+  # the human-tier POST approval of the diff is the review of that edit. Always
+  # engages the operator (category human), also under --auto.
+  merge-use-cases:
+    name: "Merge Use Cases"
+    start: EXECUTE_AGENT
+    outputs:
+      - key: scenario-map
+        type: string-list
+      - key: contradictions
+        type: string-list
+        optional: true
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: merge-use-cases
+          agent: use-case-merger
+          # human tier: the user approves the proposed use case change.
+          category: human
+        scope: none
+
+      - id: MERGE_USE_CASES_END
+        type: end-event
+        name: "Use Cases Merged"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: MERGE_USE_CASES_END}
 
   # setup-tests guarantees the test harness's own dependencies are installed
   # before any path can reach the first `run-tests`. It wraps

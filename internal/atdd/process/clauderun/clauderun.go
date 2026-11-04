@@ -173,6 +173,15 @@ type Options struct {
 	// enforcement point.
 	AcceptanceCriteria string
 
+	// ScenarioCriteria maps each scenario of a merged story to the use case
+	// criteria it traces to, one "<scenario title> => UC-NNN.M" line per
+	// scenario (stamped by the story-merge step into ctx.State as
+	// "scenario-criteria"). Rendered into ${use-case-traceability} so the
+	// acceptance-test writer tags each test with the criterion ids it
+	// verifies. Empty for tickets that skip the merge (bugs, tasks) or runs
+	// that start past it; the section then renders as nothing.
+	ScenarioCriteria string
+
 	// ParsedConcepts is the absolute path to the parsed-concepts artifact
 	// materialize_parsed_concepts writes at the start of the
 	// backlog_refinement sub-process. Substituted into
@@ -936,6 +945,9 @@ func renderPrompt(opts Options) (string, error) {
 	// as Language. Only registered when non-empty so an absent value
 	// surfaces via findUnfilledPlaceholders rather than substituting "".
 	registerIfNonEmpty(params, "acceptance-criteria", opts.AcceptanceCriteria)
+	// Always registered: empty (renders nothing) unless the story was merged
+	// into the use cases, so bug and task prompts are unchanged.
+	params["use-case-traceability"] = renderTraceabilitySection(opts.ScenarioCriteria)
 	// Checklist is load-bearing for the four task subtypes whose cycles
 	// consume ${checklist} (system-redesign, external-system-redesign,
 	// system-refactor, test-refactor). Same rationale as
@@ -1375,6 +1387,26 @@ func renderIsolatedMarkerExample(lang string) string {
 		return ""
 	}
 	return strings.TrimRight(string(data), "\n")
+}
+
+// renderTraceabilitySection returns the prompt section that tells the
+// acceptance-test writer which use case criteria each story scenario traces
+// to, so the tests carry those ids and `gh optivem spec status` moves the
+// criteria from unverified to verified. Empty input renders nothing.
+func renderTraceabilitySection(scenarioCriteria string) string {
+	if strings.TrimSpace(scenarioCriteria) == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("### Use case traceability\n\n")
+	b.WriteString("The story was merged into the use cases. Tag the acceptance test you write for each scenario with the criterion id(s) it maps to, on the top-layer test only (never on helper layers), so the spec gate can link the test to its criterion:\n\n")
+	for _, line := range strings.Split(scenarioCriteria, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			b.WriteString("- " + line + "\n")
+		}
+	}
+	b.WriteString("\nTag syntax: Java `@Tag(\"UC-001.3\")`; .NET `[Trait(\"Criterion\", \"UC-001.3\")]`; TypeScript `{ tag: [\"@UC-001.3\"] }`. Add the tag next to the test's existing annotations; it never replaces the channel or WIP-gate declarations.\n")
+	return b.String()
 }
 
 // renderInnerLoopSection returns the prompt text for the given inner-loop

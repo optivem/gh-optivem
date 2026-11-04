@@ -8,6 +8,7 @@ package process_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/optivem/gh-optivem/internal/atdd/process"
@@ -68,6 +69,8 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"refactor-tests",
 		"refactor-system",
 		"refine-acceptance-criteria",
+		"merge-story-into-use-cases",
+		"merge-use-cases",
 		// MID — command tasks
 		"compile-tests",
 		"build-system",
@@ -1230,8 +1233,8 @@ func TestImplementTicket_TwoAxisRouting(t *testing.T) {
 
 	// Kind axis: story/bug → change cycle; task → the subtype gateway, NOT
 	// the unknown-kind error end.
-	if got := route(t, "GATE_TICKET_KIND", map[string]string{"ticket-kind": "story"}); got != "CHANGE_SYSTEM_BEHAVIOR" {
-		t.Errorf("story routes to %q, want CHANGE_SYSTEM_BEHAVIOR", got)
+	if got := route(t, "GATE_TICKET_KIND", map[string]string{"ticket-kind": "story"}); got != "MERGE_STORY_INTO_USE_CASES" {
+		t.Errorf("story routes to %q, want MERGE_STORY_INTO_USE_CASES", got)
 	}
 	if got := route(t, "GATE_TICKET_KIND", map[string]string{"ticket-kind": "bug"}); got != "CHANGE_SYSTEM_BEHAVIOR" {
 		t.Errorf("bug routes to %q, want CHANGE_SYSTEM_BEHAVIOR", got)
@@ -1308,5 +1311,144 @@ func TestSetupTests_PrecedesImplementTicketGateway(t *testing.T) {
 	}
 	if got := cmdNode.Raw.Params["command"]; got != "gh optivem system-test setup" {
 		t.Errorf("setup-tests command = %q, want `gh optivem system-test setup`", got)
+	}
+}
+
+// The story branch of implement-ticket runs the use case merge before the
+// change cycle; bug and task tickets never merge. The merge itself skips the
+// agent (and its approval) when the story already matches the use cases, and
+// otherwise runs the human-tier merge agent followed by the consistency check.
+func TestImplementTicket_StoryMergesIntoUseCasesFirst(t *testing.T) {
+	eng := loadSnapshot(t)
+	it := eng.Processes["implement-ticket"]
+
+	wantEdge(t, it, "GATE_TICKET_KIND", "MERGE_STORY_INTO_USE_CASES", "ticket-kind == story")
+	wantEdge(t, it, "MERGE_STORY_INTO_USE_CASES", "CHANGE_SYSTEM_BEHAVIOR", "")
+	wantEdge(t, it, "GATE_TICKET_KIND", "CHANGE_SYSTEM_BEHAVIOR", "ticket-kind == bug")
+	for _, e := range it.OutgoingByNode["GATE_TICKET_KIND"] {
+		if e.To == "MERGE_STORY_INTO_USE_CASES" && e.Predicate != "ticket-kind == story" {
+			t.Errorf("only stories may merge, got edge with predicate %q", e.Predicate)
+		}
+	}
+	if got := it.Nodes["MERGE_STORY_INTO_USE_CASES"].Raw.Process; got != "merge-story-into-use-cases" {
+		t.Errorf("MERGE_STORY_INTO_USE_CASES calls %q", got)
+	}
+
+	m, ok := eng.Processes["merge-story-into-use-cases"]
+	if !ok {
+		t.Fatal("process merge-story-into-use-cases missing")
+	}
+	if m.Start != "CHECK_STORY_MERGE_NEEDED" {
+		t.Errorf("merge starts at %q: the no-op check must precede any agent", m.Start)
+	}
+	wantEdge(t, m, "CHECK_STORY_MERGE_NEEDED", "GATE_STORY_MERGE_NEEDED", "")
+	wantEdge(t, m, "GATE_STORY_MERGE_NEEDED", "MERGE_USE_CASES", "story-merge-needed == true")
+	wantEdge(t, m, "GATE_STORY_MERGE_NEEDED", "MERGE_STORY_END", "story-merge-needed == false")
+	wantEdge(t, m, "MERGE_USE_CASES", "VERIFY_STORY_MERGE", "")
+	wantEdge(t, m, "VERIFY_STORY_MERGE", "MERGE_STORY_END", "")
+	// The no-op branch must bypass the agent entirely: it is the only way an
+	// unattended run gets past an already-merged story without an approval.
+	notEdge(t, m, "GATE_STORY_MERGE_NEEDED", "VERIFY_STORY_MERGE")
+
+	ctx := statemachine.NewContext()
+	ctx.Set("story-merge-needed", false)
+	if to, err := eng.NextEdge("merge-story-into-use-cases", "GATE_STORY_MERGE_NEEDED", ctx); err != nil || to != "MERGE_STORY_END" {
+		t.Errorf("no-op merge routes to %q (err %v), want MERGE_STORY_END", to, err)
+	}
+	ctx.Set("story-merge-needed", true)
+	if to, err := eng.NextEdge("merge-story-into-use-cases", "GATE_STORY_MERGE_NEEDED", ctx); err != nil || to != "MERGE_USE_CASES" {
+		t.Errorf("needed merge routes to %q (err %v), want MERGE_USE_CASES", to, err)
+	}
+}
+
+func TestMergeUseCases_AgentContract(t *testing.T) {
+	eng := loadSnapshot(t)
+	mid, ok := eng.Processes["merge-use-cases"]
+	if !ok {
+		t.Fatal("process merge-use-cases missing")
+	}
+	node := mid.Nodes["EXECUTE_AGENT"]
+	if node.Raw.Process != "execute-agent" {
+		t.Fatalf("EXECUTE_AGENT calls %q", node.Raw.Process)
+	}
+	if got := node.Raw.Params["agent"]; got != "use-case-merger" {
+		t.Errorf("agent = %q", got)
+	}
+	if got := node.Raw.Params["task-name"]; got != "merge-use-cases" {
+		t.Errorf("task-name = %q", got)
+	}
+	// Human tier: the approval of the proposed use case change is never
+	// auto-skipped, also under --auto.
+	if got := node.Raw.Params["category"]; got != "human" {
+		t.Errorf("category = %q, want human", got)
+	}
+	if !eng.IsScopeNone("merge-use-cases") {
+		t.Error("merge-use-cases must declare scope: none")
+	}
+	outs, _ := eng.Outputs("merge-use-cases")
+	byKey := map[string]statemachine.OutputSpec{}
+	for _, o := range outs {
+		byKey[o.Key] = o
+	}
+	if sm, ok := byKey["scenario-map"]; !ok || sm.Optional || sm.Type != "string-list" {
+		t.Errorf("scenario-map must be a required string-list output, got %+v", byKey["scenario-map"])
+	}
+	if c, ok := byKey["contradictions"]; !ok || !c.Optional {
+		t.Errorf("contradictions must be an optional output, got %+v", byKey["contradictions"])
+	}
+}
+
+// Loopback audit for the story merge step.
+// Every back-edge in the flow is enumerated below; none sits in implement-ticket
+// or in the merge processes, so the merge step adds no unbounded cycle. The only
+// loop reachable from the merge agent is execute-agent's own FIX -> RUN_AGENT
+// back-edge, which is capped (max-visits 2). A new back-edge anywhere makes this
+// test fail, forcing an explicit audit and an entry here.
+func TestBackEdgesAreAudited(t *testing.T) {
+	eng := loadSnapshot(t)
+	want := map[string]bool{
+		"execute-agent: FIX -> RUN_AGENT":                                           true,
+		"execute-command: FIX -> RUN_COMMAND":                                       true,
+		"refactor: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE": true,
+		"refactor: REDESIGN_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":          true,
+		"refactor: REFACTOR_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":          true,
+		"refactor: REFACTOR_TEST_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":            true,
+		"verify-tests-fail: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                    true,
+		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                    true,
+	}
+	got := map[string]bool{}
+	for name, p := range eng.Processes {
+		color := map[string]int{} // 0 unvisited, 1 on stack, 2 done
+		var dfs func(n string)
+		dfs = func(n string) {
+			color[n] = 1
+			for _, e := range p.OutgoingByNode[n] {
+				switch color[e.To] {
+				case 1:
+					got[name+": "+n+" -> "+e.To] = true
+				case 0:
+					dfs(e.To)
+				}
+			}
+			color[n] = 2
+		}
+		dfs(p.Start)
+	}
+	for k := range got {
+		if !want[k] {
+			t.Errorf("unaudited back-edge %q: audit it (is the loop bounded?) and add it to this list", k)
+		}
+	}
+	for k := range want {
+		if !got[k] {
+			t.Errorf("audited back-edge %q no longer exists; remove it from this list", k)
+		}
+	}
+	for _, name := range []string{"implement-ticket", "merge-story-into-use-cases", "merge-use-cases"} {
+		for k := range got {
+			if strings.HasPrefix(k, name+":") {
+				t.Errorf("%s must stay acyclic, found %q", name, k)
+			}
+		}
 	}
 }

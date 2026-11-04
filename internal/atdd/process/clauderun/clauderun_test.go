@@ -3084,3 +3084,51 @@ func TestRenderMatrix_InnerLoopTestAfter(t *testing.T) {
 		t.Error("mode none must not render the test-after section")
 	}
 }
+
+func TestRenderPrompt_UseCaseTraceabilitySection(t *testing.T) {
+	opts := newOpts()
+	opts.ScenarioCriteria = "place a valid order => UC-001.1\nreject zero => UC-001.2, UC-001.3"
+	got, err := RenderPrompt(opts)
+	if err != nil {
+		t.Fatalf("RenderPrompt: %v", err)
+	}
+	mustContain(t, got, "### Use case traceability")
+	mustContain(t, got, "- place a valid order => UC-001.1")
+	mustContain(t, got, "- reject zero => UC-001.2, UC-001.3")
+	mustContain(t, got, `@Tag("UC-001.3")`)
+	if strings.Contains(got, "${use-case-traceability}") {
+		t.Error("placeholder left unexpanded")
+	}
+}
+
+func TestRenderPrompt_NoTraceabilityWhenStoryWasNotMerged(t *testing.T) {
+	got, err := RenderPrompt(newOpts())
+	if err != nil {
+		t.Fatalf("a ticket that skips the merge must still render: %v", err)
+	}
+	if strings.Contains(got, "Use case traceability") || strings.Contains(got, "${use-case-traceability}") {
+		t.Error("bug/task and unmerged prompts must carry no traceability section")
+	}
+}
+
+func TestRenderPrompt_UseCaseMerger(t *testing.T) {
+	opts := newOpts()
+	opts.Agent = "use-case-merger"
+	opts.AcceptanceCriteria = "Scenario: apply a coupon\n  Given a coupon\n  When I order\n  Then the price drops"
+	opts.ExpectedOutputs = []statemachine.OutputSpec{{Key: "scenario-map", Type: "string-list"}}
+	got, err := RenderPrompt(opts)
+	if err != nil {
+		t.Fatalf("RenderPrompt: %v", err)
+	}
+	mustContain(t, got, "Scenario: apply a coupon")
+	mustContain(t, got, "gh optivem spec validate")
+	mustContain(t, got, "scenario-map")
+	if strings.Contains(got, "${") {
+		t.Errorf("unexpanded placeholder in merger prompt:\n%s", got)
+	}
+	// Load-bearing: without the story's criteria the dispatch must fail fast.
+	opts.AcceptanceCriteria = ""
+	if _, err := RenderPrompt(opts); err == nil {
+		t.Error("an empty ${acceptance-criteria} must fail the merger render")
+	}
+}

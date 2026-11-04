@@ -23,18 +23,12 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 1: map today's story intake (`PARSE_TICKET` → `GATE_TICKET_KIND` in `internal/atdd/process/process-flow.yaml`, `internal/atdd/runtime/intake/sections.go`, where `${acceptance-criteria}` is consumed) and record in this plan where the merge node sits (story branch, after `GATE_TICKET_KIND`). All design questions are resolved (see `## Resolved decisions`).
+Steps 1-6 and the unit/flow tests of Step 8 are implemented (Priority 0 unit U2). Remaining, held back by the meta-plan: Step 7 (docs, one session with the kickoff docs in Wave 2) and the attended rehearsal.
 
 ## Steps
 
-- [ ] Step 1: Map today's story intake: `PARSE_TICKET` → `GATE_TICKET_KIND` in `internal/atdd/process/process-flow.yaml`, the canonical sections in `internal/atdd/runtime/intake/sections.go`, and where acceptance tests pick up `${acceptance-criteria}`. Decide where the merge node sits (after `GATE_TICKET_KIND`, story branch only).
-- [ ] Step 2: Merge agent prompt: reads the story (description + Gherkin criteria) and `docs/use-cases/`, writes the proposed use case diff (narrative + `UC-NNN.M` lines), and reports contradictions. Validates with `gh optivem spec validate`.
-- [ ] Step 3: Human approval gate for the use case diff (reuse the existing approval/checkpoint mechanism in the process flow).
-- [ ] Step 4: Traceability: acceptance tests written for the story reference the merged `UC-NNN.M` ids, so `gh optivem spec status` moves them from unverified to verified.
-- [ ] Step 5: Criterion fingerprint in `internal/spec`: extend the baseline file into a spec state file (`baseline` + `fingerprints`); record a criterion's text hash when it first becomes verified; a mismatch shows it as changed/unverified in `spec status` and blocks in `spec check`. Update `spec adopt` to write the new shape.
-- [ ] Step 6: Consistency check: every story criterion maps to a merged use case criterion; fail loudly on a gap.
-- [ ] Step 7: Docs (ATDD process docs + README): stories are increments, use cases are the current spec, merge is one-way.
-- [ ] Step 8: Tests: intake/flow statemachine tests for the new node (audit loopback edges first), prompt render tests, `internal/spec` fingerprint tests; one attended rehearsal.
+- [ ] Step 7: Docs (ATDD process docs + README + `docs/cli-reference.md`): stories are increments, use cases are the current spec, merge is one-way. Cover what shipped: the `merge-story-into-use-cases` step (no-op passes without approval, otherwise the human approves the diff), the **Changed** criterion state, `gh optivem spec record [--refresh <id>]`, and the fingerprints in `<specDir>/.spec-baseline.json`.
+- [ ] Step 8 (remaining): one attended rehearsal on a throwaway repo: a story that adds behaviour (merge diff approved, tests tagged with the merged `UC-NNN.M` ids), a kickoff-style story whose scenarios name existing criteria (merge skipped, no approval), and an edited criterion showing `Changed` in `gh optivem spec status`. Also decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet).
 
 ## Resolved decisions
 
@@ -42,6 +36,13 @@ Step 1: map today's story intake (`PARSE_TICKET` → `GATE_TICKET_KIND` in `inte
 - **Story criteria format** (2026-11-04): Gherkin stays on the ticket, so today's ATDD intake contract is unchanged; the merge derives the prose `UC-NNN.M` lines and the narrative edit from the Gherkin.
 - **Criterion fingerprint storage** (2026-11-04): extend the machine-managed file `gh optivem spec adopt` already writes (`<specDir>/.spec-baseline.json`, `internal/spec/config.go`) into a general spec state file holding both `baseline` and `fingerprints` (`{"UC-001.4": "7f3a", ...}`). The hash of a criterion's text is recorded when it first becomes verified; a mismatch later shows it as changed/unverified. No new sidecar file, and test tags stay plain (`@Tag("UC-001.4")`). Rename the file if a more general name fits (e.g. `.spec-state.json`), with no legacy-alias handling.
 - **Repos with no use cases yet** (2026-11-04): the first merge creates a new `UC-NNN` file from the story (user approves), so use cases grow story by story; no upfront documentation is required, and existing apps can adopt the flow at any time.
+- **How the merge step is built** (2026-11-04, implemented):
+  - Node `MERGE_STORY_INTO_USE_CASES` (process `merge-story-into-use-cases`) sits on the story edge of `GATE_TICKET_KIND` in `implement-ticket`, before `CHANGE_SYSTEM_BEHAVIOR`; bugs and tasks skip it.
+  - **No-op rule:** the merge is skipped (no agent, no approval) when the story has at least one scenario and every scenario names an existing `UC-NNN.M` id (in a `@UC-001.4` tag, a comment line above the scenario, its title or steps). Kickoff-generated stories must carry the id this way. Anything else goes to the `use-case-merger` agent (human tier, so its PRE and POST approvals are the user's approval of the diff, also under `--auto`).
+  - **Consistency check** (`verify-story-merge`): the agent emits `scenario-map` (`<scenario title> => UC-NNN.M`) and optional `contradictions`; the run fails loudly on a contradiction, a validation error in the merged use cases, an unmapped scenario, or a mapped id that does not exist.
+  - **Traceability:** the merged ids reach the acceptance-test writer as `${use-case-traceability}` (tag each top-layer test with its criterion ids).
+  - The agent runs with `scope: none` because no code-layer scope key covers the use case directory; the POST approval reviews the edit. A dedicated scope key is a possible follow-up.
+  - **Fingerprints:** kept in the existing `.spec-baseline.json` (additive `fingerprints` map, schema version unchanged, no rename, so existing `spec.yaml` files keep working). New state `Changed` (tests pass, text edited): strict blocks it, lenient does not.
 
 ## Related
 

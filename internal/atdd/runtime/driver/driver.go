@@ -1475,6 +1475,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			SystemSurfacePaths:  systemSurfacePaths,
 			Checklist:           ctx.GetString("checklist"),
 			AcceptanceCriteria:  ctx.GetString("acceptance-criteria"),
+			ScenarioCriteria:    ctx.GetString("scenario-criteria"),
 			ParsedConcepts:      ctx.GetString("parsed_concepts"),
 			VerifyFailureOutput: ctx.GetString("verify_failure_output"),
 			ChangedFiles:        fixChangedFiles(ctx, agentName, opts.RepoPath),
