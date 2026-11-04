@@ -3,61 +3,25 @@
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p1..p4,parked}/` and the top-level plans need one place that records what is still open, what needs an attended session, which plans collide on files, and what to run in parallel.
-**End result:** this file is deleted once every open item below has shipped, been handed to its own plan, or been closed by a human. Highest priority: `/execute-plan` on this file builds the kickoff and story-merge plans (Priority 0) as parallel subagents, wave by wave.
+**End result:** this file is deleted once every open item below has shipped, been handed to its own plan, or been closed by a human. Priority 0 (kickoff + story merge) is built except kickoff shop removal (Step 5, shop empty-template plan needed).
 
 ## ▶ Next executable step (resume here)
 
-Priority 0, Step P0.1: the pre-execute checks, then P0.2 (spawn the two Wave 1 subagents in one message).
+Priority 0 Wave 1 and 2 are done; the remaining kickoff work (Step 5 via a shop empty-template plan, then Step 8) is attended (shop push OK needed). Next: push the local commits via `/commit` or `/sync`, then draft the shop empty-template plan (`/create-plan`, in the shop repo).
 
-Everything below Priority 0 needs an attended session (rehearsal, VM run, shop push OK, or SonarCloud admin rights). All commits referenced below are pushed (verified 2026-11-04).
+Everything below Priority 0 needs an attended session (rehearsal, VM run, shop push OK, or SonarCloud admin rights). Commits referenced below are pushed except the local Priority 0 commits listed above (unpushed on 2026-11-04).
 
 Older child plans are proposals, not instructions: when an item starts, judge its plan on the merits and amend, delete or park it if the premise is obsolete.
 
-## Priority 0: kickoff + story merge (highest priority, executable)
+## Priority 0: kickoff + story merge (Waves 1 and 2 shipped 2026-11-04)
 
-Plans:
-- **kickoff:** `plans/20261104-1121-switch-shop-to-own-domain.md`, `gh optivem kickoff` from a product description to the first stories.
-- **merge:** `plans/20261104-1227-merge-stories-into-use-cases.md`, merging each story into the use cases before ATDD, plus the criterion fingerprint.
+Shipped: story merge (`c0d2170f`, `0ca00777`), `gh optivem kickoff` (`16d582da`), docs (`e3a97e81`, `aeada32f`, `1b97f814`); the kickoff `IDENTIFY_EXTERNAL_SYSTEM` item closed with no code change (node already retired; `e5510484`). The merge plan file was deleted; its attended rehearsal moved to the checklist below.
 
-Both are refined with no open questions, and neither blocks the other.
+Remaining, in `plans/20261104-1121-switch-shop-to-own-domain.md`:
+- **Step 5 (shop removal), decided Option B:** shop publishes an "empty" template variant (`--no-sample`, like `--no-legacy`), verified in shop CI; then replace `DefaultRemove`/`sampleRemoved` in `internal/kickoff/removal.go` (currently fails loud with `ErrRemovalUndecided`, so kickoff and autopilot don't run end to end). Needs a shop plan (via `--repo shop`, shop push needs an OK).
+- **Step 8 remainder:** removal unit tests per architecture x language, plus the attended end-to-end run.
 
-Shared surface and decisions:
-- `internal/atdd/process/process-flow.yaml`: merge owns it in Wave 1. Kickoff's `IDENTIFY_EXTERNAL_SYSTEM` sub-item (Step 4) moves to Wave 2. See C7: never two process-flow plans in parallel.
-- `README.md` / getting-started / ATDD process docs: kickoff Step 7 + merge Step 7 run as one docs session in Wave 2.
-- Phase-scope registry (`internal/atdd/phase_scopes.go` and its yaml): each session appends its own entry; the second editor re-reads the file right before editing and commits the whole file.
-- Hashing: no shared helper. Approval fingerprint (kickoff) and criterion fingerprint (merge) each use `crypto/sha256` directly.
-- Rehearsals: both plans' attended runs take the rehearsal lock, one at a time (attended checklist below).
-
-Units:
-
-| Unit | Items | Wave | Owns |
-|---|---|---|---|
-| U1 | kickoff Steps 1–6d except the `IDENTIFY_EXTERNAL_SYSTEM` sub-item of Step 4 | 1 | kickoff command + `docs/cli-reference.md`, prototype/use-case prompts, shop-removal code, `gh-optivem-progress.yaml` handling, tracker issue creation, parked positioning plan |
-| U2 | merge Steps 1–6 + unit/flow tests of Step 8 | 1 | `process-flow.yaml`, merge prompt, `internal/spec/*`, `spec_commands.go`, `docs/spec-gate/` |
-| U3 | kickoff Step 4 `IDENTIFY_EXTERNAL_SYSTEM` sub-item | 2 | `process-flow.yaml` / external-system action + prompt |
-| U4 | kickoff Step 7 + merge Step 7 | 2 | `README.md`, getting-started, ATDD process docs |
-
-Steps:
-
-- [ ] P0.1: Pre-execute checks:
-  - Run the pickup-marker grep from `## Pre-execute checks`. The hit on this file's own check text is expected.
-  - Run `git status` and confirm no uncommitted changes on the U1/U2 files.
-- [ ] P0.2: **Wave 1:** spawn two `general-purpose` subagents **in one message** (parallel; never `isolation: "worktree"`). Each brief gives:
-  - its plan path, its unit's items (table above), and the files it must NOT edit (U1: `process-flow.yaml`, `README.md`; U2: `README.md`)
-  - the shared rules: re-check `git log` before each commit; commit only its own whole files via raw `git add <files>`, never a sweep; Go tests scoped to its packages or `scripts/test.sh` / `-p 2`, never unbounded; U2 audits loopback edges before statemachine tests; remove each item from its plan as it lands; leave held-back items in the plan file
-  - an instruction to stop and return any design question its plan doesn't answer
-  - an instruction to return a summary of commits + held-back items.
-- [ ] P0.3: Wave 1 gate:
-  - Relay any returned question to the user before continuing.
-  - Confirm with `git log` that both units' commits are on `main`.
-  - Run the scoped tests for `internal/spec`, the kickoff package and `internal/engine/statemachine` (`-p 2`).
-  - Confirm each plan file holds only its held-back items. Stop on any failure.
-- [ ] P0.4: **Wave 2:** spawn two `general-purpose` subagents in one message, with the same shared rules: U3 (on top of merge's `process-flow.yaml` changes) and U4 (one consistent docs pass for both plans). Each removes its items from the plan files.
-- [ ] P0.5: Wave 2 gate:
-  - Scoped tests again.
-  - Confirm only the attended rehearsals remain in the two plan files.
-  - Move them into `## Attended verification checklist`, then delete both plan files.
-  - Remove this Priority 0 section, and report with the push via `/commit` as the next action.
+Possible follow-up (not planned): cross-check that every registered external system appears in the approved use-case diagram (kickoff-side validation).
 
 ## Open items
 
@@ -79,7 +43,7 @@ The plans below were deleted because their work shipped; only these rehearsal an
 - [ ] **schedule orphan-repo cleanup:** confirm the first scheduled orphan-cleanup run on `main` executes and cleans up as intended.
 - [ ] **actionlint latest canary:** trigger the canary workflow manually via `workflow_dispatch`, confirm it runs, and check whether Sonar rule S8545 fires on it.
 - [ ] **kickoff rehearsal (Priority 0, after P0.5):** on a throwaway repo, run description → prototype → use cases → shop removed → stories → autopilot.
-- [ ] **story-merge behaviour (Priority 0, after the kickoff rehearsal):** a no-op merge passes without approval; editing a criterion shows it as changed/unverified in `gh optivem spec status`.
+- [ ] **story-merge behaviour (Priority 0, after the kickoff rehearsal):** on a throwaway repo, run (a) a story that adds behaviour (merge diff approved, tests tagged with the merged `UC-NNN.M` ids), (b) a kickoff-style story whose `@UC-NNN.M`-tagged scenarios name existing criteria (merge skipped, no approval), (c) an edited criterion showing `Changed` in `gh optivem spec status`. Also decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet).
 - [ ] **no-legacy omits legacy artifacts:** the plan was deleted as shipped; spot-check `--no-legacy` output once during any attended scaffold run.
 
 ## Conflicts still live
