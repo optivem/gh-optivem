@@ -17,6 +17,7 @@ gh optivem implement 42      # walk ticket #42 through the ATDD pipeline, agent 
 - [Claude Code setup](#claude-code-setup)
 - [Environment variables](#environment-variables)
 - [Scaffolding (`init`)](#scaffolding-init)
+- [Your own product (`kickoff`)](#your-own-product-kickoff)
 - [Managing `gh-optivem.yaml`](#managing-gh-optivemyaml)
 - [Project kind (`kind:`)](#project-kind-kind)
 - [Implement a ticket](#implement-a-ticket)
@@ -165,6 +166,39 @@ Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `in
 - **Default path** (no `--config`, no `$GH_OPTIVEM_CONFIG`): `gh optivem init` writes `gh-optivem.yaml` only inside the scaffolded repo on GitHub. Nothing is materialized in the current working directory.
 - **Explicit path** (`--config /some/path.yaml` or `$GH_OPTIVEM_CONFIG=/some/path.yaml`): `init` writes/updates the YAML at the path you named, and the scaffolded repo still gets its own copy (rendered with the auto-created Project URL).
 - **Pre-existing `<CWD>/gh-optivem.yaml`**: respected as operator-authored input. Loaded and used as-is; the scaffolded repo still gets its own rendered copy.
+
+## Your own product (`kickoff`)
+
+`init` leaves a repo that runs green on the shop sample. `gh optivem kickoff` is the next step for a user building their own product: description, clickable prototype, use cases, then the first stories, all before any code. It is one command that you run repeatedly; it reads what is already done and continues at the next phase, and each phase ends at a checkpoint where you review and approve.
+
+| Phase | What happens | Output |
+|---|---|---|
+| `description` | You write a few informal sentences (`--description`, `--description-file`, a terminal prompt, or edit the file). | `docs/product.md` |
+| `prototype` | An agent builds linked static HTML screens, covering normal and edge/empty states. You give feedback in plain language until you approve. The prototype is a throwaway spec; the real UI is built later by the ATDD agents in the scaffolded frontend tech. | `docs/prototype/` |
+| `use-case-diagram` | From the approved prototype: a screen to use case table and the use case diagram, with the external systems as secondary actors. | `docs/use-cases.md` |
+| `use-cases` | From the approved diagram: one narrative per use case with `UC-NNN.M` criteria, validated with `gh optivem spec validate`. The sample `UC-001-place-order.md` is deleted first. | `docs/use-cases/UC-NNN-<slug>.md` |
+| `remove-sample` | Deterministic code deletes the shop examples and keeps the test architecture. | not available yet |
+| `stories` | One ticket per use case slice (main scenario, each extension), in ATDD intake format, referencing the `UC-NNN.M` ids it covers; drafts are validated with the intake parser and every criterion must be covered. | tracker issues labelled `kickoff` (GitHub: type Story, added to the board) |
+
+```bash
+gh optivem kickoff --description "A booking site for small yoga studios: studios publish classes, members book and cancel."
+gh optivem kickoff                      # resume at the next phase
+gh optivem kickoff --approve            # approve the phase waiting at its checkpoint (no terminal needed)
+gh optivem kickoff --feedback "make booking a single step"
+gh optivem kickoff --redo prototype     # reopen an approval phase; later approvals are dropped
+gh optivem kickoff --autopilot          # build every story unattended through the ATDD flow
+gh optivem kickoff --status             # show progress from the local files
+```
+
+- **Progress is derived from the files**: the description exists, the prototype/diagram/narratives exist, the sample is gone, the stories exist in the tracker. Only the three approvals (prototype, use case diagram, use cases) are stored, in the committed `gh-optivem-progress.yaml` at the repo root, each with who approved, when, and a SHA-256 fingerprint of the approved content.
+- **Edit after approval means re-approval**: if approved content no longer matches its fingerprint, that phase and every later one needs approving again. `--redo` uses the same invalidation. Only the approval phases can be redone; edit `docs/product.md` directly to change the description.
+- **Approvals are human-tier**: `--auto` never approves a phase for you. `--approve` is your explicit approval for a non-interactive run.
+- **Two build modes, both through ATDD**: attended (default) leaves the stories on the board for you to run one at a time with `gh optivem implement <issue>`; `--autopilot` runs every open kickoff story in order, headless and auto-approving below the human tier, and stops at the first failure. Re-run after fixing it to continue with the remaining stories.
+- **External systems** are recorded only in the approved diagram. Nothing is written to `gh-optivem.yaml` and no driver or simulator is scaffolded here; ATDD sets each one up when a story first needs it.
+- **Languages**: screen labels follow the language of your description; use case structure, criteria and tests are English.
+- The phases are also reachable as hidden `gh optivem kickoff phase <name>` subcommands for tests and debugging.
+
+Stories are created in the `system-test` repo (the repo `implement` works in) and, for the markdown provider, in the board's `ready/` column as `story-kickoff-NNN-<slug>.md`.
 
 ## Managing `gh-optivem.yaml`
 
