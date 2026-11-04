@@ -19,6 +19,10 @@ const (
 	StateVerified   State = "Verified"
 	StateFailing    State = "Failing"
 	StateWaived     State = "Waived"
+	// StateChanged marks a criterion whose tests pass but whose text differs
+	// from the fingerprint recorded when it was last verified: the old test may
+	// no longer prove the current requirement, so it counts as unverified.
+	StateChanged State = "Changed"
 )
 
 // Options controls report building. Now is injectable so that waiver expiry is testable.
@@ -27,6 +31,10 @@ type Options struct {
 	Threshold *float64 // nil means use the config threshold
 	Flags     []string // flags considered on, in addition to Config.Flags
 	Now       time.Time
+	// Fingerprints maps criterion id to the text fingerprint recorded when it
+	// was last verified (see Baseline.Fingerprints). A criterion that would be
+	// Verified but whose current text hashes differently is reported Changed.
+	Fingerprints map[string]string
 }
 
 // ReportResult is one executed result of a test.
@@ -71,6 +79,7 @@ type Summary struct {
 	Failing         int     `json:"failing"`
 	Planned         int     `json:"planned"`
 	Waived          int     `json:"waived"`
+	Changed         int     `json:"changed"`
 	CoveragePercent float64 `json:"coveragePercent"`
 }
 
@@ -151,7 +160,7 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 	linked := linkTests(&rep, tests, known)
 
 	for _, uc := range useCases {
-		rep.UseCases = append(rep.UseCases, buildUseCase(uc, linked, waivers, flagsOn, &rep.Summary))
+		rep.UseCases = append(rep.UseCases, buildUseCase(uc, linked, waivers, flagsOn, opts.Fingerprints, &rep.Summary))
 	}
 	if rep.Summary.Total > 0 {
 		pct := float64(rep.Summary.Verified) * 100 / float64(rep.Summary.Total)
@@ -214,16 +223,18 @@ func (s *Summary) count(state State) {
 		s.Planned++
 	case StateWaived:
 		s.Waived++
+	case StateChanged:
+		s.Changed++
 	}
 }
 
 // buildUseCase builds one use case's report entry and tallies its criteria into sum.
-func buildUseCase(uc UseCase, linked map[string][]Test, waivers map[string]Waiver, flagsOn []string, sum *Summary) ReportUseCase {
+func buildUseCase(uc UseCase, linked map[string][]Test, waivers map[string]Waiver, flagsOn []string, fps map[string]string, sum *Summary) ReportUseCase {
 	ruc := ReportUseCase{ID: uc.ID, Title: uc.Title, Criteria: []ReportCriterion{}}
 	anyTests := false
 	allVerified := len(uc.Criteria) > 0
 	for _, c := range uc.Criteria {
-		rc := buildCriterion(c, linked[c.ID], waivers, flagsOn)
+		rc := buildCriterion(c, linked[c.ID], waivers, flagsOn, fps)
 		ruc.Criteria = append(ruc.Criteria, rc)
 		sum.count(rc.State)
 		if len(rc.Tests) > 0 {
@@ -244,7 +255,7 @@ func buildUseCase(uc UseCase, linked map[string][]Test, waivers map[string]Waive
 	return ruc
 }
 
-func buildCriterion(c Criterion, tests []Test, waivers map[string]Waiver, flagsOn []string) ReportCriterion {
+func buildCriterion(c Criterion, tests []Test, waivers map[string]Waiver, flagsOn []string, fps map[string]string) ReportCriterion {
 	rc := ReportCriterion{
 		ID: c.ID, Text: c.Text, Group: c.Group,
 		Tests:  []ReportTest{},
@@ -272,9 +283,12 @@ func buildCriterion(c Criterion, tests []Test, waivers map[string]Waiver, flagsO
 			allPassed = false
 		}
 	}
-	// Precedence: Waived > In progress > Failing > Verified > Planned. A
-	// criterion whose linked tests are only skipped has no passing evidence
-	// and stays Planned.
+	// Precedence: Waived > In progress > Failing > Changed > Verified > Planned.
+	// A criterion whose linked tests are only skipped has no passing evidence
+	// and stays Planned. Changed applies only to an otherwise-Verified
+	// criterion whose text no longer matches its recorded fingerprint.
+	stored, hasFP := fps[c.ID]
+	changed := allPassed && !failing && !wip && hasFP && stored != Fingerprint(c.Text)
 	w, waived := waivers[c.ID]
 	switch {
 	case waived:
@@ -284,6 +298,8 @@ func buildCriterion(c Criterion, tests []Test, waivers map[string]Waiver, flagsO
 		rc.State = StateInProgress
 	case failing:
 		rc.State = StateFailing
+	case changed:
+		rc.State = StateChanged
 	case allPassed:
 		rc.State = StateVerified
 	default:

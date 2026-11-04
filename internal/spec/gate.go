@@ -25,20 +25,29 @@ const (
 // BaselineSchemaVersion is the version of the baseline file format.
 const BaselineSchemaVersion = 1
 
-// Baseline lists the criteria that were not Verified when the gate was adopted.
+// Baseline is the machine-managed spec state file. It lists the criteria that
+// were not Verified when the gate was adopted, and the criterion fingerprints
+// recorded when criteria became verified. Fingerprints is additive, so a file
+// written before fingerprints existed still loads (no fingerprints recorded).
 type Baseline struct {
-	SchemaVersion int      `json:"schemaVersion"`
-	Unverified    []string `json:"unverified"`
+	SchemaVersion int               `json:"schemaVersion"`
+	Unverified    []string          `json:"unverified"`
+	Fingerprints  map[string]string `json:"fingerprints,omitempty"`
 }
 
-// NewBaseline builds a baseline from the criteria that are not Verified in rep.
+// NewBaseline builds a baseline from rep: the criteria that are not Verified
+// become the unverified list, and every Verified criterion gets its current
+// text fingerprint. rep should be built without fingerprints so Verified is
+// purely test-derived.
 func NewBaseline(rep Report) Baseline {
-	b := Baseline{SchemaVersion: BaselineSchemaVersion, Unverified: []string{}}
+	b := Baseline{SchemaVersion: BaselineSchemaVersion, Unverified: []string{}, Fingerprints: map[string]string{}}
 	for _, uc := range rep.UseCases {
 		for _, c := range uc.Criteria {
 			if c.State != StateVerified {
 				b.Unverified = append(b.Unverified, c.ID)
+				continue
 			}
+			b.Fingerprints[c.ID] = Fingerprint(c.Text)
 		}
 	}
 	slices.Sort(b.Unverified)

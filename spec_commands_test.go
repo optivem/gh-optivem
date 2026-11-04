@@ -155,3 +155,45 @@ func TestSpecGlobMatch(t *testing.T) {
 		}
 	}
 }
+
+func TestSpecRecord_ChangedCriterionStaysUnverifiedUntilRefreshed(t *testing.T) {
+	cfg := writeSpecFixture(t, specTestUseCase)
+	ucFile := filepath.Join(filepath.Dir(cfg), "docs", "use-cases", "uc1.md")
+	var out bytes.Buffer
+
+	if _, err := runSpecRecord(specOptions{Config: cfg}, &out); err == nil || !strings.Contains(err.Error(), "spec adopt") {
+		t.Fatalf("record without a state file must point at adopt, got %v", err)
+	}
+	if _, err := runSpecAdopt(specOptions{Config: cfg}, &out); err != nil {
+		t.Fatal(err)
+	}
+	state, err := spec.LoadBaseline(filepath.Join(filepath.Dir(cfg), "docs", "use-cases", spec.BaselineFileName))
+	if err != nil || state.Fingerprints["UC-001.1"] == "" {
+		t.Fatalf("adopt must fingerprint the verified criterion: %+v err=%v", state, err)
+	}
+
+	edited := strings.Replace(specTestUseCase, "A valid order is placed.", "A valid order is placed within five minutes.", 1)
+	if err := os.WriteFile(ucFile, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	code, err := runSpecCheck(specOptions{Config: cfg, Mode: spec.ModeStrict}, nil, &out, true)
+	if err != nil || code != spec.ExitGateFailed || !strings.Contains(out.String(), "[Changed]") {
+		t.Fatalf("edited criterion must show Changed and block strict: code=%d err=%v out=%s", code, err, out.String())
+	}
+
+	out.Reset()
+	if _, err := runSpecRecord(specOptions{Config: cfg}, &out); err != nil || !strings.Contains(out.String(), "--refresh UC-001.1") {
+		t.Fatalf("record must not silently accept the change: err=%v out=%s", err, out.String())
+	}
+	if _, err := runSpecRecord(specOptions{Config: cfg, Refresh: []string{"UC-009.9"}}, &out); err == nil {
+		t.Fatal("refreshing an unknown criterion must error")
+	}
+	if _, err := runSpecRecord(specOptions{Config: cfg, Refresh: []string{"UC-001.1"}}, &out); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if _, err := runSpecCheck(specOptions{Config: cfg, Mode: spec.ModeLenient}, nil, &out, true); err != nil || strings.Contains(out.String(), "[Changed]") {
+		t.Fatalf("refreshed criterion must be Verified again: err=%v out=%s", err, out.String())
+	}
+}

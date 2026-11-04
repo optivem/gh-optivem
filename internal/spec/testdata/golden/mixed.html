@@ -55,11 +55,12 @@ section.uc{display:flex;flex-direction:column;gap:8px}
 <div class="card tile"><span class="l">Failing</span><span class="v">2</span></div>
 <div class="card tile"><span class="l">Planned</span><span class="v">10</span></div>
 <div class="card tile"><span class="l">Waived</span><span class="v">1</span></div>
+<div class="card tile"><span class="l">Changed</span><span class="v">0</span></div>
 </section>
 <section class="card">
 <h2>Spec coverage: 0 of 14 acceptance criteria verified (0.0%)</h2>
-<div class="bar" role="img" aria-label="0 verified, 1 in progress, 2 failing, 10 planned, 1 waived criteria"><div style="flex:1 1 0;background:#2F6FDB" title="In progress (1)"></div><div style="flex:2 1 0;background:#C0392B" title="Failing (2)"></div><div style="flex:10 1 0;background:#6B7580" title="Planned (10)"></div><div style="flex:1 1 0;background:#7E6BB8" title="Waived (1)"></div></div>
-<div class="legend"><span><span class="dot" style="background:#2E7D4F"></span>Verified (0)</span><span><span class="dot" style="background:#2F6FDB"></span>In progress (1)</span><span><span class="dot" style="background:#C0392B"></span>Failing (2)</span><span><span class="dot" style="background:#6B7580"></span>Planned (10)</span><span><span class="dot" style="background:#7E6BB8"></span>Waived (1)</span></div>
+<div class="bar" role="img" aria-label="0 verified, 1 in progress, 2 failing, 10 planned, 1 waived, 0 changed criteria"><div style="flex:1 1 0;background:#2F6FDB" title="In progress (1)"></div><div style="flex:2 1 0;background:#C0392B" title="Failing (2)"></div><div style="flex:10 1 0;background:#6B7580" title="Planned (10)"></div><div style="flex:1 1 0;background:#7E6BB8" title="Waived (1)"></div></div>
+<div class="legend"><span><span class="dot" style="background:#2E7D4F"></span>Verified (0)</span><span><span class="dot" style="background:#2F6FDB"></span>In progress (1)</span><span><span class="dot" style="background:#C0392B"></span>Failing (2)</span><span><span class="dot" style="background:#6B7580"></span>Planned (10)</span><span><span class="dot" style="background:#7E6BB8"></span>Waived (1)</span><span><span class="dot" style="background:#B8860B"></span>Changed (0)</span></div>
 <p class="note">Threshold 80.0% applies in strict mode.</p>
 </section>
 <section class="card">
@@ -71,6 +72,7 @@ section.uc{display:flex;flex-direction:column;gap:8px}
 <div class="item"><span class="pill" style="background:#C0392B">Failing</span> <strong>2</strong><br><span class="note">A linked acceptance test is red and not marked wip. Always blocks the gate.</span></div>
 <div class="item"><span class="pill" style="background:#6B7580">Planned</span> <strong>10</strong><br><span class="note">No passing acceptance test is linked yet.</span></div>
 <div class="item"><span class="pill" style="background:#7E6BB8">Waived</span> <strong>1</strong><br><span class="note">Exempted by an approved, time-limited waiver. Counts as not verified.</span></div>
+<div class="item"><span class="pill" style="background:#B8860B">Changed</span> <strong>0</strong><br><span class="note">Tests pass, but the criterion text changed since it was last verified. Counts as not verified until its test is re-checked.</span></div>
 </div>
 </section>
 <section class="card uc">

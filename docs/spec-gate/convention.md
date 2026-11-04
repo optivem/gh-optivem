@@ -92,8 +92,9 @@ Results named `method [Channel: UI]` (a templated or parameterised method run on
 | Verified | Proven | At least one linked test, all linked results pass, none tagged `wip` |
 | Failing | Broken | A linked result is red (failure or error) and not tagged `wip` |
 | Waived | Deliberate, time-boxed exception | Waiver entry present and not expired |
+| Changed | Text edited since it was verified | The linked tests would make it Verified, but the criterion text no longer matches the fingerprint recorded when it was last verified (section 9, Spec state file) |
 
-Precedence when conditions overlap: Waived (if unexpired) > In progress (`wip`) > Failing > Verified > Planned. A skipped result does not count as passing; a criterion with only skipped results is not Verified.
+Precedence when conditions overlap: Waived (if unexpired) > In progress (`wip`) > Failing > Changed > Verified > Planned. A Changed criterion counts as not verified, so a passing old test cannot hide a changed requirement. A skipped result does not count as passing; a criterion with only skipped results is not Verified.
 
 **Use case state** is derived from its criteria: Planned (no criterion has a test), In progress (some verified, or a linked test tagged `wip`), Verified (all criteria verified).
 
@@ -146,7 +147,7 @@ Located at the repository root.
 | `waivers` | list | `[]` | Waiver entries (section 6) |
 | `exclude` | list of globs | `[]` | Result files to ignore, for example `**/legacy/**` |
 | `flags` | list of strings | `[]` | Flags considered on |
-| `baseline` | string | `<specDir>/.spec-baseline.json` | Adoption baseline path |
+| `baseline` | string | `<specDir>/.spec-baseline.json` | Spec state file path (adoption baseline and criterion fingerprints) |
 
 ## 9. Gating
 
@@ -164,6 +165,21 @@ In strict mode, in-scope means: not excluded by an off flag and not waived (unex
 
 `adopt` writes the baseline file listing currently unverified criteria. In strict mode, baselined criteria are non-blocking; a criterion that was Verified at baseline and regresses, or any new unverified criterion, blocks.
 
+### Spec state file and criterion fingerprints
+
+The baseline file is the machine-managed spec state file. Besides the `unverified` list it holds `fingerprints`, a map from criterion id to a hash of the criterion text (whitespace-normalised SHA-256, truncated to 16 hex characters):
+
+```json
+{ "schemaVersion": 1, "unverified": ["UC-001.3"], "fingerprints": { "UC-001.1": "7f3a9c01d2b4e856" } }
+```
+
+- `adopt` writes a fingerprint for every Verified criterion.
+- `record` adds the fingerprint of each Verified criterion that has none yet (run it after a story's acceptance tests are green), drops fingerprints of criteria that no longer exist, and never overwrites a differing fingerprint.
+- When a Verified criterion's text no longer matches its fingerprint, `status` and `check` report it as **Changed** (unverified); strict mode blocks it. After the criterion's test has been re-checked against the new wording, `record --refresh <id>` accepts the new text.
+- A criterion with no recorded fingerprint is never Changed.
+
+This is how a story that edits a criterion (merged into the use cases before ATDD builds it) shows up as unverified until its test is written or re-checked.
+
 ### Exit codes
 
 `0` pass, `1` gate failed, `2` usage or configuration error.
@@ -179,7 +195,7 @@ In strict mode, in-scope means: not excluded by an off flag and not waived (unex
   "threshold": 100,
   "summary": {
     "total": 14, "verified": 13, "inProgress": 0,
-    "failing": 0, "planned": 1, "waived": 0,
+    "failing": 0, "planned": 1, "waived": 0, "changed": 0,
     "coveragePercent": 92.9
   },
   "useCases": [
