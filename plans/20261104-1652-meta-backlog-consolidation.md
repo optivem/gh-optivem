@@ -2,14 +2,62 @@
 
 ## TL;DR
 
-**Why:** the backlog under `plans/backlog/{p1..p4,parked}/` needs one place that records what is still open, what needs an attended session, and which plans collide on files.
-**End result:** this file is deleted once every open item below has shipped, been handed to its own plan, or been closed by a human.
+**Why:** the backlog under `plans/backlog/{p1..p4,parked}/` and the top-level plans need one place that records what is still open, what needs an attended session, which plans collide on files, and what to run in parallel.
+**End result:** this file is deleted once every open item below has shipped, been handed to its own plan, or been closed by a human. Highest priority: `/execute-plan` on this file builds the kickoff and story-merge plans (Priority 0) as parallel subagents, wave by wave.
 
-## Next step (resume here)
+## ▶ Next executable step (resume here)
 
-Nothing unattended is left except what is listed below. Everything else needs an attended session (rehearsal, VM run, shop push OK, or SonarCloud admin rights). All commits referenced below are pushed (verified 2026-11-04).
+Priority 0, Step P0.1: the pre-execute checks, then P0.2 (spawn the two Wave 1 subagents in one message).
+
+Everything below Priority 0 needs an attended session (rehearsal, VM run, shop push OK, or SonarCloud admin rights). All commits referenced below are pushed (verified 2026-11-04).
 
 Older child plans are proposals, not instructions: when an item starts, judge its plan on the merits and amend, delete or park it if the premise is obsolete.
+
+## Priority 0: kickoff + story merge (highest priority, executable)
+
+Plans:
+- **kickoff:** `plans/20261104-1121-switch-shop-to-own-domain.md`, `gh optivem kickoff` from a product description to the first stories.
+- **merge:** `plans/20261104-1227-merge-stories-into-use-cases.md`, merging each story into the use cases before ATDD, plus the criterion fingerprint.
+
+Both are refined with no open questions, and neither blocks the other.
+
+Shared surface and decisions:
+- `internal/atdd/process/process-flow.yaml`: merge owns it in Wave 1. Kickoff's `IDENTIFY_EXTERNAL_SYSTEM` sub-item (Step 4) moves to Wave 2. See C7: never two process-flow plans in parallel.
+- `README.md` / getting-started / ATDD process docs: kickoff Step 7 + merge Step 7 run as one docs session in Wave 2.
+- Phase-scope registry (`internal/atdd/phase_scopes.go` and its yaml): each session appends its own entry; the second editor re-reads the file right before editing and commits the whole file.
+- Hashing: no shared helper. Approval fingerprint (kickoff) and criterion fingerprint (merge) each use `crypto/sha256` directly.
+- Rehearsals: both plans' attended runs take the rehearsal lock, one at a time (attended checklist below).
+
+Units:
+
+| Unit | Items | Wave | Owns |
+|---|---|---|---|
+| U1 | kickoff Steps 1–6d except the `IDENTIFY_EXTERNAL_SYSTEM` sub-item of Step 4 | 1 | kickoff command + `docs/cli-reference.md`, prototype/use-case prompts, shop-removal code, `gh-optivem-progress.yaml` handling, tracker issue creation, parked positioning plan |
+| U2 | merge Steps 1–6 + unit/flow tests of Step 8 | 1 | `process-flow.yaml`, merge prompt, `internal/spec/*`, `spec_commands.go`, `docs/spec-gate/` |
+| U3 | kickoff Step 4 `IDENTIFY_EXTERNAL_SYSTEM` sub-item | 2 | `process-flow.yaml` / external-system action + prompt |
+| U4 | kickoff Step 7 + merge Step 7 | 2 | `README.md`, getting-started, ATDD process docs |
+
+Steps:
+
+- [ ] P0.1: Pre-execute checks:
+  - Run the pickup-marker grep from `## Pre-execute checks`. The hit on this file's own check text is expected.
+  - Run `git status` and confirm no uncommitted changes on the U1/U2 files.
+- [ ] P0.2: **Wave 1:** spawn two `general-purpose` subagents **in one message** (parallel; never `isolation: "worktree"`). Each brief gives:
+  - its plan path, its unit's items (table above), and the files it must NOT edit (U1: `process-flow.yaml`, `README.md`; U2: `README.md`)
+  - the shared rules: re-check `git log` before each commit; commit only its own whole files via raw `git add <files>`, never a sweep; Go tests scoped to its packages or `scripts/test.sh` / `-p 2`, never unbounded; U2 audits loopback edges before statemachine tests; remove each item from its plan as it lands; leave held-back items in the plan file
+  - an instruction to stop and return any design question its plan doesn't answer
+  - an instruction to return a summary of commits + held-back items.
+- [ ] P0.3: Wave 1 gate:
+  - Relay any returned question to the user before continuing.
+  - Confirm with `git log` that both units' commits are on `main`.
+  - Run the scoped tests for `internal/spec`, the kickoff package and `internal/engine/statemachine` (`-p 2`).
+  - Confirm each plan file holds only its held-back items. Stop on any failure.
+- [ ] P0.4: **Wave 2:** spawn two `general-purpose` subagents in one message, with the same shared rules: U3 (on top of merge's `process-flow.yaml` changes) and U4 (one consistent docs pass for both plans). Each removes its items from the plan files.
+- [ ] P0.5: Wave 2 gate:
+  - Scoped tests again.
+  - Confirm only the attended rehearsals remain in the two plan files.
+  - Move them into `## Attended verification checklist`, then delete both plan files.
+  - Remove this Priority 0 section, and report with the push via `/commit` as the next action.
 
 ## Open items
 
@@ -30,13 +78,15 @@ The plans below were deleted because their work shipped; only these rehearsal an
 - [ ] **scope-drift fix-loop (Item 13, #15 `416a761f`):** run a rehearsal that induces a test-only fixer and confirm the scope-drift guard / fix loop behaves as designed (report-only).
 - [ ] **schedule orphan-repo cleanup:** confirm the first scheduled orphan-cleanup run on `main` executes and cleans up as intended.
 - [ ] **actionlint latest canary:** trigger the canary workflow manually via `workflow_dispatch`, confirm it runs, and check whether Sonar rule S8545 fires on it.
+- [ ] **kickoff rehearsal (Priority 0, after P0.5):** on a throwaway repo, run description → prototype → use cases → shop removed → stories → autopilot.
+- [ ] **story-merge behaviour (Priority 0, after the kickoff rehearsal):** a no-op merge passes without approval; editing a criterion shows it as changed/unverified in `gh optivem spec status`.
 - [ ] **no-legacy omits legacy artifacts:** the plan was deleted as shipped; spot-check `--no-legacy` output once during any attended scaffold run.
 
 ## Conflicts still live
 
 | ID | File(s) | Plans | Resolution |
 |---|---|---|---|
-| C7 | `internal/atdd/process/process-flow.yaml` | retry-budget, optional-inner-tdd, contract-driven outer loop (parked) | never two in parallel; rebase between them |
+| C7 | `internal/atdd/process/process-flow.yaml` | merge-stories-into-use-cases (Priority 0, U2), kickoff U3, retry-budget, optional-inner-tdd, contract-driven outer loop (parked) | never two in parallel; rebase between them. Priority 0 owns it first (U2, then U3) |
 
 The other conflicts recorded earlier (C1-C6, C8-C12) involved plans that have since shipped or been deleted and are retired.
 
@@ -53,6 +103,7 @@ Shared-resource rule: `gh optivem system start` and rehearsals bind fixed docker
 
 ## Wave order
 
+0. **Priority 0** (kickoff + story merge): Wave 1 (U1 ∥ U2), then Wave 2 (U3 ∥ U4), then their rehearsals under the rehearsal lock.
 1. Attended verification checklist.
 2. Items 13 and 15 (shop-push + rehearsal), one at a time under the rehearsal lock.
 3. Items 22 and 23 remainders (VM run; second tier opts in; mutation workflow in shop).

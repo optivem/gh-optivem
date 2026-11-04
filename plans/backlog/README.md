@@ -1,6 +1,6 @@
 # gh-optivem plan backlog
 
-The backlog is grouped by priority. The open items, attended-verification checklist, live conflicts and wave order live in `plans/20261029-2142-meta-backlog-consolidation.md`.
+The backlog is grouped by priority. The open items, attended-verification checklist, live conflicts and wave order live in `plans/20261104-1652-meta-backlog-consolidation.md`.
 
 | Folder | Theme | Plans |
 |---|---|---|
