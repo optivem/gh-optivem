@@ -31,3 +31,5 @@ scripts/logs/
 # goreleaser's dirty-tree check otherwise)
 .zig-cache/
 .gh-optivem/
+
+gh-optivem.linux*
