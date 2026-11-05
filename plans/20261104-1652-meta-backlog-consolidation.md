@@ -7,7 +7,12 @@
 
 ## ▶ Next executable step (resume here)
 
-No autonomous unit is left. Next: the user rotates REPO_TOKEN and DOCKERHUB_TOKEN, installs actionlint and runs `gh auth refresh -s delete_repo`, then reruns **D4** (see Human-only). Everything else is Human-only, deferred (Phase B), or blocked on a release (E2). The "Follow-ups" are candidates for `/fix-bug` or `/create-plan`.
+No autonomous unit is left. Agreed order (2026-11-05):
+
+1. **Tokens (user, before 2026-11-08 when WORKFLOW_TOKEN expires):** new REPO_TOKEN (classic PAT, `repo`), DOCKERHUB_TOKEN and WORKFLOW_TOKEN in `~/.config/gh-optivem/.env`; `go install github.com/rhysd/actionlint/cmd/actionlint@v1`; `gh auth refresh -s delete_repo`. Then the agent reruns **D4** autonomously (throwaway repos are pre-authorized).
+2. **Story-intake blocker (user decision, then agent):** recommended: move `merge-use-cases` to the `test-agent` tier so `--auto` runs it (see Follow-ups, "Unattended story runs can't get past intake"). On approval the agent makes the change, runs the tests, then reruns #65 unattended (replaces the attended #65 run in Human-only) and decides the ERP-gap plan.
+3. **User, when convenient:** gh-optivem release (unblocks E2), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a/D3b and C2c, and the board tidy-up (#65, #69, #76).
+4. **Agent, on the user's go (`/fix-bug` each):** `install-gh-optivem` absolute-path bug (the tag move needs approval), .NET `--test` case-sensitive name check, red phase accepting infra failures.
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
