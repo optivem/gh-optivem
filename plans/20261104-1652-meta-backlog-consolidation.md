@@ -1,7 +1,5 @@
 # Plan coordination meta-plan: backlog consolidation (autonomous run)
 
-> 🤖 **Picked up by agent** — `8f47336fc9eb` at `2026-11-05T07:44:15Z`
-
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p1..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
@@ -9,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Prerequisite:** `gh auth login` done and `gh extension install .` run from gh-optivem (dev container starts without either). Then **Unit C1:** in `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md` do step 6 (Gradle `--warning-mode none` in shop `system-test/java/tests*.yaml`, shop cloned into the session scratch dir), push shop, then the rehearsal check with `--shop-ref main`. Phase B is deferred.
+**Unit C2, runtime check (the only unit not blocked):** run `cannotPlaceOrderWithNonExistentCoupon` (now ending in `noOrderPersisted`) green via `gh optivem system start` + system tests on monolith and multitier × Java / .NET / TypeScript, one combo at a time under the rehearsal lock (shop cloned into the session scratch dir). Record pass/fail in `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`. Everything else open needs a headless rehearsal (see Blocked), a release (E2) or the user (Phase B, human-only).
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -54,11 +52,14 @@ Not pre-authorized, so still stop-and-ask: force-push, releases, closing GitHub 
 Done when: each check is recorded pass/fail; failures become new plan items or `/fix-bug` handoffs.
 
 ### Phase E: Item 23 remainder (#42 Slice 1; plan `plans/backlog/p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component.md`)
-- **E1.** Add the nightly mutation CI workflow in shop (push pre-authorized; not a cloud file). Done when: workflow validates (actionlint) and a manual dispatch run succeeds.
-- **E2.** Set `mutation-threshold` from a full `--all` baseline. Done when: threshold committed with the baseline noted in the commit message.
+- E1 done 2026-11-05 (shop `aa8aa8de`+`b700f301`, nightly `multitier-backend-java-mutation-nightly.yml`, dispatch run 41993634354 green).
+- [ ] **E2.** ⏳ Blocked on a gh-optivem release: baseline 53% (164/307 killed), threshold 50 chosen and recorded in shop `plans/backlog/p1-ci-pipeline/20261103-1335-readd-inner-loop-pilot-config.md` (shop `7bdcd272`), but released v1.6.105 rejects the `inner-loop` keys, so the config write waits for the next release (releases need the user).
 - Step 1b (`--backend-inner-loop` flags) stays deferred until a second tier opts in. Slices 2-4 untouched.
 
 ## Human-only (excluded from autonomous runs)
+
+- **Shared action bug (found by E1):** `optivem/actions/install-gh-optivem@v1` source-build path runs `gh extension install <absolute path>`, which gh rejects (only `.` accepted); likely also breaks `meta-prerelease-dry-run`. Shop's mutation nightly works around it inline. Needs a fix in `optivem/actions` (+ tag move) — `/fix-bug` handoff.
+- **gh-optivem release** to unblock E2 (then write `mutation-threshold: 50` into shop `gh-optivem-multitier-java.yaml`).
 
 - **Item 22 (#20) Step 8:** collapse `scripts/readme-steps.sh` after a green clean-room VM run. Plan: `plans/backlog/p2-atdd-quality/20260812-1705-environment-setup-command.md`.
 - **Item 24 (Sonar S3776):** mark remaining test-file findings Won't Fix in SonarCloud (needs admin rights), then delete `plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md`. Also mark `githubactions:S8545` on `.github/workflows/gh-actionlint-canary.yml:41` (`actionlint@latest`) Accepted/Won't Fix: unpinned is the canary's purpose (found by D6, 2026-11-05).
