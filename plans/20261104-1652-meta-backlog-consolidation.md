@@ -9,7 +9,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**D1–D4** (Part 2, Docker, sequential): the verification checklist under Phase D, using "Rehearsal setup" below. Done when each check is recorded pass/fail here; failures become new plan items or `/fix-bug` handoffs.
+**D3** (Part 2, Docker): story-merge checks (a)–(c) under Phase D, local-only per "Rehearsal setup", plus record a recommendation for when `gh optivem spec record` runs after green as a new plan item. Then **D4** (`--no-legacy` scaffold spot-check): the auto-mode classifier blocked an unattended launch that included creating/deleting a throwaway repo, so D4 needs the user's go-ahead or a local-only scaffold path.
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -63,8 +63,8 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
   Done when: all runtime checks pass.
 
 #### Phase D: verification checklist (sequential; all need `implement` runs)
-- **D1.** channel-touched skipped tests (#76 re-run): skipped tests no longer trigger a no-op dispatch followed by a halt.
-- **D2.** scope-drift fix-loop (#15), unattended part: induce an out-of-scope edit after the writer (script ready: `<session scratchpad>/d2-inject.sh` from 2026-11-05) and confirm a scope diff routes to FIX → human gate with no separate scope-drift halt. The "fixer edited: N file(s)" list (shown only at FIX_LOOP_EXHAUSTED / FIX_LOOP_NO_PROGRESS_EXHAUSTED) needs an attended fix loop: see Human-only.
+- D1 pass 2026-11-05: #76 re-run rc=0; `GATE_CHANNEL_TOUCHED -> bool=false` → `CHANNEL_SKIPPED channel=ui` ("Channel Untouched — System Cycle Skipped"), no no-op dispatch, no halt, ends `test-outcome=pass`. (#76 is left in In Acceptance on the board.)
+- D2 unattended part pass 2026-11-05: out-of-scope file injected during the writer → `VALIDATE_OUTPUTS_AND_SCOPES -> failure-kind=scope-diff, failing-task-name=write-acceptance-tests` → `FIX` → `APPROVE_PRE category=human` → yield rc=2; no separate scope-drift halt. Attended part is Human-only.
 - **D3.** story-merge behaviour: (a) story adding behaviour (merge diff approved, tests tagged with merged `UC-NNN.M` ids), (b) kickoff-style story with `@UC-NNN.M` scenarios naming existing criteria (merge skipped), (c) edited criterion shows `Changed` in `gh optivem spec status`. Decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet): record the decision as a new plan item.
 - **D4.** `--no-legacy` spot-check during any scaffold run above.
 Done when: each check is recorded pass/fail; failures become new plan items or `/fix-bug` handoffs.
@@ -92,10 +92,10 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 
 ## Rehearsal setup (Linux devcontainer, verified 2026-11-05)
 
-Tokens load from `~/.config/gh-optivem/.env`. Install the extension from the repo (`go build -o gh-optivem . && gh extension install .`). apt: `openjdk-21-jdk-headless` + Chromium libs (Ubuntu 24.04 `t64` names: `libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libasound2t64 libatspi2.0-0t64 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libnss3 libpango-1.0-0 libcairo2`). Per run, inside a scratch shop clone at `main`: fresh branch, `rm -rf system-test/java/src/test/java/com/mycompany/myshop/systemtest/legacy`, `export GH_OPTIVEM_CONFIG=$PWD/gh-optivem-monolith-java.yaml`, `gh optivem system clean`, `gh optivem --auto implement N ... --headless --log-file ../x.log`. `--shop-ref` is a scaffold flag, not an `implement` flag. `scripts/atdd-rehearsal.sh` has no lock: "no containers / no other `implement` running" is the lock.
+Tokens load from `~/.config/gh-optivem/.env` (CRLF file: never `source` it into a shell; let gh-optivem load it). Install the extension from the repo (`go build -o gh-optivem . && gh extension install .`). apt: `openjdk-21-jdk-headless` + Chromium libs (Ubuntu 24.04 `t64` names: `libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libasound2t64 libatspi2.0-0t64 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libnss3 libpango-1.0-0 libcairo2`). Per run, inside a scratch shop clone at `main`: fresh branch, `rm -rf system-test/java/src/test/java/com/mycompany/myshop/systemtest/legacy`, `export GH_OPTIVEM_CONFIG=$PWD/gh-optivem-monolith-java.yaml`, `gh optivem system clean`, `gh optivem --auto implement N ... --headless --log-file ../x.log`. `--shop-ref` is a scaffold flag, not an `implement` flag. `scripts/atdd-rehearsal.sh` has no lock: "no containers / no other `implement` running" is the lock.
 
 ## Blocked (filled in by the run)
 
-- **Sonar preflight 401 (fixed 2026-11-05):** D1 attempts 1–2 failed preflight (`sonarcloud: organizations/search optivem: HTTP 401`); SonarCloud started rejecting HTTP Basic token auth between 12:34 and 12:45 UTC (Bearer still valid). Fixed in `internal/kernel/shell/sonarcloud.go` + `internal/config/token_auth.go` (Bearer, matching `internal/devworkflow/sonar`). D1/D2 re-run after the fix.
+- **Sonar preflight 401 (resolved 2026-11-05, not a product bug):** D1 attempts 1–2 failed preflight with `HTTP 401` because the worker had `source`d the CRLF `~/.config/gh-optivem/.env` into its shell, so `SONAR_TOKEN` carried a trailing `\r` (gh-optivem's own .env loader trims it). Don't `source` that file; let gh-optivem load it. Side change kept: Sonar preflight/token check now send Bearer (consistency with `internal/devworkflow/sonar`), commit 2a6a9ba0; its message wrongly blames SonarCloud.
 
 - **C2c gate not met:** no absence-shaped ticket is in the rehearsal corpus (#68's criterion was dropped, #69 has none), so "an absence-shaped ticket goes green by copying the shop reference" has not been observed. Needs either a new absence-shaped issue (creating one is the user's call) or #68's criterion restored first.

@@ -32,8 +32,8 @@ func NewSonarCloud(token, org string) *SonarCloud {
 
 func (s *SonarCloud) api(ctx context.Context, method, endpoint string, data map[string]string) (map[string]interface{}, error) {
 	apiURL := "https://sonarcloud.io/api" + endpoint
-	// SonarCloud rejects HTTP Basic (token as username) since 2026-11-05;
-	// user tokens must be sent as a Bearer token.
+	// Bearer token auth (SonarCloud's recommended form; matches
+	// internal/devworkflow/sonar).
 	creds := s.Token
 
 	var raw []byte
