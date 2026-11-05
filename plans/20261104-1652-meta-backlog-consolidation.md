@@ -1,7 +1,5 @@
 # Plan coordination meta-plan: backlog consolidation (autonomous run)
 
-> 🤖 **Picked up by agent** — `cd40624e55d3` at `2026-11-05T12:24:47Z`
-
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p1..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
@@ -9,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**D3** (Part 2, Docker): story-merge checks (a)–(c) under Phase D, local-only per "Rehearsal setup", plus record a recommendation for when `gh optivem spec record` runs after green as a new plan item. Then **D4** (`--no-legacy` scaffold spot-check): the auto-mode classifier blocked an unattended launch that included creating/deleting a throwaway repo, so D4 needs the user's go-ahead or a local-only scaffold path.
+Autonomous work is exhausted pending two user decisions: (1) **D4** `--no-legacy` scaffold spot-check, whose unattended launch (including creating/deleting a throwaway repo) was blocked by the auto-mode classifier on 2026-11-05: needs the user's go-ahead or a local-only scaffold path; (2) **D3d** (auto `spec record` after green): approve the recommendation, then implement it in `process-flow.yaml` + tests. Also consider turning the "Red phase accepts infra failures" follow-up into a `/fix-bug` or child plan. Everything else is Human-only or blocked on a release (E2).
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -65,7 +63,8 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 #### Phase D: verification checklist (sequential; all need `implement` runs)
 - D1 pass 2026-11-05: #76 re-run rc=0; `GATE_CHANNEL_TOUCHED -> bool=false` → `CHANNEL_SKIPPED channel=ui` ("Channel Untouched — System Cycle Skipped"), no no-op dispatch, no halt, ends `test-outcome=pass`. (#76 is left in In Acceptance on the board.)
 - D2 unattended part pass 2026-11-05: out-of-scope file injected during the writer → `VALIDATE_OUTPUTS_AND_SCOPES -> failure-kind=scope-diff, failing-task-name=write-acceptance-tests` → `FIX` → `APPROVE_PRE category=human` → yield rc=2; no separate scope-drift halt. Attended part is Human-only.
-- **D3.** story-merge behaviour: (a) story adding behaviour (merge diff approved, tests tagged with merged `UC-NNN.M` ids), (b) kickoff-style story with `@UC-NNN.M` scenarios naming existing criteria (merge skipped), (c) edited criterion shows `Changed` in `gh optivem spec status`. Decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet): record the decision as a new plan item.
+- D3 2026-11-05: (c) pass (local spec edit of UC-001.2 → `spec status` "Changed 1", `spec check --mode strict` rc=1, `record --refresh` clears it); (a) partial: #69 reaches `CHECK_STORY_MERGE_NEEDED -> story-merge-needed=true` → `MERGE_USE_CASES` (`category=human`) and yields, so merge diff + `UC-NNN.M` tagging need an attended run (Human-only); (b) blocked: no corpus story carries `@UC-NNN.M` tags (checked #65, #68–72, #75, #84), needs an issue edit (Human-only); unit test `TestCheckStoryMergeNeeded_NoOpWhenScenariosNameExistingCriteria` covers the skip path.
+- [ ] **D3d (new, from D3).** Make `implement-ticket` run `gh optivem spec record` automatically: once after the last acceptance tests-pass step (all channels green) and before the commit step, scoped to the story's `merged-criteria`, creating `docs/use-cases/.spec-baseline.json` when missing (today `spec record` exits rc=2 without a prior `spec adopt`). Why: a fingerprint is only meaningful for criterion text green tests just verified, and committing it with those tests lets CI's `spec check` flag later edits as Changed. Recommendation, not yet approved: it touches `process-flow.yaml` (C7: single editor), so confirm with the user before executing.
 - **D4.** `--no-legacy` spot-check during any scaffold run above.
 Done when: each check is recorded pass/fail; failures become new plan items or `/fix-bug` handoffs.
 
@@ -79,6 +78,9 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 - **Items 20 (#13) and 21 (#16):** live in `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md` (#13 Option A, Java only; #16 `/users` directory, monolith-java only, refine deferred); gh-optivem plans: `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`, `plans/backlog/p3-tooling-cost/20260617-1001-rehearsal-corpus-testinstance-and-refine.md`. Not part of this run.
 
 - **C2c (Item 15 / #21 Step 6):** restore #68's dropped criterion (or create a new absence-shaped issue), then rehearse that an absence-shaped ticket goes green by copying the shop reference. See `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`.
+- **D3a attended check:** attended `implement 69`: approve `merge-use-cases`, confirm the merge diff and tests tagged with merged `UC-NNN.M` ids.
+- **D3b:** tag a corpus story's scenarios with existing ids (e.g. #69 → `@UC-001.8`) or create a tagged issue, then confirm the merge is skipped.
+- **Board tidy-up from this run:** #69 was moved In QA → In Progress by the D3a rehearsal (not restored); #76 sits in In Acceptance after D1.
 - **D2 attended check:** in an attended run, let the fixer loop exhaust after an out-of-scope edit and confirm the halt is report-only and lists "fixer edited: N file(s)" (#15, commit 416a761f).
 - **C2b attended check:** in an attended `implement` run that hits a compile failure, approve the `fix-*` (human-category) dispatch and confirm the fixer runs with the writer's scope.
 
