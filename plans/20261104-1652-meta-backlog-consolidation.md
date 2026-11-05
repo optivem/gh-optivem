@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Part 1 (no Docker) has nothing executable right now:** E2 waits on a gh-optivem release, Phase B is deferred for discussion. **When ready for Docker, start Part 2 with C2a** (runtime check of `cannotPlaceOrderWithNonExistentCoupon` on 6 combos, no headless agents). C1, C2b and D1–D4 also need headless agents (see Blocked).
+**Part 1 (no Docker) has nothing executable right now:** E2 waits on a gh-optivem release, Phase B is deferred for discussion. **Part 2 has nothing executable autonomously either:** C2a done 2026-11-05 (green on all 6 combos). C1, C2b and D1–D4 need headless agents (see Blocked); C2c edits GitHub issue #68 and needs the user's approval first. Next move is the user's: grant a headless-agent permission rule (or run those units attended), approve C2c, or cut a release for E2.
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -54,7 +54,6 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 #### Phase C: Items 13, 15
 - **C1 (Item 13 / #12).** Step 6 done (shop `de90fbe7`). Remaining: the #76 red-phase trace check in a rehearsal (`plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`). Done when: rehearsal shows the failure capture window as designed. Needs headless agents (see Blocked).
 - **C2 (Item 15 / #21).** In `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`:
-  - **C2a.** Runtime check: `cannotPlaceOrderWithNonExistentCoupon` (ends in `noOrderPersisted`, already on shop `main`) green via `gh optivem system start` + system tests on monolith and multitier × Java / .NET / TypeScript. No headless agents needed.
   - **C2b.** Rehearsal check of the `scope-task-name` fixer change (needs headless agents).
   - **C2c.** Step 6: restore #68's criterion (editing a GitHub issue: ask first).
   Done when: all runtime checks pass.
