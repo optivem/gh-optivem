@@ -1,7 +1,5 @@
 # Plan coordination meta-plan: backlog consolidation (autonomous run)
 
-> 🤖 **Picked up by agent** — `cd40624e55d3` at `2026-11-05T14:19:22Z`
-
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p2..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
@@ -9,10 +7,10 @@
 
 ## ▶ Next executable step (resume here)
 
-**Autonomous unit ready: F2 (below; Docker, under the rehearsal lock).** F1 shipped 2026-11-05 (`merge-use-cases` is now `category: test-agent`). After F2 the rest of this list is user-gated. Agreed order (2026-11-05):
+**No autonomous units remain.** F1 and F2 shipped on 2026-11-05. Everything below needs the user (tokens, a release, SonarCloud, attended checks, confirming the ERP-gap option) or the user's go for `/fix-bug`.
 
 1. **Tokens (user, before 2026-11-08 when WORKFLOW_TOKEN expires):** new REPO_TOKEN (classic PAT, `repo`), DOCKERHUB_TOKEN and WORKFLOW_TOKEN in `~/.config/gh-optivem/.env`; `go install github.com/rhysd/actionlint/cmd/actionlint@v1`; `gh auth refresh -s delete_repo`. Then the agent reruns **D4** autonomously (throwaway repos are pre-authorized).
-2. **Story-intake blocker:** F1 done 2026-11-05; remaining is F2 (rerun #65 unattended with an extension built from gh-optivem `main`, decide the ERP-gap plan).
+2. **ERP-gap option (user):** confirm Option A + slimmed B in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` (the F2 rerun on 2026-11-05 still reproduces the gap).
 3. **User, when convenient:** gh-optivem release (unblocks E2), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a/D3b and C2c, and the board tidy-up (#65, #69, #76).
 4. **Agent, on the user's go (`/fix-bug` each):** `install-gh-optivem` absolute-path bug (the tag move needs approval), .NET `--test` case-sensitive name check, red phase accepting infra failures.
 
@@ -59,9 +57,8 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 - [ ] **B1–B4** (shop "empty" variant, `removal.go`, removal tests, end-to-end run) — ⏳ Deferred: not ready; the skeleton design needs a future discussion. Findings so far: a `--no-legacy`-style delete list can't produce a buildable repo (the sample runs through the driver/DSL aggregators and all system code), so shop must ship replacement skeleton sources (~100+ files, 9 projects, multi-session). Recommendation on the table (not decided): a **walking skeleton** (one thin hello-world slice UI → API → backend → DB, one acceptance test through DSL/driver on API + UI channels, tagged as skeleton not `UC-001`; keep the test architecture, Postgres, Keycloak, WireMock harness; drop clock/erp/tax and the order/coupon code), shipped in shop as an overlay + delete list so shop CI proves it for all 6 combos. See `plans/20261104-1121-switch-shop-to-own-domain.md`. (B4's end-to-end run needs Docker; run it with Part 2 when B is picked up.)
 
 #### Phase F: unattended story intake (approved by the user 2026-11-05)
+- F2 done 2026-11-05: unattended #65 passed `MERGE_USE_CASES` with no yield (`category=test-agent`), then halted at `ESCC_UNDECLARED_HALT` (rc=1) on the same `system-implementer` ERP-list scope exception. Recorded in the ERP-gap plan, with two new reasons; the user confirms Option A + slimmed B. The shop branch `f2-rehearsal-65` stayed local; nothing was pushed.
 - F1 done 2026-11-05: `merge-use-cases` moved to `category: test-agent` (process-flow.yaml, transitions_test, README, cli-reference, use-case-merger prompt); `go test -p 2 ./...` green. `docs/process-diagram.md` is left to the CI regeneration bot.
-- [ ] **F2 (Docker, after F1; run under the rehearsal lock).** Rerun #65 unattended per "Rehearsal setup" (fresh shop clone at `main`, `gh-optivem-monolith-java.yaml`, `gh optivem --auto implement 65 --headless --log-file ...`). Confirm the trace passes `MERGE_USE_CASES` without yielding. Then decide `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`: green → delete it; same `system-implementer` scope-exception → record that in the plan and leave Option A + slimmed B for the user to confirm; any other halt → record it as a new finding. Remove the "#65 attended re-run" Human-only item either way. Note the board state of #65 in the tidy-up item.
-
 ### Part 2: Docker (run last, one at a time under the rehearsal lock)
 
 #### Phase C: Items 13, 15
@@ -93,8 +90,7 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 - **C2c (Item 15 / #21 Step 6):** restore #68's dropped criterion (or create a new absence-shaped issue), then rehearse that an absence-shaped ticket goes green by copying the shop reference. See `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`.
 - **D3a attended check:** attended `implement 69`: approve `merge-use-cases`, confirm the merge diff and tests tagged with merged `UC-NNN.M` ids.
 - **D3b:** tag a corpus story's scenarios with existing ids (e.g. #69 → `@UC-001.8`) or create a tagged issue, then confirm the merge is skipped.
-- **Board tidy-up from this run:** #69 was moved In QA → In Progress by the D3a rehearsal (not restored); #76 sits in In Acceptance after D1; #65 was moved to In progress by the 2026-11-05 unattended re-run (not restored).
-- **#65 attended re-run:** `gh optivem --auto implement 65 --headless` on `gh-optivem-monolith-java.yaml` in a shop clone (approve `merge-use-cases`), to check whether the June ERP product-list gap still reproduces. Then decide `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` (delete if green, else Option A + slimmed B).
+- **Board tidy-up from this run:** #69 was moved In QA → In Progress by the D3a rehearsal (not restored); #76 sits in In Acceptance after D1; #65 is In Progress (set again by the F2 run on 2026-11-05, not restored; still OPEN).
 - **D2 attended check:** in an attended run, let the fixer loop exhaust after an out-of-scope edit and confirm the halt is report-only and lists "fixer edited: N file(s)" (#15, commit 416a761f).
 - **C2b attended check:** in an attended `implement` run that hits a compile failure, approve the `fix-*` (human-category) dispatch and confirm the fixer runs with the writer's scope.
 

@@ -1,6 +1,11 @@
 # Plan: close the ERP product-list staging gap behind #65 "View product list" ({20260613-1950})
 
-⏳ **RE-CHECK FIRST (2026-11-05).** The diagnosis below is from the 2026-06-11 run and predates many pipeline changes, so the gap may no longer reproduce. An unattended re-run on 2026-11-05 (shop `5baa36a4`, monolith-java) did not reach the writers: it yielded at `MERGE_USE_CASES` (`category=human`, rc=2) before any test or code was written. Next: an attended `gh optivem --auto implement 65 --headless` (approve `merge-use-cases`), then read the trace. If #65 goes green, delete this plan; if it hits the same `system-implementer` scope-exception, pick an option below (recommended: A plus a slimmed B). Do not start `## Items` before that.
+⏳ **RE-CHECKED 2026-11-05: the gap still reproduces; waiting for the user to confirm the option.** Unattended `gh optivem --auto implement 65 --headless` (shop `5baa36a4`, monolith-java, gh-optivem `67c93f79` with `merge-use-cases` at the test-agent tier). The merge ran unattended: `scenario-map=[Products are available => UC-002.1, No products are available => UC-002.2]`. Tests, DSL and the api/ui driver adapters were written. `system-implementer` (api channel) then raised a scope exception, which `CATEGORIZE_SCOPE_EXCEPTION` classified as `escc-undeclared` → error-end `ESCC_UNDECLARED_HALT` (rc=1). In June the run ended at STOP_SCOPE_VIOLATION instead. Agent reasons:
+1. **Same gap:** UC-002.1 has no data source. The given product only stubs `GET /erp/api/products/SKU`, no ERP list endpoint is stubbed, and `ErpGateway` can only look up a known SKU.
+2. **New:** UC-002.2 asserts `hasCount 0`, but `WhenImpl.viewProductList` calls `defaults.ensure`, so `DefaultGivens` stubs `DEFAULT_SKU` into the ERP and the empty list can never be empty.
+3. **New:** exact counts on a shared WireMock are not isolated from parallel tests.
+
+Files the agent flagged as out of its scope: `ViewProductListTest.java`, `WhenImpl.java`, `DefaultGivens.java`, `ErpStubClient.java`. #65 has no `## External System Contract Criteria` section, which is why the run ended at the ESCC halt. Recommended: Option A plus a slimmed B (below), extended to cover reason 2 (no default product stub for the list scenario) and reason 3 (assert on the stubbed SKUs, not on an exact count). The user confirms the option before `## Items` starts.
 
 Context: the `atdd-rehearsal-loop.sh` corpus run on 2026-06-11 stopped at #65.
 The `system-implementer` (api, Java monolith) emitted a **scope-exception** and
