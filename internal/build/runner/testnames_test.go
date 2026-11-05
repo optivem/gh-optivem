@@ -182,8 +182,9 @@ func equalSets(a, b []string) bool {
 // tolerance for manual partial filters, and a genuine miss.
 func TestNameExecuted(t *testing.T) {
 	executed := map[string]bool{
-		"cannotCancelAnOrderAt2245OnDec31": true,
-		"placeOrder":                       true,
+		"cannotCancelAnOrderAt2245OnDec31":      true,
+		"placeOrder":                            true,
+		"CannotPlaceOrderWithNonExistentCoupon": true, // .NET PascalCase
 	}
 	cases := []struct {
 		req  string
@@ -192,7 +193,8 @@ func TestNameExecuted(t *testing.T) {
 		{"cannotCancelAnOrderAt2245OnDec31", true}, // exact
 		{"Cancel", true}, // substring (manual partial)
 		{"placeOrder", true},
-		{"shipOrder", false}, // genuine miss
+		{"cannotPlaceOrderWithNonExistentCoupon", true}, // camelCase token, .NET method
+		{"shipOrder", false},                            // genuine miss
 	}
 	for _, tc := range cases {
 		if got := nameExecuted(tc.req, executed); got != tc.want {

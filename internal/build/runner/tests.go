@@ -411,12 +411,16 @@ func anyIn(values, universe []string) bool {
 // the bare method; dotnet `~` and playwright `--grep` are substring). The
 // tolerance keeps a manual partial filter (e.g. `--test=Cancel`) from
 // false-failing while still catching a token that matched nothing at all.
+// The comparison is case-insensitive: dotnet's `~` filter matches regardless
+// of case, so a camelCase token (as written for Java/TS) runs the PascalCase
+// .NET method and must not be reported as "never executed".
 func nameExecuted(requested string, executed map[string]bool) bool {
 	if executed[requested] {
 		return true
 	}
+	want := strings.ToLower(requested)
 	for e := range executed {
-		if strings.Contains(e, requested) {
+		if strings.Contains(strings.ToLower(e), want) {
 			return true
 		}
 	}

@@ -215,7 +215,7 @@ func (s pwSpec) skipped() bool {
 }
 
 type pwSuite struct {
-	Specs []pwSpec `json:"specs"`
+	Specs  []pwSpec  `json:"specs"`
 	Suites []pwSuite `json:"suites"`
 }
 
