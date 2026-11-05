@@ -9,7 +9,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**C2b** (Part 2, Docker): rehearsal check of the `scope-task-name` fixer change (`plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`). Run unattended per "Rehearsal setup" below; record the trace's call-activity params (the fixer's scope) as partial evidence; the fixer dispatch itself is `category: human` so an unattended run pauses at it (expected). Then D1–D4.
+**D1–D4** (Part 2, Docker, sequential): the verification checklist under Phase D, using "Rehearsal setup" below. Done when each check is recorded pass/fail here; failures become new plan items or `/fix-bug` handoffs.
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -58,7 +58,7 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 #### Phase C: Items 13, 15
 - C1 done 2026-11-05: #76 red-phase rehearsal rc=0; `verify_failure_output` opens with the `AssertionError` (head window), then `--- (later output) ---`, zero deprecation lines. A0 confirmed end to end (children `Write` + `gh optivem test compile`/`output write` with no denials; one intended denial of a `python3` heredoc edit).
 - **C2 (Item 15 / #21).** In `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`:
-  - **C2b.** Rehearsal check of the `scope-task-name` fixer change. User decision 2026-11-05: run unattended and record the trace's call-activity params (the fixer's scope) as partial evidence; the full dispatch check stays as a human-only attended item.
+  - C2b done 2026-11-05 (partial evidence, as decided): unattended #76 run with an induced compile break after the writer; trace `EXECUTE_COMMAND ... params=...,command=gh optivem system-test compile,scope-task-name=write-acceptance-tests,task-name=compile-tests` → `FIX` → `APPROVE_PRE category=human` → yield rc=2; flow.txt shows FIX/APPROVE_PRE/ASK_HUMAN all carry `scope-task-name=write-acceptance-tests`. The attended fixer-runs-with-writer-scope check stays Human-only. Side note: `setup-tests` passes no `scope-task-name` (already listed out of scope in the child plan).
   - **C2c.** Moved to Human-only (user decision 2026-11-05: don't edit #68 autonomously).
   Done when: all runtime checks pass.
 
@@ -95,5 +95,4 @@ Tokens load from `~/.config/gh-optivem/.env`. Install the extension from the rep
 
 ## Blocked (filled in by the run)
 
-- **C2b caveat (found while preparing):** `fix-${failure-kind}` dispatches are `category: human`, which `--confirm=human` never auto-approves and the dispatcher never runs headless (`driver.go`: `Headless: opts.Headless && category != "human"`). An unattended run that hits a compile failure therefore pauses (exit 2) at the fixer's approval instead of dispatching it, so C2b's "fixer dispatched with the writer's scope" check needs an attended run (or the trace's call-activity params as partial evidence).
 - **C2c gate not met:** no absence-shaped ticket is in the rehearsal corpus (#68's criterion was dropped, #69 has none), so "an absence-shaped ticket goes green by copying the shop reference" has not been observed. Needs either a new absence-shaped issue (creating one is the user's call) or #68's criterion restored first.
