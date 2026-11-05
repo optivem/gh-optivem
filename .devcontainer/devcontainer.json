@@ -38,6 +38,14 @@
   "containerEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
   },
+  "remoteEnv": {
+    "DOCKERHUB_USERNAME": "${localEnv:DOCKERHUB_USERNAME}",
+    "DOCKERHUB_TOKEN": "${localEnv:DOCKERHUB_TOKEN}",
+    "GHCR_TOKEN": "${localEnv:GHCR_TOKEN}",
+    "REPO_TOKEN": "${localEnv:REPO_TOKEN}",
+    "SONAR_TOKEN": "${localEnv:SONAR_TOKEN}",
+    "WORKFLOW_TOKEN": "${localEnv:WORKFLOW_TOKEN}"
+  },
   "postCreateCommand": "gh-optivem-bootstrap",
   "postAttachCommand": "if [ -f .devcontainer/fix-git-credential-helpers.sh ]; then bash .devcontainer/fix-git-credential-helpers.sh; fi",
   "remoteUser": "vscode"
