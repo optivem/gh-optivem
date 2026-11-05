@@ -905,7 +905,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = use-case-merger<br/>category = human<br/>task-name = merge-use-cases"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = use-case-merger<br/>category = test-agent<br/>task-name = merge-use-cases"]
     MERGE_USE_CASES_END(( ))
 
     EXECUTE_AGENT --> MERGE_USE_CASES_END
