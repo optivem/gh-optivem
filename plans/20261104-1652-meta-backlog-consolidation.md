@@ -51,8 +51,6 @@ Not pre-authorized, so still stop-and-ask: force-push, releases, closing GitHub 
 - **D2.** scope-drift fix-loop (#15): induce a test-only fixer; confirm scope-drift guard / fix loop is report-only as designed.
 - **D3.** story-merge behaviour: (a) story adding behaviour (merge diff approved, tests tagged with merged `UC-NNN.M` ids), (b) kickoff-style story with `@UC-NNN.M` scenarios naming existing criteria (merge skipped), (c) edited criterion shows `Changed` in `gh optivem spec status`. Decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet): record the decision as a new plan item.
 - **D4.** `--no-legacy` spot-check during any scaffold run above.
-- **D5.** schedule orphan-repo cleanup: use `gh run list` (single batch query, 2 min between checks) to confirm the first scheduled run on `main` executed and cleaned up.
-- **D6.** actionlint latest canary: trigger via `workflow_dispatch`, confirm it runs, check whether Sonar rule S8545 fires.
 Done when: each check is recorded pass/fail; failures become new plan items or `/fix-bug` handoffs.
 
 ### Phase E: Item 23 remainder (#42 Slice 1; plan `plans/backlog/p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component.md`)
@@ -63,7 +61,7 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 ## Human-only (excluded from autonomous runs)
 
 - **Item 22 (#20) Step 8:** collapse `scripts/readme-steps.sh` after a green clean-room VM run. Plan: `plans/backlog/p2-atdd-quality/20260812-1705-environment-setup-command.md`.
-- **Item 24 (Sonar S3776):** mark remaining test-file findings Won't Fix in SonarCloud (needs admin rights), then delete `plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md`.
+- **Item 24 (Sonar S3776):** mark remaining test-file findings Won't Fix in SonarCloud (needs admin rights), then delete `plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md`. Also mark `githubactions:S8545` on `.github/workflows/gh-actionlint-canary.yml:41` (`actionlint@latest`) Accepted/Won't Fix: unpinned is the canary's purpose (found by D6, 2026-11-05).
 - **Items 20 (#13) and 21 (#16):** live in `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md` (#13 Option A, Java only; #16 `/users` directory, monolith-java only, refine deferred); gh-optivem plans: `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`, `plans/backlog/p3-tooling-cost/20260617-1001-rehearsal-corpus-testinstance-and-refine.md`. Not part of this run.
 
 ## Not in scope (triggers, not units)
@@ -72,4 +70,5 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 
 ## Blocked (filled in by the run)
 
-_none yet_
+- **Headless-agent rehearsals (`gh optivem --auto implement ... --headless`) are refused by this session's auto-mode permission check** (it launches headless claude agents). Not bypassed. Affects C1's trace check, C2's fixer rehearsal check, D1–D4. Needs an attended run or a user-granted permission rule.
+- **C1:** step 6 shipped (shop `de90fbe7`, `--warning-mode none` in `system-test/java/tests*.yaml`; child plan updated in gh-optivem `3032161d`). Probe of `formatVerifyFailureOutput` on real Gradle output shows the assertion in the head window and no deprecation chaff. Remaining: the #76 red-phase trace check (headless rehearsal, see above).
