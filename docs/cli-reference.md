@@ -694,7 +694,7 @@ gh optivem spec check --mode strict --threshold 90 --json > spec-report.json
 
 ### Stories and the merge step
 
-`gh optivem implement` runs a `merge-story-into-use-cases` step for stories (not bugs or tasks) before the acceptance tests. Use cases are the current spec; the story is an increment; the merge is one-way (only the use cases are edited). If every scenario of the story names an existing criterion (a `@UC-001.4` tag, or the id in a comment line above the scenario, its title or steps), the merge is a no-op and needs no approval. Otherwise the `use-case-merger` agent proposes the narrative and `UC-NNN.M` changes, and the diff needs your approval (human tier: `--auto` does not skip it). The run fails on a contradiction with existing criteria, an unmapped scenario, or invalid merged use cases.
+`gh optivem implement` runs a `merge-story-into-use-cases` step for stories (not bugs or tasks) before the acceptance tests. Use cases are the current spec; the story is an increment; the merge is one-way (only the use cases are edited). If every scenario of the story names an existing criterion (a `@UC-001.4` tag, or the id in a comment line above the scenario, its title or steps), the merge is a no-op and needs no approval. Otherwise the `use-case-merger` agent proposes the narrative and `UC-NNN.M` changes, and the diff needs your approval (`test-agent` tier: `--auto` skips it, so review the use case change in its commit). The run fails on a contradiction with existing criteria, an unmapped scenario, or invalid merged use cases.
 
 ## Methodology assets
 

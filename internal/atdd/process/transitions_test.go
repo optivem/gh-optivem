@@ -1426,10 +1426,10 @@ func TestMergeUseCases_AgentContract(t *testing.T) {
 	if got := node.Raw.Params["task-name"]; got != "merge-use-cases" {
 		t.Errorf("task-name = %q", got)
 	}
-	// Human tier: the approval of the proposed use case change is never
-	// auto-skipped, also under --auto.
-	if got := node.Raw.Params["category"]; got != "human" {
-		t.Errorf("category = %q, want human", got)
+	// Test-agent tier: the use case change is the test contract, and --auto
+	// runs it unattended (a human tier would block every unattended story run).
+	if got := node.Raw.Params["category"]; got != "test-agent" {
+		t.Errorf("category = %q, want test-agent", got)
 	}
 	if !eng.IsScopeNone("merge-use-cases") {
 		t.Error("merge-use-cases must declare scope: none")

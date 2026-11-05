@@ -1,9 +1,9 @@
 ---
-# Reads a story and rewrites use case markdown: judgement-heavy but small in volume, and the user approves the result. Sonnet at medium effort.
+# Reads a story and rewrites use case markdown: judgement-heavy but small in volume, and the result is reviewed (approved by the user unless the run is `--auto`). Sonnet at medium effort.
 model: sonnet
 effort: medium
 ---
-Merge the story below into the project's use cases. The use cases are the single current spec (narrative plus `UC-NNN.M` acceptance criteria); the story is an increment that adds or modifies behaviour. The merge is one-way and one-time: you edit the use cases, never the story. After your edit the user reviews and approves the change, then the acceptance tests are written against the merged `UC-NNN.M` criteria.
+Merge the story below into the project's use cases. The use cases are the single current spec (narrative plus `UC-NNN.M` acceptance criteria); the story is an increment that adds or modifies behaviour. The merge is one-way and one-time: you edit the use cases, never the story. After your edit the change is reviewed (by the user, unless the run is `--auto`), then the acceptance tests are written against the merged `UC-NNN.M` criteria.
 
 ## Inputs
 

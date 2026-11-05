@@ -2767,9 +2767,10 @@ processes:
   #                             (kickoff-generated stories) needs no merge and
   #                             SKIPS the agent and its approval, so unattended
   #                             runs do not stall.
-  #   MERGE_USE_CASES           the merge agent proposes the use case change;
-  #                             its human-tier PRE/POST approval is the user's
-  #                             approval of the use case diff (POST rejection
+  #   MERGE_USE_CASES           the merge agent edits the use cases; its
+  #                             test-agent-tier PRE/POST approval is the review
+  #                             of the use case diff (skipped under --auto, so
+  #                             unattended story runs proceed; POST rejection
   #                             halts the run).
   #   VERIFY_STORY_MERGE        consistency check: no contradiction raised, the
   #                             use cases validate, every story scenario maps to
@@ -2816,8 +2817,9 @@ processes:
 
   # Artifact-only in the doctrinal sense of `scope: none`: the agent edits the
   # use case markdown (spec, not code), which no code-layer scope key covers;
-  # the human-tier POST approval of the diff is the review of that edit. Always
-  # engages the operator (category human), also under --auto.
+  # the test-agent-tier POST approval of the diff is the review of that edit.
+  # Same tier as the test writers (the merged criteria are the test contract),
+  # so --auto runs it unattended; the edit lands as a reviewable docs commit.
   merge-use-cases:
     name: "Merge Use Cases"
     start: EXECUTE_AGENT
@@ -2835,8 +2837,9 @@ processes:
         params:
           task-name: merge-use-cases
           agent: use-case-merger
-          # human tier: the user approves the proposed use case change.
-          category: human
+          # test-agent tier: the use case change is the test contract;
+          # --auto runs it unattended (human tier would always prompt).
+          category: test-agent
         scope: none
 
       - id: MERGE_USE_CASES_END
