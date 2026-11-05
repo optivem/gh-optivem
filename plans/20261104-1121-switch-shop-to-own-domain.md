@@ -25,7 +25,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 5 is decided (Option B) but needs a shop-side "empty template" plan first (attended; shop push needs OK). Everything else in Wave 1 shipped in `internal/kickoff/`, `kickoff_commands.go` and `internal/atdd/assets/runtime/agents/kickoff/`. Step 4 is complete (`IDENTIFY_EXTERNAL_SYSTEM` was already retired; ATDD resolves external systems from the `gh-optivem.yaml` registry and `validate-external-systems-registered` already fails loud on an unregistered one, so no diagram read was added). Step 7 docs shipped (README, cli-reference). Remaining: shop removal (Steps 1+5) and the attended end-to-end run of Step 8.
+⏳ **Deferred 2026-11-05 (user): the skeleton design needs a future discussion before any work here; see the Phase B note in `plans/20261104-1652-meta-backlog-consolidation.md` (walking-skeleton recommendation, not decided).** Step 5 is decided (Option B) but needs a shop-side "empty template" plan first (attended; shop push needs OK). Everything else in Wave 1 shipped in `internal/kickoff/`, `kickoff_commands.go` and `internal/atdd/assets/runtime/agents/kickoff/`. Step 4 is complete (`IDENTIFY_EXTERNAL_SYSTEM` was already retired; ATDD resolves external systems from the `gh-optivem.yaml` registry and `validate-external-systems-registered` already fails loud on an unregistered one, so no diagram read was added). Step 7 docs shipped (README, cli-reference). Remaining: shop removal (Steps 1+5) and the attended end-to-end run of Step 8.
 
 ## Steps
 

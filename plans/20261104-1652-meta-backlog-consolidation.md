@@ -1,5 +1,7 @@
 # Plan coordination meta-plan: backlog consolidation (autonomous run)
 
+> 🤖 **Picked up by agent** — `8f47336fc9eb` at `2026-11-05T07:44:15Z`
+
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p1..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
@@ -7,7 +9,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Unit A1:** run `/sync` for gh-optivem (pushes the unpushed Priority 0 commits). Then **Unit B1:** draft the shop empty-template plan (`--no-sample`) in `../shop/plans/` and execute it.
+**Prerequisite:** `gh auth login` done and `gh extension install .` run from gh-optivem (dev container starts without either). Then **Unit C1:** in `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md` do step 6 (Gradle `--warning-mode none` in shop `system-test/java/tests*.yaml`, shop cloned into the session scratch dir), push shop, then the rehearsal check with `--shop-ref main`. Phase B is deferred.
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -15,6 +17,11 @@ An autonomous run may, without asking:
 - **Push to shop `main`** via `gh optivem commit --repo shop`. Never touch `*-cloud.yml`, `terraform/`, or Keycloak cloud files (the shop cloud plan `shop/plans/20261029-1316-deploy-shop-cloud-run.md` may be active). Run shop's own CI/tests before each push.
 - **Run docker rehearsals**, one at a time (they bind fixed docker ports; take the lock, release after each).
 - **Push gh-optivem commits** through `/commit` or `/sync` (never raw git).
+
+Added 2026-11-05 (execution session):
+- **Create and clean up throwaway GitHub repos** for rehearsals, and **dispatch workflow runs** (D5/D6), without asking.
+- Rehearsals after shop pushes use **`--shop-ref main`** (the default pin is the latest `meta-v*` release; cutting a release is not authorized).
+- Shop-editing units (B1, C1 step 6, E1/E2) clone shop into the session scratch dir per unit; no persistent `../shop` needed.
 
 Not pre-authorized, so still stop-and-ask: force-push, releases, closing GitHub issues, deleting anything outside this plan's own files.
 
@@ -32,14 +39,8 @@ Not pre-authorized, so still stop-and-ask: force-push, releases, closing GitHub 
 
 ## Executable units (in order)
 
-### Phase A: sync
-- **A1.** `/sync` gh-optivem. Done when: no unpushed commits on `main`.
-
-### Phase B: kickoff shop removal (Priority 0 remainder; plan `plans/20261104-1121-switch-shop-to-own-domain.md`)
-- **B1.** Draft and execute a shop plan (in `../shop/plans/`, via `--repo shop`) adding an "empty" template variant (`--no-sample`, like `--no-legacy`), decided Option B. Done when: shop CI green and a generated empty variant builds for each architecture x language.
-- **B2.** In `internal/kickoff/removal.go` replace `DefaultRemove`/`sampleRemoved` (currently fails loud with `ErrRemovalUndecided`) to use the empty variant. Done when: `ErrRemovalUndecided` path is gone and kickoff/autopilot no longer fail on removal.
-- **B3.** Step 8 remainder: removal unit tests per architecture x language. Done when: `scripts/test.sh` green.
-- **B4.** Attended end-to-end run, now automated: on a throwaway repo run description -> prototype -> use cases -> shop removed -> stories -> autopilot (rehearsal lock). Done when: run completes; record any defects as new plan items.
+### Phase B: kickoff shop removal — ⏳ Deferred (needs discussion; user, 2026-11-05)
+- [ ] **B1–B4** (shop "empty" variant, `removal.go`, removal tests, end-to-end run) — ⏳ Deferred: not ready; the skeleton design needs a future discussion. Findings so far: a `--no-legacy`-style delete list can't produce a buildable repo (the sample runs through the driver/DSL aggregators and all system code), so shop must ship replacement skeleton sources (~100+ files, 9 projects, multi-session). Recommendation on the table (not decided): a **walking skeleton** (one thin hello-world slice UI → API → backend → DB, one acceptance test through DSL/driver on API + UI channels, tagged as skeleton not `UC-001`; keep the test architecture, Postgres, Keycloak, WireMock harness; drop clock/erp/tax and the order/coupon code), shipped in shop as an overlay + delete list so shop CI proves it for all 6 combos. See `plans/20261104-1121-switch-shop-to-own-domain.md`.
 
 ### Phase C: Items 13, 15 (rehearsal + shop push), one at a time under the rehearsal lock
 - **C1 (Item 13 / #12).** In `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`: step 6 (Gradle `--warning-mode none` in shop `system-test/java/tests*.yaml`, push to shop), then the rehearsal check. Done when: rehearsal shows the failure capture window as designed.
