@@ -16,13 +16,11 @@
 
 ## ▶ Next executable step (resume here)
 
-All agent work (old Steps 2, 3, 4, 7, 8) is done and committed; only human verification remains. Step 1: in Git Bash on Windows, in the gh-optivem checkout, `git pull`, then `cp gh-optivem.exe gh-optivem` (or just `bash scripts/install.sh`, which now builds plain `gh-optivem`) and `gh optivem --version`. Gate: the version prints. Then Step 5 (rebuild the container; note the devcontainer now uses `.devcontainer/Dockerfile` + `bootstrap.sh`), then Step 6.
+Only Step 5 remains (Windows verified 2026-11-05: `install.sh` built plain `gh-optivem`, `gh optivem --version` printed `dev-81fc9b7f`). Rebuild the container (VS Code: "Dev Containers: Rebuild Container"); the devcontainer now uses `.devcontainer/Dockerfile` + `bootstrap.sh` (`gh-optivem-bootstrap`) to clone into the `gh-optivem-workspace` volume. Then run the Step 5 checks; when they pass, delete this plan.
 
 ## Steps
 
-- [ ] **Step 1: Restore Windows now (human, Windows).** In Git Bash, in `/c/Users/valen/Documents/GitHub/optivem/academy/gh-optivem`, run `cp gh-optivem.exe gh-optivem`. Done when: `gh optivem --version` prints on Windows.
 - [ ] **Step 5: Verify the container (human starts the rebuild).** Rebuild the container (VS Code: "Dev Containers: Rebuild Container"). Prerequisite: everything from the current bind-mounted container is committed and pushed, because the new container starts clean from GitHub. Inside it, check that `pwd` = `/workspaces/gh-optivem`, that `/workspaces/gh-optivem` is not a 9p mount (`grep ' /workspaces' /proc/self/mountinfo` doesn't show `9p`), and run `bash scripts/install.sh`. Done when: `gh optivem --version` prints `dev-<sha>`, the first 4 bytes of `gh-optivem` are `\x7fELF`, `git status` shows no `safe.directory` warning, and `bash -n scripts/test-system.sh` passes.
-- [ ] **Step 6: Verify Windows (human, Windows).** In Git Bash on Windows, `git pull` the gh-optivem checkout, then run `bash scripts/install.sh` and `gh optivem --version`. Done when: the version prints and the build log says `go build -o gh-optivem`.
 
 ## Non-goals and invariants
 
