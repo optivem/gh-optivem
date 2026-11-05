@@ -7,10 +7,10 @@
 
 ## ▶ Next executable step (resume here)
 
-No autonomous unit is left. Agreed order (2026-11-05):
+**Autonomous unit ready: F1 (below, approved by the user 2026-11-05).** Run it first; then the rest of this list is user-gated. Agreed order (2026-11-05):
 
 1. **Tokens (user, before 2026-11-08 when WORKFLOW_TOKEN expires):** new REPO_TOKEN (classic PAT, `repo`), DOCKERHUB_TOKEN and WORKFLOW_TOKEN in `~/.config/gh-optivem/.env`; `go install github.com/rhysd/actionlint/cmd/actionlint@v1`; `gh auth refresh -s delete_repo`. Then the agent reruns **D4** autonomously (throwaway repos are pre-authorized).
-2. **Story-intake blocker (user decision, then agent):** recommended: move `merge-use-cases` to the `test-agent` tier so `--auto` runs it (see Follow-ups, "Unattended story runs can't get past intake"). On approval the agent makes the change, runs the tests, then reruns #65 unattended (replaces the attended #65 run in Human-only) and decides the ERP-gap plan.
+2. **Story-intake blocker (APPROVED 2026-11-05 → unit F1):** move `merge-use-cases` to the `test-agent` tier so `--auto` runs it (see Follow-ups, "Unattended story runs can't get past intake"). On approval the agent makes the change, runs the tests, then reruns #65 unattended (replaces the attended #65 run in Human-only) and decides the ERP-gap plan.
 3. **User, when convenient:** gh-optivem release (unblocks E2), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a/D3b and C2c, and the board tidy-up (#65, #69, #76).
 4. **Agent, on the user's go (`/fix-bug` each):** `install-gh-optivem` absolute-path bug (the tag move needs approval), .NET `--test` case-sensitive name check, red phase accepting infra failures.
 
@@ -55,6 +55,10 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 
 #### Phase B: kickoff shop removal — ⏳ Deferred (needs discussion; user, 2026-11-05)
 - [ ] **B1–B4** (shop "empty" variant, `removal.go`, removal tests, end-to-end run) — ⏳ Deferred: not ready; the skeleton design needs a future discussion. Findings so far: a `--no-legacy`-style delete list can't produce a buildable repo (the sample runs through the driver/DSL aggregators and all system code), so shop must ship replacement skeleton sources (~100+ files, 9 projects, multi-session). Recommendation on the table (not decided): a **walking skeleton** (one thin hello-world slice UI → API → backend → DB, one acceptance test through DSL/driver on API + UI channels, tagged as skeleton not `UC-001`; keep the test architecture, Postgres, Keycloak, WireMock harness; drop clock/erp/tax and the order/coupon code), shipped in shop as an overlay + delete list so shop CI proves it for all 6 combos. See `plans/20261104-1121-switch-shop-to-own-domain.md`. (B4's end-to-end run needs Docker; run it with Part 2 when B is picked up.)
+
+#### Phase F: unattended story intake (approved by the user 2026-11-05)
+- [ ] **F1.** Move the `merge-use-cases` agent dispatch from `category: human` to `category: test-agent` in `internal/atdd/process/process-flow.yaml` (find it via `MERGE_USE_CASES` / `use-case-merger`), so `--auto` runs it unattended. Update any Go tests, docs (`docs/atdd/process/**`, cli-reference) or prompt text that state the merge is human-approved. Gate: `go build ./...` and the Go tests (`scripts/test.sh`) pass; commit via `/commit`. Then remove the "Unattended story runs can't get past intake" follow-up.
+- [ ] **F2 (Docker, after F1; run under the rehearsal lock).** Rerun #65 unattended per "Rehearsal setup" (fresh shop clone at `main`, `gh-optivem-monolith-java.yaml`, `gh optivem --auto implement 65 --headless --log-file ...`). Confirm the trace passes `MERGE_USE_CASES` without yielding. Then decide `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`: green → delete it; same `system-implementer` scope-exception → record that in the plan and leave Option A + slimmed B for the user to confirm; any other halt → record it as a new finding. Remove the "#65 attended re-run" Human-only item either way. Note the board state of #65 in the tidy-up item.
 
 ### Part 2: Docker (run last, one at a time under the rehearsal lock)
 
