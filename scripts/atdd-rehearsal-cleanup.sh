@@ -74,7 +74,7 @@ set -euo pipefail
 # --force when no rehearsal is active.
 #
 # The doctor chain at the end uses `gh optivem` resolved from PATH (the
-# installed binary), NOT the rehearsal's freshly-built `gh-optivem$(go env GOEXE)`
+# installed binary), NOT the rehearsal's freshly-built `gh-optivem`
 # which lives in a sibling repo and is scoped to that rehearsal run.
 
 # === REHEARSAL CONFIG === (keep aligned with atdd-rehearsal.sh)

@@ -21,7 +21,7 @@ set -euo pipefail
 #              stack whose state you want cleared.
 #
 # Workflow:
-#   1. Build gh-optivem$(go env GOEXE) from this repo (so clean exercises uncommitted
+#   1. Build gh-optivem from this repo (so clean exercises uncommitted
 #      local changes, not the installed `gh optivem`). Matters because
 #      `system clean` reads systems.yaml via the same path resolution as the
 #      rest of the binary; an outdated installed copy would silently scope to
@@ -43,8 +43,7 @@ REHEARSAL_DEFAULT_CONFIG="gh-optivem-monolith-typescript.yaml"
 # === END REHEARSAL CONFIG ===
 
 GH_OPTIVEM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN_NAME="gh-optivem$(go env GOEXE)"  # .exe on Windows, empty elsewhere
-BIN="$GH_OPTIVEM_ROOT/$BIN_NAME"
+BIN="$GH_OPTIVEM_ROOT/gh-optivem"
 
 if [[ -t 1 ]]; then
   C_BOLD=$'\033[1m'; C_CYAN=$'\033[36m'; C_RESET=$'\033[0m'
@@ -106,7 +105,7 @@ log "  binary:      $BIN"
 
 log "Building gh-optivem..."
 BUILD_LOG="$(mktemp)"
-if ! ( cd "$GH_OPTIVEM_ROOT" && go build -o "$BIN_NAME" . ) >"$BUILD_LOG" 2>&1; then
+if ! ( cd "$GH_OPTIVEM_ROOT" && go build -o gh-optivem . ) >"$BUILD_LOG" 2>&1; then
   cat "$BUILD_LOG" >&2
   log "go build failed — aborting before clean."
   rm -f "$BUILD_LOG"

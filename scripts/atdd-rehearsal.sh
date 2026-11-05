@@ -34,7 +34,7 @@ set -euo pipefail
 #               --auto for fully autonomous mode.
 #
 # Workflow:
-#   1. Build gh-optivem$(go env GOEXE) from this repo (so the rehearsal exercises
+#   1. Build gh-optivem from this repo (so the rehearsal exercises
 #      uncommitted local changes, not the installed `gh optivem`).
 #   2. `gh optivem system clean` against the consumer repo to drop
 #      volumes + locally-built images from prior rehearsals (registry-
@@ -66,7 +66,7 @@ set -euo pipefail
 #      yaml is already committed in shop, so it lands in the worktree
 #      automatically — no copy or init step needed.
 #   5. cd into it and run, with $GH_OPTIVEM_CONFIG pointing at the chosen yaml:
-#        <gh-optivem>/gh-optivem$(go env GOEXE) implement --issue <issue-num> \
+#        <gh-optivem>/gh-optivem implement --issue <issue-num> \
 #            --log-file <worktree>.log
 #      The log is written to a SIBLING of the worktree (not inside it) so
 #      it survives the cleanup-prompt deletion as a postmortem record.
@@ -85,7 +85,7 @@ REHEARSAL_DEFAULT_CONFIG="gh-optivem-monolith-typescript.yaml"
 # === END REHEARSAL CONFIG ===
 
 GH_OPTIVEM_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-BIN="$GH_OPTIVEM_ROOT/gh-optivem$(go env GOEXE)"  # .exe on Windows, empty elsewhere
+BIN="$GH_OPTIVEM_ROOT/gh-optivem"
 
 if [[ -t 1 ]]; then
   C_BOLD=$'\033[1m'; C_CYAN=$'\033[36m'; C_RESET=$'\033[0m'

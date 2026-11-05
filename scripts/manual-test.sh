@@ -129,9 +129,9 @@ echo ""
 
 # Phase 1 — write gh-optivem.yaml into a per-test work dir so manual-test
 # runs in parallel don't stomp on each other. The pre-built binary at
-# ./gh-optivem$(go env GOEXE) (built by install.sh above) is invoked with an absolute path so it
+# ./gh-optivem (built by install.sh above) is invoked with an absolute path so it
 # works from outside this repo's module dir.
-BIN="$(pwd)/gh-optivem$(go env GOEXE)"  # .exe on Windows, empty elsewhere
+BIN="$(pwd)/gh-optivem"
 WORKDIR=$(mktemp -d -t manual-test-XXXXXX)
 log "Writing gh-optivem.yaml in $WORKDIR..."
 if ! ( cd "$WORKDIR" && "$BIN" config init "${CONFIG_INIT_FLAGS[@]}" ); then
