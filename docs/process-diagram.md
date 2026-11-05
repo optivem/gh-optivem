@@ -92,6 +92,7 @@ flowchart TD
     MARK_IN_PROGRESS[[Mark IN PROGRESS]]
     PARSE_TICKET[[Parse Ticket]]
     GATE_TICKET_KIND{Ticket Kind?}
+    MERGE_STORY_INTO_USE_CASES[Merge Story Into Use Cases]
     CHANGE_SYSTEM_BEHAVIOR[Change System Behavior]
     GATE_TASK_SUBTYPE{Task Subtype?}
     UNKNOWN_TICKET_KIND((⚡))
@@ -107,7 +108,8 @@ flowchart TD
     SETUP_TESTS --> MARK_IN_PROGRESS
     MARK_IN_PROGRESS --> PARSE_TICKET
     PARSE_TICKET --> GATE_TICKET_KIND
-    GATE_TICKET_KIND -- Story --> CHANGE_SYSTEM_BEHAVIOR
+    GATE_TICKET_KIND -- Story --> MERGE_STORY_INTO_USE_CASES
+    MERGE_STORY_INTO_USE_CASES --> CHANGE_SYSTEM_BEHAVIOR
     GATE_TICKET_KIND -- Bug --> CHANGE_SYSTEM_BEHAVIOR
     GATE_TICKET_KIND -- Task --> GATE_TASK_SUBTYPE
     GATE_TICKET_KIND --> UNKNOWN_TICKET_KIND
@@ -860,6 +862,41 @@ flowchart TD
     IMPL_REAL_SIM_END(( ))
 
     EXECUTE_AGENT --> IMPL_REAL_SIM_END
+```
+
+## Merge Story Into Use Cases
+
+```mermaid
+flowchart TD
+    CHECK_STORY_MERGE_NEEDED[[Story Needs Merge?]]
+    GATE_STORY_MERGE_NEEDED{Merge Needed?}
+    MERGE_USE_CASES[Merge Into Use Cases — see § merge-use-cases]
+    MERGE_STORY_END(( ))
+    VERIFY_STORY_MERGE[[Verify Story Merge]]
+
+    CHECK_STORY_MERGE_NEEDED --> GATE_STORY_MERGE_NEEDED
+    GATE_STORY_MERGE_NEEDED -- Yes --> MERGE_USE_CASES
+    GATE_STORY_MERGE_NEEDED -- No --> MERGE_STORY_END
+    MERGE_USE_CASES --> VERIFY_STORY_MERGE
+    VERIFY_STORY_MERGE --> MERGE_STORY_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class CHECK_STORY_MERGE_NEEDED,VERIFY_STORY_MERGE serviceNode
+```
+
+## Merge Use Cases
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = use-case-merger<br/>category = human<br/>task-name = merge-use-cases"]
+    MERGE_USE_CASES_END(( ))
+
+    EXECUTE_AGENT --> MERGE_USE_CASES_END
+    MERGE-USE-CASES_OUTPUTS[/"scenario-map: string-list<br/>contradictions?: string-list"/]
+    MERGE_USE_CASES_END -. produces .-> MERGE-USE-CASES_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class MERGE-USE-CASES_OUTPUTS outputNode
 ```
 
 ## Reconcile External Contract Producer
