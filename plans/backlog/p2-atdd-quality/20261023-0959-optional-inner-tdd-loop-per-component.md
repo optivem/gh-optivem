@@ -207,9 +207,11 @@ component:
 
 ## ▶ Next executable step (resume here)
 
-Slice 1 is shipped except two pieces: Step 1b (flag/prompt plumbing) and the
-remainder of Step 4 (nightly CI + threshold). Both are listed under Slice 1
-below. Notes for whoever resumes:
+Slice 1 is shipped except Step 1b (flag/prompt plumbing, deferred) and the
+last part of Step 4: writing `mutation-threshold: 50` into shop's config. That
+waits on a gh-optivem release that accepts `inner-loop` (shop plan
+`plans/backlog/p1-ci-pipeline/20261103-1335-readd-inner-loop-pilot-config.md`).
+Notes for whoever resumes:
 - `verify-inner-loop` runs `component-test run --suite component`, then
   `component-test mutation` (suite ids `component` / `mutation` are the
   component-tests.yaml convention).
@@ -247,15 +249,19 @@ component tests.
   tier opt in; then add flag + prompt together with the `paths` plumbing and
   call `projectconfig.ValidateInnerLoopMode`. Hand-editing `inner-loop:` works
   meanwhile; nothing else is blocked.
-- [ ] Step 4 (remaining): the runner command (`gh optivem component-test
-  mutation`), the PIT wiring in shop `backend-java` and the changed-only
-  measurement shipped. Left: (a) add the nightly CI workflow in shop running
-  `gh optivem component-test mutation --component backend --all`, outside the
-  agent loop; (b) take the first full-baseline score from it and set
-  `inner-loop.mutation-threshold` in `gh-optivem-multitier-java.yaml` (unset =
-  report-only today). The shop commit `backend-java: PIT mutation suite and
-  test-after inner-loop pilot config` is local and unpushed; push it with the
-  shop plan flow. Verify the PIT flag names again when Stryker is added.
+- [x] Step 4 (nightly CI + baseline, done 2026-11-05): the runner command
+  (`gh optivem component-test mutation`), the PIT wiring in shop `backend-java`
+  and the changed-only measurement shipped earlier. Shop now has
+  `.github/workflows/multitier-backend-java-mutation-nightly.yml` (shop
+  `aa8aa8de` + `b700f301`), which runs `component-test mutation --component
+  backend --all` daily at 02:00 UTC, report-only. It builds gh-optivem from
+  source (`main`) until a release ships the command. First full baseline (run
+  41993634354): 307 mutants, 164 killed = **53%**; 71 no-coverage; test
+  strength 69%; PIT 4m57s. Threshold chosen: **50**, just below the baseline.
+  Remaining: write it into `gh-optivem-multitier-java.yaml` once a gh-optivem
+  release accepts `inner-loop` (the released v1.6.105 rejects it). Shop
+  recorded that in its re-add plan (`7bdcd272`). Verify the PIT flag names
+  again when Stryker is added.
 ### Slice 2 — `tdd` mode
 
 - [ ] Step 6: Add a unit-test-writer agent and a red → green (→ refactor) inner
