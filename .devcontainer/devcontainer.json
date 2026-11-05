@@ -1,6 +1,10 @@
 {
   "name": "gh-optivem",
-  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceMount": "source=gh-optivem-workspace,target=/workspaces,type=volume",
+  "workspaceFolder": "/workspaces/gh-optivem",
   "features": {
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/go:1": {
@@ -12,7 +16,6 @@
     "ghcr.io/devcontainers/features/node:1": {
       "version": "22"
     },
-    "ghcr.io/devcontainers/features/powershell:1": {},
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
   },
   "customizations": {
@@ -35,7 +38,7 @@
   "containerEnv": {
     "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
   },
-  "postCreateCommand": "bash .devcontainer/post-create.sh",
-  "postAttachCommand": "bash .devcontainer/fix-git-credential-helpers.sh",
+  "postCreateCommand": "gh-optivem-bootstrap",
+  "postAttachCommand": "if [ -f .devcontainer/fix-git-credential-helpers.sh ]; then bash .devcontainer/fix-git-credential-helpers.sh; fi",
   "remoteUser": "vscode"
 }

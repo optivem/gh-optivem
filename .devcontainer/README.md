@@ -1,6 +1,6 @@
 # Dev Container
 
-Reproducible environment for building and testing the `gh-optivem` CLI, with Go, `gh`, Docker, Node 22, PowerShell, and Claude Code pre-installed. Works identically on Windows, macOS, and Linux.
+Reproducible environment for building and testing the `gh-optivem` CLI, with Go, `gh`, Docker, Node 22, and Claude Code pre-installed (bash only). Works identically on Windows, macOS, and Linux.
 
 ## Prerequisites
 
@@ -16,9 +16,9 @@ Install once on your host machine:
 2. Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → **Dev Containers: Reopen in Container**.
    - ⚠️ Do **not** pick **Dev Containers: Add Dev Container Configuration Files…** — the repo already ships a config.
 3. First launch builds the image (~3-5 min); subsequent launches are instant.
-4. [post-create.sh](post-create.sh) runs automatically, downloads Go modules, and verifies tooling.
+4. [bootstrap.sh](bootstrap.sh) (baked into the image as `gh-optivem-bootstrap`) runs automatically. On first create it clones `optivem/gh-optivem` into the `gh-optivem-workspace` volume (see [Two clones](#two-clones-host-and-container)), then runs [post-create.sh](post-create.sh), which downloads Go modules and verifies tooling. If `gh` isn't logged in yet the clone fails with a clear message: run `gh auth login`, then `gh-optivem-bootstrap`.
 5. [fix-git-credential-helpers.sh](fix-git-credential-helpers.sh) runs on every attach and repairs git credential helpers copied in from a Windows host (see Troubleshooting).
-6. Authenticate with `gh auth login`, then `go build ./...` and `go test ./...`.
+6. Authenticate with `gh auth login` (if you haven't already), then `bash scripts/install.sh`, `go build ./...` and `go test ./...`.
 
 **Troubleshooting:** if you see an **"Add configuration to workspace / user data folder"** prompt or a template picker, VS Code did **not** detect the existing config. Cancel, close the folder, and reopen `gh-optivem/` directly — do not pick a template.
 
@@ -33,6 +33,15 @@ foreach ($u in 'https://github.com', 'https://gist.github.com') {
   git config --global --add "credential.$u.helper" "!gh auth git-credential"
 }
 ```
+
+## Two clones: host and container
+
+The container does **not** mount your host checkout. It works in its own Linux-native clone at `/workspaces/gh-optivem`, kept in the `gh-optivem-workspace` named volume (mounted at `/workspaces`). VS Code still reads `.devcontainer/` from the host folder you opened, but the code you edit inside the container is the volume's clone.
+
+- **Sync only through GitHub:** commit and push on one side, `git pull` on the other. Uncommitted work in one clone is invisible to the other.
+- **Why:** a shared bind mount can't hold a working `gh-optivem` binary for both OSes (`gh` runs `<repo>/gh-optivem` on every OS), and it brings CRLF line endings, root-owned files, `safe.directory` warnings, and slow 9p I/O.
+- **Siblings** (e.g. `shop`): `gh repo clone optivem/shop /workspaces/shop` — no rebuild needed; they live in the same volume.
+- **Reset the clone:** push anything you want to keep, then remove the volume (`docker volume rm gh-optivem-workspace`, with the container stopped) and **Dev Containers: Rebuild Container**. The next create clones fresh.
 
 ## Pinned tool versions
 
@@ -51,4 +60,4 @@ Login state lives in the `gh-optivem-claude-config` volume, so it survives rebui
 
 ## Rebuilding after config changes
 
-Command Palette → **Dev Containers: Rebuild Container**.
+Command Palette → **Dev Containers: Rebuild Container**. The `gh-optivem-workspace` volume survives a rebuild, so your clone (including uncommitted work) is kept.
