@@ -1,7 +1,5 @@
 # Plan coordination meta-plan: backlog consolidation (autonomous run)
 
-> 🤖 **Picked up by agent** — `8f47336fc9eb` at `2026-11-05T10:23:06Z`
-
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p1..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
@@ -9,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Part 2 is unblocked** (2026-11-05: `gh` token now has the `project` scope). Run **C1** (#76 red-phase trace check rehearsal), then C2b (partial evidence only, user decision 2026-11-05), then D1–D4. Part 1 still has nothing executable (E2 waits on a release, Phase B deferred). C2c is human-only (user decision: don't edit #68 autonomously).
+**Part 2 is blocked on headless child-agent permissions** (2026-11-05, see Blocked → C1). The `project` scope is fixed and preflight passes, but the headless `claude -p` children (e.g. `acceptance-test-writer`) have every `Edit`/`Write`/`Bash(gh optivem *)` call denied, so no tests run. The next move is the user's: grant the child agents an allowlist (in `~/.claude/settings.json`, or a `.claude/settings.local.json` that gets seeded into rehearsal worktrees). Then resume at **C1**, followed by C2b (partial evidence only) and D1–D4. Part 1 still has nothing executable (E2 waits on a release, Phase B is deferred).
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
