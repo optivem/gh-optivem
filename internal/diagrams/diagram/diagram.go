@@ -95,6 +95,7 @@ var processOrder = []string{
 	"compile-tests",
 	"build-system",
 	"start-system",
+	"record-spec-fingerprints",
 	"commit",
 	"run-tests",
 	// LOW

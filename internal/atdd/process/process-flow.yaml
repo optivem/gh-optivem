@@ -297,6 +297,9 @@ processes:
       # merged into docs/use-cases (narrative + UC-NNN.M criteria), so the
       # acceptance tests trace to the updated criteria. Bugs mean the system
       # departs from the spec and tasks are refactors/infra, so neither merges.
+      # The `merged-criteria` it stamps also scopes the spec fingerprint
+      # recording in change-system-behavior (GATE_STORY_SPEC_RECORD) once the
+      # story's acceptance tests are green.
       - id: MERGE_STORY_INTO_USE_CASES
         type: call-activity
         process: merge-story-into-use-cases
@@ -454,7 +457,9 @@ processes:
   # definition: the ticket-driven path (`task/system-refactor` →
   # `implement-ticket` gateway → CYCLE) and the opportunistic-in-place
   # path (here, via the `refactor` call-activity) both land on the
-  # `refactor-*-structure` CYCLEs through one shared menu.
+  # `refactor-*-structure` CYCLEs through one shared menu. Between GREEN and
+  # REFACTOR a story records and commits its spec fingerprints (see
+  # GATE_STORY_SPEC_RECORD).
   change-system-behavior:
     name: "Change System Behavior"
     diagram-section-order: 4
@@ -496,6 +501,35 @@ processes:
         name: "Implement System"
         tdd-stage: green
 
+      # Story only: record the spec fingerprints of the criteria the green
+      # acceptance tests just verified. Runs once, after the LAST channel's
+      # IMPLEMENT_AND_VERIFY_SYSTEM clone (every channel green and committed),
+      # and is committed right away, so CI's `spec check` reports a later edit
+      # of a criterion's text as Changed. Reuses the ticket-kind binding: the
+      # implement-ticket GATE_TICKET_KIND already stamped the value into State.
+      # Bugs carry no merged-criteria, so they skip straight to the refactor.
+      - id: GATE_STORY_SPEC_RECORD
+        type: gateway
+        binding: ticket-kind
+        name: "Story?"
+
+      - id: RECORD_SPEC_FINGERPRINTS
+        type: call-activity
+        process: record-spec-fingerprints
+        name: "Record Spec Fingerprints"
+        tdd-stage: green
+
+      - id: COMMIT_SPEC_FINGERPRINTS
+        type: call-activity
+        process: commit
+        name: "Commit Spec Fingerprints"
+        params:
+          # test-commit tier: the state file is a spec artifact that travels
+          # with the acceptance tests, not production code.
+          category: test-commit
+          layer: "SPEC FINGERPRINTS"
+        tdd-stage: green
+
       - id: REFACTOR_OPPORTUNISTICALLY
         type: call-activity
         process: refactor
@@ -509,7 +543,11 @@ processes:
     sequence-flows:
       - {from: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,        to: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS}
       - {from: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS,  to: IMPLEMENT_AND_VERIFY_SYSTEM}
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,                 to: REFACTOR_OPPORTUNISTICALLY}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,                 to: GATE_STORY_SPEC_RECORD}
+      - {from: GATE_STORY_SPEC_RECORD,                      to: RECORD_SPEC_FINGERPRINTS, when: "ticket-kind == story"}
+      - {from: GATE_STORY_SPEC_RECORD,                      to: REFACTOR_OPPORTUNISTICALLY}
+      - {from: RECORD_SPEC_FINGERPRINTS,                    to: COMMIT_SPEC_FINGERPRINTS}
+      - {from: COMMIT_SPEC_FINGERPRINTS,                    to: REFACTOR_OPPORTUNISTICALLY}
       - {from: REFACTOR_OPPORTUNISTICALLY,                  to: CHANGE_SYSTEM_BEHAVIOR_END}
 
   # Legacy-coverage cycle. Operator specifies acceptance criteria only;
@@ -2736,7 +2774,8 @@ processes:
   #   VERIFY_STORY_MERGE        consistency check: no contradiction raised, the
   #                             use cases validate, every story scenario maps to
   #                             a criterion that now exists. Fails loudly on any
-  #                             gap; stamps `merged-criteria` for traceability.
+  #                             gap; stamps `merged-criteria` for traceability
+  #                             and for record-spec-fingerprints' scope.
   #
   # No loop-back edges: the only cycle reachable from here is execute-agent's
   # own capped FIX -> RUN_AGENT loop (max-visits 2).
@@ -2962,6 +3001,37 @@ processes:
 
     sequence-flows:
       - {from: EXECUTE_COMMAND, to: START_SYS_RESTART_END}
+
+  # Records the text fingerprint of each story criterion the green acceptance
+  # tests verified (`gh optivem spec record`, see docs/spec-gate/convention.md).
+  # `--criteria` scopes it to the story's `merged-criteria` (stamped by
+  # merge-story-into-use-cases), so only criterion text these tests just
+  # verified is fingerprinted. `--create` writes the spec state file
+  # (<specDir>/.spec-baseline.json) when the repo never ran `spec adopt`; the
+  # created file has an empty unverified list, so no gap is baselined. A
+  # failure (e.g. no spec.yaml, no JUnit results) goes to the command fixer
+  # like any other command, never silently skipped.
+  record-spec-fingerprints:
+    name: "Record Spec Fingerprints"
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call-activity
+        process: execute-command
+        name: "Dispatch the Command"
+        params:
+          command: "gh optivem spec record --create --criteria '${merged-criteria}'"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: record-spec-fingerprints
+          # command tier: cheap, no AI cost; writes only the spec state file.
+          category: command
+
+      - id: RECORD_SPEC_FINGERPRINTS_END
+        type: end-event
+        name: "Spec Fingerprints Recorded"
+
+    sequence-flows:
+      - {from: EXECUTE_COMMAND, to: RECORD_SPEC_FINGERPRINTS_END}
 
   # The message is constructed here, not at each call site: `preResolveIssue`
   # seeds `ticket-id` and `issue-title` into ctx.State at run startup (before

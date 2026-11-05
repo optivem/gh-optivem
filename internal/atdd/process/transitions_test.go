@@ -1361,6 +1361,55 @@ func TestImplementTicket_StoryMergesIntoUseCasesFirst(t *testing.T) {
 	}
 }
 
+// A story records its spec fingerprints once, after the system GREEN step
+// (every channel clone green and committed) and before the refactor, then
+// commits the state file. Bugs skip it: they carry no merged-criteria. The
+// record command is scoped to merged-criteria and creates a missing state file.
+func TestChangeSystemBehavior_StoryRecordsSpecFingerprints(t *testing.T) {
+	eng := loadSnapshot(t)
+	csb := eng.Processes["change-system-behavior"]
+
+	wantEdge(t, csb, "IMPLEMENT_AND_VERIFY_SYSTEM", "GATE_STORY_SPEC_RECORD", "")
+	notEdge(t, csb, "IMPLEMENT_AND_VERIFY_SYSTEM", "REFACTOR_OPPORTUNISTICALLY")
+	wantEdge(t, csb, "GATE_STORY_SPEC_RECORD", "RECORD_SPEC_FINGERPRINTS", "ticket-kind == story")
+	wantEdge(t, csb, "GATE_STORY_SPEC_RECORD", "REFACTOR_OPPORTUNISTICALLY", "")
+	wantEdge(t, csb, "RECORD_SPEC_FINGERPRINTS", "COMMIT_SPEC_FINGERPRINTS", "")
+	wantEdge(t, csb, "COMMIT_SPEC_FINGERPRINTS", "REFACTOR_OPPORTUNISTICALLY", "")
+	if got := csb.Nodes["GATE_STORY_SPEC_RECORD"].Raw.Binding; got != "ticket-kind" {
+		t.Errorf("GATE_STORY_SPEC_RECORD binding = %q, want ticket-kind", got)
+	}
+	if got := csb.Nodes["RECORD_SPEC_FINGERPRINTS"].Raw.Process; got != "record-spec-fingerprints" {
+		t.Errorf("RECORD_SPEC_FINGERPRINTS calls %q", got)
+	}
+	commit := csb.Nodes["COMMIT_SPEC_FINGERPRINTS"]
+	if commit.Raw.Process != "commit" || commit.Raw.Params["category"] != "test-commit" {
+		t.Errorf("COMMIT_SPEC_FINGERPRINTS = process %q category %q, want commit / test-commit", commit.Raw.Process, commit.Raw.Params["category"])
+	}
+
+	for kind, want := range map[string]string{"story": "RECORD_SPEC_FINGERPRINTS", "bug": "REFACTOR_OPPORTUNISTICALLY"} {
+		ctx := statemachine.NewContext()
+		ctx.Set("ticket-kind", kind)
+		if to, err := eng.NextEdge("change-system-behavior", "GATE_STORY_SPEC_RECORD", ctx); err != nil || to != want {
+			t.Errorf("%s routes to %q (err %v), want %s", kind, to, err, want)
+		}
+	}
+
+	rec, ok := eng.Processes["record-spec-fingerprints"]
+	if !ok {
+		t.Fatal("process record-spec-fingerprints missing")
+	}
+	node := rec.Nodes[rec.Start]
+	if node.Raw.Process != "execute-command" {
+		t.Fatalf("record-spec-fingerprints start node calls %q, want execute-command", node.Raw.Process)
+	}
+	if got, want := node.Raw.Params["command"], "gh optivem spec record --create --criteria '${merged-criteria}'"; got != want {
+		t.Errorf("record command = %q, want %q", got, want)
+	}
+	if got := node.Raw.Params["category"]; got != "command" {
+		t.Errorf("record category = %q, want command", got)
+	}
+}
+
 func TestMergeUseCases_AgentContract(t *testing.T) {
 	eng := loadSnapshot(t)
 	mid, ok := eng.Processes["merge-use-cases"]

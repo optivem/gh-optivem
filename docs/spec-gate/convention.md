@@ -174,7 +174,7 @@ The baseline file is the machine-managed spec state file. Besides the `unverifie
 ```
 
 - `adopt` writes a fingerprint for every Verified criterion.
-- `record` adds the fingerprint of each Verified criterion that has none yet (run it after a story's acceptance tests are green), drops fingerprints of criteria that no longer exist, and never overwrites a differing fingerprint.
+- `record` adds the fingerprint of each Verified criterion that has none yet (run it after a story's acceptance tests are green), drops fingerprints of criteria that no longer exist, and never overwrites a differing fingerprint. `--criteria <ids>` limits it to the named criteria (a named one that is not Verified is reported and skipped); `--create` creates a missing state file with an empty `unverified` list instead of failing, so no existing gap is baselined. `gh optivem implement` runs `record --create --criteria <the story's merged criteria>` for every story once its acceptance tests are green on all channels, and commits the state file.
 - When a Verified criterion's text no longer matches its fingerprint, `status` and `check` report it as **Changed** (unverified); strict mode blocks it. After the criterion's test has been re-checked against the new wording, `record --refresh <id>` accepts the new text.
 - A criterion with no recorded fingerprint is never Changed.
 

@@ -93,7 +93,7 @@ func TestRecordFingerprints(t *testing.T) {
 	ucs, tests := fingerprintFixture(t)
 	pure := BuildReport(ucs, tests, Config{}, Options{Now: testNow})
 
-	rec := RecordFingerprints(pure, nil, nil)
+	rec := RecordFingerprints(pure, nil, nil, nil)
 	if len(rec.Added) != pure.Summary.Verified || len(rec.Fingerprints) != pure.Summary.Verified {
 		t.Fatalf("first record: %+v", rec)
 	}
@@ -104,11 +104,11 @@ func TestRecordFingerprints(t *testing.T) {
 	edited[0].Criteria[0].Text += " within five minutes"
 	pureEdited := BuildReport(edited, tests, Config{}, Options{Now: testNow})
 	old := rec.Fingerprints["UC-001.1"]
-	kept := RecordFingerprints(pureEdited, rec.Fingerprints, nil)
+	kept := RecordFingerprints(pureEdited, rec.Fingerprints, nil, nil)
 	if kept.Fingerprints["UC-001.1"] != old || !slices.Equal(kept.StillChanged, []string{"UC-001.1"}) {
 		t.Fatalf("changed criterion must keep its fingerprint: %+v", kept)
 	}
-	refreshed := RecordFingerprints(pureEdited, rec.Fingerprints, []string{"UC-001.1"})
+	refreshed := RecordFingerprints(pureEdited, rec.Fingerprints, []string{"UC-001.1"}, nil)
 	if refreshed.Fingerprints["UC-001.1"] == old || !slices.Equal(refreshed.Refreshed, []string{"UC-001.1"}) {
 		t.Fatalf("--refresh must re-record: %+v", refreshed)
 	}
@@ -118,7 +118,28 @@ func TestRecordFingerprints(t *testing.T) {
 	for k, v := range rec.Fingerprints {
 		withStale[k] = v
 	}
-	if got := RecordFingerprints(pure, withStale, nil); !slices.Equal(got.Pruned, []string{"UC-099.1"}) {
+	if got := RecordFingerprints(pure, withStale, nil, nil); !slices.Equal(got.Pruned, []string{"UC-099.1"}) {
 		t.Fatalf("pruned = %v", got.Pruned)
+	}
+
+	// A scope limits adding to the named criteria and reports named ones that
+	// are not Verified.
+	var verifiedID, unverifiedID string
+	for _, uc := range pure.UseCases {
+		for _, c := range uc.Criteria {
+			if c.State == StateVerified && verifiedID == "" {
+				verifiedID = c.ID
+			}
+			if c.State != StateVerified && unverifiedID == "" {
+				unverifiedID = c.ID
+			}
+		}
+	}
+	if verifiedID == "" || unverifiedID == "" {
+		t.Fatalf("fixture needs a verified and an unverified criterion")
+	}
+	scoped := RecordFingerprints(pure, nil, nil, []string{verifiedID, unverifiedID})
+	if !slices.Equal(scoped.Added, []string{verifiedID}) || len(scoped.Fingerprints) != 1 || !slices.Equal(scoped.NotVerified, []string{unverifiedID}) {
+		t.Fatalf("scoped record: %+v", scoped)
 	}
 }

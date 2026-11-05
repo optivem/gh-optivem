@@ -90,6 +90,13 @@ func CheckInvariants(eng *Engine) []Violation {
 // is accepted iff COMPILE_TESTS forward-reaches the commit — COMPILE_TESTS is
 // the meaningful gate that stands in for the verify. See
 // isCompileOnlyVerifiedCommit.
+//
+// Exception — the spec-fingerprint commit (D3d). A story records its spec
+// fingerprints once every channel's implement-and-verify-system clone is green
+// (each clone ends in its own verified COMMIT_SYSTEM), then commits the state
+// file. That commit's dispatching predecessor is record-spec-fingerprints,
+// accepted iff the record step is itself reached only from
+// implement-and-verify-system call-activities. See isVerifiedSpecRecord.
 func ruleCommitIsVerified(eng *Engine) []Violation {
 	const rule = "commit-is-verified"
 	var out []Violation
@@ -117,7 +124,7 @@ func commitVerifiedViolations(proc *Process, node Node, rule string) []Violation
 	}
 	for _, pred := range preds {
 		pn := proc.Nodes[pred]
-		if isVerifyingPredecessor(pn, compileOnly) {
+		if isVerifyingPredecessor(pn, compileOnly) || isVerifiedSpecRecord(proc, pn) {
 			continue
 		}
 		out = append(out, Violation{
@@ -139,6 +146,26 @@ func isVerifyingPredecessor(pn Node, compileOnly bool) bool {
 		return true
 	}
 	return compileOnly && (isCallTo(pn, "start-system") || isCallTo(pn, "start-system-restart") || isCallTo(pn, "compile-tests"))
+}
+
+// isVerifiedSpecRecord reports whether pn is a record-spec-fingerprints
+// call-activity whose own dispatching predecessors are all
+// implement-and-verify-system call-activities, i.e. it only runs after the
+// system cycle verified the acceptance tests green and committed.
+func isVerifiedSpecRecord(proc *Process, pn Node) bool {
+	if !isCallTo(pn, "record-spec-fingerprints") {
+		return false
+	}
+	preds := dispatchingPredecessors(proc, pn.ID)
+	if len(preds) == 0 {
+		return false
+	}
+	for _, p := range preds {
+		if !isCallTo(proc.Nodes[p], "implement-and-verify-system") {
+			return false
+		}
+	}
+	return true
 }
 
 // isCompileOnlyVerifiedCommit reports whether commitID is the compile-only

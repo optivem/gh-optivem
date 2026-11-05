@@ -57,10 +57,18 @@ func TestUnrollSystemChannels_TwoChannels(t *testing.T) {
 		checkParam(t, n, "test-names", "${test-names}")
 	}
 
-	// Linear chain: WRITE_ACCEPTANCE_TESTS → API → UI → REFACTOR, no loopback.
+	// Linear chain: WRITE_ACCEPTANCE_TESTS → API → UI → story spec-record gate,
+	// no loopback. The spec fingerprints are recorded once, after the LAST
+	// channel is green.
 	assertSingleEdge(t, proc, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
 	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "IMPLEMENT_AND_VERIFY_SYSTEM_UI")
-	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_UI", "REFACTOR_OPPORTUNISTICALLY")
+	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_UI", "GATE_STORY_SPEC_RECORD")
+
+	// The unrolled graph still satisfies every invariant (the spec-fingerprint
+	// commit stays gated behind the channel clones).
+	if v := CheckInvariants(eng); len(v) != 0 {
+		t.Errorf("unrolled graph violates invariants: %v", v)
+	}
 }
 
 func TestUnrollSystemChannels_SingleChannel(t *testing.T) {
@@ -78,7 +86,7 @@ func TestUnrollSystemChannels_SingleChannel(t *testing.T) {
 
 	// The sole channel stitches straight from predecessor to successor.
 	assertSingleEdge(t, proc, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
-	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "REFACTOR_OPPORTUNISTICALLY")
+	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "GATE_STORY_SPEC_RECORD")
 }
 
 func TestUnrollSystemChannels_Guards(t *testing.T) {

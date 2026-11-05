@@ -173,19 +173,26 @@ flowchart TD
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED[Implement External Drivers If Needed]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS["Write Failing Acceptance Tests — see § write-acceptance-tests-and-system-adapters<br/>expected-test-result = failure"]
     IMPLEMENT_AND_VERIFY_SYSTEM["Implement System — see § implement-and-verify-system<br/>action = implement-system<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-system"]
+    GATE_STORY_SPEC_RECORD{Story?}
+    RECORD_SPEC_FINGERPRINTS[Record Spec Fingerprints]
     REFACTOR_OPPORTUNISTICALLY["Opportunistic Refactor (Loopable) — see § refactor"]
+    COMMIT_SPEC_FINGERPRINTS["Commit Spec Fingerprints — see § commit<br/>category = test-commit<br/>layer = SPEC FINGERPRINTS"]
     CHANGE_SYSTEM_BEHAVIOR_END(( ))
 
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED --> WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
-    IMPLEMENT_AND_VERIFY_SYSTEM --> REFACTOR_OPPORTUNISTICALLY
+    IMPLEMENT_AND_VERIFY_SYSTEM --> GATE_STORY_SPEC_RECORD
+    GATE_STORY_SPEC_RECORD -- Story --> RECORD_SPEC_FINGERPRINTS
+    GATE_STORY_SPEC_RECORD --> REFACTOR_OPPORTUNISTICALLY
+    RECORD_SPEC_FINGERPRINTS --> COMMIT_SPEC_FINGERPRINTS
+    COMMIT_SPEC_FINGERPRINTS --> REFACTOR_OPPORTUNISTICALLY
     REFACTOR_OPPORTUNISTICALLY --> CHANGE_SYSTEM_BEHAVIOR_END
 
     classDef tddRedNode stroke:#dc3545,stroke-width:3px
     class IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS tddRedNode
 
     classDef tddGreenNode stroke:#28a745,stroke-width:3px
-    class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
+    class COMMIT_SPEC_FINGERPRINTS,IMPLEMENT_AND_VERIFY_SYSTEM,RECORD_SPEC_FINGERPRINTS tddGreenNode
 
     classDef tddRefactorNode stroke:#007bff,stroke-width:3px
     class REFACTOR_OPPORTUNISTICALLY tddRefactorNode
@@ -709,6 +716,16 @@ flowchart TD
     START_SYS_END(( ))
 
     EXECUTE_COMMAND --> START_SYS_END
+```
+
+## Record Spec Fingerprints
+
+```mermaid
+flowchart TD
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>task-name = record-spec-fingerprints"]
+    RECORD_SPEC_FINGERPRINTS_END(( ))
+
+    EXECUTE_COMMAND --> RECORD_SPEC_FINGERPRINTS_END
 ```
 
 ## Commit

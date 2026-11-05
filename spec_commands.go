@@ -36,6 +36,8 @@ type specOptions struct {
 	PRComment bool
 	Flags     []string
 	Refresh   []string
+	Criteria  []string
+	Create    bool
 }
 
 func newSpecCmd() *cobra.Command {
@@ -190,10 +192,15 @@ since its fingerprint was recorded keeps the old fingerprint, so 'check' keeps
 reporting it as Changed until you re-verify it and name it with --refresh.
 Fingerprints of criteria no longer in the spec are dropped.
 
-Requires an existing state file (run 'spec adopt' first). Run it after the
-acceptance tests for a story are green.`,
+Requires an existing state file (run 'spec adopt' first) unless --create is
+given: then a missing state file is created with an empty unverified list, so
+no existing gap is baselined. --criteria limits recording to the named
+criteria; a named criterion that is not Verified is reported and skipped.
+Run it after the acceptance tests for a story are green; 'gh optivem
+implement' does this for every story (--create --criteria <merged criteria>).`,
 		Example: `  gh optivem spec record
-  gh optivem spec record --refresh UC-001.4`,
+  gh optivem spec record --refresh UC-001.4
+  gh optivem spec record --create --criteria UC-001.2,UC-001.3`,
 		Args: cobra.NoArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			runSpecCmd(func() (int, error) { return runSpecRecord(opts, cmd.OutOrStdout()) })
@@ -202,6 +209,8 @@ acceptance tests for a story are green.`,
 	addSpecConfigFlag(cmd, &opts)
 	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, "Feature flag considered on (repeatable); adds to flags: in spec.yaml")
 	cmd.Flags().StringSliceVar(&opts.Refresh, "refresh", nil, "Criterion id whose changed text is accepted as re-verified (repeatable)")
+	cmd.Flags().StringSliceVar(&opts.Criteria, "criteria", nil, "Only record fingerprints for these criterion ids (repeatable or comma-separated); default all")
+	cmd.Flags().BoolVar(&opts.Create, "create", false, "Create the state file (empty unverified list) when it does not exist instead of failing")
 	return cmd
 }
 
@@ -375,9 +384,10 @@ func runSpecAdopt(opts specOptions, out io.Writer) (int, error) {
 	return 0, nil
 }
 
-// runSpecRecord stores fingerprints of newly verified criteria. It requires an
-// existing state file (run 'spec adopt' first) so that it never silently
-// creates the baseline of unverified criteria.
+// runSpecRecord stores fingerprints of newly verified criteria. Without
+// --create it requires an existing state file (run 'spec adopt' first). With
+// --create a missing file starts with an empty unverified list, which gates
+// exactly like no file, so no unverified criterion is ever silently baselined.
 func runSpecRecord(opts specOptions, out io.Writer) (int, error) {
 	in, err := loadSpecInputs(opts.Config, true)
 	if err != nil {
@@ -386,10 +396,13 @@ func runSpecRecord(opts specOptions, out io.Writer) (int, error) {
 	file := resolveUnder(in.base, in.cfg.Baseline)
 	b, err := spec.LoadBaseline(file)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return 0, fmt.Errorf("no spec state file at %s; run 'gh optivem spec adopt' first", file)
+		if !errors.Is(err, fs.ErrNotExist) {
+			return 0, err
 		}
-		return 0, err
+		if !opts.Create {
+			return 0, fmt.Errorf("no spec state file at %s; run 'gh optivem spec adopt' first (or pass --create)", file)
+		}
+		b = spec.Baseline{SchemaVersion: spec.BaselineSchemaVersion, Unverified: []string{}}
 	}
 	rep := spec.BuildReport(in.useCases, in.tests, in.cfg, spec.Options{Mode: spec.ModeLenient, Flags: opts.Flags, Now: time.Now()})
 	if n := len(rep.Validation.Errors); n > 0 {
@@ -406,7 +419,20 @@ func runSpecRecord(opts specOptions, out io.Writer) (int, error) {
 			return 0, fmt.Errorf("--refresh %s: no such criterion in %s", id, in.cfg.SpecDir)
 		}
 	}
-	rec := spec.RecordFingerprints(rep, b.Fingerprints, opts.Refresh)
+	var scope []string
+	for _, id := range opts.Criteria {
+		if id = strings.TrimSpace(id); id == "" {
+			continue
+		}
+		if !known[id] {
+			return 0, fmt.Errorf("--criteria %s: no such criterion in %s", id, in.cfg.SpecDir)
+		}
+		scope = append(scope, id)
+	}
+	if len(opts.Criteria) > 0 && len(scope) == 0 {
+		return 0, errors.New("--criteria names no criterion id")
+	}
+	rec := spec.RecordFingerprints(rep, b.Fingerprints, opts.Refresh, scope)
 	b.Fingerprints = rec.Fingerprints
 	if err := spec.WriteBaseline(file, b); err != nil {
 		return 0, err
@@ -414,6 +440,9 @@ func runSpecRecord(opts specOptions, out io.Writer) (int, error) {
 	fmt.Fprintf(out, "Fingerprints recorded in %s: %d added, %d refreshed, %d pruned\n", file, len(rec.Added), len(rec.Refreshed), len(rec.Pruned))
 	for _, id := range rec.StillChanged {
 		fmt.Fprintf(out, "  %s changed since it was last verified; re-run with --refresh %s once its test is re-checked\n", id, id)
+	}
+	for _, id := range rec.NotVerified {
+		fmt.Fprintf(out, "  %s is not Verified by the test results; no fingerprint recorded\n", id)
 	}
 	return 0, nil
 }

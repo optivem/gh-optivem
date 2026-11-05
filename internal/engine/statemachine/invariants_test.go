@@ -26,3 +26,54 @@ func TestGraphInvariants_SnapshotIsClean(t *testing.T) {
 	}
 	t.Errorf("embedded snapshot violates %d graph invariant(s):%s", len(violations), b.String())
 }
+
+// The spec-fingerprint carve-out of commit-is-verified only excuses a
+// record-spec-fingerprints predecessor that is itself reached from
+// implement-and-verify-system; a bare record → commit chain still violates.
+func TestGraphInvariants_SpecRecordCommitNeedsVerifiedSystem(t *testing.T) {
+	const stub = `
+  %s:
+    name: "stub"
+    start: S
+    nodes:
+      - {id: S, type: start-event, name: S}
+      - {id: E, type: end-event, name: E}
+    sequence-flows:
+      - {from: S, to: E}
+`
+	build := func(head string) string {
+		y := "processes:\n  p:\n    name: \"p\"\n    start: " + head + "\n    nodes:\n" +
+			"      - {id: SYS, type: call-activity, process: implement-and-verify-system, name: SYS}\n" +
+			"      - {id: REC, type: call-activity, process: record-spec-fingerprints, name: REC}\n" +
+			"      - {id: COMMIT, type: call-activity, process: commit, name: COMMIT, params: {category: test-commit}}\n" +
+			"      - {id: END, type: end-event, name: END}\n" +
+			"    sequence-flows:\n"
+		if head == "SYS" {
+			y += "      - {from: SYS, to: REC}\n"
+		}
+		y += "      - {from: REC, to: COMMIT}\n      - {from: COMMIT, to: END}\n"
+		for _, p := range []string{"implement-and-verify-system", "record-spec-fingerprints", "commit"} {
+			y += strings.Replace(stub, "%s", p, 1)
+		}
+		return y
+	}
+	count := func(head string) int {
+		eng, err := LoadBytes([]byte(build(head)))
+		if err != nil {
+			t.Fatalf("LoadBytes: %v", err)
+		}
+		n := 0
+		for _, v := range CheckInvariants(eng) {
+			if v.Rule == "commit-is-verified" {
+				n++
+			}
+		}
+		return n
+	}
+	if n := count("SYS"); n != 0 {
+		t.Errorf("record after implement-and-verify-system: want no commit-is-verified violation, got %d", n)
+	}
+	if n := count("REC"); n == 0 {
+		t.Error("record without a preceding implement-and-verify-system must violate commit-is-verified")
+	}
+}

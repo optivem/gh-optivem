@@ -37,6 +37,9 @@ type FingerprintRecording struct {
 	StillChanged []string
 	// Pruned are stored fingerprints whose criterion no longer exists.
 	Pruned []string
+	// NotVerified are criteria named in scope that are not Verified, so no
+	// fingerprint was recorded for them. Always empty without a scope.
+	NotVerified []string
 }
 
 // RecordFingerprints derives the fingerprint map to persist from a report that
@@ -45,12 +48,18 @@ type FingerprintRecording struct {
 // moment it first becomes verified). A Verified criterion whose stored
 // fingerprint differs from its current text keeps the old value, unless its id
 // is in refresh, which re-records it deliberately. Fingerprints of criteria
-// that no longer exist in the spec are dropped.
-func RecordFingerprints(rep Report, existing map[string]string, refresh []string) FingerprintRecording {
+// that no longer exist in the spec are dropped. A non-empty scope limits adding
+// and refreshing to the criteria it names (the ones a story's green tests just
+// verified); every other stored fingerprint is kept as is.
+func RecordFingerprints(rep Report, existing map[string]string, refresh, scope []string) FingerprintRecording {
 	out := FingerprintRecording{Fingerprints: map[string]string{}}
 	refreshSet := map[string]bool{}
 	for _, id := range refresh {
 		refreshSet[id] = true
+	}
+	scopeSet := map[string]bool{}
+	for _, id := range scope {
+		scopeSet[id] = true
 	}
 	exists := map[string]bool{}
 	for _, uc := range rep.UseCases {
@@ -60,7 +69,13 @@ func RecordFingerprints(rep Report, existing map[string]string, refresh []string
 			if has {
 				out.Fingerprints[c.ID] = stored
 			}
+			if len(scopeSet) > 0 && !scopeSet[c.ID] {
+				continue
+			}
 			if c.State != StateVerified {
+				if len(scopeSet) > 0 {
+					out.NotVerified = append(out.NotVerified, c.ID)
+				}
 				continue
 			}
 			cur := Fingerprint(c.Text)
@@ -85,5 +100,6 @@ func RecordFingerprints(rep Report, existing map[string]string, refresh []string
 	slices.Sort(out.Refreshed)
 	slices.Sort(out.StillChanged)
 	slices.Sort(out.Pruned)
+	slices.Sort(out.NotVerified)
 	return out
 }

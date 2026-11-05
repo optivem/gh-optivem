@@ -197,3 +197,41 @@ func TestSpecRecord_ChangedCriterionStaysUnverifiedUntilRefreshed(t *testing.T) 
 		t.Fatalf("refreshed criterion must be Verified again: err=%v out=%s", err, out.String())
 	}
 }
+
+func TestSpecRecord_CreateAndCriteriaScope(t *testing.T) {
+	cfg := writeSpecFixture(t, specTestUseCase)
+	stateFile := filepath.Join(filepath.Dir(cfg), "docs", "use-cases", spec.BaselineFileName)
+	var out bytes.Buffer
+
+	if _, err := runSpecRecord(specOptions{Config: cfg, Create: true, Criteria: []string{"UC-009.9"}}, &out); err == nil {
+		t.Fatal("an unknown --criteria id must error")
+	}
+	if _, err := os.Stat(stateFile); !os.IsNotExist(err) {
+		t.Fatalf("a failed record must not create the state file: %v", err)
+	}
+	if _, err := runSpecRecord(specOptions{Config: cfg, Create: true, Criteria: []string{""}}, &out); err == nil {
+		t.Fatal("an empty --criteria must error")
+	}
+
+	// --create starts a missing state file; the scope records only the named
+	// Verified criterion and reports the named unverified one.
+	if _, err := runSpecRecord(specOptions{Config: cfg, Create: true, Criteria: []string{"UC-001.1", " UC-001.2"}}, &out); err != nil {
+		t.Fatal(err)
+	}
+	state, err := spec.LoadBaseline(stateFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Unverified) != 0 || len(state.Fingerprints) != 1 || state.Fingerprints["UC-001.1"] == "" {
+		t.Fatalf("created state must hold only the scoped fingerprint and no baselined gap: %+v", state)
+	}
+	if !strings.Contains(out.String(), "UC-001.2 is not Verified") {
+		t.Fatalf("a scoped unverified criterion must be reported: %s", out.String())
+	}
+
+	// The created file gates like no file: strict still blocks on UC-001.2.
+	out.Reset()
+	if code, err := runSpecCheck(specOptions{Config: cfg, Mode: spec.ModeStrict}, nil, &out, true); err != nil || code != spec.ExitGateFailed {
+		t.Fatalf("created state must not baseline unverified criteria: code=%d err=%v", code, err)
+	}
+}
