@@ -82,7 +82,8 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 - **C2c (Item 15 / #21 Step 6):** restore #68's dropped criterion (or create a new absence-shaped issue), then rehearse that an absence-shaped ticket goes green by copying the shop reference. See `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`.
 - **D3a attended check:** attended `implement 69`: approve `merge-use-cases`, confirm the merge diff and tests tagged with merged `UC-NNN.M` ids.
 - **D3b:** tag a corpus story's scenarios with existing ids (e.g. #69 → `@UC-001.8`) or create a tagged issue, then confirm the merge is skipped.
-- **Board tidy-up from this run:** #69 was moved In QA → In Progress by the D3a rehearsal (not restored); #76 sits in In Acceptance after D1.
+- **Board tidy-up from this run:** #69 was moved In QA → In Progress by the D3a rehearsal (not restored); #76 sits in In Acceptance after D1; #65 was moved to In progress by the 2026-11-05 unattended re-run (not restored).
+- **#65 attended re-run:** `gh optivem --auto implement 65 --headless` on `gh-optivem-monolith-java.yaml` in a shop clone (approve `merge-use-cases`), to check whether the June ERP product-list gap still reproduces. Then decide `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` (delete if green, else Option A + slimmed B).
 - **D2 attended check:** in an attended run, let the fixer loop exhaust after an out-of-scope edit and confirm the halt is report-only and lists "fixer edited: N file(s)" (#15, commit 416a761f).
 - **C2b attended check:** in an attended `implement` run that hits a compile failure, approve the `fix-*` (human-category) dispatch and confirm the fixer runs with the writer's scope.
 
@@ -95,6 +96,8 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 - **Red phase accepts infra failures (found by C1, 2026-11-05):** with Chromium libs missing, the #76 red phase failed on a Playwright `TargetClosedError` and `VERIFY_TESTS_FAIL_ACCEPTANCE` still reported `test-outcome=fail` / "Tests Fail Verified" (`failure-kind=command-failed`). A red phase should require an assertion-shaped failure, not any non-zero exit. Candidate `/fix-bug` or a child plan in `plans/backlog/p2-atdd-quality/`.
 
 - **.NET `--test` name check is case-sensitive (found by C2a, 2026-11-05):** `nameExecuted` in `internal/build/runner/tests.go` uses case-sensitive `strings.Contains`, so `--test cannotPlace...` (camelCase) runs and passes the .NET test but reports "requested test(s) never executed" and exits 1; PascalCase exits 0. Candidate `/fix-bug`.
+
+- **Unattended story runs can't get past intake (found by the #65 re-run, 2026-11-05):** every story whose scenarios aren't tagged with existing `@UC-NNN.M` ids hits `MERGE_USE_CASES` (`category=human`), which prompts even under `--auto` (the human tier is always confirmed), so `--auto --headless` yields rc=2 before any writer runs. No corpus story carries such tags, so unattended story rehearsals are blocked. Recommended: lower `merge-use-cases` to a lower tier (e.g. `test-agent`) so `--auto` runs it; its output is a reviewable docs commit. Alternative (corpus only): tag corpus stories with `@UC-NNN.M`. Edits `process-flow.yaml` (C7 rule applies). Candidate `/create-plan` or `/fix-bug`.
 
 - **Spec record needs spec.yaml + matching results glob (found by D3d, 2026-11-05):** story runs now fail at RECORD_SPEC_FINGERPRINTS (→ fixer) in a repo without `spec.yaml`/JUnit results; shop's `spec.yaml` results glob covers Java only, so .NET/TypeScript story runs may record nothing or fail. Check before the next non-Java rehearsal.
 

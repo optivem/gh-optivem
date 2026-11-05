@@ -1,8 +1,6 @@
 # Plan: close the ERP product-list staging gap behind #65 "View product list" ({20260613-1950})
 
-⏳ **PENDING — awaiting operator confirmation.** Not yet picked up. This file
-records the #65 root-cause investigation and the proposed fix; do not start
-`## Items` until the operator confirms the chosen option (see "Decision needed").
+⏳ **RE-CHECK FIRST (2026-11-05).** The diagnosis below is from the 2026-06-11 run and predates many pipeline changes, so the gap may no longer reproduce. An unattended re-run on 2026-11-05 (shop `5baa36a4`, monolith-java) did not reach the writers: it yielded at `MERGE_USE_CASES` (`category=human`, rc=2) before any test or code was written. Next: an attended `gh optivem --auto implement 65 --headless` (approve `merge-use-cases`), then read the trace. If #65 goes green, delete this plan; if it hits the same `system-implementer` scope-exception, pick an option below (recommended: A plus a slimmed B). Do not start `## Items` before that.
 
 Context: the `atdd-rehearsal-loop.sh` corpus run on 2026-06-11 stopped at #65.
 The `system-implementer` (api, Java monolith) emitted a **scope-exception** and
