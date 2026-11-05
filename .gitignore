@@ -12,6 +12,7 @@ Thumbs.db
 
 # Binaries
 *.exe
+/gh-optivem
 *~
 
 # Claude
