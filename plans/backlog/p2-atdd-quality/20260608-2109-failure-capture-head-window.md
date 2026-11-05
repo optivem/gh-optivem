@@ -126,4 +126,4 @@ anchor on, so a head-only window would drop it. That variant is explicitly out.
 
 ## Remaining
 
-- Full ATDD trace check: re-run the `#76` red phase (`gh optivem implement 76 --target test` on `gh-optivem-monolith-java.yaml`) and confirm `verify_failure_output` in the trace leads with the assertion. Not run autonomously: launching the headless-claude `implement` run was refused by the auto-mode permission check, so it needs an attended run. Infra-failure tail-only path is covered by unit tests.
+- Full ATDD trace check: re-run the `#76` red phase (`gh optivem implement 76 --target test` on `gh-optivem-monolith-java.yaml`) and confirm `verify_failure_output` in the trace leads with the assertion. Not run yet: the headless permission is now granted, but `implement` preflight fails on the `gh` token's missing `project` scope (2026-11-05; fix: `gh auth refresh -h github.com -s project`). Credentials load via `GH_OPTIVEM_ENV_FILE=/workspaces/gh-optivem/.env`. Infra-failure tail-only path is covered by unit tests.

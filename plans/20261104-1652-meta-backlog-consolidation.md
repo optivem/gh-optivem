@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Part 1 (no Docker) has nothing executable right now:** E2 waits on a gh-optivem release, Phase B is deferred for discussion. **Part 2 has nothing executable autonomously either:** C2a done 2026-11-05 (green on all 6 combos). C1, C2b and D1–D4 need headless agents (see Blocked); C2c edits GitHub issue #68 and needs the user's approval first. Next move is the user's: grant a headless-agent permission rule (or run those units attended), approve C2c, or cut a release for E2.
+**Part 1 (no Docker) has nothing executable right now:** E2 waits on a gh-optivem release, Phase B is deferred for discussion. **Part 2 is blocked on a GitHub token scope:** the headless-permission blocker is resolved (rule `gh optivem --auto implement *` granted), but `implement` preflight now fails because the `gh` token lacks the `project` scope (see Blocked). C1 (#76 red-phase trace check), C2b (compile-tests fixer scope) and D1–D4 all need `implement` runs. Next move is the user's: run `gh auth refresh -h github.com -s project` (interactive), then resume at **C1** (then C2b, D1). C2c still needs approval to edit shop #68.
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -52,13 +52,13 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 ### Part 2: Docker (run last, one at a time under the rehearsal lock)
 
 #### Phase C: Items 13, 15
-- **C1 (Item 13 / #12).** Step 6 done (shop `de90fbe7`). Remaining: the #76 red-phase trace check in a rehearsal (`plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`). Done when: rehearsal shows the failure capture window as designed. Needs headless agents (see Blocked).
+- **C1 (Item 13 / #12).** Step 6 done (shop `de90fbe7`). Remaining: the #76 red-phase trace check in a rehearsal (`plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`). Done when: rehearsal shows the failure capture window as designed. Blocked on the `project` token scope (see Blocked).
 - **C2 (Item 15 / #21).** In `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`:
-  - **C2b.** Rehearsal check of the `scope-task-name` fixer change (needs headless agents).
+  - **C2b.** Rehearsal check of the `scope-task-name` fixer change (blocked on the `project` token scope, see Blocked).
   - **C2c.** Step 6: restore #68's criterion (editing a GitHub issue: ask first).
   Done when: all runtime checks pass.
 
-#### Phase D: verification checklist (sequential; all need headless agents)
+#### Phase D: verification checklist (sequential; all need `implement` runs)
 - **D1.** channel-touched skipped tests (#76 re-run): skipped tests no longer trigger a no-op dispatch followed by a halt.
 - **D2.** scope-drift fix-loop (#15): induce a test-only fixer; confirm scope-drift guard / fix loop is report-only as designed.
 - **D3.** story-merge behaviour: (a) story adding behaviour (merge diff approved, tests tagged with merged `UC-NNN.M` ids), (b) kickoff-style story with `@UC-NNN.M` scenarios naming existing criteria (merge skipped), (c) edited criterion shows `Changed` in `gh optivem spec status`. Decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet): record the decision as a new plan item.
@@ -80,5 +80,7 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 
 ## Blocked (filled in by the run)
 
-- **Headless-agent rehearsals (`gh optivem --auto implement ... --headless`) are refused by this session's auto-mode permission check** (it launches headless claude agents). Not bypassed. Affects C1's trace check, C2's fixer rehearsal check, D1–D4. Needs an attended run or a user-granted permission rule.
-- **C1:** step 6 shipped (shop `de90fbe7`, `--warning-mode none` in `system-test/java/tests*.yaml`; child plan updated in gh-optivem `3032161d`). Probe of `formatVerifyFailureOutput` on real Gradle output shows the assertion in the head window and no deprecation chaff. Remaining: the #76 red-phase trace check (headless rehearsal, see above).
+- **`implement` rehearsals need the `project` scope on the `gh` token** (2026-11-05). The headless-agent permission blocker is resolved (rule `gh optivem --auto implement *`). Two attempts on #76 (`--target test`, `gh-optivem-monolith-java.yaml`, shop `main` `b4c446e1`): (1) preflight failed on missing `DOCKERHUB_*`/`GHCR_TOKEN`/`REPO_TOKEN`/`SONAR_TOKEN`/`WORKFLOW_TOKEN`, fixed by `GH_OPTIVEM_ENV_FILE=/workspaces/gh-optivem/.env`; (2) preflight still fails: `project.url https://github.com/orgs/optivem/projects/20 not accessible ... requires ['read:project']`, token has only `gist, read:org, repo, workflow`. The flow also moves board items (`move-to-in-progress`, ...), so write scope is needed too. Not bypassed. Fix (user, interactive): `gh auth refresh -h github.com -s project`. Affects C1, C2b, D1–D4. Environment notes for the next run: `/workspaces/shop` can't be created (permission denied), so `scripts/atdd-rehearsal.sh` (hard-wired to `../shop`, calls `install.sh` + `gh-optivem.exe`) was not used; the steps were run by hand with shop cloned into the session scratch dir. JDK 21 and the Chromium libs were apt-installed in the container this session.
+- **C2b caveat (found while preparing):** `fix-${failure-kind}` dispatches are `category: human`, which `--confirm=human` never auto-approves and the dispatcher never runs headless (`driver.go`: `Headless: opts.Headless && category != "human"`). An unattended run that hits a compile failure therefore pauses (exit 2) at the fixer's approval instead of dispatching it, so C2b's "fixer dispatched with the writer's scope" check needs an attended run (or the trace's call-activity params as partial evidence).
+- **C2c gate not met:** no absence-shaped ticket is in the rehearsal corpus (#68's criterion was dropped, #69 has none), so "an absence-shaped ticket goes green by copying the shop reference" has not been observed. Needs either a new absence-shaped issue (creating one is the user's call) or #68's criterion restored first.
+- **C1:** step 6 shipped (shop `de90fbe7`, `--warning-mode none` in `system-test/java/tests*.yaml`; child plan updated in gh-optivem `3032161d`). Probe of `formatVerifyFailureOutput` on real Gradle output shows the assertion in the head window and no deprecation chaff. Remaining: the #76 red-phase trace check (blocked, see above).
