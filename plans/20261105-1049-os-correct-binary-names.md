@@ -15,17 +15,10 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 1: inventory every hard-coded binary name. Run `grep -rn 'gh-optivem\.exe' scripts/ docs/ .github/ internal/ CONTRIBUTING.md README.md .devcontainer/ main.go`, excluding `plans/`. Classify each hit as a **build** (`go build -o ...`), a **call** (runs the binary by path) or **prose**. Record the list under Step 2/3 in this plan. Gate: the list is in the plan; no code changes yet.
+Step 8 (human, Windows host): in Git Bash on Windows, run `bash scripts/install.sh`. Confirm that `gh optivem --version` prints `dev-<sha>`, that `gh-optivem.exe` gets rebuilt (new mtime), and that the Linux `gh-optivem` next to it is untouched. When that passes, delete this plan. Steps 1–7 are done and verified on Linux.
 
 ## Steps
 
-- [ ] **Step 1: Inventory.** Grep as in the ▶ block; record each hit as build, call or prose. Known so far: builds at `scripts/install.sh:44-45`, `scripts/atdd-clean.sh:108`, `scripts/manual-test-runner-shop.sh:38`, `CONTRIBUTING.md:487`, `CONTRIBUTING.md:510`; call in `scripts/atdd-rehearsal.sh` (runs `gh-optivem.exe`). Done when: the full list is in this plan.
-- [ ] **Step 2: Builds use GOEXE.** Change each build to `go build ... -o "gh-optivem$(go env GOEXE)" .`, keeping existing `-ldflags`. For scripts that also call the binary, compute the name once at the top (e.g. `BIN="gh-optivem$(go env GOEXE)"`) and use `$BIN` for both the build and the calls. Depends on Step 1. Done when: `grep -rn 'build .*-o [^ ]*gh-optivem\.exe' scripts/` returns nothing and `bash -n` passes on every edited script.
-- [ ] **Step 3: Callers use the same name.** Update every call site from Step 1 (starting with `scripts/atdd-rehearsal.sh`) to use the GOEXE-derived name. Depends on Step 1 (can run in parallel with Step 2 when the files don't overlap). Done when: no script outside `plans/` invokes a literal `gh-optivem.exe`.
-- [ ] **Step 4: Docs.** Update `CONTRIBUTING.md:487` and `:510` (and any prose hits from Step 1) to the OS-neutral command, with one line explaining GOEXE (`.exe` on Windows, empty elsewhere). Done when: `CONTRIBUTING.md` has no hard-coded `-o gh-optivem.exe`.
-- [ ] **Step 5: `.gitignore`.** Confirm `/gh-optivem` and `gh-optivem.exe` (or `*.exe`) are both ignored; add whichever is missing. Done when: `git check-ignore gh-optivem gh-optivem.exe` prints both.
-- [ ] **Step 6: Remove the stray Windows binary.** Delete `/workspaces/gh-optivem/gh-optivem` (an extensionless Windows PE build, root-owned, gitignored, written by no script). It's root-owned, so this may need `sudo`; if that's not possible, record it for the user. Done when: the file is gone, or replaced by a Linux ELF from Step 7. Its producer is unknown (built 2026-11-05 10:17, same size as `gh-optivem.exe`). Decision (user, 2026-11-05): delete it in this plan and don't investigate; only if a Windows PE `gh-optivem` reappears after this plan, find what builds it (e.g. a VS Code task or launch config) and switch it to `.exe`.
-- [ ] **Step 7: Verify on Linux.** Run `scripts/install.sh`, then `gh optivem --version`. Done when: the version prints `dev-<sha>` and `file gh-optivem` reports an ELF. Note: `install.sh` also runs `gh optivem claude setup`, which merges `~/.claude/settings.json`. Check that the permissions allowlist added on 2026-11-05 survives the merge.
 - [ ] **Step 8: Windows check (human).** On the Windows host, run `scripts/install.sh` in Git Bash and confirm `gh optivem --version` works and `gh-optivem.exe` is rebuilt; the Linux `gh-optivem` next to it is untouched. This needs the user's Windows machine.
 
 ## Non-goals and invariants

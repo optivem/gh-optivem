@@ -5,7 +5,7 @@
 Rebuild + link `gh optivem` after editing CLI source (see [Install from source](#install-from-source)):
 
 ```bash
-bash scripts/install.sh   # rebuilds gh-optivem.exe and links it as `gh optivem`
+bash scripts/install.sh   # rebuilds gh-optivem$(go env GOEXE) and links it as `gh optivem`
 ```
 
 End-to-end manual test (see [Quick smoke test](#quick-smoke-test-no-install) for details; credentials can live in the portable `.env`, see [Environment variables](docs/cli-reference.md#environment-variables)):
@@ -290,7 +290,7 @@ Off by default. Filing a quick issue yourself is usually clearer and keeps the s
 ## Install from source
 
 ```bash
-bash scripts/install.sh   # rebuilds gh-optivem.exe and links it as `gh optivem`
+bash scripts/install.sh   # rebuilds gh-optivem$(go env GOEXE) and links it as `gh optivem`
 ```
 
 Run this any time you edit CLI source (e.g. `implement_commands.go`, anything under `internal/diagrams/diagram/`, etc.). Without rebuilding, `gh optivem …` keeps running the previously built binary and silently masks your changes — cobra falls through to help text for subcommands the old binary doesn't know about, and `>` redirects then clobber whatever file you piped into.
@@ -456,7 +456,7 @@ Fast iteration on the driver. **Local working copy of gh-optivem** + **existing 
 
 ##### Quick path
 
-`scripts/atdd-rehearsal.sh` does **everything** end-to-end: runs `scripts/install.sh` (which `go build`s `gh-optivem.exe` from your working copy and re-installs the `gh optivem` extension), creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit. The script relies on the ambient shell environment for credentials; since the binary now loads the user-level `.env` at startup (see [Environment Variables](docs/cli-reference.md#environment-variables)), the same portable file covers rehearsals too — no need to re-export tokens per shell. Docker state cleanup is no longer part of this script — if you want a fresh state (volumes + locally-built images dropped, per the current config's `systems.yaml`), run `bash ../gh-optivem/scripts/atdd-clean.sh [--config <yaml>]` first.
+`scripts/atdd-rehearsal.sh` does **everything** end-to-end: runs `scripts/install.sh` (which `go build`s `gh-optivem$(go env GOEXE)` from your working copy and re-installs the `gh optivem` extension), creates the worktree, runs `implement` inside it, prompts to delete the worktree + branch on exit. The script relies on the ambient shell environment for credentials; since the binary now loads the user-level `.env` at startup (see [Environment Variables](docs/cli-reference.md#environment-variables)), the same portable file covers rehearsals too — no need to re-export tokens per shell. Docker state cleanup is no longer part of this script — if you want a fresh state (volumes + locally-built images dropped, per the current config's `systems.yaml`), run `bash ../gh-optivem/scripts/atdd-clean.sh [--config <yaml>]` first.
 
 ```bash
 # Step 1 — go to shop
@@ -482,13 +482,16 @@ The rehearsal script is one-shot — it runs `implement` once, then exits with t
 ```bash
 # Step 1 — edit gh-optivem code in the gh-optivem repo (not in the worktree)
 
-# Step 2 — rebuild gh-optivem.exe from shop
+# Step 2 — rebuild gh-optivem from shop
+#          (GOEXE is `.exe` on Windows and empty on Linux/macOS, so the
+#          binary is gh-optivem.exe on Windows and gh-optivem elsewhere)
 cd ../shop
-go -C ../gh-optivem build -o gh-optivem.exe .
+BIN="gh-optivem$(go env GOEXE)"
+go -C ../gh-optivem build -o "$BIN" .
 
 # Step 3 — cd into the kept worktree and re-run implement
 cd ../../worktrees/rehearsal-<id>   # tab-complete <id> from the script's log line
-../../academy/gh-optivem/gh-optivem.exe implement --issue 61
+../../academy/gh-optivem/$BIN implement --issue 61
 
 # Step 4 — when truly done, clean up from shop
 cd ../../academy/shop
@@ -507,7 +510,9 @@ The rehearsal script forwards `--auto` and `--headless` but nothing else. For an
 cd ../shop
 
 # Step 2 — build gh-optivem from your local working copy
-go -C ../gh-optivem build -o gh-optivem.exe .
+#          (GOEXE is `.exe` on Windows and empty on Linux/macOS)
+BIN="gh-optivem$(go env GOEXE)"
+go -C ../gh-optivem build -o "$BIN" .
 
 # Step 3 — create a throwaway worktree on a rehearsal branch, under a
 #          `worktrees/` folder beside academy (outside academy on purpose
@@ -518,10 +523,10 @@ git worktree add -b "rehearsal/${TS}" "../../worktrees/rehearsal-${TS}"
 cd "../../worktrees/rehearsal-${TS}"
 
 # Step 4 — run implement with whatever flags you need (pick one)
-../../academy/gh-optivem/gh-optivem.exe implement --issue 42
-../../academy/gh-optivem/gh-optivem.exe --auto implement --issue 42 --headless                  # fully autonomous (script also supports this)
-../../academy/gh-optivem/gh-optivem.exe implement --issue 42 --manual-agents
-../../academy/gh-optivem/gh-optivem.exe -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / task_prompts / process_flow via an alternate config
+../../academy/gh-optivem/$BIN implement --issue 42
+../../academy/gh-optivem/$BIN --auto implement --issue 42 --headless                  # fully autonomous (script also supports this)
+../../academy/gh-optivem/$BIN implement --issue 42 --manual-agents
+../../academy/gh-optivem/$BIN -c ./gh-optivem.experimental.yaml implement --issue 42  # swap node_extras / task_prompts / process_flow via an alternate config
 
 # Step 5 — clean up the worktree + branch when done
 cd ../../academy/shop

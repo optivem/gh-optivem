@@ -29,13 +29,14 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
 SHOP_DIR="$WORKSPACE_ROOT/shop"
-BIN="$REPO_ROOT/gh-optivem.exe"
+BIN_NAME="gh-optivem$(go env GOEXE)"
+BIN="$REPO_ROOT/$BIN_NAME"
 
 CFG_LATEST="gh-optivem.shop-ts-monolith.yaml"
 CFG_LEGACY="gh-optivem.shop-ts-monolith-legacy.yaml"
 
 echo "=== Step 1/5: Build gh-optivem ==="
-( cd "$REPO_ROOT" && go build -o gh-optivem.exe . ) || {
+( cd "$REPO_ROOT" && go build -o "$BIN_NAME" . ) || {
   echo "FAILED: go build" >&2
   exit 1
 }

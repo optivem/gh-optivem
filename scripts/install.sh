@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds gh-optivem.exe from this working copy and ensures `gh optivem`
+# Builds gh-optivem$(go env GOEXE) (gh-optivem.exe on Windows, gh-optivem
+# elsewhere) from this working copy and ensures `gh optivem`
 # resolves to it. Run it any time you edit CLI-side source (cmd wiring,
 # atdd commands, etc.) — without rebuilding, `gh optivem …` keeps running
 # the previously built binary and silently masks your changes (cobra
@@ -41,8 +42,9 @@ if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; th
   SHA="${SHA}-dirty"
 fi
 DEV_VERSION="dev-${SHA}"
-log "go build -o gh-optivem.exe . (version=${DEV_VERSION})"
-go build -ldflags "-X github.com/optivem/gh-optivem/internal/kernel/version.Version=${DEV_VERSION}" -o gh-optivem.exe .
+BIN_NAME="gh-optivem$(go env GOEXE)"
+log "go build -o ${BIN_NAME} . (version=${DEV_VERSION})"
+go build -ldflags "-X github.com/optivem/gh-optivem/internal/kernel/version.Version=${DEV_VERSION}" -o "${BIN_NAME}" .
 
 log "gh extension install (remove first if already installed)"
 if ! rm_err=$(gh extension remove optivem 2>&1); then
