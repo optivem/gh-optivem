@@ -15,6 +15,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -383,9 +384,16 @@ func mergeClaudeSettings(claudeDir string) error {
 
 // claudeSettingsMerge unions permissions.allow entries and adds missing hook
 // event keys from src into dst. Returns true if dst was modified.
+//
+// Hooks are merged on Windows only: the embedded Stop/Notification hooks play
+// Windows system sounds through `powershell`, which does not exist on
+// Linux/macOS (e.g. the devcontainer), where they would fail on every stop.
 func claudeSettingsMerge(dst, src map[string]interface{}) bool {
 	permsChanged := mergePermissionsAllow(dst, src)
-	hooksChanged := mergeHookEvents(dst, src)
+	hooksChanged := false
+	if runtime.GOOS == "windows" {
+		hooksChanged = mergeHookEvents(dst, src)
+	}
 	return permsChanged || hooksChanged
 }
 
