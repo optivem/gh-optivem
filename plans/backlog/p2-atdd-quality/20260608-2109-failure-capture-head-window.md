@@ -120,16 +120,10 @@ anchor on, so a head-only window would drop it. That variant is explicitly out.
 
 ## Shipped
 
-Steps 1-5 (helpers `firstErrorWindow`, additive `formatVerifyFailureOutput` in `internal/atdd/process/actions/command.go`, unit tests in `bindings_test.go`, fixer prompts re-read: no tail-shape wording, no change needed).
+- Steps 1-5 (helpers `firstErrorWindow`, additive `formatVerifyFailureOutput` in `internal/atdd/process/actions/command.go`, unit tests in `bindings_test.go`, fixer prompts re-read: no tail-shape wording, no change needed).
+- Step 6 (Option B): shop `de90fbe7` adds `--warning-mode none` to every Gradle command in `system-test/java/tests.yaml` and `tests.legacy.yaml`.
+- Probe verification (2026-11-05): a throwaway failing JUnit test run with the real `acceptance-parallel-api` command from `tests.yaml`, its stdout/stderr fed through `formatVerifyFailureOutput`. The head window leads with `CaptureProbeTest > probeExpectedRed() FAILED` / `AssertionFailedError: [Expected result to be failure but was success]`, and the `Deprecated Gradle features...` block is gone (still present without the flag).
 
-## Remaining steps
+## Remaining
 
-1. (Option B, shop-side) Add `--warning-mode none` to the Gradle test invocations in shop's `system-test/java/tests.yaml` (and `tests.legacy.yaml` if still used). The commands live in shop config, not gh-optivem; needs a shop edit + shop push (not done in the gh-optivem pass).
-
-## Verification (not yet run - needs an attended rehearsal)
-
-- Re-run the `#76` cancellation-blackout rehearsal red phase; confirm
-  `verify_failure_output` in the trace leads with
-  `AssertionError: Expected result to be failure but was success`.
-- Force an infra failure (break the Gradle build / rename the test source) and
-  confirm the tail still carries the real cause (no marker -> tail-only path; covered by unit test, rehearsal confirms end-to-end).
+- Full ATDD trace check: re-run the `#76` red phase (`gh optivem implement 76 --target test` on `gh-optivem-monolith-java.yaml`) and confirm `verify_failure_output` in the trace leads with the assertion. Not run autonomously: launching the headless-claude `implement` run was refused by the auto-mode permission check, so it needs an attended run. Infra-failure tail-only path is covered by unit tests.
