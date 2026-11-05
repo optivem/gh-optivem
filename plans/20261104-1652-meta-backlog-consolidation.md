@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-**Why:** the backlog under `plans/backlog/{p1..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
+**Why:** the backlog under `plans/backlog/{p2..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
 **End result:** every unit below is shipped (or recorded as blocked with the reason), the shop empty-template variant exists, kickoff runs end to end, and only the human-only items remain. This file is deleted once its units are done and the human-only items are handed off.
 
 ## ▶ Next executable step (resume here)
@@ -54,7 +54,7 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 ### Part 2: Docker (run last, one at a time under the rehearsal lock)
 
 #### Phase C: Items 13, 15
-- C1 done 2026-11-05: #76 red-phase rehearsal rc=0; `verify_failure_output` opens with the `AssertionError` (head window), then `--- (later output) ---`, zero deprecation lines. A0 confirmed end to end (children `Write` + `gh optivem test compile`/`output write` with no denials; one intended denial of a `python3` heredoc edit).
+- C1 done 2026-11-05 (closed `p2-atdd-quality/20260608-2109-failure-capture-head-window.md`, whose last item was this check): #76 red-phase rehearsal rc=0; `verify_failure_output` opens with the `AssertionError` (head window), then `--- (later output) ---`, zero deprecation lines. A0 confirmed end to end (children `Write` + `gh optivem test compile`/`output write` with no denials; one intended denial of a `python3` heredoc edit).
 - **C2 (Item 15 / #21).** In `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`:
   - C2b done 2026-11-05 (partial evidence, as decided): unattended #76 run with an induced compile break after the writer; trace `EXECUTE_COMMAND ... params=...,command=gh optivem system-test compile,scope-task-name=write-acceptance-tests,task-name=compile-tests` → `FIX` → `APPROVE_PRE category=human` → yield rc=2; flow.txt shows FIX/APPROVE_PRE/ASK_HUMAN all carry `scope-task-name=write-acceptance-tests`. The attended fixer-runs-with-writer-scope check stays Human-only. Side note: `setup-tests` passes no `scope-task-name` (already listed out of scope in the child plan).
   - **C2c.** Moved to Human-only (user decision 2026-11-05: don't edit #68 autonomously).
@@ -88,11 +88,13 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 
 ## Not in scope (triggers, not units)
 
-`plans/backlog/p3-tooling-cost/20261002-0817-unattended-plan-execution.md`; `plans/backlog/p4-maintenance/20260511-1702-shop-frontend-react-to-typescript-rename.md` (blocked until shop renames its frontend); everything under `parked/`. Possible follow-up (unplanned): cross-check every registered external system appears in the approved use-case diagram.
+`plans/backlog/p4-maintenance/20260511-1702-shop-frontend-react-to-typescript-rename.md` (blocked until shop renames its frontend); everything under `parked/`. Possible follow-up (unplanned): cross-check every registered external system appears in the approved use-case diagram.
 
 ## Follow-ups found by the run (not units yet)
 
 - **Red phase accepts infra failures (found by C1, 2026-11-05):** with Chromium libs missing, the #76 red phase failed on a Playwright `TargetClosedError` and `VERIFY_TESTS_FAIL_ACCEPTANCE` still reported `test-outcome=fail` / "Tests Fail Verified" (`failure-kind=command-failed`). A red phase should require an assertion-shaped failure, not any non-zero exit. Candidate `/fix-bug` or a child plan in `plans/backlog/p2-atdd-quality/`.
+
+- **.NET `--test` name check is case-sensitive (found by C2a, 2026-11-05):** `nameExecuted` in `internal/build/runner/tests.go` uses case-sensitive `strings.Contains`, so `--test cannotPlace...` (camelCase) runs and passes the .NET test but reports "requested test(s) never executed" and exits 1; PascalCase exits 0. Candidate `/fix-bug`.
 
 - **Spec record needs spec.yaml + matching results glob (found by D3d, 2026-11-05):** story runs now fail at RECORD_SPEC_FINGERPRINTS (→ fixer) in a repo without `spec.yaml`/JUnit results; shop's `spec.yaml` results glob covers Java only, so .NET/TypeScript story runs may record nothing or fail. Check before the next non-Java rehearsal.
 
