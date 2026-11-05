@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Unit C2, runtime check (the only unit not blocked):** run `cannotPlaceOrderWithNonExistentCoupon` (now ending in `noOrderPersisted`) green via `gh optivem system start` + system tests on monolith and multitier × Java / .NET / TypeScript, one combo at a time under the rehearsal lock (shop cloned into the session scratch dir). Record pass/fail in `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`. Everything else open needs a headless rehearsal (see Blocked), a release (E2) or the user (Phase B, human-only).
+**Part 1 (no Docker) has nothing executable right now:** E2 waits on a gh-optivem release, Phase B is deferred for discussion. **When ready for Docker, start Part 2 with C2a** (runtime check of `cannotPlaceOrderWithNonExistentCoupon` on 6 combos, no headless agents). C1, C2b and D1–D4 also need headless agents (see Blocked).
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -37,24 +37,34 @@ Not pre-authorized, so still stop-and-ask: force-push, releases, closing GitHub 
 
 ## Executable units (in order)
 
-### Phase B: kickoff shop removal — ⏳ Deferred (needs discussion; user, 2026-11-05)
-- [ ] **B1–B4** (shop "empty" variant, `removal.go`, removal tests, end-to-end run) — ⏳ Deferred: not ready; the skeleton design needs a future discussion. Findings so far: a `--no-legacy`-style delete list can't produce a buildable repo (the sample runs through the driver/DSL aggregators and all system code), so shop must ship replacement skeleton sources (~100+ files, 9 projects, multi-session). Recommendation on the table (not decided): a **walking skeleton** (one thin hello-world slice UI → API → backend → DB, one acceptance test through DSL/driver on API + UI channels, tagged as skeleton not `UC-001`; keep the test architecture, Postgres, Keycloak, WireMock harness; drop clock/erp/tax and the order/coupon code), shipped in shop as an overlay + delete list so shop CI proves it for all 6 combos. See `plans/20261104-1121-switch-shop-to-own-domain.md`.
+Non-Docker units run first; everything that needs Docker (system start, rehearsals) is grouped at the end (user, 2026-11-05).
 
-### Phase C: Items 13, 15 (rehearsal + shop push), one at a time under the rehearsal lock
-- **C1 (Item 13 / #12).** In `plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`: step 6 (Gradle `--warning-mode none` in shop `system-test/java/tests*.yaml`, push to shop), then the rehearsal check. Done when: rehearsal shows the failure capture window as designed.
-- **C2 (Item 15 / #21).** In `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`: runtime check of `cannotPlaceOrderWithNonExistentCoupon` on monolith + multitier x3 languages, rehearsal check of the `scope-task-name` fixer change, then Step 6 (restore #68's criterion). Done when: all runtime checks pass.
+### Part 1: no Docker
 
-### Phase D: verification checklist (rehearsal lock, sequential)
+#### Phase E: Item 23 remainder (#42 Slice 1; plan `plans/backlog/p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component.md`)
+- E1 done 2026-11-05 (shop `aa8aa8de`+`b700f301`, nightly `multitier-backend-java-mutation-nightly.yml`, dispatch run 41993634354 green).
+- [ ] **E2.** ⏳ Blocked on a gh-optivem release: baseline 53% (164/307 killed), threshold 50 chosen and recorded in shop `plans/backlog/p1-ci-pipeline/20261103-1335-readd-inner-loop-pilot-config.md` (shop `7bdcd272`), but released v1.6.105 rejects the `inner-loop` keys, so the config write waits for the next release (releases need the user).
+- Step 1b (`--backend-inner-loop` flags) stays deferred until a second tier opts in. Slices 2-4 untouched.
+
+#### Phase B: kickoff shop removal — ⏳ Deferred (needs discussion; user, 2026-11-05)
+- [ ] **B1–B4** (shop "empty" variant, `removal.go`, removal tests, end-to-end run) — ⏳ Deferred: not ready; the skeleton design needs a future discussion. Findings so far: a `--no-legacy`-style delete list can't produce a buildable repo (the sample runs through the driver/DSL aggregators and all system code), so shop must ship replacement skeleton sources (~100+ files, 9 projects, multi-session). Recommendation on the table (not decided): a **walking skeleton** (one thin hello-world slice UI → API → backend → DB, one acceptance test through DSL/driver on API + UI channels, tagged as skeleton not `UC-001`; keep the test architecture, Postgres, Keycloak, WireMock harness; drop clock/erp/tax and the order/coupon code), shipped in shop as an overlay + delete list so shop CI proves it for all 6 combos. See `plans/20261104-1121-switch-shop-to-own-domain.md`. (B4's end-to-end run needs Docker; run it with Part 2 when B is picked up.)
+
+### Part 2: Docker (run last, one at a time under the rehearsal lock)
+
+#### Phase C: Items 13, 15
+- **C1 (Item 13 / #12).** Step 6 done (shop `de90fbe7`). Remaining: the #76 red-phase trace check in a rehearsal (`plans/backlog/p2-atdd-quality/20260608-2109-failure-capture-head-window.md`). Done when: rehearsal shows the failure capture window as designed. Needs headless agents (see Blocked).
+- **C2 (Item 15 / #21).** In `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`:
+  - **C2a.** Runtime check: `cannotPlaceOrderWithNonExistentCoupon` (ends in `noOrderPersisted`, already on shop `main`) green via `gh optivem system start` + system tests on monolith and multitier × Java / .NET / TypeScript. No headless agents needed.
+  - **C2b.** Rehearsal check of the `scope-task-name` fixer change (needs headless agents).
+  - **C2c.** Step 6: restore #68's criterion (editing a GitHub issue: ask first).
+  Done when: all runtime checks pass.
+
+#### Phase D: verification checklist (sequential; all need headless agents)
 - **D1.** channel-touched skipped tests (#76 re-run): skipped tests no longer trigger a no-op dispatch followed by a halt.
 - **D2.** scope-drift fix-loop (#15): induce a test-only fixer; confirm scope-drift guard / fix loop is report-only as designed.
 - **D3.** story-merge behaviour: (a) story adding behaviour (merge diff approved, tests tagged with merged `UC-NNN.M` ids), (b) kickoff-style story with `@UC-NNN.M` scenarios naming existing criteria (merge skipped), (c) edited criterion shows `Changed` in `gh optivem spec status`. Decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet): record the decision as a new plan item.
 - **D4.** `--no-legacy` spot-check during any scaffold run above.
 Done when: each check is recorded pass/fail; failures become new plan items or `/fix-bug` handoffs.
-
-### Phase E: Item 23 remainder (#42 Slice 1; plan `plans/backlog/p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component.md`)
-- E1 done 2026-11-05 (shop `aa8aa8de`+`b700f301`, nightly `multitier-backend-java-mutation-nightly.yml`, dispatch run 41993634354 green).
-- [ ] **E2.** ⏳ Blocked on a gh-optivem release: baseline 53% (164/307 killed), threshold 50 chosen and recorded in shop `plans/backlog/p1-ci-pipeline/20261103-1335-readd-inner-loop-pilot-config.md` (shop `7bdcd272`), but released v1.6.105 rejects the `inner-loop` keys, so the config write waits for the next release (releases need the user).
-- Step 1b (`--backend-inner-loop` flags) stays deferred until a second tier opts in. Slices 2-4 untouched.
 
 ## Human-only (excluded from autonomous runs)
 
