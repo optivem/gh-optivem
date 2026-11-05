@@ -2,7 +2,6 @@ package shell
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -33,7 +32,9 @@ func NewSonarCloud(token, org string) *SonarCloud {
 
 func (s *SonarCloud) api(ctx context.Context, method, endpoint string, data map[string]string) (map[string]interface{}, error) {
 	apiURL := "https://sonarcloud.io/api" + endpoint
-	creds := base64.StdEncoding.EncodeToString([]byte(s.Token + ":"))
+	// SonarCloud rejects HTTP Basic (token as username) since 2026-11-05;
+	// user tokens must be sent as a Bearer token.
+	creds := s.Token
 
 	var raw []byte
 	var statusCode int
@@ -73,7 +74,7 @@ func (s *SonarCloud) attempt(ctx context.Context, method, apiURL, creds string, 
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Basic "+creds)
+	req.Header.Set("Authorization", "Bearer "+creds)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}

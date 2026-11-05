@@ -119,7 +119,8 @@ func verifySonarToken(client *http.Client, token string) error {
 			if err != nil {
 				return "", fmt.Errorf(errFmtBuildRequest, err)
 			}
-			req.SetBasicAuth(token, "")
+			// Bearer, not Basic: SonarCloud rejects Basic token auth (2026-11-05).
+			req.Header.Set("Authorization", "Bearer "+token)
 			resp, err := client.Do(req)
 			if err != nil {
 				return err.Error(), fmt.Errorf(errFmtNetwork, err)

@@ -64,7 +64,7 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 
 #### Phase D: verification checklist (sequential; all need `implement` runs)
 - **D1.** channel-touched skipped tests (#76 re-run): skipped tests no longer trigger a no-op dispatch followed by a halt.
-- **D2.** scope-drift fix-loop (#15): induce a test-only fixer; confirm scope-drift guard / fix loop is report-only as designed.
+- **D2.** scope-drift fix-loop (#15), unattended part: induce an out-of-scope edit after the writer (script ready: `<session scratchpad>/d2-inject.sh` from 2026-11-05) and confirm a scope diff routes to FIX → human gate with no separate scope-drift halt. The "fixer edited: N file(s)" list (shown only at FIX_LOOP_EXHAUSTED / FIX_LOOP_NO_PROGRESS_EXHAUSTED) needs an attended fix loop: see Human-only.
 - **D3.** story-merge behaviour: (a) story adding behaviour (merge diff approved, tests tagged with merged `UC-NNN.M` ids), (b) kickoff-style story with `@UC-NNN.M` scenarios naming existing criteria (merge skipped), (c) edited criterion shows `Changed` in `gh optivem spec status`. Decide when `gh optivem spec record` runs after green (nothing invokes it automatically yet): record the decision as a new plan item.
 - **D4.** `--no-legacy` spot-check during any scaffold run above.
 Done when: each check is recorded pass/fail; failures become new plan items or `/fix-bug` handoffs.
@@ -79,6 +79,7 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 - **Items 20 (#13) and 21 (#16):** live in `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md` (#13 Option A, Java only; #16 `/users` directory, monolith-java only, refine deferred); gh-optivem plans: `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`, `plans/backlog/p3-tooling-cost/20260617-1001-rehearsal-corpus-testinstance-and-refine.md`. Not part of this run.
 
 - **C2c (Item 15 / #21 Step 6):** restore #68's dropped criterion (or create a new absence-shaped issue), then rehearse that an absence-shaped ticket goes green by copying the shop reference. See `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`.
+- **D2 attended check:** in an attended run, let the fixer loop exhaust after an out-of-scope edit and confirm the halt is report-only and lists "fixer edited: N file(s)" (#15, commit 416a761f).
 - **C2b attended check:** in an attended `implement` run that hits a compile failure, approve the `fix-*` (human-category) dispatch and confirm the fixer runs with the writer's scope.
 
 ## Not in scope (triggers, not units)
@@ -94,5 +95,7 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 Tokens load from `~/.config/gh-optivem/.env`. Install the extension from the repo (`go build -o gh-optivem . && gh extension install .`). apt: `openjdk-21-jdk-headless` + Chromium libs (Ubuntu 24.04 `t64` names: `libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libasound2t64 libatspi2.0-0t64 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libnss3 libpango-1.0-0 libcairo2`). Per run, inside a scratch shop clone at `main`: fresh branch, `rm -rf system-test/java/src/test/java/com/mycompany/myshop/systemtest/legacy`, `export GH_OPTIVEM_CONFIG=$PWD/gh-optivem-monolith-java.yaml`, `gh optivem system clean`, `gh optivem --auto implement N ... --headless --log-file ../x.log`. `--shop-ref` is a scaffold flag, not an `implement` flag. `scripts/atdd-rehearsal.sh` has no lock: "no containers / no other `implement` running" is the lock.
 
 ## Blocked (filled in by the run)
+
+- **Sonar preflight 401 (fixed 2026-11-05):** D1 attempts 1–2 failed preflight (`sonarcloud: organizations/search optivem: HTTP 401`); SonarCloud started rejecting HTTP Basic token auth between 12:34 and 12:45 UTC (Bearer still valid). Fixed in `internal/kernel/shell/sonarcloud.go` + `internal/config/token_auth.go` (Bearer, matching `internal/devworkflow/sonar`). D1/D2 re-run after the fix.
 
 - **C2c gate not met:** no absence-shaped ticket is in the rehearsal corpus (#68's criterion was dropped, #69 has none), so "an absence-shaped ticket goes green by copying the shop reference" has not been observed. Needs either a new absence-shaped issue (creating one is the user's call) or #68's criterion restored first.
