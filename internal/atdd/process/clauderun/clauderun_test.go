@@ -983,6 +983,82 @@ func TestDispatch_HeadlessFlagPropagates(t *testing.T) {
 	}
 }
 
+func TestDispatch_AllowedToolsPropagates(t *testing.T) {
+	gitFake := &fakeGit{
+		out: [][]byte{[]byte("aaaa\n"), []byte("aaaa\n")},
+	}
+	claudeFake := &fakeClaude{}
+
+	opts := newOpts()
+	opts.Headless = true
+	opts.AllowedTools = []string{"Read", "Grep"}
+
+	if _, err := Dispatch(context.Background(), Deps{Claude: claudeFake, Git: gitFake}, opts); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if got := strings.Join(claudeFake.calls[0].AllowedTools, ","); got != "Read,Grep" {
+		t.Errorf("AllowedTools: got %q, want %q", got, "Read,Grep")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// headlessArgs — claude argv shape
+// ---------------------------------------------------------------------------
+
+func TestHeadlessArgs_DefaultAllowlist(t *testing.T) {
+	got := headlessArgs(RunOpts{Model: "sonnet", Effort: "medium"}, "PROMPT TEXT")
+	want := []string{
+		"--model", "sonnet",
+		"--effort", "medium",
+		"-p", "PROMPT TEXT",
+		"--output-format", "stream-json",
+		"--verbose",
+		"--allowedTools", "Read,Glob,Grep,Edit,Write,Bash(gh optivem *)",
+	}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Errorf("argv:\n got  %q\n want %q", got, want)
+	}
+}
+
+func TestHeadlessArgs_PerAgentOverrideReplacesDefault(t *testing.T) {
+	got := headlessArgs(RunOpts{AllowedTools: []string{"Read", "Glob", "Grep"}}, "P")
+	n := len(got)
+	if n < 2 || got[n-2] != "--allowedTools" || got[n-1] != "Read,Glob,Grep" {
+		t.Errorf("argv tail: got %q, want [--allowedTools Read,Glob,Grep]", got)
+	}
+	for _, a := range got {
+		if strings.Contains(a, "Edit") || strings.Contains(a, "gh optivem") {
+			t.Errorf("override must replace the default, but argv contains %q", a)
+		}
+	}
+}
+
+func TestHeadlessArgs_PromptIntactAndAllowlistLast(t *testing.T) {
+	prompt := "line one\n--allowedTools looks like a flag\nBash(rm -rf *)"
+	got := headlessArgs(RunOpts{}, prompt)
+	pIdx := -1
+	for i, a := range got {
+		if a == "-p" {
+			pIdx = i
+		}
+	}
+	if pIdx < 0 || pIdx+1 >= len(got) || got[pIdx+1] != prompt {
+		t.Fatalf("prompt must follow -p verbatim; argv %q", got)
+	}
+	// --allowedTools is variadic in the claude CLI: it must be the last
+	// flag, with exactly one value after it, so it can never swallow the
+	// positional prompt.
+	n := len(got)
+	if got[n-2] != "--allowedTools" {
+		t.Errorf("--allowedTools must be the second-to-last arg; argv %q", got)
+	}
+	for _, a := range got {
+		if strings.Contains(a, "dangerously") || a == "--permission-mode" {
+			t.Errorf("argv must not bypass permissions; found %q", a)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch — failure paths
 // ---------------------------------------------------------------------------

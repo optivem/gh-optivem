@@ -118,6 +118,8 @@ func TestParseTuningFrontmatter_Rejections(t *testing.T) {
 		{"missing effort", "model: sonnet\n", "missing required `effort:`"},
 		{"missing model", "effort: medium\n", "missing required `model:`"},
 		{"malformed yaml", "model: : :\n", "parse frontmatter"},
+		{"empty tools entry", "model: sonnet\neffort: medium\ntools: [Read, \"\"]\n", "is empty"},
+		{"comma in tools entry", "model: sonnet\neffort: medium\ntools: [\"Read,Edit\"]\n", "must not contain a comma"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -139,6 +141,25 @@ func TestParseTuningFrontmatter_Accepts(t *testing.T) {
 	}
 	if got.Model != "sonnet" || got.Effort != "medium" {
 		t.Errorf("got %+v, want {sonnet medium}", got)
+	}
+}
+
+func TestParseTuningFrontmatter_Tools(t *testing.T) {
+	got, err := parseTuningFrontmatter("model: sonnet\neffort: medium\ntools: [Read, Glob, \"Bash(gh optivem *)\"]\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	want := []string{"Read", "Glob", "Bash(gh optivem *)"}
+	if strings.Join(got.Tools, "|") != strings.Join(want, "|") {
+		t.Errorf("Tools: got %q, want %q", got.Tools, want)
+	}
+
+	noTools, err := parseTuningFrontmatter("model: sonnet\neffort: medium\n")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if noTools.Tools != nil {
+		t.Errorf("Tools: got %q, want nil when `tools:` absent", noTools.Tools)
 	}
 }
 

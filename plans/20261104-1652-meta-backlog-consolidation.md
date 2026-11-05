@@ -1,5 +1,7 @@
 # Plan coordination meta-plan: backlog consolidation (autonomous run)
 
+> 🤖 **Picked up by agent** — `cd40624e55d3` at `2026-11-05T12:24:47Z`
+
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p1..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
@@ -7,7 +9,7 @@
 
 ## ▶ Next executable step (resume here)
 
-**Part 2 is blocked on headless child-agent permissions** (2026-11-05, see Blocked → C1). The `project` scope is fixed and preflight passes, but the headless `claude -p` children (e.g. `acceptance-test-writer`) have every `Edit`/`Write`/`Bash(gh optivem *)` call denied, so no tests run. The next move is the user's: grant the child agents an allowlist (in `~/.claude/settings.json`, or a `.claude/settings.local.json` that gets seeded into rehearsal worktrees). Then resume at **C1**, followed by C2b (partial evidence only) and D1–D4. Part 1 still has nothing executable (E2 waits on a release, Phase B is deferred).
+**C1** (Part 2, Docker): rehearse #76 red phase (`gh optivem --auto implement 76 --target test --headless`, `gh-optivem-monolith-java.yaml`, shop cloned into the session scratch dir at `main`, `--shop-ref main`). First confirm A0 end to end: the headless `acceptance-test-writer` child can now Edit/Write and run `gh optivem` (no `permission_denied` in the events log). Done when: the trace shows the failure-capture head window as designed. Then C2b, D1–D4.
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -40,6 +42,8 @@ Not pre-authorized, so still stop-and-ask: force-push, releases, closing GitHub 
 Non-Docker units run first; everything that needs Docker (system start, rehearsals) is grouped at the end (user, 2026-11-05).
 
 ### Part 1: no Docker
+
+- Phase A done 2026-11-05: A0 shipped (`--allowedTools` default `Read, Glob, Grep, Edit, Write, Bash(gh optivem *)`, per-agent `tools:` frontmatter override). End-to-end confirmation rides on C1.
 
 #### Phase E: Item 23 remainder (#42 Slice 1; plan `plans/backlog/p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component.md`)
 - E1 done 2026-11-05 (shop `aa8aa8de`+`b700f301`, nightly `multitier-backend-java-mutation-nightly.yml`, dispatch run 41993634354 green).

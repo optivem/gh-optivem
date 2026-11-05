@@ -144,10 +144,19 @@ func DefaultAgentSet() *AgentSet {
 // so the later tier is safe to route to a cheaper model. Absent → no
 // per-channel downgrade; Model is used for every channel. See
 // resolveDispatchModel (driver.go) for the routing.
+//
+// Tools is an OPTIONAL per-agent narrowing of the headless `claude -p`
+// permission allowlist (a YAML list of Claude Code permission rules, e.g.
+// `tools: [Read, Glob, Grep]`). Absent → the dispatcher uses
+// clauderun.DefaultHeadlessAllowedTools. Present → it REPLACES the default
+// for this agent (it does not extend it). Entries must be non-empty and
+// must not contain a comma, because the list is passed to the CLI as one
+// comma-joined `--allowedTools` value.
 type Tuning struct {
-	Model             string `yaml:"model"`
-	Effort            string `yaml:"effort"`
-	ModelLaterChannel string `yaml:"model-later-channel"`
+	Model             string   `yaml:"model"`
+	Effort            string   `yaml:"effort"`
+	ModelLaterChannel string   `yaml:"model-later-channel"`
+	Tools             []string `yaml:"tools"`
 }
 
 // Prompt returns the embedded prompt body for the given agent name,
@@ -243,6 +252,14 @@ func parseTuningFrontmatter(fm string) (Tuning, error) {
 	}
 	if t.Effort == "" {
 		return Tuning{}, fmt.Errorf("frontmatter missing required `effort:` field")
+	}
+	for i, tool := range t.Tools {
+		if strings.TrimSpace(tool) == "" {
+			return Tuning{}, fmt.Errorf("frontmatter `tools:` entry %d is empty", i)
+		}
+		if strings.Contains(tool, ",") {
+			return Tuning{}, fmt.Errorf("frontmatter `tools:` entry %q must not contain a comma", tool)
+		}
 	}
 	return t, nil
 }

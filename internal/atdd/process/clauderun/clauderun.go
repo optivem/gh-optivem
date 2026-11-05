@@ -354,6 +354,12 @@ type Options struct {
 	// per-call thinking is the dominant token cost.
 	Effort string
 
+	// AllowedTools, when non-empty, replaces DefaultHeadlessAllowedTools
+	// as the headless `--allowedTools` permission allowlist for this
+	// dispatch (sourced from the agent's `tools:` frontmatter). Empty →
+	// the default. Ignored in interactive mode.
+	AllowedTools []string
+
 	// PromptLogPath, when non-empty, is the file path Dispatch writes the
 	// rendered prompt to (creating parent dirs as needed) before invoking
 	// the runner. The driver computes a per-run-and-dispatch path so the
@@ -499,8 +505,11 @@ type RunOpts struct {
 	Headless bool
 	Model    string
 	Effort   string
-	Dir      string
-	Stdin    io.Reader
+	// AllowedTools overrides DefaultHeadlessAllowedTools for headless
+	// runs; empty → default. runInteractive ignores it.
+	AllowedTools []string
+	Dir          string
+	Stdin        io.Reader
 	// Stdout is the writer the interactive (claude TUI) subprocess pipes
 	// its stdout into. For Detail-level routing in production, Dispatch
 	// passes opts.Out.Detail through this field; tests may pass any
@@ -784,6 +793,7 @@ func runDispatchAttempt(ctx context.Context, deps Deps, opts Options, runnerStdo
 		Headless:          opts.Headless,
 		Model:             opts.Model,
 		Effort:            opts.Effort,
+		AllowedTools:      opts.AllowedTools,
 		Dir:               opts.RepoPath,
 		Stdin:             opts.Stdin,
 		Stdout:            runStdout,
@@ -2008,7 +2018,8 @@ type execClaude struct{}
 // Interactive mode → `claude <prompt>` with stdin/stdout/stderr connected
 // directly so the operator sees the full Claude Code UI and can interject.
 //
-// Headless mode → `claude -p <prompt> --output-format stream-json --verbose`:
+// Headless mode → `claude -p <prompt> --output-format stream-json --verbose
+// --allowedTools <comma-joined allowlist>` (see headlessArgs):
 //
 //   - The prompt is the embedded agent's full instructions (rendered by
 //     renderPrompt). v2 has no host/subagent split — `claude -p` IS the
@@ -2122,18 +2133,75 @@ func claudeTuningArgs(opts RunOpts) []string {
 	return args
 }
 
+// DefaultHeadlessAllowedTools is the least-privilege permission allowlist
+// passed as `--allowedTools` to every headless `claude -p` child. Without
+// it, non-interactive mode denies every Edit/Write/Bash call
+// (`permission_denied`) and the agent exits with no changes.
+//
+// Contents, and why nothing else:
+//   - Read/Glob/Grep/Edit/Write — the agent's file work. Path scope is NOT
+//     enforced here: the `validate-outputs-and-scopes` guard checks the
+//     post-run diff against the dispatch's scopes and remains the
+//     path-scope enforcer.
+//   - Bash(gh optivem *) — every command the runtime prompts tell children
+//     to run is a `gh optivem` subcommand (`test compile`, `system
+//     compile|build|start`, `test run`, `output write`, ...). Language
+//     build/test tools are deliberately absent: prompts route compiling
+//     and test runs through `gh optivem`.
+//   - No git commands: the only prompts that allow git (`git diff`,
+//     `git show HEAD:<path>`, `git checkout HEAD -- <path>`) are the
+//     `*-fixer` agents, which are `category: human` and therefore always
+//     dispatched interactively, where the operator answers permission
+//     prompts.
+//
+// An agent may narrow (replace) this list via `tools:` in its runtime
+// frontmatter (agents.Tuning.Tools → RunOpts.AllowedTools). Never add
+// `--dangerously-skip-permissions` / `--permission-mode
+// bypassPermissions|acceptEdits` instead of extending this list.
+var DefaultHeadlessAllowedTools = []string{
+	"Read",
+	"Glob",
+	"Grep",
+	"Edit",
+	"Write",
+	"Bash(gh optivem *)",
+}
+
+// headlessAllowedTools returns the per-dispatch allowlist: the agent's
+// override when set, else DefaultHeadlessAllowedTools.
+func headlessAllowedTools(opts RunOpts) []string {
+	if len(opts.AllowedTools) > 0 {
+		return opts.AllowedTools
+	}
+	return DefaultHeadlessAllowedTools
+}
+
+// headlessArgs builds the argv (after "claude") for a headless dispatch.
+// promptArg is the materialized prompt (inline text or the bootstrap
+// pointer). `-p` is a boolean flag in the claude CLI and the prompt is a
+// positional argument, so ordering matters: `--allowedTools` is variadic
+// (`<tools...>`) and would swallow a following positional, so it goes
+// LAST, as a single comma-joined value (the CLI accepts comma- or
+// space-separated rules; commas keep `Bash(gh optivem *)` intact). The
+// args go straight to exec — no shell — so the parens/space/asterisk
+// need no quoting.
+func headlessArgs(opts RunOpts, promptArg string) []string {
+	args := claudeTuningArgs(opts)
+	return append(args,
+		"-p", promptArg,
+		"--output-format", "stream-json",
+		"--verbose",
+		"--allowedTools", strings.Join(headlessAllowedTools(opts), ","),
+	)
+}
+
 func runHeadless(ctx context.Context, opts RunOpts) (RunResult, error) {
 	arg, cleanup, err := materializePrompt(opts.Dir, opts.Prompt)
 	if err != nil {
 		return RunResult{}, err
 	}
 	defer cleanup()
-	args := claudeTuningArgs(opts)
-	args = append(args,
-		"-p", arg,
-		"--output-format", "stream-json",
-		"--verbose",
-	)
+	args := headlessArgs(opts, arg)
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	if opts.Dir != "" {
 		cmd.Dir = opts.Dir

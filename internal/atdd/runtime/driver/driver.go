@@ -1498,6 +1498,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			Approval:          opts.Approval,
 			Model:             resolveDispatchModel(tuning, nodeParams),
 			Effort:            tuning.Effort,
+			AllowedTools:      tuning.Tools,
 			ShowPrompt:        opts.ShowPrompt,
 			PromptLogPath:     promptLog,
 			EventsLogPath:     eventsLogPath,

@@ -388,7 +388,7 @@ gh optivem implement 42 --target system --channel api          # API team: its s
 |---|---|
 | `--target <slice>` | Scope the run to one pipeline slice: `test`, `driver-adapter`, or `system`. Default: walk the whole pipeline. |
 | `--channel <ch>` | Channel for a channel-split `--target`. Required for `driver-adapter` / `system`, rejected for `test`. |
-| `--headless` | Run the claude subprocess headless (`claude -p`); a structured JSON envelope is captured for the exit banner. |
+| `--headless` | Run the claude subprocess headless (`claude -p ... --output-format stream-json --verbose --allowedTools <list>`); a structured JSON envelope is captured for the exit banner. The child gets a least-privilege permission allowlist (`Read, Glob, Grep, Edit, Write, Bash(gh optivem *)` by default; an agent's `tools:` frontmatter replaces it). Path scope is still enforced afterwards by `validate-outputs-and-scopes`. |
 | `--manual-agents` | v1 fallback: pause at each user-task node and let the operator launch the agent manually. |
 | `--show-prompt` | Dump each agent's full rendered prompt before dispatch. Default: summary banner only. |
 | `--verbose` / `-v` | Stream the full firehose to the terminal (subprocess output, agent body, prompt-prep banners). |
