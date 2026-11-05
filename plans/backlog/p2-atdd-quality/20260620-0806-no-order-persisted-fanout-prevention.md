@@ -18,10 +18,12 @@ What we get out of this:
 
 ## ▶ Next executable step (resume here)
 
-**Steps 1-5 shipped (2026-11-03); shop commit and gh-optivem commit are local, unpushed.** Q-7 resolved GO, scoped to order place/cancel only.
+**Steps 1-5 shipped (2026-11-03); the shop change is on `optivem/shop` main** (`noOrderPersisted` / `NoOrderPersisted` present in Java, .NET, TypeScript tests and DSL). Q-7 resolved GO, scoped to order place/cancel only.
 
-Remaining:
-1. **Attended runtime verification of Step 2** (needs `gh optivem system start`, so it was not run): green `cannotPlaceOrderWithNonExistentCoupon` (now ending in `noOrderPersisted`) on monolith and multitier for Java / .NET / TypeScript. Compile-only checks (gradle `compileTestJava`, `dotnet build`, `tsc --noEmit`) already pass.
+**Runtime verification of Step 2: done (2026-11-05).** `cannotPlaceOrderWithNonExistentCoupon` (ending in `noOrderPersisted`) is green on API and UI channels on all 6 combos (monolith and multitier × Java / .NET / TypeScript), via `gh optivem system start` + `gh optivem system-test run --suite acceptance --test <name>` + `system stop`. No shop changes needed. Side finding (gh-optivem, not shop): for .NET, `--test cannotPlace...` (camelCase) runs and passes the test but the runner's post-run name check (`nameExecuted` in `internal/build/runner/tests.go`, case-sensitive `strings.Contains`) reports "requested test(s) never executed" and exits 1; with the PascalCase name it exits 0.
+
+Remaining (both need ATDD agent runs):
+1. **Fixer rehearsal check** - rehearse the Layer 3 `scope-task-name: ${task-name}` compile-tests fixer change (needs a headless ATDD agent run).
 2. **Step 6** - reinstate #68's criterion once an absence-shaped ticket goes green by copying the shop reference.
 
 ## Steps
