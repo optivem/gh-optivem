@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Resolve the Open questions with the user (Q1 and Q2 decide the shape of everything else). Then do Step 1. The scaffolder port it builds on shipped in gh-optivem `v1.6.106` (README "Pipeline" section; `init` skips QA/prod verification without GCP vars). Don't start Step 5 (live GCP) without the user: it costs money and needs their accounts.
+Decisions are settled (all six recommendations accepted, 2026-11-06). Do Steps 1–3 and the gh-optivem half of 4b; hand Step 4 and the shop half of 4b to the user's shop chat. The scaffolder port it builds on shipped in gh-optivem `v1.6.106` (README "Pipeline" section; `init` skips QA/prod verification without GCP vars). Don't start Step 5 (live GCP) without the user: it costs money and needs their accounts.
 
 ## Context
 
@@ -63,14 +63,14 @@ Plus the following:
 
 About $0 a month in normal use: Cloud Run scales to zero with max 1-2 instances, and every cloud stage is `workflow_dispatch` only, with the cron commented out (`monolith-java-acceptance-stage.yml:10-12`). The kill-switch caps the worst case at about 1 unit of currency a month. Neon bills separately on its free plan (`terraform/README.md:144-188`). Uncommenting the cron burns through the free tier within days (`:181-183`).
 
-## Open questions
+## Decisions (user, 2026-11-06: all six recommendations accepted)
 
-1. **Command or doc?** Should this be a `gh optivem cloud setup` command, or a doc plus the shop scripts? **Recommendation:** a doc plus the scripts. The scripts already do preflight, are idempotent, set the GitHub variables and have a matching teardown. A Go port would duplicate about 500 lines of Terraform and shell orchestration and drift from shop. Reconsider only if Windows users without bash become a target.
-2. **Should `init` scaffold `setup-gcp.sh`?** **Recommendation:** yes, always (not gated on `--deploy`), together with `terraform/` (minus `.terraform*`, `tfplan` and state), since the cloud stages are always present now. Without `terraform/` the copied scripts are broken (Context, "What gh-optivem `init` already does").
-3. **Should cloud stages be disabled by default in scaffolds?** **Recommendation:** no. They are already manual (`workflow_dispatch`) with no cron, so they cost nothing until dispatched, and the sibling plan decided "scaffolds inherit cloud as is". They already fail fast with a clear message when the variables are missing (`validate-env-vars-defined`). Link the guide from that message if `optivem/actions` allows a hint (unverified).
-4. **Where does the guide live?** **Recommendation:** in gh-optivem `docs/cloud-setup.md`, versioned with the scaffolder, with a short pointer in the scaffolded README. Shop's `terraform/README.md` stays the deep reference for cost and the kill-switch. Copy it into scaffolds along with `terraform/`, and link it from the guide.
-5. **Shop-specific parts of `setup-gcp.sh`** (all 6 flavors' Neon databases, and the "Trigger workflow" hint naming `multitier-java-acceptance-stage.yml`, `setup-gcp.sh:236,340`). Should they be made generic? **Recommendation:** make them generic in shop, not in gh-optivem: read the flavor list from an env var or the repo's workflows, and default to all. This needs a shop PR, so it goes into a shop plan (see Not in scope).
-6. **SYSTEM_NAME default too long for scaffolds?** **Recommendation:** have `init` warn when the derived name would be over 8 characters, and print the `SYSTEM_NAME=<short> ./setup-gcp.sh` advice in the README or the guide. Don't auto-pick a name.
+1. Doc plus the shop scripts; no `gh optivem cloud setup` command.
+2. `init` always scaffolds `setup-gcp.sh`, `teardown-gcp.sh` and `terraform/` (minus `.terraform*`, `tfplan`, state), not gated on `--deploy`.
+3. Cloud stages stay enabled (manual dispatch only, fail fast without vars).
+4. Guide at gh-optivem `docs/cloud-setup.md`, linked from the scaffolded README; shop's `terraform/README.md` is copied along and linked as the deep reference.
+5. Make `setup-gcp.sh` flavor-aware in shop (shop change: handed to the user's shop chat, not done from gh-optivem).
+6. `init` warns when the derived `SYSTEM_NAME` is over 8 characters; it never auto-picks a name.
 
 ## Steps
 
