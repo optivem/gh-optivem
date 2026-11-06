@@ -7,6 +7,8 @@
 
 ## ▶ Next executable step (resume here)
 
+**In flight (2026-11-06 ~21:10 UTC):** gh-acceptance-stage dispatched on `2454ada5` (cloud setup in scaffolds + `docs/cloud-setup.md`); if green it auto-promotes to `v1.6.107`. Check with `gh release list -R optivem/gh-optivem -L 2` and `gh run list -R optivem/gh-optivem --workflow gh-acceptance-stage.yml -L 1`; if red, root-cause with `/fix-bug`. **Tokens `REPO_TOKEN`/`WORKFLOW_TOKEN` expire 2026-11-08 (user renews).**
+
 **No autonomous units remain (2026-11-06).** D4 passed; the `/fix-bug` handoffs shipped (red phase `5df20a23`, `optivem/actions` `708d562`, .NET case check already in `e965d52c`). gh-optivem `v1.6.106` released 2026-11-06 (run 42283650441, auto-dispatched by the acceptance pipeline after RC `v1.6.106-rc.328`). What's left: E2 (a shop config write, for the user's shop chat). Items 2 and 4 are permanently deferred (never start autonomously).
 
 1. **Shop scaffolding gap (found by D4, 2026-11-06): fixed** on gh-optivem `main` (`b684625e`, `3a73ae55`; rehearsed green on shop `main`). Released in `v1.6.106` (port plan done and deleted). Cloud setup for scaffold users: `plans/20261106-1305-scaffold-cloud-setup-guide.md`.
