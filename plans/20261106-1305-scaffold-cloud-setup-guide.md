@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Resolve the Open questions with the user (Q1 and Q2 decide the shape of everything else). Then do Step 1. Depends on the sibling plan `plans/20261103-1536-gh-optivem-scaffolds-single-pipeline.md` (its Step 3 adds the README pointer to this guide, and its Step 1 settles which shop files get copied). Don't start Step 5 (live GCP) without the user: it costs money and needs their accounts.
+Resolve the Open questions with the user (Q1 and Q2 decide the shape of everything else). Then do Step 1. The scaffolder port it builds on shipped in gh-optivem `v1.6.106` (README "Pipeline" section; `init` skips QA/prod verification without GCP vars). Don't start Step 5 (live GCP) without the user: it costs money and needs their accounts.
 
 ## Context
 
@@ -95,7 +95,7 @@ About $0 a month in normal use: Cloud Run scales to zero with max 1-2 instances,
 
 ## Not in scope
 
-- Porting the scaffolder to the single-pipeline layout, or the README pointer itself (sibling plan `20261103-1536-gh-optivem-scaffolds-single-pipeline.md`).
+- Porting the scaffolder to the single-pipeline layout, or the README pointer itself (shipped in `v1.6.106`).
 - Changes to shop's scripts or Terraform. Those belong in a shop plan (Step 4 only writes that plan).
 - Custom domains and DNS (shop plan `20261104-0839-permanent-acc-e2e-environments.md`). The guide adds it only once that lands.
 - Cloud providers other than GCP, and replacing Neon.

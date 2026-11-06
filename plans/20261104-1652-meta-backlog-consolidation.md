@@ -7,11 +7,11 @@
 
 ## ▶ Next executable step (resume here)
 
-**No autonomous units remain (2026-11-06).** D4 passed; the `/fix-bug` handoffs shipped (red phase `5df20a23`, `optivem/actions` `708d562`, .NET case check already in `e965d52c`). What's left waits on the user, in the order the user chose: items 2 and 4 (deferred decisions), then the gh-optivem release last.
+**No autonomous units remain (2026-11-06).** D4 passed; the `/fix-bug` handoffs shipped (red phase `5df20a23`, `optivem/actions` `708d562`, .NET case check already in `e965d52c`). gh-optivem `v1.6.106` released 2026-11-06 (run 42283650441, auto-dispatched by the acceptance pipeline after RC `v1.6.106-rc.328`). What's left: E2 (a shop config write, for the user's shop chat), then items 2 and 4 (deferred decisions).
 
-1. **Shop scaffolding gap (found by D4, 2026-11-06): fixed** on gh-optivem `main` (`b684625e`, `3a73ae55`; rehearsed green on shop `main`). The release now waits on shop cutting a `meta-v*` with the new layout — see `plans/20261103-1536-gh-optivem-scaffolds-single-pipeline.md`. Cloud setup for scaffold users: `plans/20261106-1305-scaffold-cloud-setup-guide.md`.
+1. **Shop scaffolding gap (found by D4, 2026-11-06): fixed** on gh-optivem `main` (`b684625e`, `3a73ae55`; rehearsed green on shop `main`). Released in `v1.6.106` (port plan done and deleted). Cloud setup for scaffold users: `plans/20261106-1305-scaffold-cloud-setup-guide.md`.
 2. **ERP gap (#65):** Option A was built in shop `d777ecde` (2026-11-06, Java monolith), recorded in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`. Remaining: its #65 rehearsal (Item 6; rehearsals push to shop, so coordinate with the user's parallel shop session) and the slimmed Option B prompt change.
-3. **User, when convenient:** gh-optivem release (unblocks E2; user wants it as the **last** thing; shop `meta-v1.0.224` has the new layout and the 25-run scaffold check passes on it), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a, and #65's board column (was In Progress; prior column unknown).
+3. **User, when convenient:** SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a, and #65's board column (was In Progress; prior column unknown).
 4. **D3b/C2c issue edits (user, ⏳ deferred to the end of the run 2026-11-06):** may the agent tag #69's criteria with existing ids (D3b) and restore #68's absence-shaped criterion (C2c)?
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
@@ -50,7 +50,7 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 
 #### Phase E: Item 23 remainder (#42 Slice 1; plan `plans/backlog/p2-atdd-quality/20261023-0959-optional-inner-tdd-loop-per-component.md`)
 - E1 done 2026-11-05 (shop `aa8aa8de`+`b700f301`, nightly `multitier-backend-java-mutation-nightly.yml`, dispatch run 41993634354 green).
-- [ ] **E2.** ⏳ Blocked on a gh-optivem release: baseline 53% (164/307 killed), threshold 50 chosen and recorded in shop `plans/backlog/p1-ci-pipeline/20261103-1335-readd-inner-loop-pilot-config.md` (shop `7bdcd272`), but released v1.6.105 rejects the `inner-loop` keys, so the config write waits for the next release (releases need the user).
+- [ ] **E2.** Unblocked by gh-optivem `v1.6.106` (2026-11-06); hand to the user's shop chat (shop change): write `mutation-threshold: 50` into shop `gh-optivem-multitier-java.yaml`. Baseline 53% (164/307 killed), threshold 50 chosen and recorded in shop `plans/backlog/p1-ci-pipeline/20261103-1335-readd-inner-loop-pilot-config.md` (shop `7bdcd272`), but released v1.6.105 rejects the `inner-loop` keys, so the config write waits for the next release (releases need the user).
 - Step 1b (`--backend-inner-loop` flags) stays deferred until a second tier opts in. Slices 2-4 untouched.
 
 #### Phase B: kickoff shop removal — ⏳ Deferred (needs discussion; user, 2026-11-05)
@@ -78,8 +78,6 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 
 ## Human-only (excluded from autonomous runs)
 
-
-- **gh-optivem release** to unblock E2 (then write `mutation-threshold: 50` into shop `gh-optivem-multitier-java.yaml`).
 
 - **Item 22 (#20) Step 8:** collapse `scripts/readme-steps.sh` after a green clean-room VM run. Plan: `plans/backlog/p2-atdd-quality/20260812-1705-environment-setup-command.md`.
 - **Item 24 (Sonar S3776):** mark remaining test-file findings Won't Fix in SonarCloud (needs admin rights), then delete `plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md`. Also mark `githubactions:S8545` on `.github/workflows/gh-actionlint-canary.yml:41` (`actionlint@latest`) Accepted/Won't Fix: unpinned is the canary's purpose (found by D6, 2026-11-05).
