@@ -1,6 +1,6 @@
 # Plan: close the ERP product-list staging gap behind #65 "View product list" ({20260613-1950})
 
-⏳ **RE-CHECKED 2026-11-05: the gap still reproduces; waiting for the user to confirm the option.** Unattended `gh optivem --auto implement 65 --headless` (shop `5baa36a4`, monolith-java, gh-optivem `67c93f79` with `merge-use-cases` at the test-agent tier). The merge ran unattended: `scenario-map=[Products are available => UC-002.1, No products are available => UC-002.2]`. Tests, DSL and the api/ui driver adapters were written. `system-implementer` (api channel) then raised a scope exception, which `CATEGORIZE_SCOPE_EXCEPTION` classified as `escc-undeclared` → error-end `ESCC_UNDECLARED_HALT` (rc=1). In June the run ended at STOP_SCOPE_VIOLATION instead. Agent reasons:
+✅ **Option A built in shop `d777ecde` (2026-11-06, Java monolith only):** Items 1–5 below are done there (ERP stub `GET /erp/api/products`, `returnsProducts` / `given().products()`, contract `shouldBeAbleToListProducts`, `ErpGateway.getProducts`, `ProductApiController` `GET /api/products`). Remaining: Item 6 (#65 rehearsal on `gh-optivem-monolith-java.yaml`; run it when no shop cloud run or parallel shop session is pushing), the slimmed Option B prompt change, and later the .NET/TypeScript follow-up. History: **RE-CHECKED 2026-11-05: the gap still reproduced** Unattended `gh optivem --auto implement 65 --headless` (shop `5baa36a4`, monolith-java, gh-optivem `67c93f79` with `merge-use-cases` at the test-agent tier). The merge ran unattended: `scenario-map=[Products are available => UC-002.1, No products are available => UC-002.2]`. Tests, DSL and the api/ui driver adapters were written. `system-implementer` (api channel) then raised a scope exception, which `CATEGORIZE_SCOPE_EXCEPTION` classified as `escc-undeclared` → error-end `ESCC_UNDECLARED_HALT` (rc=1). In June the run ended at STOP_SCOPE_VIOLATION instead. Agent reasons:
 1. **Same gap:** UC-002.1 has no data source. The given product only stubs `GET /erp/api/products/SKU`, no ERP list endpoint is stubbed, and `ErpGateway` can only look up a known SKU.
 2. **New:** UC-002.2 asserts `hasCount 0`, but `WhenImpl.viewProductList` calls `defaults.ensure`, so `DefaultGivens` stubs `DEFAULT_SKU` into the ERP and the empty list can never be empty.
 3. **New:** exact counts on a shared WireMock are not isolated from parallel tests.
@@ -144,7 +144,7 @@ correctly). The rest of this plan details A.
 > Build red→green in DSL/contract/production order so each layer has a failing
 > test before the layer above it is written.
 
-### 1. [test-kit · stub] Add an enumerable ERP product-list stub
+### 1. ✅ (shop `d777ecde`) [test-kit · stub] Add an enumerable ERP product-list stub
 
 **Where:** `ErpStubClient.java` (+ `BaseErpClient.java` if a shared path const is
 reused).
@@ -153,7 +153,7 @@ reused).
 WireMock-stubs `GET /erp/api/products` (exact path, no `/{sku}`) returning the
 array. Keep the existing per-SKU `configureGetProduct` untouched.
 
-### 2. [test-kit · driver] Expose the list on the ERP driver surface
+### 2. ✅ (shop `d777ecde`) [test-kit · driver] Expose the list on the ERP driver surface
 
 **Where:** `ErpDriver.java` (port), `ErpStubDriver.java` / `BaseErpDriver.java`
 (adapter).
@@ -167,7 +167,7 @@ Decide the DSL ergonomics:
   list stub. Riskier — changes a primitive shared by other stories; only do this
   if the AT must read as singular `given().product()...product()...`.
 
-### 3. [test-kit · contract] Pin the ERP list contract
+### 3. ✅ (shop `d777ecde`) [test-kit · contract] Pin the ERP list contract
 
 **Where:** `BaseErpContractTest.java`.
 
@@ -175,7 +175,7 @@ Decide the DSL ergonomics:
 step and asserting the driver returns both (sku + price). This is the contract
 that authorises production to proxy the list.
 
-### 4. [production · gateway] Add `ErpGateway.getProducts()`
+### 4. ✅ (shop `d777ecde`) [production · gateway] Add `ErpGateway.getProducts()`
 
 **Where:** `system/monolith/java/.../core/services/external/ErpGateway.java`.
 
@@ -183,7 +183,7 @@ that authorises production to proxy the list.
 {erpUrl}/api/products`, deserializing the array. Mirror the error handling of the
 existing `getProductDetails(sku)` (non-200 → `IllegalStateException`).
 
-### 5. [production · API] Add `GET /api/products`
+### 5. ✅ (shop `d777ecde`) [production · API] Add `GET /api/products`
 
 **Where:** `system/monolith/java/.../api/controller/` (new `ProductApiController`)
 + whatever service/mapper layer the Order/Coupon controllers use for symmetry.

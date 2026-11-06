@@ -10,8 +10,8 @@
 **No autonomous units remain (2026-11-06).** D4 passed; the `/fix-bug` handoffs shipped (red phase `5df20a23`, `optivem/actions` `708d562`, .NET case check already in `e965d52c`). What's left waits on the user, in the order the user chose: items 2 and 4 (deferred decisions), then the gh-optivem release last.
 
 1. **Shop scaffolding gap (found by D4, 2026-11-06): fixed** on gh-optivem `main` (`b684625e`, `3a73ae55`; rehearsed green on shop `main`). The release now waits on shop cutting a `meta-v*` with the new layout — see `plans/20261103-1536-gh-optivem-scaffolds-single-pipeline.md`. Cloud setup for scaffold users: `plans/20261106-1305-scaffold-cloud-setup-guide.md`.
-2. **ERP-gap option (user, ⏳ deferred to the end of the run 2026-11-06 — user is thinking it over):** confirm Option A + slimmed B in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` (the F2 rerun on 2026-11-05 still reproduces the gap).
-3. **User, when convenient:** gh-optivem release (unblocks E2; user wants it as the **last** thing), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a, and #65's board column (was In Progress; prior column unknown).
+2. **ERP gap (#65):** Option A was built in shop `d777ecde` (2026-11-06, Java monolith), recorded in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`. Remaining: its #65 rehearsal (Item 6; rehearsals push to shop, so coordinate with the user's parallel shop session) and the slimmed Option B prompt change.
+3. **User, when convenient:** gh-optivem release (unblocks E2; user wants it as the **last** thing; shop `meta-v1.0.224` has the new layout and the 25-run scaffold check passes on it), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a, and #65's board column (was In Progress; prior column unknown).
 4. **D3b/C2c issue edits (user, ⏳ deferred to the end of the run 2026-11-06):** may the agent tag #69's criteria with existing ids (D3b) and restore #68's absence-shaped criterion (C2c)?
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
@@ -110,3 +110,6 @@ Tokens load from `~/.config/gh-optivem/.env` (CRLF file: never `source` it into 
 
 - **C2c gate not met:** no absence-shaped ticket is in the rehearsal corpus (#68's criterion was dropped, #69 has none), so "an absence-shaped ticket goes green by copying the shop reference" has not been observed. Needs either a new absence-shaped issue (creating one is the user's call) or #68's criterion restored first.
 
+## Shop follow-ups moved in (2026-11-06)
+
+From shop `plans/move-to-gh-optivem/20261106-gh-optivem-followups-from-p4-p5.md` (deleted there): item 1 → ERP plan (above); item 2 → `plans/backlog/p3-tooling-cost/20260617-1001-rehearsal-corpus-testinstance-and-refine.md` (5a/5b done, 5c–5f open; the `crm` story issue needs the user's go); item 3 = C2c (Human-only, deferred by the user); item 4 (.NET `--test` case check) already fixed in `e965d52c`; item 5 (custom domains) → `plans/20261106-1305-scaffold-cloud-setup-guide.md` Step 4b. Rehearsal prerequisite noted by shop: `gh` token needs `project` scope (granted 2026-11-06) and gh-optivem's `.env`.
