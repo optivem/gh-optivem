@@ -1,38 +1,15 @@
 # Plan coordination meta-plan: backlog consolidation (autonomous run)
 
-> 🤖 **Picked up by agent** — `8091c04fb23f` at `2026-11-06T12:08:50Z`
-
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p2..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
 **End result:** every unit below is shipped (or recorded as blocked with the reason), the shop empty-template variant exists, kickoff runs end to end, and only the human-only items remain. This file is deleted once its units are done and the human-only items are handed off.
 
-## Pending decisions (explained 2026-11-06, for the next session)
-
-### 1. D4 rerun: run now? (user answered **yes**, 2026-11-06)
-
-**What D4 is:** a test of `gh optivem init --no-legacy` on a real repo. It scaffolds a throwaway repo (`valentinajemuovic/d4-nolegacy-20261106`) from the shop template with the legacy parts stripped, then checks:
-- no legacy files come through (`systemtest/legacy`, `gh-optivem.legacy.yaml`, `tests.legacy.yaml`, the legacy acceptance workflow, the legacy README badge);
-- the generated Java project compiles;
-- the repo's first GitHub CI run passes.
-
-Then it deletes the repo.
-
-**State on 2026-11-06 (Windows machine):** all prerequisites are met. REPO_TOKEN (`repo`) and WORKFLOW_TOKEN return 200 (tokens are HKCU env vars here; `~/.config/gh-optivem/.env` doesn't exist on this machine), DockerHub login works, actionlint is on PATH, and `gh` has `delete_repo`. **Both GitHub tokens expire 2026-11-08 08:05 UTC**, so run D4 before then or renew the tokens.
-
-**Why it didn't run:** the auto-mode classifier refused to create a possibly-public GitHub repo, even with the user's approval in the prompt. To unblock, use one of these:
-- **Recommended:** switch out of auto mode (Shift+Tab to default permissions) and approve the prompt.
-- Or the user runs the two commands with `!`, and the agent checks the results and deletes the repo.
-
-### 2. Which `/fix-bug` handoffs to start (user answered **all**, 2026-11-06)
-
-- **install-gh-optivem path bug:** shipped 2026-11-06 (`optivem/actions` `708d562`; `update-v1` run 42219340839 green, `v1` → `708d562`).
-
 ## ▶ Next executable step (resume here)
 
-**In flight (2026-11-06):** D4 with `--shop-ref main` failed: shop main (2026-11-03/04, shop plan 20261102-1855) turned every stage workflow into a thin caller of shared `_acceptance/_qa/_prod-stage.yml` + `_deploy-stage.yml` + `.github/actions/*`, which the scaffolder (`internal/scaffolding/steps/names.go`, `apply_template.go`) doesn't copy. Affects every arch, with or without `--no-legacy`, for any shop ref after `meta-v1.0.223`. Shipped a guard (`checkShopWorkflowLayout` in `prepare.go`) that refuses such a ref before creating any repo; the real port is shop's `plans/backlog/p1-ci-pipeline/20261103-1536-gh-optivem-scaffolds-single-pipeline.md`. Next: delete `valentinajemuovic/d4-nolegacy-20261106`, rerun D4 on the default shop ref. Then the user-deferred decisions (items 2 and 4 below), then the gh-optivem release last — note a release cut now would pin a shop ref the scaffolder can't handle once shop cuts a new `meta-v*`.
+**No autonomous units remain (2026-11-06).** D4 passed; the `/fix-bug` handoffs shipped (red phase `5df20a23`, `optivem/actions` `708d562`, .NET case check already in `e965d52c`). What's left waits on the user, in the order the user chose: items 2 and 4 (deferred decisions), then the gh-optivem release last.
 
-1. **D4 prerequisites met on the Linux devcontainer (2026-11-06):** tokens in env (REPO/WORKFLOW expire 2026-11-08), `gh` logged in with `delete_repo` + `project`, actionlint in `/go/bin`, JDK 21 installed. Config in the session scratch dir; command as in Human-only.
+1. **Shop scaffolding gap (found by D4, 2026-11-06):** shop main (2026-11-03/04, shop plan 20261102-1855) turned every stage workflow into a thin caller of shared `_acceptance/_qa/_prod-stage.yml` + `_deploy-stage.yml` + `.github/actions/*`, which the scaffolder (`internal/scaffolding/steps/names.go`, `apply_template.go`) doesn't copy. Any shop ref after `meta-v1.0.223` fails, every arch. Guard shipped (`checkShopWorkflowLayout` in `prepare.go`, refuses before any repo is created). The port is shop's `plans/backlog/p1-ci-pipeline/20261103-1536-gh-optivem-scaffolds-single-pipeline.md`; weigh it before the next shop `meta-v*` release.
 2. **ERP-gap option (user, ⏳ deferred to the end of the run 2026-11-06 — user is thinking it over):** confirm Option A + slimmed B in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` (the F2 rerun on 2026-11-05 still reproduces the gap).
 3. **User, when convenient:** gh-optivem release (unblocks E2; user wants it as the **last** thing), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a, and #65's board column (was In Progress; prior column unknown).
 4. **D3b/C2c issue edits (user, ⏳ deferred to the end of the run 2026-11-06):** may the agent tag #69's criteria with existing ids (D3b) and restore #68's absence-shaped criterion (C2c)?
@@ -96,12 +73,11 @@ Non-Docker units run first; everything that needs Docker (system start, rehearsa
 - D2 unattended part pass 2026-11-05: out-of-scope file injected during the writer → `VALIDATE_OUTPUTS_AND_SCOPES -> failure-kind=scope-diff, failing-task-name=write-acceptance-tests` → `FIX` → `APPROVE_PRE category=human` → yield rc=2; no separate scope-drift halt. Attended part is Human-only.
 - D3 2026-11-05: (c) pass (local spec edit of UC-001.2 → `spec status` "Changed 1", `spec check --mode strict` rc=1, `record --refresh` clears it); (a) partial: #69 reaches `CHECK_STORY_MERGE_NEEDED -> story-merge-needed=true` → `MERGE_USE_CASES` (`category=human`) and yields, so merge diff + `UC-NNN.M` tagging need an attended run (Human-only); (b) blocked: no corpus story carries `@UC-NNN.M` tags (checked #65, #68–72, #75, #84), needs an issue edit (Human-only); unit test `TestCheckStoryMergeNeeded_NoOpWhenScenariosNameExistingCriteria` covers the skip path.
 - D3d done 2026-11-05 (`8f4cb799`): `change-system-behavior` now runs GATE_STORY_SPEC_RECORD → RECORD_SPEC_FINGERPRINTS (`gh optivem spec record --create --criteria '${merged-criteria}'`) → COMMIT_SPEC_FINGERPRINTS after the last channel's implement-and-verify, stories only; separate commit because each channel commits its own system change.
-- D4 attempted 2026-11-05: blocked at `init` preflight before anything was created on GitHub (see Blocked). Offline unit tests for `--no-legacy` pass. Rerun moved to Human-only.
+- D4 pass 2026-11-06 (Linux devcontainer, default shop ref `meta-v1.0.223`): `init --no-legacy` rc=0; no `systemtest/legacy`, `gh-optivem.legacy.yaml`, `tests.legacy.yaml`, legacy workflow or badge; system + system tests compiled; first CI run (commit-stage 42220144451) green; repo deleted. A first attempt with `--shop-ref main` exposed the scaffolding gap (next-step item 1).
 Done when: each check is recorded pass/fail; failures become new plan items or `/fix-bug` handoffs.
 
 ## Human-only (excluded from autonomous runs)
 
-- **D4 rerun (`--no-legacy` scaffold spot-check):** prerequisites are a new REPO_TOKEN (classic PAT, repo scope; GitHub returned 401) and DOCKERHUB_TOKEN (401) in `~/.config/gh-optivem/.env`, `go install github.com/rhysd/actionlint/cmd/actionlint@v1`, and `gh auth refresh -s delete_repo` so the throwaway repo can be deleted. WORKFLOW_TOKEN expires 2026-11-08. Command used: `gh optivem config init --owner <you> --repo <throwaway> --arch monolith --repo-strategy monorepo --monolith-lang java --test-lang java --system-name ...`, then `gh optivem init --no-legacy --shop-ref main --verify-level local --no-local-tests --no-local-sonar --no-project --keep-local --yes`. Check: no `systemtest/legacy`, `gh-optivem.legacy.yaml`, `tests.legacy.yaml`, or acceptance-stage-legacy workflow/badge (`internal/scaffolding/steps/apply_template.go:141-219`), the repo compiles, and the first CI run passes. Then delete the repo.
 
 - **gh-optivem release** to unblock E2 (then write `mutation-threshold: 50` into shop `gh-optivem-multitier-java.yaml`).
 
@@ -134,4 +110,3 @@ Tokens load from `~/.config/gh-optivem/.env` (CRLF file: never `source` it into 
 
 - **C2c gate not met:** no absence-shaped ticket is in the rehearsal corpus (#68's criterion was dropped, #69 has none), so "an absence-shaped ticket goes green by copying the shop reference" has not been observed. Needs either a new absence-shaped issue (creating one is the user's call) or #68's criterion restored first.
 
-- **D4 preflight (2026-11-05):** `gh optivem init` preflight failed: REPO_TOKEN HTTP 401, DOCKERHUB_TOKEN HTTP 401, actionlint not on PATH. Nothing was created on GitHub. Needs credentials from the user (Human-only).
