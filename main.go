@@ -619,6 +619,7 @@ var verifyLevelOrder = map[string]int{
 // buildVerifySteps assembles the verify pipeline in a fixed order that mirrors
 // the CI pipeline stages: local compile → local tests → local sonar → commit →
 // acceptance (latest + legacy in parallel) → QA (stage + signoff) → production
+// (QA and production only when the repo has GCP configuration, see CloudGate)
 // → bump-patch-version (called downstream of prod-stage, verified explicitly)
 // → cleanup (dry-run, schedule-only workflows only fire when init runs).
 // Each step is gated by --verify-level; local tests and local sonar can
@@ -684,17 +685,34 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 		)
 	}
 
+	// Steps 6-7 deploy to Google Cloud Run, so they need the GCP repo
+	// variables that setup-gcp.sh sets and init does not. The gate checks the
+	// repo once, when step 6 runs: without GCP configuration (the default
+	// after init) both steps log that they need cloud setup and pass, so
+	// verification effectively stops after the Docker acceptance gates.
+	cloud := steps.NewCloudGate(gh)
+
 	// Step 6: QA stage CI (stage + signoff).
 	if level >= verifyLevelOrder["qa"] {
 		s = append(s,
-			stepDef{name: "Verify QA stage", phase: phaseVerifyQA, fn: func() { steps.VerifyQA(cfg, gh) }},
+			stepDef{name: "Verify QA stage", phase: phaseVerifyQA, fn: func() {
+				if cloud.Ready() {
+					steps.VerifyQA(cfg, gh)
+				}
+			}},
 		)
 	}
 
 	// Step 7: Production stage CI.
 	if level >= verifyLevelOrder["release"] {
 		s = append(s,
-			stepDef{name: "Verify production stage", phase: phaseVerifyProduction, fn: func() { steps.VerifyProdStage(cfg, gh) }},
+			stepDef{name: "Verify production stage", phase: phaseVerifyProduction, fn: func() {
+				if cloud.Ready() {
+					steps.VerifyProdStage(cfg, gh)
+				} else {
+					log.Info("Production stage skipped: needs cloud setup (see above).")
+				}
+			}},
 		)
 	}
 

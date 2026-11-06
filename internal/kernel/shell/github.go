@@ -660,6 +660,23 @@ func (g *GitHub) VariableSet(name, value string) {
 	MustRunWithRetry(fmt.Sprintf("gh variable set %s --body %s --repo %s", name, value, g.Repo), "")
 }
 
+// VariableNames lists the names of the repo-level GitHub Actions variables.
+// A failure to list is returned, not treated as "no variables": an unreadable
+// variable list is not the same as an empty one.
+func (g *GitHub) VariableNames() ([]string, error) {
+	out, err := RunCaptureWithRetry(fmt.Sprintf("gh variable list --repo %s --json name --jq .[].name", g.Repo), "")
+	if err != nil {
+		return nil, fmt.Errorf("cannot list Actions variables of %s: %w", g.Repo, err)
+	}
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
 func (g *GitHub) Clone(dest string) {
 	MustRunWithRetry(fmt.Sprintf("gh repo clone %s %s", g.Repo, dest), "")
 	if _, err := os.Stat(filepath.Join(dest, ".git")); err != nil {

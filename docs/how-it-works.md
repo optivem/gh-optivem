@@ -64,9 +64,9 @@ After the scaffold is pushed and linted, verification steps run based on `--veri
 | 2 | Local system lifecycle | Build system → setup tests → start system → run tests (latest, then legacy) → stop system → clean system. Mirrors the CLI verb order. Skipped entirely when `--no-local-tests` is set; the legacy run is dropped by `--no-legacy` (which also omits the legacy artifacts from the scaffold) |
 | 3 | Verify local SonarCloud scan | Per-component `run-sonar.sh` against the SonarCloud project. Skipped when `--no-local-sonar` is set |
 | 4 | Verify commit stage | Watches the commit stage CI workflow |
-| 5 | Verify acceptance stage | Triggers and watches acceptance stage **latest + legacy in parallel** (legacy dropped when `--no-legacy`). Captures the RC version |
-| 6 | Verify QA stage | Triggers QA stage, then QA signoff |
-| 7 | Verify production stage | Triggers and watches the production stage |
+| 5 | Verify acceptance stage | Triggers and watches the Docker Compose acceptance gates **latest + legacy in parallel** (legacy dropped when `--no-legacy`). The cloud acceptance stage (`acceptance-stage.yml`) is manual and never run by `init` |
+| 6 | Verify QA stage | Triggers QA stage, then QA signoff. Skipped (logged, not failed) when the repo has no GCP configuration |
+| 7 | Verify production stage | Triggers and watches the production stage. Skipped (logged, not failed) when the repo has no GCP configuration |
 | 8 | Verify cleanup workflow | Dry-run of `cleanup.yml`, which otherwise only fires on schedule — so a syntax error or stale action reference surfaces now rather than the next night |
 
 `--verify-level` picks the cutoff; every step at or below that rank runs:
@@ -79,5 +79,7 @@ After the scaffold is pushed and linted, verification steps run based on `--veri
 | `acceptance` | 1 + 2 + 3 + 4 + 5 |
 | `qa` | 1 + 2 + 3 + 4 + 5 + 6 |
 | `release` | 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 (default) |
+
+Steps 6 and 7 deploy to Google Cloud Run and need the repo variables `setup-gcp.sh` sets (`GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `SYSTEM_NAME`), which `init` does not set. When any is missing (the default for a fresh scaffold), `init` logs that QA, production and cloud acceptance need cloud setup, points at the scaffolded README's "Cloud setup" section, and skips both steps, so `qa` and `release` then end after step 5 (plus step 8 for `release`). When all are set, steps 6 and 7 run as listed.
 
 Steps 1–3 run at every level above `none`. `--no-local-tests` drops step 2 and `--no-local-sonar` drops step 3, regardless of level. `--no-legacy` applies to the legacy test run inside step 2 and to the legacy leg of step 5, and also omits the legacy artifacts (`gh-optivem.legacy.yaml`, legacy tests, `acceptance-stage-docker-compose-legacy.yml` + its badge) from the scaffolded repo.

@@ -144,7 +144,7 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 
 Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `init` run:
 
-- `--verify-level` — `none`, `local`, `commit`, `acceptance`, `qa`, or `release` (default `release`). Each level runs every step up to and including its named stage.
+- `--verify-level` — `none`, `local`, `commit`, `acceptance`, `qa`, or `release` (default `release`). Each level runs every step up to and including its named stage. The QA and production stages deploy to Google Cloud Run, so `qa` and `release` verify them only when the repo already has the GCP variables `setup-gcp.sh` sets (`GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `SYSTEM_NAME`). A fresh scaffold has none, so verification stops after the Docker acceptance gates and logs that QA/prod/cloud acceptance need cloud setup (see the scaffolded README's "Cloud setup" section).
 - `--no-legacy` — exclude legacy from runs (local tests, acceptance stage) and from the scaffolded output: no `gh-optivem.legacy.yaml`, no `system-test/tests.legacy.yaml` or legacy test sources, no `acceptance-stage-docker-compose-legacy.yml` workflow or README badge.
 - `--no-local-tests` — skip the local-test verification step.
 - `--no-local-sonar` — skip the local SonarCloud scan step.

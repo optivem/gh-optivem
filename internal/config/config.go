@@ -625,7 +625,7 @@ func BindInitFlags(cmd *cobra.Command, f *RawFlags) {
 	bindYAMLAffectingFlags(cmd.Flags(), f)
 	fs := cmd.Flags()
 	fs.BoolVar(&f.KeepLocal, "keep-local", false, "Keep the local scaffolded clone dir instead of deleting it on success")
-	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release")
+	fs.StringVar(&f.VerifyLevel, "verify-level", "release", "Verification level: none, local, commit, acceptance, qa, release. qa and release verify the QA/production stages only when the repo has the GCP variables from setup-gcp.sh; otherwise they stop after the Docker acceptance gates")
 	fs.BoolVar(&f.NoLegacy, "no-legacy", false, "Exclude legacy from runs (local tests, acceptance stage) and from the scaffolded output (gh-optivem.legacy.yaml, legacy tests, acceptance-stage-docker-compose-legacy workflow + badge)")
 	fs.BoolVar(&f.NoLocalTests, "no-local-tests", false, "Skip the 'Verify local testing' step (runner package over system-test/)")
 	fs.BoolVar(&f.NoLocalSonar, "no-local-sonar", false, "Skip the 'Verify local SonarCloud scan' step (per-component run-sonar.sh against the SonarCloud project)")
