@@ -10,7 +10,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Only the release remains, and it is gated: **wait for shop to cut a `meta-v*` with the single-pipeline layout** (until then gh-optivem `main` refuses the default pin `meta-v1.0.223`), re-run the shop-backed scaffold test against that tag, then the user says go and the gh-optivem release is cut (the user wants it as the last thing; it also unblocks E2 in the meta-plan).
+Only the release remains: shop `meta-v1.0.224` (2026-11-06) has the new layout; the 25-run shop-backed scaffold check passes on it, and a live default-ref rehearsal (monolith-java, pinned to `meta-v1.0.224`) went green: commit-stage 42268560793, Docker latest 42269198691, Docker legacy 42269205656 (repo deleted). Cut the gh-optivem release when the user says go (the user wants it as the last thing; it also unblocks E2).
 
 Done 2026-11-06: Steps 1–3 (`b684625e`), spec fix (`3a73ae55`: scaffolds ship `spec.yaml` + `docs/use-cases`). Rehearsal on shop `main` `2d663980`, throwaway repos deleted: monolith-java (legacy kept) commit-stage green, Docker legacy gate green (42225096172), Docker latest gate green after the spec fix (42228513314, spec coverage 13/14 = 92.9%); multitier-java `--no-legacy` backend + frontend commit stages and Docker latest gate green (42225102415). Cloud stages not run (user decision). Follow-ups: shop's `spec.yaml` `results` glob is Gradle-only, so .NET/TS `spec record` will miss results (shop-side, for the user's shop chat); the shop copy of this plan in `plans/move-to-gh-optivem/` still needs deleting from shop (user's shop chat); cloud setup guide is `plans/20261106-1305-scaffold-cloud-setup-guide.md`.
 
