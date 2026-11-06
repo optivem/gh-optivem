@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
+	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
@@ -123,6 +126,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	if isTestRun {
 		defer liftWipGate()()
 	}
+	runStarted := time.Now()
 	result, err := a.runShell(cmd)
 	succeeded := err == nil
 	ctx.Set("command-succeeded", succeeded)
@@ -135,7 +139,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 		clearCommandDiagnostics(ctx)
 	}
 	if isTestRun && !succeeded {
-		classifyTestRunFailure(ctx, result, err)
+		a.classifyTestRunFailure(ctx, result, err, runStarted)
 	}
 	return statemachine.Outcome{}
 }
@@ -232,17 +236,54 @@ func clearCommandDiagnostics(ctx *statemachine.Context) {
 	ctx.Unset(CtxKeyFixLoopEditedFiles)
 }
 
-// classifyTestRunFailure distinguishes "the runner couldn't start" (infra)
-// from "a test assertion failed" (red) so the gateway downstream of run-tests
-// does not take an infra failure as the expected red outcome. The
-// verify_classify table is the authoritative pattern set.
-func classifyTestRunFailure(ctx *statemachine.Context, result ShellResult, err error) {
-	isContractSuite := strings.HasPrefix(strings.TrimSpace(ctx.Params["suite"]), "contract")
-	if class, label := classifyShellErr(string(result.Stderr), err, isContractSuite); class == classInfra {
+// classifyTestRunFailure distinguishes "the runner couldn't start" or "the
+// tests crashed" (infra) from "tests ran and failed" (red) so the gateway
+// downstream of run-tests does not take an infra failure as the expected red
+// outcome. Two passes: the verify_classify table (runner never started), then
+// classifyRedShape (verify_redshape.go), which requires this run's test
+// reports — or, lacking them, the output — to show a test-level failure.
+func (a actions) classifyTestRunFailure(ctx *statemachine.Context, result ShellResult, err error, runStarted time.Time) {
+	suite := strings.TrimSpace(ctx.Params["suite"])
+	isContractSuite := strings.HasPrefix(suite, "contract")
+	class, label := classifyShellErr(string(result.Stderr), err, isContractSuite)
+	if class != classInfra {
+		ev, evErr := runner.FailuresInReports(a.deps.TestsConfig, a.deps.TestsCwd, a.verifySuiteIDs(suite), runStarted)
+		if evErr != nil {
+			// An unreadable fresh report is not evidence of a red either.
+			class, label = classInfra, "test report unreadable: "+evErr.Error()
+		} else {
+			class, label = classifyRedShape(ev, string(result.Stdout)+"\n"+string(result.Stderr))
+		}
+	}
+	if class == classInfra {
 		ctx.Set(CtxKeyTestOutcome, "infra")
 		ctx.Set("test-infra-label", label)
 	}
 	ctx.Set("verify_failure_output", formatVerifyFailureOutput(result.Stdout, result.Stderr))
+}
+
+// verifySuiteIDs expands the run's `suite` param (possibly a group alias such
+// as `acceptance`, possibly comma-separated) to concrete suite ids, the same
+// way `gh optivem system-test run --suite` does. Empty means every suite.
+func (a actions) verifySuiteIDs(suite string) []string {
+	if suite == "" {
+		return nil
+	}
+	var names []string
+	for _, n := range strings.Split(suite, ",") {
+		if n = strings.TrimSpace(n); n != "" {
+			names = append(names, n)
+		}
+	}
+	var projectGroups map[string][]string
+	if a.deps.TestsConfig != nil {
+		projectGroups = a.deps.TestsConfig.SuiteGroups
+	}
+	var channels []string
+	if a.deps.Config != nil {
+		channels = a.deps.Config.Channels
+	}
+	return testselect.ExpandSuiteGroups(names, projectGroups, channels)
 }
 
 // formatVerifyFailureOutput builds the ${verify-failure-output} payload the

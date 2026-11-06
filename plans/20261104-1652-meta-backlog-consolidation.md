@@ -1,5 +1,7 @@
 # Plan coordination meta-plan: backlog consolidation (autonomous run)
 
+> 🤖 **Picked up by agent** — `8091c04fb23f` at `2026-11-06T12:08:50Z`
+
 ## TL;DR
 
 **Why:** the backlog under `plans/backlog/{p2..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
@@ -22,12 +24,9 @@ Then it deletes the repo.
 - **Recommended:** switch out of auto mode (Shift+Tab to default permissions) and approve the prompt.
 - Or the user runs the two commands with `!`, and the agent checks the results and deletes the repo.
 
-### 2. Which `/fix-bug` handoffs to start (not answered yet)
+### 2. Which `/fix-bug` handoffs to start (user answered **all**, 2026-11-06)
 
-- **.NET `--test` case check (recommended first):** asking for a .NET test by name with different capitalisation (`cannotPlace…` vs `CannotPlace…`) runs and passes the test, but the tool then reports "requested test(s) never executed" and exits 1, because `nameExecuted` in `internal/build/runner/tests.go` uses case-sensitive `strings.Contains`. One-line fix, low risk.
-- **Red phase accepts infra failures:** the ATDD red step accepts any failure as a valid red. In one run a Playwright crash (missing Chromium libs) counted as red. The fix would require an assertion-shaped failure. Bigger change to the ATDD verify logic; may deserve its own plan in `plans/backlog/p2-atdd-quality/`.
 - **install-gh-optivem path bug:** in the shared `optivem/actions` repo, the source-build path runs `gh extension install <absolute path>`, which gh rejects (only `.` works). Shop works around it inline. The fix is easy, but it ships by moving the `v1` tag, which every repo using the action picks up. That tag move needs the user's approval.
-- **None:** all three stay as noted follow-ups.
 
 ## ▶ Next executable step (resume here)
 
@@ -36,7 +35,7 @@ Then it deletes the repo.
 1. **Tokens (user, before 2026-11-08 when WORKFLOW_TOKEN expires):** new REPO_TOKEN (classic PAT, `repo`), DOCKERHUB_TOKEN and WORKFLOW_TOKEN in `~/.config/gh-optivem/.env`; `go install github.com/rhysd/actionlint/cmd/actionlint@v1`; `gh auth refresh -s delete_repo`. Then the agent reruns **D4** autonomously (throwaway repos are pre-authorized).
 2. **ERP-gap option (user):** confirm Option A + slimmed B in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` (the F2 rerun on 2026-11-05 still reproduces the gap).
 3. **User, when convenient:** gh-optivem release (unblocks E2), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a/D3b and C2c, and the board tidy-up (#65, #69, #76).
-4. **Agent, on the user's go (`/fix-bug` each):** `install-gh-optivem` absolute-path bug (the tag move needs approval), .NET `--test` case-sensitive name check, red phase accepting infra failures.
+4. **`install-gh-optivem` fix, push needs the user's go:** committed locally (`708d562`) in a scratch clone of `optivem/actions` (`install-gh-optivem/build-and-install.sh`: `cd "$SRC" && gh extension install .`). Pushing to its `main` auto-moves `v1` via `update-v1.yml`, so every consumer picks it up. Red-phase and .NET `--test` follow-ups are done (2026-11-06).
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -123,10 +122,6 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 `plans/backlog/p4-maintenance/20260511-1702-shop-frontend-react-to-typescript-rename.md` (blocked until shop renames its frontend); everything under `parked/`. Possible follow-up (unplanned): cross-check every registered external system appears in the approved use-case diagram.
 
 ## Follow-ups found by the run (not units yet)
-
-- **Red phase accepts infra failures (found by C1, 2026-11-05):** with Chromium libs missing, the #76 red phase failed on a Playwright `TargetClosedError` and `VERIFY_TESTS_FAIL_ACCEPTANCE` still reported `test-outcome=fail` / "Tests Fail Verified" (`failure-kind=command-failed`). A red phase should require an assertion-shaped failure, not any non-zero exit. Candidate `/fix-bug` or a child plan in `plans/backlog/p2-atdd-quality/`.
-
-- **.NET `--test` name check is case-sensitive (found by C2a, 2026-11-05):** `nameExecuted` in `internal/build/runner/tests.go` uses case-sensitive `strings.Contains`, so `--test cannotPlace...` (camelCase) runs and passes the .NET test but reports "requested test(s) never executed" and exits 1; PascalCase exits 0. Candidate `/fix-bug`.
 
 - **Spec record needs spec.yaml + matching results glob (found by D3d, 2026-11-05):** story runs now fail at RECORD_SPEC_FINGERPRINTS (→ fixer) in a repo without `spec.yaml`/JUnit results; shop's `spec.yaml` results glob covers Java only, so .NET/TypeScript story runs may record nothing or fail. Check before the next non-Java rehearsal.
 

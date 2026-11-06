@@ -383,7 +383,10 @@ func (b bindings) commandSucceeded(ctx *statemachine.Context) statemachine.Outco
 //
 // The "infra" value signals "the runner could not start" (binary
 // missing, docker down, permission denied — see
-// internal/atdd/process/actions/verify_classify.go). Both verify-tests-*
+// internal/atdd/process/actions/verify_classify.go) or "the run failed
+// without a test-level failure" (browser crash, test host abort, no
+// fresh report — see verify_redshape.go), so a crash is never accepted
+// as the expected red. Both verify-tests-*
 // processes route it to TESTS_INFRA_HALT — neither the pass nor fail
 // fixer is appropriate because the runner produced no test report.
 func (b bindings) testOutcome(ctx *statemachine.Context) statemachine.Outcome {
