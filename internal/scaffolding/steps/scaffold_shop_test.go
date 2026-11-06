@@ -113,7 +113,7 @@ func checkScaffoldedPipeline(t *testing.T, cfg *config.Config, actionlint string
 	if strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("workflows:\n got  %v\n want %v", got, want)
 	}
-	checkScaffoldedSpec(t, cfg.RepoDir)
+	checkScaffoldedSpec(t, cfg.RepoDir, cfg.TestLang)
 
 	legacyWf := filepath.Join(cfg.RepoDir, ".github", "workflows", Names.DestLegacyAcceptWf)
 	if data, err := os.ReadFile(legacyWf); err == nil && !strings.Contains(string(data), "schedule:") {

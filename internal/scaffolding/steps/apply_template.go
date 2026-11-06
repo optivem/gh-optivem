@@ -1,8 +1,10 @@
 package steps
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -157,7 +159,7 @@ func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string,
 	// Spec-coverage gate inputs (spec.yaml + use-case markdown) land beside
 	// system-test/: the acceptance gate's spec-gate step and ATDD's
 	// record-spec-fingerprints both read ./spec.yaml at the repo root.
-	copySpec(shop, repoDir)
+	copySpec(shop, repoDir, testLang)
 
 	// Regenerate ChannelType from the declared channel set (the SSoT), replacing
 	// the verbatim copy. DefaultChannels() is the scaffold-authoritative set —
@@ -182,19 +184,65 @@ func specResultsReplacements() [][2]string {
 	return out
 }
 
+// specResultsGlobs is spec.yaml's results glob per non-Java test language, in
+// the scaffold's flat system-test/ layout. Shop's spec.yaml only names the
+// Java Gradle JUnit XML, so for the other languages the glob is replaced with
+// where that language's runner (per shop's system-test/<lang>/tests.yaml)
+// writes its machine-readable results:
+//   - dotnet: `dotnet test --logger 'trx;...'` run in SystemTests/ writes
+//     TRX under SystemTests/TestResults/.
+//   - typescript: Playwright's json reporter writes
+//     PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-report/<suite>.json.
+//
+// Note: the spec parser (internal/spec) reads JUnit XML only, so these paths
+// are located correctly but not yet parsed into tagged tests.
+var specResultsGlobs = map[string]string{
+	"dotnet":     Names.TargetSystemTestDir + "/SystemTests/TestResults/**/*.trx",
+	"typescript": Names.TargetSystemTestDir + "/playwright-report/*.json",
+}
+
+// specResultsKeyRe / specResultsItemRe match spec.yaml's results key and the YAML list items
+// that may follow it.
+var (
+	specResultsKeyRe  = regexp.MustCompile(`^results:`)
+	specResultsItemRe = regexp.MustCompile(`^\s+-\s`)
+)
+
+// setSpecResults replaces spec.yaml's results value (scalar or block list)
+// with the single glob, leaving every other key untouched.
+func setSpecResults(content, glob string) string {
+	lines := strings.Split(content, "\n")
+	out := make([]string, 0, len(lines))
+	for i := 0; i < len(lines); i++ {
+		if !specResultsKeyRe.MatchString(lines[i]) {
+			out = append(out, lines[i])
+			continue
+		}
+		out = append(out, fmt.Sprintf("results: %q", glob))
+		for i+1 < len(lines) && specResultsItemRe.MatchString(lines[i+1]) {
+			i++
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 // copySpec copies shop's spec-coverage gate config (spec.yaml) and use-case
 // markdown (docs/use-cases/) into repoDir, rewriting spec.yaml's results globs
-// to the flat system-test/ layout. Each copy is skipped when the shop ref
-// predates it. System-name placeholders are rewritten later by
+// to the flat system-test/ layout and, for a non-Java test language, to that
+// language's result output (specResultsGlobs). Each copy is skipped when the
+// shop ref predates it. System-name placeholders are rewritten later by
 // ReplaceSystemName, like every other scaffolded text file. Legacy results are
 // already kept out by spec.yaml's exclude (**/legacy/**), so --no-legacy needs
 // no special handling here.
-func copySpec(shop, repoDir string) {
+func copySpec(shop, repoDir, testLang string) {
 	src := filepath.Join(shop, Names.ShopSpecFile)
 	if data, err := os.ReadFile(src); err == nil {
 		content := string(data)
 		for _, r := range specResultsReplacements() {
 			content = strings.ReplaceAll(content, r[0], r[1])
+		}
+		if glob, ok := specResultsGlobs[testLang]; ok {
+			content = setSpecResults(content, glob)
 		}
 		if err := os.WriteFile(filepath.Join(repoDir, Names.ShopSpecFile), []byte(content), 0o644); err != nil {
 			log.Fatalf("Write %s: %v", Names.ShopSpecFile, err)

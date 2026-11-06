@@ -30,7 +30,7 @@ threshold: 90
 	}
 	writeFile(t, filepath.Join(shop, "docs", "use-cases", "UC-001-place-order.md"), "---\nid: UC-001\ntitle: Place Order\n---\n\n## Acceptance criteria\n- UC-001.1: myshop places an order.\n")
 
-	copySpec(shop, repo)
+	copySpec(shop, repo, "java")
 
 	cfg, err := spec.LoadConfig(filepath.Join(repo, "spec.yaml"))
 	if err != nil {
@@ -56,11 +56,52 @@ threshold: 90
 	}
 }
 
+// Each test language's results glob points at what its runner writes in the
+// flat system-test/ layout: Java keeps shop's (flattened) Gradle JUnit XML
+// glob; .NET and TypeScript replace it, whether shop wrote results as a scalar
+// or a list, and leave the other keys alone.
+func TestCopySpec_ResultsPerTestLang(t *testing.T) {
+	t.Parallel()
+	shopSpecs := map[string]string{
+		"scalar": "specDir: docs/use-cases\nresults: \"system-test/java/build/test-results/**/*.xml\"\nexclude:\n  - \"**/legacy/**\"\nthreshold: 90\n",
+		"list":   "specDir: docs/use-cases\nresults:\n  - \"system-test/java/build/test-results/**/*.xml\"\n  - \"system-test/dotnet/x/*.xml\"\nexclude:\n  - \"**/legacy/**\"\nthreshold: 90\n",
+	}
+	want := map[string]string{
+		"java":       "system-test/build/test-results/**/*.xml",
+		"dotnet":     "system-test/SystemTests/TestResults/**/*.trx",
+		"typescript": "system-test/playwright-report/*.json",
+	}
+	for shape, body := range shopSpecs {
+		for lang, glob := range want {
+			t.Run(shape+"-"+lang, func(t *testing.T) {
+				t.Parallel()
+				shop, repo := t.TempDir(), t.TempDir()
+				writeFile(t, filepath.Join(shop, "spec.yaml"), body)
+				copySpec(shop, repo, lang)
+				cfg, err := spec.LoadConfig(filepath.Join(repo, "spec.yaml"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				got := cfg.Results
+				if lang == "java" && shape == "list" {
+					got = got[:1]
+				}
+				if len(got) != 1 || got[0] != glob {
+					t.Errorf("results = %v, want [%s]", cfg.Results, glob)
+				}
+				if cfg.SpecDir != "docs/use-cases" || strings.Join(cfg.Exclude, " ") != "**/legacy/**" || cfg.ThresholdValue() != 90 {
+					t.Errorf("other keys not carried over: %+v", cfg)
+				}
+			})
+		}
+	}
+}
+
 // A shop ref without spec.yaml / docs/use-cases is skipped, not fatal.
 func TestCopySpec_AbsentInShop(t *testing.T) {
 	t.Parallel()
 	repo := t.TempDir()
-	copySpec(t.TempDir(), repo)
+	copySpec(t.TempDir(), repo, "java")
 	if _, err := os.Stat(filepath.Join(repo, "spec.yaml")); !os.IsNotExist(err) {
 		t.Errorf("spec.yaml created without a shop source: %v", err)
 	}
@@ -73,7 +114,7 @@ func TestCopySpec_AbsentInShop(t *testing.T) {
 // results point into the flat system-test/ dir and whose specDir resolves to
 // valid use cases, and that the lenient gate passes once every criterion has
 // a passing tagged test (what the java acceptance suites produce).
-func checkScaffoldedSpec(t *testing.T, repoDir string) {
+func checkScaffoldedSpec(t *testing.T, repoDir, testLang string) {
 	t.Helper()
 	cfg, err := spec.LoadConfig(filepath.Join(repoDir, "spec.yaml"))
 	if err != nil {
@@ -81,6 +122,13 @@ func checkScaffoldedSpec(t *testing.T, repoDir string) {
 	}
 	if err := cfg.RequireResults(); err != nil {
 		t.Fatal(err)
+	}
+	wantGlob, ok := specResultsGlobs[testLang]
+	if !ok {
+		wantGlob = Names.TargetSystemTestDir + "/build/test-results/**/*.xml"
+	}
+	if len(cfg.Results) != 1 || cfg.Results[0] != wantGlob {
+		t.Errorf("results = %v, want [%s] for test language %s", cfg.Results, wantGlob, testLang)
 	}
 	for _, r := range cfg.Results {
 		if !strings.HasPrefix(r, Names.TargetSystemTestDir+"/") {
