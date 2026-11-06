@@ -7,12 +7,12 @@
 
 ## ▶ Next executable step (resume here)
 
-**No autonomous units remain (2026-11-06).** D4 passed; the `/fix-bug` handoffs shipped (red phase `5df20a23`, `optivem/actions` `708d562`, .NET case check already in `e965d52c`). gh-optivem `v1.6.106` released 2026-11-06 (run 42283650441, auto-dispatched by the acceptance pipeline after RC `v1.6.106-rc.328`). What's left: E2 (a shop config write, for the user's shop chat), then items 2 and 4 (deferred decisions).
+**No autonomous units remain (2026-11-06).** D4 passed; the `/fix-bug` handoffs shipped (red phase `5df20a23`, `optivem/actions` `708d562`, .NET case check already in `e965d52c`). gh-optivem `v1.6.106` released 2026-11-06 (run 42283650441, auto-dispatched by the acceptance pipeline after RC `v1.6.106-rc.328`). What's left: E2 (a shop config write, for the user's shop chat). Items 2 and 4 are permanently deferred (never start autonomously).
 
 1. **Shop scaffolding gap (found by D4, 2026-11-06): fixed** on gh-optivem `main` (`b684625e`, `3a73ae55`; rehearsed green on shop `main`). Released in `v1.6.106` (port plan done and deleted). Cloud setup for scaffold users: `plans/20261106-1305-scaffold-cloud-setup-guide.md`.
-2. **ERP gap (#65):** Option A was built in shop `d777ecde` (2026-11-06, Java monolith), recorded in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`. Remaining: its #65 rehearsal (Item 6; rehearsals push to shop, so coordinate with the user's parallel shop session) and the slimmed Option B prompt change.
-3. **User, when convenient:** SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a, and #65's board column (was In Progress; prior column unknown).
-4. **D3b/C2c issue edits (user, ⏳ deferred to the end of the run 2026-11-06):** may the agent tag #69's criteria with existing ids (D3b) and restore #68's absence-shaped criterion (C2c)?
+2. ⛔ **Permanently deferred (user, 2026-11-06): never start autonomously; only on the user's explicit request.** **ERP gap (#65):** Option A was built in shop `d777ecde` (2026-11-06, Java monolith), recorded in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`. Remaining: its #65 rehearsal (Item 6; rehearsals push to shop, so coordinate with the user's parallel shop session) and the slimmed Option B prompt change.
+3. **User, when convenient:** SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a. (#65 moved to Ready 2026-11-06.)
+4. ⛔ **Permanently deferred (user, 2026-11-06): never start autonomously; only on the user's explicit request.** **D3b/C2c issue edits:** may the agent tag #69's criteria with existing ids (D3b) and restore #68's absence-shaped criterion (C2c)?
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -83,10 +83,10 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 - **Item 24 (Sonar S3776):** mark remaining test-file findings Won't Fix in SonarCloud (needs admin rights), then delete `plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md`. Also mark `githubactions:S8545` on `.github/workflows/gh-actionlint-canary.yml:41` (`actionlint@latest`) Accepted/Won't Fix: unpinned is the canary's purpose (found by D6, 2026-11-05).
 - **Items 20 (#13) and 21 (#16):** live in `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md` (#13 Option A, Java only; #16 `/users` directory, monolith-java only, refine deferred); gh-optivem plans: `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`, `plans/backlog/p3-tooling-cost/20260617-1001-rehearsal-corpus-testinstance-and-refine.md`. Not part of this run.
 
-- **C2c (Item 15 / #21 Step 6):** restore #68's dropped criterion (or create a new absence-shaped issue), then rehearse that an absence-shaped ticket goes green by copying the shop reference. See `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`.
+- ⛔ **Permanently deferred (user, 2026-11-06): never start autonomously; only on the user's explicit request.** **C2c (Item 15 / #21 Step 6):** restore #68's dropped criterion (or create a new absence-shaped issue), then rehearse that an absence-shaped ticket goes green by copying the shop reference. See `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`.
 - **D3a attended check:** attended `implement 69`: approve `merge-use-cases`, confirm the merge diff and tests tagged with merged `UC-NNN.M` ids.
-- **D3b:** tag a corpus story's scenarios with existing ids (e.g. #69 → `@UC-001.8`) or create a tagged issue, then confirm the merge is skipped.
-- **Board tidy-up from this run:** #69 restored to In QA and #76 found already in In QA (2026-11-06); #65 is In Progress (prior column unknown; user to say).
+- ⛔ **Permanently deferred (user, 2026-11-06): never start autonomously; only on the user's explicit request.** **D3b:** tag a corpus story's scenarios with existing ids (e.g. #69 → `@UC-001.8`) or create a tagged issue, then confirm the merge is skipped.
+- **Board tidy-up from this run:** #69 restored to In QA and #76 found already in In QA (2026-11-06); #65 moved to Ready (user, 2026-11-06).
 - **D2 attended check:** in an attended run, let the fixer loop exhaust after an out-of-scope edit and confirm the halt is report-only and lists "fixer edited: N file(s)" (#15, commit 416a761f).
 - **C2b attended check:** in an attended `implement` run that hits a compile failure, approve the `fix-*` (human-category) dispatch and confirm the fixer runs with the writer's scope.
 

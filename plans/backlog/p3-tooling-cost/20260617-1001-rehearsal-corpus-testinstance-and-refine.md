@@ -16,6 +16,8 @@ What we get out of this — the goals and deliverables:
 
 ## ▶ Next executable step (resume here)
 
+⛔ **Permanently deferred (user, 2026-11-06): never start autonomously; only on the user's explicit request.** (5c onward: the crm story issue and everything after it.)
+
 **Update 2026-11-06:** 5a done in shop `a00053a0` (external system `crm`, JSONPlaceholder `/users`, `real-kind: test-instance`, registered in all 12 shop configs via an `external-systems:` map); 5b confirmed by reading the gh-optivem code (shop P4/P5 session). Next for item 5: 5c (create the story issue in optivem/shop — needs the user's go, it is a public issue), then 5d–5f. Original note: This resumes under `/refine-plan` — both items need a design decision before any mechanical edit. For item 5: confirm the **identity and domain framing** of the JSONPlaceholder-backed external system (recommendation: a read-only "customer directory" / CRM reading `/users`) and which config variants get it. For item 6: decide whether to build a refine CLI entry point now or defer (recommendation: defer — it is a separate feature, not a corpus addition). Once item 5's framing is settled, the first executable unit is **Step 5a** (register the external system in the shop config).
 
 ## Steps
@@ -24,7 +26,7 @@ What we get out of this — the goals and deliverables:
 
 - [x] 5a. (done 2026-11-06, see resume block) Register a new external system in the shop config(s) (`systems.yaml` / the `gh-optivem-*.yaml` external-systems registry), `real-kind: test-instance`, pointing at `https://jsonplaceholder.typicode.com`. **Recommended framing:** a read-only "customer directory" external system backed by `/users` (stable, deterministic, public — ideal for a shared test instance).
 - [x] 5b. (done 2026-11-06, see resume block) Confirm the `test-instance` real-kind is supported end-to-end in the runtime (the contract-test flow's `real-kind == test-instance` branch — single contract-real pass-verify, no real-sim authoring). If any runtime/config wiring is missing, capture it as a sub-step before authoring the ticket.
-- [ ] 5c. Author a **story** ticket in `optivem/shop` (Gherkin AC, not Checklist) that reads data from the new external system — e.g. surface a customer's name on an order/confirmation by fetching it from the customer directory. The story must trip `external-driver-port-changed` so the contract-test excursion runs.
+- [ ] 5c. ⛔ Permanently deferred (user, 2026-11-06). Author a **story** ticket in `optivem/shop` (Gherkin AC, not Checklist) that reads data from the new external system — e.g. surface a customer's name on an order/confirmation by fetching it from the customer directory. The story must trip `external-driver-port-changed` so the contract-test excursion runs.
 - [ ] 5d. Add the ticket to `DEFAULT_TICKETS` in `scripts/atdd-rehearsal-loop.sh` (new `--- external system: real test-instance ---` group) and a matching `CONTRIBUTING.md` subsection that calls out this is the `test-instance` branch (contrast it with #72's simulator branch).
 - [ ] 5e. Rehearse under `gh-optivem-monolith-java.yaml`. Confirm from the trace it took the `test-instance` branch: a single contract-real verify that PASSES against the live JSONPlaceholder instance, with **no** real-simulator authoring step (vs #72's verify-fail real → author real-sim → verify-pass real → stub red→green).
 - [ ] 5f. Update the "Known coverage gap" note in `CONTRIBUTING.md` (currently saying the `test-instance` branch is never exercised) to record that this ticket now covers it.
