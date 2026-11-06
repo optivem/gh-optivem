@@ -5,6 +5,30 @@
 **Why:** the backlog under `plans/backlog/{p2..p4,parked}/` and the top-level plans need one place that records what is still open and in what order to run it. Until now the remaining work was gated on a human at every step.
 **End result:** every unit below is shipped (or recorded as blocked with the reason), the shop empty-template variant exists, kickoff runs end to end, and only the human-only items remain. This file is deleted once its units are done and the human-only items are handed off.
 
+## Pending decisions (explained 2026-11-06, for the next session)
+
+### 1. D4 rerun: run now? (user answered **yes**, 2026-11-06)
+
+**What D4 is:** a test of `gh optivem init --no-legacy` on a real repo. It scaffolds a throwaway repo (`valentinajemuovic/d4-nolegacy-20261106`) from the shop template with the legacy parts stripped, then checks:
+- no legacy files come through (`systemtest/legacy`, `gh-optivem.legacy.yaml`, `tests.legacy.yaml`, the legacy acceptance workflow, the legacy README badge);
+- the generated Java project compiles;
+- the repo's first GitHub CI run passes.
+
+Then it deletes the repo.
+
+**State on 2026-11-06 (Windows machine):** all prerequisites are met. REPO_TOKEN (`repo`) and WORKFLOW_TOKEN return 200 (tokens are HKCU env vars here; `~/.config/gh-optivem/.env` doesn't exist on this machine), DockerHub login works, actionlint is on PATH, and `gh` has `delete_repo`. **Both GitHub tokens expire 2026-11-08 08:05 UTC**, so run D4 before then or renew the tokens.
+
+**Why it didn't run:** the auto-mode classifier refused to create a possibly-public GitHub repo, even with the user's approval in the prompt. To unblock, use one of these:
+- **Recommended:** switch out of auto mode (Shift+Tab to default permissions) and approve the prompt.
+- Or the user runs the two commands with `!`, and the agent checks the results and deletes the repo.
+
+### 2. Which `/fix-bug` handoffs to start (not answered yet)
+
+- **.NET `--test` case check (recommended first):** asking for a .NET test by name with different capitalisation (`cannotPlace…` vs `CannotPlace…`) runs and passes the test, but the tool then reports "requested test(s) never executed" and exits 1, because `nameExecuted` in `internal/build/runner/tests.go` uses case-sensitive `strings.Contains`. One-line fix, low risk.
+- **Red phase accepts infra failures:** the ATDD red step accepts any failure as a valid red. In one run a Playwright crash (missing Chromium libs) counted as red. The fix would require an assertion-shaped failure. Bigger change to the ATDD verify logic; may deserve its own plan in `plans/backlog/p2-atdd-quality/`.
+- **install-gh-optivem path bug:** in the shared `optivem/actions` repo, the source-build path runs `gh extension install <absolute path>`, which gh rejects (only `.` works). Shop works around it inline. The fix is easy, but it ships by moving the `v1` tag, which every repo using the action picks up. That tag move needs the user's approval.
+- **None:** all three stay as noted follow-ups.
+
 ## ▶ Next executable step (resume here)
 
 **No autonomous units remain.** F1 and F2 shipped on 2026-11-05. Everything below needs the user (tokens, a release, SonarCloud, attended checks, confirming the ERP-gap option) or the user's go for `/fix-bug`.
