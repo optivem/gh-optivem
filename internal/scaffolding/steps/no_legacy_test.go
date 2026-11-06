@@ -21,7 +21,10 @@ func TestAddLegacyWorkflow_NoLegacy(t *testing.T) {
 	}{
 		{"docker, legacy kept", "docker", false, true},
 		{"docker, --no-legacy", "docker", true, false},
-		{"cloud-run never has legacy", deployCloudRun, false, false},
+		// The single-pipeline layout has no deploy-target twins: legacy is
+		// scaffolded whatever --deploy says.
+		{"cloud-run, legacy kept", deployCloudRun, false, true},
+		{"cloud-run, --no-legacy", deployCloudRun, true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -29,9 +32,12 @@ func TestAddLegacyWorkflow_NoLegacy(t *testing.T) {
 			wfMap := map[string]string{}
 			cfg := &config.Config{Deploy: tc.deploy, NoLegacy: tc.noLegacy}
 			addLegacyWorkflow(wfMap, Names.MonolithLegacyAcceptWf, map[string]string{"testLang": "java"}, cfg)
-			_, got := wfMap["monolith-java-acceptance-stage-legacy.yml"]
+			dst, got := wfMap["monolith-java-acceptance-stage-docker-compose-legacy.yml"]
 			if got != tc.want {
 				t.Errorf("legacy workflow present = %v, want %v (map %v)", got, tc.want, wfMap)
+			}
+			if got && dst != "acceptance-stage-docker-compose-legacy.yml" {
+				t.Errorf("legacy workflow dest = %q", dst)
 			}
 		})
 	}

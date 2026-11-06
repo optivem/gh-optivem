@@ -11,13 +11,14 @@
 
 ## ▶ Next executable step (resume here)
 
-Precondition met 2026-11-06: shop `main` (`2d663980`) has the final names (shared `_acceptance-stage{,-docker-compose}.yml`, `_qa-stage.yml`, `_prod-stage.yml`, `_deploy-stage.yml`, `.github/actions/{deploy-keycloak,build-shared-images}`, `docker/keycloak/{Dockerfile,acceptance-realm.jq,...}`, per-flavor `*-acceptance-stage{,-docker-compose,-docker-compose-legacy}.yml`). No shop `meta-v*` has this layout yet (latest `meta-v1.0.223`, 2026-10-31, old `-cloud` twins), so develop and rehearse against `--shop-ref main`. Do Step 1, replacing the interim guard `checkShopWorkflowLayout` (`internal/scaffolding/steps/prepare.go`). Rehearsal (Step 4) runs only commit-stage and the Docker acceptance stages, never cloud (user, 2026-11-06). Cloud setup for scaffold users is its own plan (`plans/20261106-1305-scaffold-cloud-setup-guide.md`).
+Steps 1–3 done 2026-11-06 (shared `_*.yml` copied and path-rewritten via `sharedWorkflowRewrites` in `internal/scaffolding/steps/shared_pipeline.go`; only the new layout is supported — refs without it, incl. the current default `meta-v1.0.223`, are refused with a pointer to `--shop-ref main`; scaffolded legacy Docker gate gets an hourly schedule; README "Pipeline" section with a placeholder "Cloud setup" heading). Offline proof: `GH_OPTIVEM_SHOP_PATH=<shop clone> go test -run Shop ./internal/scaffolding/steps/` — 25 runs (6 flavors × 2 repo strategies × ±`--no-legacy` + mixed-language) pass with actionlint.
+
+Do Step 4 now: `gh optivem init --shop-ref main` into a throwaway repo (monolith-java, then multitier-java), with and without `--no-legacy`; check commit-stage and the Docker acceptance gates go green with no GCP. Never run cloud acceptance/QA/prod (user, 2026-11-06). Delete the repos after. Hold the gh-optivem release until shop cuts a `meta-v*` with the new layout (until then the default pin is refused) and the user says go (release is the last thing in the run).
+
+Known leftovers: shop-path comments in `.sh` scripts and `system-test/README.md` (already present at `meta-v1.0.223`) may be flagged by the post-push leftover check.
 
 ## Steps
 
-- [ ] Step 1 — In gh-optivem, update the scaffold copy list and templates to the final shop file names (after shop Step 6b's renames: `_deploy-stage.yml`, `deploy-keycloak`, `build-shared-images`, `docker/keycloak/Dockerfile`, `acceptance-realm.jq`, and the `*-acceptance-stage{,-docker-compose,-docker-compose-legacy}.yml` callers).
-- [ ] Step 2 — Support `--no-legacy` by leaving out the `-docker-compose-legacy` caller and its `_prerelease-pipeline.yml` dispatch.
-- [ ] Step 3 — Update the scaffold README text as described in the End result.
 - [ ] Step 4 — Run gh-optivem's scaffold rehearsal, check that a scaffolded repo's Docker gates go green with no GCP, then release gh-optivem.
 
 ## Decisions

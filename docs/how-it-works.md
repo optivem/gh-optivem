@@ -80,4 +80,4 @@ After the scaffold is pushed and linted, verification steps run based on `--veri
 | `qa` | 1 + 2 + 3 + 4 + 5 + 6 |
 | `release` | 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 (default) |
 
-Steps 1–3 run at every level above `none`. `--no-local-tests` drops step 2 and `--no-local-sonar` drops step 3, regardless of level. `--no-legacy` applies to the legacy test run inside step 2 and to the legacy leg of step 5, and also omits the legacy artifacts (`gh-optivem.legacy.yaml`, legacy tests, `acceptance-stage-legacy.yml` + its badge) from the scaffolded repo.
+Steps 1–3 run at every level above `none`. `--no-local-tests` drops step 2 and `--no-local-sonar` drops step 3, regardless of level. `--no-legacy` applies to the legacy test run inside step 2 and to the legacy leg of step 5, and also omits the legacy artifacts (`gh-optivem.legacy.yaml`, legacy tests, `acceptance-stage-docker-compose-legacy.yml` + its badge) from the scaffolded repo.

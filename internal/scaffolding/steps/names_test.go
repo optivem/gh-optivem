@@ -27,7 +27,6 @@ var fullVars = map[string]string{
 	"testLang":     "java",
 	"arch":         "monolith",
 	"stage":        "acceptance-stage",
-	"stageSuffix":  "-cloud",
 }
 
 // TestNamesUseRecognizedPlaceholders asserts every placeholder appearing in
@@ -81,16 +80,22 @@ func TestNamesRepresentativeExpansion(t *testing.T) {
 			want:     "monolith-go-bump-patch-version.yml",
 		},
 		{
-			name:     "MonolithPipelineStageWf docker",
+			name:     "MonolithPipelineStageWf cloud acceptance",
 			template: Names.MonolithPipelineStageWf,
-			vars:     map[string]string{"testLang": "java", "stage": "acceptance-stage", "stageSuffix": ""},
+			vars:     map[string]string{"testLang": "java", "stage": "acceptance-stage"},
 			want:     "monolith-java-acceptance-stage.yml",
 		},
 		{
-			name:     "MonolithPipelineStageWf cloud-run",
-			template: Names.MonolithPipelineStageWf,
-			vars:     map[string]string{"testLang": "java", "stage": "qa-stage", "stageSuffix": "-cloud"},
-			want:     "monolith-java-qa-stage-cloud.yml",
+			name:     "MultitierPipelineStageWf docker-compose acceptance",
+			template: Names.MultitierPipelineStageWf,
+			vars:     map[string]string{"testLang": "dotnet", "stage": "acceptance-stage-docker-compose"},
+			want:     "multitier-dotnet-acceptance-stage-docker-compose.yml",
+		},
+		{
+			name:     "MonolithLegacyAcceptWf",
+			template: Names.MonolithLegacyAcceptWf,
+			vars:     map[string]string{"testLang": "typescript"},
+			want:     "monolith-typescript-acceptance-stage-docker-compose-legacy.yml",
 		},
 		{
 			name:     "MultitierBackendCommitStageWf",

@@ -20,45 +20,41 @@ func writeShopWorkflow(t *testing.T, shop, name, body string) {
 	}
 }
 
-// Shop main (post single-pipeline restructure) makes the stage workflows thin
-// callers of _*-stage.yml, which the scaffolder never copies: refuse the ref.
-func TestCheckShopWorkflowLayout_RejectsSharedReusableCallers(t *testing.T) {
+// Shop refs up to meta-v1.0.223 have full per-flavor stage workflows and no
+// Docker Compose callers or shared workflows: refused with a clear message.
+func TestCheckShopWorkflowLayout_RejectsOldLayout(t *testing.T) {
 	t.Parallel()
 	shop := t.TempDir()
-	writeShopWorkflow(t, shop, "monolith-java-acceptance-stage.yml",
-		"jobs:\n  acceptance-stage:\n    uses: ./.github/workflows/_acceptance-stage.yml\n")
-	writeShopWorkflow(t, shop, "monolith-java-qa-stage.yml",
-		"jobs:\n  qa-stage:\n    uses: ./.github/workflows/_qa-stage.yml\n")
-	writeShopWorkflow(t, shop, "monolith-java-prod-stage.yml",
-		"jobs:\n  prod-stage:\n    uses: ./.github/workflows/_prod-stage.yml\n  bump:\n    uses: ./.github/workflows/monolith-java-bump-patch-version.yml\n")
+	writeShopWorkflow(t, shop, "monolith-java-acceptance-stage.yml", "jobs:\n  run:\n    runs-on: ubuntu-latest\n")
+	writeShopWorkflow(t, shop, "monolith-java-acceptance-stage-legacy.yml", "jobs:\n  run:\n    runs-on: ubuntu-latest\n")
 
 	for _, noLegacy := range []bool{false, true} {
-		cfg := &config.Config{Arch: "monolith", Lang: "java", TestLang: "java", Deploy: "docker", ShopPath: shop, NoLegacy: noLegacy}
+		cfg := &config.Config{Arch: "monolith", Lang: "java", TestLang: "java", ShopPath: shop, NoLegacy: noLegacy}
 		err := checkShopWorkflowLayout(cfg)
 		if err == nil {
-			t.Fatalf("noLegacy=%v: want error for shared reusable callers, got nil", noLegacy)
+			t.Fatalf("noLegacy=%v: want error for the old layout, got nil", noLegacy)
 		}
-		for _, want := range []string{"_acceptance-stage.yml", "_qa-stage.yml", "_prod-stage.yml"} {
+		for _, want := range []string{"monolith-java-acceptance-stage-docker-compose.yml", "_acceptance-stage-docker-compose.yml", "--shop-ref main"} {
 			if !strings.Contains(err.Error(), want) {
-				t.Errorf("noLegacy=%v: error %q does not name %s", noLegacy, err, want)
+				t.Errorf("noLegacy=%v: error %q does not mention %s", noLegacy, err, want)
 			}
-		}
-		if strings.Contains(err.Error(), "bump-patch-version") {
-			t.Errorf("bump-patch-version is copied by the scaffolder and must not be flagged: %v", err)
 		}
 	}
 }
 
-// Shop refs up to meta-v1.0.223 inline the stage jobs: accepted.
-func TestCheckShopWorkflowLayout_AcceptsSelfContainedStages(t *testing.T) {
+// Shop main (single-pipeline layout): accepted, keyed by the test language.
+func TestCheckShopWorkflowLayout_AcceptsSinglePipelineLayout(t *testing.T) {
 	t.Parallel()
 	shop := t.TempDir()
-	writeShopWorkflow(t, shop, "monolith-java-acceptance-stage.yml",
-		"jobs:\n  run:\n    steps:\n      - uses: ./.github/actions/compile\n")
-	writeShopWorkflow(t, shop, "monolith-java-prod-stage.yml",
-		"jobs:\n  bump:\n    uses: ./.github/workflows/monolith-java-bump-patch-version.yml\n")
-	cfg := &config.Config{Arch: "monolith", Lang: "java", TestLang: "java", Deploy: "docker", ShopPath: shop}
+	writeShopWorkflow(t, shop, "_acceptance-stage-docker-compose.yml", "on:\n  workflow_call:\n")
+	writeShopWorkflow(t, shop, "multitier-typescript-acceptance-stage-docker-compose.yml",
+		"jobs:\n  acceptance-stage:\n    uses: ./.github/workflows/_acceptance-stage-docker-compose.yml\n")
+	cfg := &config.Config{Arch: "multitier", BackendLang: "java", TestLang: "typescript", ShopPath: shop}
 	if err := checkShopWorkflowLayout(cfg); err != nil {
 		t.Fatalf("want nil, got %v", err)
+	}
+	// Microservices scaffolds copy no pipeline workflows: never checked.
+	if err := checkShopWorkflowLayout(&config.Config{Arch: "microservices", ShopPath: t.TempDir()}); err != nil {
+		t.Fatalf("microservices: want nil, got %v", err)
 	}
 }

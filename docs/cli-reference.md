@@ -93,7 +93,7 @@ The credentials, either way:
 - `WORKFLOW_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` + `workflow` scopes.
 - `REPO_TOKEN` — a [GitHub PAT (classic)](https://github.com/settings/tokens) with `repo` scope.
 
-The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines (e.g. `<arch>-<lang>-acceptance-stage-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — when one of these tokens expires, the schedule starts failing silently, with no scaffold-time signal. Put a reminder in your calendar to rotate them, and re-run `gh optivem environment verify` after each rotation; it warns when a classic PAT's expiration is within 30 days, escalating to an urgent "rotate it soon" message inside 7 days.
+The three GitHub PATs (`GHCR_TOKEN`, `WORKFLOW_TOKEN`, `REPO_TOKEN`) back cron-scheduled pipelines (e.g. `acceptance-stage-docker-compose-legacy.yml`, which runs hourly) that keep running indefinitely once scaffolded — when one of these tokens expires, the schedule starts failing silently, with no scaffold-time signal. Put a reminder in your calendar to rotate them, and re-run `gh optivem environment verify` after each rotation; it warns when a classic PAT's expiration is within 30 days, escalating to an urgent "rotate it soon" message inside 7 days.
 
 These are read from your local environment at scaffold time and then propagated as variables and secrets onto the GitHub repos that `gh optivem init` creates, so the pipelines it generates can pull base images from Docker Hub under the authenticated rate limit (rather than the much lower anonymous one), publish and pull pipeline images to/from GHCR, send analysis to SonarCloud, and dispatch cross-repo workflows — all without you having to set each secret in the GitHub UI afterwards.
 
@@ -145,7 +145,7 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `init` run:
 
 - `--verify-level` — `none`, `local`, `commit`, `acceptance`, `qa`, or `release` (default `release`). Each level runs every step up to and including its named stage.
-- `--no-legacy` — exclude legacy from runs (local tests, acceptance stage) and from the scaffolded output: no `gh-optivem.legacy.yaml`, no `system-test/tests.legacy.yaml` or legacy test sources, no `acceptance-stage-legacy.yml` workflow or README badge.
+- `--no-legacy` — exclude legacy from runs (local tests, acceptance stage) and from the scaffolded output: no `gh-optivem.legacy.yaml`, no `system-test/tests.legacy.yaml` or legacy test sources, no `acceptance-stage-docker-compose-legacy.yml` workflow or README badge.
 - `--no-local-tests` — skip the local-test verification step.
 - `--no-local-sonar` — skip the local SonarCloud scan step.
 - `--no-project` — skip the `Ensure project board` step entirely (no auto-create, no status-ensure on a supplied `--project-url`).

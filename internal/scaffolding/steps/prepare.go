@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -25,38 +24,38 @@ func CloneShopTemplate(cfg *config.Config) {
 	}
 }
 
-// sharedReusableWorkflowRe matches a job-level call to one of shop's shared
-// `_*.yml` reusable workflows (e.g. `uses: ./.github/workflows/_qa-stage.yml`).
-var sharedReusableWorkflowRe = regexp.MustCompile(`(?m)^\s*uses:\s*['"]?\./\.github/workflows/(_[^\s'"]+\.yml)`)
-
-// checkShopWorkflowLayout fails when a pipeline-stage workflow the scaffolder
-// copies (see pipelineWorkflows) is a thin caller of a shared `_*.yml`
-// reusable workflow. The scaffolder copies none of those (nor the
-// .github/actions/* they use), and they derive paths from shop's
-// system/<arch>/<lang> layout, so such a scaffold is broken: shop's
-// single-pipeline restructure (shop plan 20261102-1855, 2026-11-03/04) made
-// every <flavor>-{acceptance,qa,prod}-stage.yml such a caller; support for it
-// is tracked in shop plans/backlog/p1-ci-pipeline/20261103-1536-gh-optivem-scaffolds-single-pipeline.md.
+// checkShopWorkflowLayout refuses shop refs that predate shop's
+// single-pipeline layout (shop plan 20261102-1855, on shop main since
+// 2026-11-06): the scaffolder copies the per-flavor thin callers
+// (<arch>-<testLang>-acceptance-stage-docker-compose.yml, ...) and the shared
+// _*.yml workflows they call, and old refs (meta-v1.0.223 and earlier, with
+// full per-flavor stage workflows and -cloud twins) have neither. Supporting
+// both layouts would mean two copy lists and two rewrite sets; old refs are
+// refused instead, before any GitHub repo is created. Microservices scaffolds
+// copy no pipeline workflows, so they are not checked.
 func checkShopWorkflowLayout(cfg *config.Config) error {
+	if cfg.Arch != "monolith" && cfg.Arch != "multitier" {
+		return nil
+	}
 	tmpl := Names.MultitierPipelineStageWf
 	if cfg.Arch == "monolith" {
 		tmpl = Names.MonolithPipelineStageWf
 	}
-	var offending []string
-	for src := range pipelineWorkflows(tmpl, VarsForCfg(cfg)) {
-		data, err := os.ReadFile(filepath.Join(cfg.ShopPath, ".github", "workflows", src))
-		if err != nil {
-			continue // absent sources are reported by CopyWorkflows
-		}
-		for _, m := range sharedReusableWorkflowRe.FindAllStringSubmatch(string(data), -1) {
-			offending = append(offending, src+" -> "+m[1])
+	required := []string{
+		Expand(tmpl, MergeVars(VarsForCfg(cfg), map[string]string{"stage": stageAcceptanceDockerCompose})),
+		"_acceptance-stage-docker-compose.yml",
+	}
+	var missing []string
+	for _, name := range required {
+		if _, err := os.Stat(filepath.Join(cfg.ShopPath, ".github", "workflows", name)); err != nil {
+			missing = append(missing, name)
 		}
 	}
-	if len(offending) == 0 {
+	if len(missing) == 0 {
 		return nil
 	}
-	sort.Strings(offending)
-	return fmt.Errorf("its pipeline-stage workflows call shared reusable workflows that gh-optivem does not scaffold yet (%s); "+
-		"use the default shop ref (latest meta-v* release) or one predating shop's single-pipeline restructure",
-		strings.Join(offending, ", "))
+	sort.Strings(missing)
+	return fmt.Errorf("it predates shop's single-pipeline workflow layout (missing %s), which this gh-optivem version scaffolds; "+
+		"use a newer shop ref (e.g. --shop-ref main, or a meta-v* release cut after 2026-11-06) or an older gh-optivem release",
+		strings.Join(missing, ", "))
 }

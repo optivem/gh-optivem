@@ -13,7 +13,6 @@ import (
 
 const (
 	deployCloudRun = "cloud-run"
-	cloudSuffix    = "-cloud"
 
 	// Substring fragments still consumed by the content-replacement helpers
 	// (monolithContentReplacements, multitierContentReplacements, etc.).
@@ -49,9 +48,12 @@ const (
 
 	// Flattened workflow/stage names (templates rename "<prefix>-name" → "name").
 	stageAcceptance = "acceptance-stage"
-	stageQA         = "qa-stage"
-	stageProd       = "prod-stage"
-	stageQASignoff  = "qa-signoff"
+	// Docker Compose acceptance gate (latest suites); the legacy gate is
+	// Names.*LegacyAcceptWf.
+	stageAcceptanceDockerCompose = "acceptance-stage-docker-compose"
+	stageQA                      = "qa-stage"
+	stageProd                    = "prod-stage"
+	stageQASignoff               = "qa-signoff"
 
 	wfBumpPatchVersion     = "bump-patch-version"
 	suffixBumpPatchVersion = "-bump-patch-version"
@@ -66,22 +68,6 @@ const (
 )
 
 var externalDirs = []string{dirSimulators, dirStubs}
-
-// cloudRunSuffix returns "-cloud" for cloud-run deploy, empty string otherwise.
-func cloudRunSuffix(deploy string) string {
-	if deploy == deployCloudRun {
-		return cloudSuffix
-	}
-	return ""
-}
-
-// appendCloudReplacement appends the -cloud -> "" replacement for cloud-run deploy.
-func appendCloudReplacement(r [][2]string, deploy string) [][2]string {
-	if deploy == deployCloudRun {
-		return append(r, [2]string{cloudSuffix, ""})
-	}
-	return r
-}
 
 // copyExternals copies the external-system directories (simulators/, stubs/)
 // from shop to repo, preserving shop's external-systems/ parent. Source and
@@ -194,17 +180,17 @@ func removeLegacyTests(testDst, testLang string) {
 	}
 }
 
-// pipelineWorkflows builds the workflow source->dest map for the four
-// pipeline-stage workflows (acceptance/qa/prod take stageSuffix; qa-signoff
-// does not, since it does not vary by deploy target).
+// pipelineWorkflows builds the workflow source->dest map for the per-flavor
+// pipeline-stage callers: the manual cloud acceptance stage, the Docker
+// Compose acceptance gate (latest suites), QA, QA signoff and production. The
+// legacy Docker Compose gate is added by addLegacyWorkflow; the shared
+// reusable workflows they call by copySharedPipeline.
 func pipelineWorkflows(srcTmpl string, baseVars map[string]string) map[string]string {
 	out := map[string]string{}
-	for _, stage := range []string{stageAcceptance, stageQA, stageProd} {
+	for _, stage := range []string{stageAcceptance, stageAcceptanceDockerCompose, stageQA, stageQASignoff, stageProd} {
 		v := MergeVars(baseVars, map[string]string{"stage": stage})
 		out[Expand(srcTmpl, v)] = Expand(Names.DestPipelineStageWf, v)
 	}
-	v := MergeVars(baseVars, map[string]string{"stage": stageQASignoff, "stageSuffix": ""})
-	out[Expand(srcTmpl, v)] = Expand(Names.DestPipelineStageWf, v)
 	return out
 }
 
@@ -216,10 +202,14 @@ func multitierPipelineWorkflows(vars map[string]string) map[string]string {
 	return pipelineWorkflows(Names.MultitierPipelineStageWf, vars)
 }
 
-// addLegacyWorkflow adds the acceptance-stage-legacy workflow for docker deploy.
-// --no-legacy omits it from the scaffolded output entirely.
+// addLegacyWorkflow adds the legacy Docker Compose acceptance gate
+// (acceptance-stage-docker-compose-legacy.yml). --no-legacy omits it from the
+// scaffolded output entirely, and with it the legacy suite-set branch of
+// _acceptance-stage-docker-compose.yml is simply never called. (Shop's
+// _prerelease-pipeline.yml, which dispatches the legacy gate there, is never
+// scaffolded: copySharedPipeline copies only what the callers reference.)
 func addLegacyWorkflow(wfMap map[string]string, srcTmpl string, vars map[string]string, cfg *config.Config) {
-	if cfg.Deploy == "docker" && !cfg.NoLegacy {
+	if !cfg.NoLegacy {
 		wfMap[Expand(srcTmpl, vars)] = Names.DestLegacyAcceptWf
 	}
 }
@@ -281,6 +271,7 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	wfMap[Expand(Names.MonolithBumpPatchVersionWf, vars)] = Names.DestBumpPatchVersionWf
 	addLegacyWorkflow(wfMap, Names.MonolithLegacyAcceptWf, vars, cfg)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
+	scaffoldPipeline(shop, repoDir, projectPathRewrites("monolith", lang))
 
 	// System code: system/monolith/{lang}/ -> system/
 	log.Info("Copying system code...")
@@ -299,14 +290,17 @@ func applyMonolithMonorepo(cfg *config.Config) {
 
 	log.Info(infoCopyingDbMigrations)
 	copyDbMigrations(shop, repoDir)
+	copyDbImage(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "single", lang, cfg.NoLegacy)
 
 	// Fix workflow content: paths, image names, workflow names
 	log.Info("Fixing up workflow and docker-compose content...")
-	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
-	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(prefixMonolith+testLang)...)
+	contentReplacements := monolithContentReplacements(lang, testLang)
+	// Polyglot: bump-patch-version.yml (system-language-keyed) watches
+	// "monolith-<lang>-v"; collapse it to "v" too.
+	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(uniq(prefixMonolith+testLang, prefixMonolith+lang)...)...)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
@@ -327,6 +321,8 @@ func applyMonolithMonorepo(cfg *config.Config) {
 		log.Info(infoCopyingCloudRun)
 		copyCloudRunScripts(shop, repoDir)
 	}
+
+	scheduleLegacyGate(repoDir)
 
 	log.Info(infoCopyingDocs)
 	copyDocs(shop, repoDir, "monolith")
@@ -349,6 +345,7 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	rootWfMap[Names.BumpPatchVersionMultirepoWf] = Names.DestBumpPatchVersionWf
 	addLegacyWorkflow(rootWfMap, Names.MonolithLegacyAcceptWf, vars, cfg)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
+	scaffoldPipeline(shop, repoDir, projectPathRewrites("monolith", lang))
 
 	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
@@ -357,14 +354,17 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	// volume mount (../db/migrations) resolves from docker/.
 	log.Info(infoCopyingDbMigrations)
 	copyDbMigrations(shop, repoDir)
+	copyDbImage(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "single", lang, cfg.NoLegacy)
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
-	contentReplacements := appendCloudReplacement(monolithContentReplacements(lang, testLang), cfg.Deploy)
-	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(prefixMonolith+testLang)...)
+	contentReplacements := monolithContentReplacements(lang, testLang)
+	// Polyglot: bump-patch-version.yml (system-language-keyed) watches
+	// "monolith-<lang>-v"; collapse it to "v" too.
+	contentReplacements = append(contentReplacements, systemPrefixDropReplacements(uniq(prefixMonolith+testLang, prefixMonolith+lang)...)...)
 	templates.FixupWorkflowContent(repoDir, contentReplacements)
 	templates.FixupDockerComposeContent(repoDir, monolithDockerComposeReplacements(lang, testLang))
 
@@ -391,6 +391,8 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	templates.FixupWorkflowContent(repoDir, [][2]string{
 		{"__SIBLING_REPOS__", cfg.SystemFullRepo},
 	})
+	templates.FixupWorkflowContent(repoDir, multirepoSharedWorkflowRewrites(cfg.Owner, map[string]string{"system": cfg.SystemRepo}))
+	scheduleLegacyGate(repoDir)
 
 	log.Success("Applied root repo template (monolith multirepo)")
 
@@ -418,17 +420,22 @@ func applyMonolithMultirepo(cfg *config.Config) {
 		Names.CleanupWf: Names.CleanupWf,
 	}
 	templates.CopyWorkflows(systemWfMap, shop, sysDir)
+	scaffoldPipeline(shop, sysDir, projectPathRewrites("monolith", lang))
 
 	log.Info("Fixing up system repo workflow content and SonarCloud keys...")
-	sysContentReplacements := [][2]string{
-		{ExpandRef(Names.MonolithCommitStageWf, vars), "commit-stage"},
-		{ExpandRef(Names.MonolithBumpPatchVersionWf, vars), wfBumpPatchVersion},
-		// Same precedence rule as monolithContentReplacements: VERSION-specific
-		// rule before the broader system/monolith/<lang> -> system rule.
-		{Expand(Names.ShopVersionFile, vars), "VERSION"},
-		{Expand(Names.ShopSystemMonolithDir, vars), Names.TargetSystemDir},
-		{Expand(Names.MonolithImageRef, vars), Names.TargetSystemDir},
-	}
+	// Prefix-drop first: bump-patch-version.yml's git-tag signal
+	// "monolith-<lang>-v" must become "v", the tag prod-stage publishes.
+	sysContentReplacements := append(systemPrefixDropReplacements(Expand(Names.MonolithFlavorPrefix, vars)),
+		[][2]string{
+			{ExpandRef(Names.MonolithCommitStageWf, vars), "commit-stage"},
+			{ExpandRef(Names.MonolithBumpPatchVersionWf, vars), wfBumpPatchVersion},
+			{Expand(Names.MonolithFlavorPrefix, vars) + suffixProdStage, stageProd},
+			// Same precedence rule as monolithContentReplacements: VERSION-specific
+			// rule before the broader system/monolith/<lang> -> system rule.
+			{Expand(Names.ShopVersionFile, vars), "VERSION"},
+			{Expand(Names.ShopSystemMonolithDir, vars), Names.TargetSystemDir},
+			{Expand(Names.MonolithImageRef, vars), Names.TargetSystemDir},
+		}...)
 	// Flatten the commit-stage GH_OPTIVEM_CONFIG name (system-language-keyed) to
 	// the canonical gh-optivem.yaml; WriteOptivemYAML writes that pair into the
 	// split system repo. Without this the system repo's commit-stage references a
@@ -464,6 +471,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	wfMap[Expand(Names.MultitierBumpPatchVersionWf, vars)] = Names.DestBumpPatchVersionWf
 	addLegacyWorkflow(wfMap, Names.MultitierLegacyAcceptWf, vars, cfg)
 	templates.CopyWorkflows(wfMap, shop, repoDir)
+	scaffoldPipeline(shop, repoDir, projectPathRewrites("multitier", backendLang))
 
 	// Backend code: system/multitier/backend-{lang}/ -> backend/
 	log.Info("Copying backend code...")
@@ -482,6 +490,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 
 	log.Info(infoCopyingDbMigrations)
 	copyDbMigrations(shop, repoDir)
+	copyDbImage(shop, repoDir)
 
 	log.Info(infoCopyingContracts)
 	copyContracts(shop, repoDir)
@@ -491,7 +500,7 @@ func applyMultitierMonorepo(cfg *config.Config) {
 
 	// Fix workflow content: paths and image names
 	log.Info("Fixing up workflow and docker-compose content...")
-	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
+	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
 	// Prepend prefix-drops so 3-segment "multitier-backend-{lang}-v" / "multitier-frontend-react-v"
 	// collapse to "v" before the bare 3-segment image-name rules in
 	// multitierContentReplacements partial-match them into "backend-v"/"frontend-v".
@@ -531,6 +540,8 @@ func applyMultitierMonorepo(cfg *config.Config) {
 		copyCloudRunScripts(shop, repoDir)
 	}
 
+	scheduleLegacyGate(repoDir)
+
 	log.Info(infoCopyingDocs)
 	copyDocs(shop, repoDir, "multitier")
 	log.Success("Applied template files (multitier monorepo)")
@@ -555,6 +566,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	rootWfMap[Names.BumpPatchVersionMultirepoWf] = Names.DestBumpPatchVersionWf
 	addLegacyWorkflow(rootWfMap, Names.MultitierLegacyAcceptWf, vars, cfg)
 	templates.CopyWorkflows(rootWfMap, shop, repoDir)
+	scaffoldPipeline(shop, repoDir, projectPathRewrites("multitier", backendLang))
 
 	log.Info(infoCopyingExternals)
 	copyExternals(shop, repoDir)
@@ -563,13 +575,14 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	// (../db/migrations) resolves from docker/.
 	log.Info(infoCopyingDbMigrations)
 	copyDbMigrations(shop, repoDir)
+	copyDbImage(shop, repoDir)
 
 	log.Info(infoCopyingSystemTests)
 	copySystemTests(shop, repoDir, testLang, "multi", backendLang, cfg.NoLegacy)
 
 	// Fix root repo workflow content
 	log.Info("Fixing up root repo workflow and docker-compose content...")
-	contentReplacements := appendCloudReplacement(multitierContentReplacements(backendLang, frontendLang, testLang), cfg.Deploy)
+	contentReplacements := multitierContentReplacements(backendLang, frontendLang, testLang)
 	// Prepend prefix-drops; see comment in applyMultitierMonorepo for rationale.
 	contentReplacements = append(
 		systemPrefixDropReplacements(
@@ -610,6 +623,9 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupWorkflowContent(repoDir, [][2]string{
 		{"__SIBLING_REPOS__", cfg.BackendFullRepo + " " + cfg.FrontendFullRepo},
 	})
+	templates.FixupWorkflowContent(repoDir, multirepoSharedWorkflowRewrites(cfg.Owner,
+		map[string]string{"backend": cfg.BackendRepo, "frontend": cfg.FrontendRepo}))
+	scheduleLegacyGate(repoDir)
 
 	log.Success("Applied root repo template (multitier multirepo)")
 
@@ -646,6 +662,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		Names.CleanupWf: Names.CleanupWf,
 	}
 	templates.CopyWorkflows(backendWfMap, shop, bDir)
+	scaffoldPipeline(shop, bDir, projectPathRewrites("multitier", backendLang))
 
 	log.Info("Fixing up backend repo workflow content and SonarCloud keys...")
 	// Prepend prefix-drop so "multitier-backend-{lang}-v" (in bump-patch-version.yml's
@@ -691,6 +708,7 @@ func applyMultitierMultirepo(cfg *config.Config) {
 		Names.CleanupWf: Names.CleanupWf,
 	}
 	templates.CopyWorkflows(frontendWfMap, shop, fDir)
+	scaffoldPipeline(shop, fDir, projectPathRewrites("multitier", backendLang))
 
 	log.Info("Fixing up frontend repo workflow content and SonarCloud keys...")
 	// Prepend prefix-drop so "multitier-frontend-react-v" (in bump-patch-version.yml's
@@ -766,6 +784,11 @@ func monolithContentReplacements(lang, testLang string) [][2]string {
 		{monoTest + suffixQAStage, stageQA},
 		{monoTest + suffixQASignoff, stageQASignoff},
 		{monoTest + suffixProdStage, stageProd},
+		// QA caller's header comment names the per-flavor QA environment.
+		{monoTest + "-qa environment", "qa environment"},
+		// bump-patch-version.yml (system-language-keyed) names its prod-stage
+		// trigger in a comment; differs from the rule above when polyglot.
+		{mono + lang + suffixProdStage, stageProd},
 		{monoTest + "-verify", "verify"},
 		// VERSION file: shop holds per-flavor system/monolith/<lang>/VERSION,
 		// scaffolded student repos hold one root VERSION. Must precede the
@@ -893,6 +916,8 @@ func multitierContentReplacements(backendLang, frontendLang, testLang string) []
 		{multiTest + suffixQAStage, stageQA},
 		{multiTest + suffixQASignoff, stageQASignoff},
 		{multiTest + suffixProdStage, stageProd},
+		// QA caller's header comment names the per-flavor QA environment.
+		{multiTest + "-qa environment", "qa environment"},
 		{multiTest + "-verify", "verify"},
 		// bump-patch-version variant is keyed by backendLang (frontend is always react),
 		// distinct from the pipeline-stage rewrites above which use testLang. This rule
@@ -1159,12 +1184,12 @@ func ValidateNoLeftoverTemplateRefs(cfg *config.Config) {
 // extension.
 func forbiddenTemplateRefs(cfg *config.Config) []string {
 	if cfg.Arch == "monolith" {
-		return monolithForbiddenRefs(cfg.Lang, cfg.TestLang)
+		return append(monolithForbiddenRefs(cfg.Lang, cfg.TestLang), leftoverSharedWorkflowRefs...)
 	}
 	// "react" is the shop-side framework token in forbidden refs
 	// (multitier-frontend-react, system/multitier/frontend-react), not
 	// cfg.FrontendLang ("typescript").
-	return multitierForbiddenRefs(cfg.BackendLang, "react", cfg.TestLang)
+	return append(multitierForbiddenRefs(cfg.BackendLang, "react", cfg.TestLang), leftoverSharedWorkflowRefs...)
 }
 
 func monolithForbiddenRefs(lang, testLang string) []string {
@@ -1241,6 +1266,19 @@ func checkNoTemplateRefs(repoDir string, refs []string) {
 	if failed {
 		log.Fatalf("Template replacement incomplete in %s: leftover template references found.", repoDir)
 	}
+}
+
+// uniq returns ss without repeats, in first-seen order.
+func uniq(ss ...string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(ss))
+	for _, s := range ss {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 func dirExists(p string) bool {

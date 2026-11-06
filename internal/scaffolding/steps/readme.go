@@ -17,8 +17,8 @@ const (
 	githubBaseURL         = "https://github.com/"
 	testLangFmt           = "- **Test language:** %s\n"
 	badgeFmt              = "[![%s](%s/badge.svg%s)](%s)\n"
-	acceptanceStage       = "acceptance-stage"
-	acceptanceStageLegacy = "acceptance-stage-legacy"
+	acceptanceStage       = stageAcceptanceDockerCompose
+	acceptanceStageLegacy = stageAcceptanceDockerCompose + "-legacy"
 	eventPush             = "push"
 	eventSchedule         = "schedule"
 	commitStage           = "commit-stage"
@@ -43,6 +43,27 @@ func readmeFooter(licenseName, owner string) string {
 		licenseName, owner, githubBaseURL, owner)
 }
 
+// pipelineSection returns the Pipeline section of the scaffolded root README:
+// which stages run out of the box and which need cloud setup. The Cloud setup
+// subsection is a placeholder until the setup guide exists (gh-optivem plan
+// 20261106-1305-scaffold-cloud-setup-guide); keep its heading, since the text
+// above links to it.
+func pipelineSection(cfg *config.Config) string {
+	gates := "`" + acceptanceStage + ".yml`"
+	if !cfg.NoLegacy {
+		gates += " and `" + acceptanceStageLegacy + ".yml`"
+	}
+	return "## Pipeline\n\n" +
+		"- **Works out of the box:** the commit stage and the Docker Compose acceptance gates (" + gates + "). " +
+		"The gates run hourly on the GitHub runner, against the commit-stage images.\n" +
+		"- **Needs GCP set up first:** the cloud acceptance stage (`acceptance-stage.yml`, run manually; it creates the release candidate), " +
+		"QA (`qa-stage.yml`) and production (`prod-stage.yml`), which deploy to Google Cloud Run. See [Cloud setup](#cloud-setup). " +
+		"QA and production can deploy with Docker Compose instead: uncomment the Docker Compose block in " +
+		"`.github/workflows/_qa-stage.yml` and `_prod-stage.yml`.\n\n" +
+		"### Cloud setup\n\n" +
+		"A step-by-step guide to setting up Google Cloud for this repo is coming. Until then, the cloud stages fail at their first GCP step.\n\n"
+}
+
 // docsSection returns the Documentation section for scaffolded repos that
 // receive the /docs folder (monolith/multitier monorepos and multirepo roots).
 func docsSection() string {
@@ -54,15 +75,15 @@ func docsSection() string {
 }
 
 // pipelineBadges returns badge [url, label, event] triples for the shared pipeline stages.
-// Only stages with a recurring trigger get a badge: dispatch-only stages never
-// produce a default-event run and would read "no status" forever.
-// The acceptance-stage-legacy badge tracks addLegacyWorkflow: docker deploy only,
-// and never under --no-legacy (the workflow is not scaffolded then).
+// Only stages with a recurring trigger get a badge: dispatch-only stages (cloud
+// acceptance, QA, prod) never produce a default-event run and would read "no
+// status" forever. The legacy Docker Compose gate badge tracks addLegacyWorkflow:
+// never under --no-legacy (the workflow is not scaffolded then).
 func pipelineBadges(base string, cfg *config.Config) [][3]string {
 	badges := [][3]string{
 		{base + "/" + acceptanceStage + ".yml", acceptanceStage, eventSchedule},
 	}
-	if cfg.Deploy == "docker" && !cfg.NoLegacy {
+	if !cfg.NoLegacy {
 		badges = append(badges, [3]string{base + "/" + acceptanceStageLegacy + ".yml", acceptanceStageLegacy, eventSchedule})
 	}
 	return badges
@@ -117,8 +138,8 @@ func writeReadme(repoDir, title, badges string, cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s",
-		title, badges, info.String(), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s%s",
+		title, badges, info.String(), pipelineSection(cfg), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
 	writeReadmeFile(repoDir, content)
 }
 
@@ -145,8 +166,8 @@ func writeMonolithMultirepoReadme(cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s\n%s",
-		cfg.SystemName, badges.String(), reposSection, info.String(), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s%s\n%s",
+		cfg.SystemName, badges.String(), reposSection, info.String(), pipelineSection(cfg), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
 	writeReadmeFile(cfg.RepoDir, content)
 
 	writeComponentReadme(
@@ -183,8 +204,8 @@ func writeMultitierMultirepoReadme(cfg *config.Config) {
 	}
 	fmt.Fprintf(&info, "\n")
 
-	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s\n%s",
-		cfg.SystemName, badges.String(), reposSection, info.String(), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
+	content := fmt.Sprintf("# %s\n\n%s\n%s%s%s%s\n%s",
+		cfg.SystemName, badges.String(), reposSection, info.String(), pipelineSection(cfg), docsSection(), readmeFooter(cfg.LicenseName(), cfg.Owner))
 	writeReadmeFile(cfg.RepoDir, content)
 
 	writeComponentReadme(

@@ -498,9 +498,10 @@ func VerifyCommitStage(cfg *config.Config, gh *shell.GitHub) {
 	}
 }
 
-// VerifyAcceptanceStages triggers the latest and legacy acceptance-stage
-// workflows and watches both runs in parallel. Legacy is skipped when
-// --no-legacy is set. Downstream stages (QA, prod) resolve the latest RC
+// VerifyAcceptanceStages triggers the latest and legacy Docker Compose
+// acceptance gates and watches both runs in parallel. Legacy is skipped when
+// --no-legacy is set. The cloud acceptance stage (acceptance-stage.yml) is not
+// run: it needs GCP set up. Downstream stages (QA, prod) resolve the latest RC
 // internally when dispatched with an empty version, so no RC lookup is needed
 // here.
 func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
@@ -526,7 +527,7 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 	go func() {
 		defer wg.Done()
 		shell.CheckRateLimit()
-		latestErr = gh.RunWatchWorkflow("acceptance-stage.yml", nil, watchIntervalSecs)
+		latestErr = gh.RunWatchWorkflow(acceptanceGateWf, nil, watchIntervalSecs)
 	}()
 
 	if includeLegacy {
@@ -534,7 +535,7 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 		go func() {
 			defer wg.Done()
 			shell.CheckRateLimit()
-			legacyErr = gh.RunWatchWorkflow("acceptance-stage-legacy.yml", nil, watchIntervalSecs)
+			legacyErr = gh.RunWatchWorkflow(Names.DestLegacyAcceptWf, nil, watchIntervalSecs)
 		}()
 	}
 
@@ -543,15 +544,18 @@ func VerifyAcceptanceStages(cfg *config.Config, gh *shell.GitHub) {
 	reportAcceptanceResults(gh, includeLegacy, latestErr, legacyErr)
 }
 
+// acceptanceGateWf is the scaffolded Docker Compose acceptance gate (latest suites).
+const acceptanceGateWf = stageAcceptanceDockerCompose + ".yml"
+
 // triggerAcceptanceStages dispatches the latest (and optionally legacy)
 // acceptance-stage workflows.
 func triggerAcceptanceStages(gh *shell.GitHub, includeLegacy bool) {
 	shell.CheckRateLimit()
-	gh.WorkflowRun("acceptance-stage.yml", nil)
+	gh.WorkflowRun(acceptanceGateWf, nil)
 
 	if includeLegacy {
 		shell.CheckRateLimit()
-		gh.WorkflowRun("acceptance-stage-legacy.yml", nil)
+		gh.WorkflowRun(Names.DestLegacyAcceptWf, nil)
 	}
 }
 

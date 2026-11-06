@@ -20,7 +20,6 @@ var recognizedPlaceholders = map[string]bool{
 	"testLang":     true,
 	"arch":         true,
 	"stage":        true,
-	"stageSuffix":  true,
 }
 
 // Names is the central registry of file and folder name templates produced or
@@ -95,16 +94,16 @@ var Names = struct {
 }{
 	MonolithCommitStageWf:      "monolith-${lang}-commit-stage.yml",
 	MonolithBumpPatchVersionWf: "monolith-${lang}-bump-patch-version.yml",
-	MonolithPipelineStageWf:    "monolith-${testLang}-${stage}${stageSuffix}.yml",
-	MonolithLegacyAcceptWf:     "monolith-${testLang}-acceptance-stage-legacy.yml",
+	MonolithPipelineStageWf:    "monolith-${testLang}-${stage}.yml",
+	MonolithLegacyAcceptWf:     "monolith-${testLang}-acceptance-stage-docker-compose-legacy.yml",
 
 	MultitierBackendCommitStageWf:  "multitier-backend-${backendLang}-commit-stage.yml",
 	MultitierFrontendCommitStageWf: "multitier-frontend-${frontendLang}-commit-stage.yml",
 	MultitierBumpPatchVersionWf:    "multitier-${backendLang}-bump-patch-version.yml",
 	MultitierBackendBumpPatchWf:    "multitier-backend-${backendLang}-bump-patch-version.yml",
 	MultitierFrontendBumpPatchWf:   "multitier-frontend-${frontendLang}-bump-patch-version.yml",
-	MultitierPipelineStageWf:       "multitier-${testLang}-${stage}${stageSuffix}.yml",
-	MultitierLegacyAcceptWf:        "multitier-${testLang}-acceptance-stage-legacy.yml",
+	MultitierPipelineStageWf:       "multitier-${testLang}-${stage}.yml",
+	MultitierLegacyAcceptWf:        "multitier-${testLang}-acceptance-stage-docker-compose-legacy.yml",
 
 	BumpPatchVersionMultirepoWf: "bump-patch-version-multirepo.yml",
 	CleanupWf:                   "cleanup.yml",
@@ -113,7 +112,7 @@ var Names = struct {
 	DestBackendCommitStageWf:  "backend-commit-stage.yml",
 	DestFrontendCommitStageWf: "frontend-commit-stage.yml",
 	DestPipelineStageWf:       "${stage}.yml",
-	DestLegacyAcceptWf:        "acceptance-stage-legacy.yml",
+	DestLegacyAcceptWf:        "acceptance-stage-docker-compose-legacy.yml",
 	DestBumpPatchVersionWf:    "bump-patch-version.yml",
 
 	ShopSystemMonolithDir:       "system/monolith/${lang}",
@@ -145,9 +144,7 @@ var Names = struct {
 
 // Expand substitutes ${name} placeholders in tmpl using vars. Unknown
 // placeholders panic — the placeholder name must be in
-// recognizedPlaceholders. Missing keys in vars expand to empty string, which
-// is intentional for optional fields (e.g. ${stageSuffix} is "" for docker
-// deploy, "-cloud" for cloud-run).
+// recognizedPlaceholders. Missing keys in vars expand to empty string.
 func Expand(tmpl string, vars map[string]string) string {
 	return os.Expand(tmpl, func(k string) string {
 		if !recognizedPlaceholders[k] {
@@ -163,8 +160,8 @@ func ExpandRef(tmpl string, vars map[string]string) string {
 	return strings.TrimSuffix(Expand(tmpl, vars), ".yml")
 }
 
-// VarsForCfg builds the placeholder map for a Config. Stage and stageSuffix
-// are not set (callers add per-call values).
+// VarsForCfg builds the placeholder map for a Config. Stage is not set
+// (callers add per-call values).
 //
 // frontendLang is hardcoded to "react" — the placeholder feeds shop-side
 // paths (system/multitier/frontend-react/, multitier-frontend-react-*.yml)
@@ -178,7 +175,6 @@ func VarsForCfg(cfg *config.Config) map[string]string {
 		"frontendLang": "react",
 		"testLang":     cfg.TestLang,
 		"arch":         cfg.Arch,
-		"stageSuffix":  cloudRunSuffix(cfg.Deploy),
 	}
 }
 
