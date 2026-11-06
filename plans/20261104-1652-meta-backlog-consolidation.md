@@ -26,16 +26,16 @@ Then it deletes the repo.
 
 ### 2. Which `/fix-bug` handoffs to start (user answered **all**, 2026-11-06)
 
-- **install-gh-optivem path bug:** in the shared `optivem/actions` repo, the source-build path runs `gh extension install <absolute path>`, which gh rejects (only `.` works). Shop works around it inline. The fix is easy, but it ships by moving the `v1` tag, which every repo using the action picks up. That tag move needs the user's approval.
+- **install-gh-optivem path bug:** shipped 2026-11-06 (`optivem/actions` `708d562`; `update-v1` run 42219340839 green, `v1` → `708d562`).
 
 ## ▶ Next executable step (resume here)
 
-**No autonomous units remain.** F1 and F2 shipped on 2026-11-05. Everything below needs the user (tokens, a release, SonarCloud, attended checks, confirming the ERP-gap option) or the user's go for `/fix-bug`.
+**In flight (2026-11-06):** D4 with `--shop-ref main` failed: shop main (2026-11-03/04, shop plan 20261102-1855) turned every stage workflow into a thin caller of shared `_acceptance/_qa/_prod-stage.yml` + `_deploy-stage.yml` + `.github/actions/*`, which the scaffolder (`internal/scaffolding/steps/names.go`, `apply_template.go`) doesn't copy. Affects every arch, with or without `--no-legacy`, for any shop ref after `meta-v1.0.223`. Shipped a guard (`checkShopWorkflowLayout` in `prepare.go`) that refuses such a ref before creating any repo; the real port is shop's `plans/backlog/p1-ci-pipeline/20261103-1536-gh-optivem-scaffolds-single-pipeline.md`. Next: delete `valentinajemuovic/d4-nolegacy-20261106`, rerun D4 on the default shop ref. Then the user-deferred decisions (items 2 and 4 below), then the gh-optivem release last — note a release cut now would pin a shop ref the scaffolder can't handle once shop cuts a new `meta-v*`.
 
-1. **Tokens (user, before 2026-11-08 when WORKFLOW_TOKEN expires):** new REPO_TOKEN (classic PAT, `repo`), DOCKERHUB_TOKEN and WORKFLOW_TOKEN in `~/.config/gh-optivem/.env`; `go install github.com/rhysd/actionlint/cmd/actionlint@v1`; `gh auth refresh -s delete_repo`. Then the agent reruns **D4** autonomously (throwaway repos are pre-authorized).
-2. **ERP-gap option (user):** confirm Option A + slimmed B in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` (the F2 rerun on 2026-11-05 still reproduces the gap).
-3. **User, when convenient:** gh-optivem release (unblocks E2), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a/D3b and C2c, and the board tidy-up (#65, #69, #76).
-4. **`install-gh-optivem` fix, push needs the user's go:** committed locally (`708d562`) in a scratch clone of `optivem/actions` (`install-gh-optivem/build-and-install.sh`: `cd "$SRC" && gh extension install .`). Pushing to its `main` auto-moves `v1` via `update-v1.yml`, so every consumer picks it up. Red-phase and .NET `--test` follow-ups are done (2026-11-06).
+1. **D4 prerequisites met on the Linux devcontainer (2026-11-06):** tokens in env (REPO/WORKFLOW expire 2026-11-08), `gh` logged in with `delete_repo` + `project`, actionlint in `/go/bin`, JDK 21 installed. Config in the session scratch dir; command as in Human-only.
+2. **ERP-gap option (user, ⏳ deferred to the end of the run 2026-11-06 — user is thinking it over):** confirm Option A + slimmed B in `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md` (the F2 rerun on 2026-11-05 still reproduces the gap).
+3. **User, when convenient:** gh-optivem release (unblocks E2; user wants it as the **last** thing), SonarCloud Won't Fix (S3776 test files, canary S8545), one attended session for C2b, D2, D3a, and #65's board column (was In Progress; prior column unknown).
+4. **D3b/C2c issue edits (user, ⏳ deferred to the end of the run 2026-11-06):** may the agent tag #69's criteria with existing ids (D3b) and restore #68's absence-shaped criterion (C2c)?
 
 ## Pre-authorizations (granted by the user on 2026-11-05)
 
@@ -103,7 +103,6 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 
 - **D4 rerun (`--no-legacy` scaffold spot-check):** prerequisites are a new REPO_TOKEN (classic PAT, repo scope; GitHub returned 401) and DOCKERHUB_TOKEN (401) in `~/.config/gh-optivem/.env`, `go install github.com/rhysd/actionlint/cmd/actionlint@v1`, and `gh auth refresh -s delete_repo` so the throwaway repo can be deleted. WORKFLOW_TOKEN expires 2026-11-08. Command used: `gh optivem config init --owner <you> --repo <throwaway> --arch monolith --repo-strategy monorepo --monolith-lang java --test-lang java --system-name ...`, then `gh optivem init --no-legacy --shop-ref main --verify-level local --no-local-tests --no-local-sonar --no-project --keep-local --yes`. Check: no `systemtest/legacy`, `gh-optivem.legacy.yaml`, `tests.legacy.yaml`, or acceptance-stage-legacy workflow/badge (`internal/scaffolding/steps/apply_template.go:141-219`), the repo compiles, and the first CI run passes. Then delete the repo.
 
-- **Shared action bug (found by E1):** `optivem/actions/install-gh-optivem@v1` source-build path runs `gh extension install <absolute path>`, which gh rejects (only `.` accepted); likely also breaks `meta-prerelease-dry-run`. Shop's mutation nightly works around it inline. Needs a fix in `optivem/actions` (+ tag move) — `/fix-bug` handoff.
 - **gh-optivem release** to unblock E2 (then write `mutation-threshold: 50` into shop `gh-optivem-multitier-java.yaml`).
 
 - **Item 22 (#20) Step 8:** collapse `scripts/readme-steps.sh` after a green clean-room VM run. Plan: `plans/backlog/p2-atdd-quality/20260812-1705-environment-setup-command.md`.
@@ -113,7 +112,7 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 - **C2c (Item 15 / #21 Step 6):** restore #68's dropped criterion (or create a new absence-shaped issue), then rehearse that an absence-shaped ticket goes green by copying the shop reference. See `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`.
 - **D3a attended check:** attended `implement 69`: approve `merge-use-cases`, confirm the merge diff and tests tagged with merged `UC-NNN.M` ids.
 - **D3b:** tag a corpus story's scenarios with existing ids (e.g. #69 → `@UC-001.8`) or create a tagged issue, then confirm the merge is skipped.
-- **Board tidy-up from this run:** #69 was moved In QA → In Progress by the D3a rehearsal (not restored); #76 sits in In Acceptance after D1; #65 is In Progress (set again by the F2 run on 2026-11-05, not restored; still OPEN).
+- **Board tidy-up from this run:** #69 restored to In QA and #76 found already in In QA (2026-11-06); #65 is In Progress (prior column unknown; user to say).
 - **D2 attended check:** in an attended run, let the fixer loop exhaust after an out-of-scope edit and confirm the halt is report-only and lists "fixer edited: N file(s)" (#15, commit 416a761f).
 - **C2b attended check:** in an attended `implement` run that hits a compile failure, approve the `fix-*` (human-category) dispatch and confirm the fixer runs with the writer's scope.
 
