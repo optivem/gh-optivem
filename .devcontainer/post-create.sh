@@ -18,4 +18,4 @@ for t in "gh --version" "go version" "docker --version" "node --version" "claude
 done
 
 echo ""
-echo "Next: gh auth login, then 'go build ./...' and 'go test ./...'"
+echo "Next: 'go build ./...' and 'go test ./...'. Run 'gh auth login' before using gh / 'gh optivem' commands."

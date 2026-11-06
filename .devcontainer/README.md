@@ -15,10 +15,13 @@ Install once on your host machine:
 1. Open the `gh-optivem/` folder **directly** in VS Code (not a parent like `academy/`). The `.devcontainer/` must sit at the root of the opened folder — multi-root workspaces and parent directories will not work.
 2. Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) → **Dev Containers: Reopen in Container**.
    - ⚠️ Do **not** pick **Dev Containers: Add Dev Container Configuration Files…** — the repo already ships a config.
+   - ⚠️ Do **not** use **Dev Containers: Clone Repository in Container Volume…** — it creates its own volume and bypasses the `gh-optivem-workspace` volume and bootstrap flow below. **Reopen in Container** is the only step needed.
 3. First launch builds the image (~3-5 min); subsequent launches are instant.
-4. [bootstrap.sh](bootstrap.sh) (baked into the image as `gh-optivem-bootstrap`) runs automatically. On first create it clones `optivem/gh-optivem` into the `gh-optivem-workspace` volume (see [Two clones](#two-clones-host-and-container)), then runs [post-create.sh](post-create.sh), which downloads Go modules and verifies tooling. If `gh` isn't logged in yet the clone fails with a clear message: run `gh auth login`, then `gh-optivem-bootstrap`.
+4. [bootstrap.sh](bootstrap.sh) (baked into the image as `gh-optivem-bootstrap`) runs automatically. On first create it clones `optivem/gh-optivem` into the `gh-optivem-workspace` volume (see [Two clones](#two-clones-host-and-container)), then runs [post-create.sh](post-create.sh), which downloads Go modules and verifies tooling. The repo is public, so the clone is anonymous and needs no login.
 5. [fix-git-credential-helpers.sh](fix-git-credential-helpers.sh) runs on every attach and repairs git credential helpers copied in from a Windows host (see Troubleshooting).
 6. Authenticate with `gh auth login` (if you haven't already), then `bash scripts/install.sh`, `go build ./...` and `go test ./...`.
+
+**Troubleshooting:** if the Explorer is empty after the first open, the clone failed — check the postCreate log, then run `gh-optivem-bootstrap` in the container terminal and **Developer: Reload Window**.
 
 **Troubleshooting:** if you see an **"Add configuration to workspace / user data folder"** prompt or a template picker, VS Code did **not** detect the existing config. Cancel, close the folder, and reopen `gh-optivem/` directly — do not pick a template.
 
