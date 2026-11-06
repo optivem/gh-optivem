@@ -60,6 +60,8 @@ gh optivem init --owner valentinajemuovic --repo book-shop --system-name "Book S
 
 **Expect this to run for a long time** — `init` watches the generated pipelines on GitHub Actions until they go green, which takes tens of minutes, printing a heartbeat every 5 minutes. Leave it running until it reports success; interrupting it stops the watching, not the pipeline.
 
+**Cloud stages need one-time setup.** The commit stage and the Docker Compose acceptance gates run out of the box. The cloud acceptance stage (`acceptance-stage.yml`, which creates the release candidates), QA (`qa-stage.yml`, `qa-signoff.yml`) and production (`prod-stage.yml`) deploy to Google Cloud Run, and `init` skips verifying them until the repo has the GCP variables. The scaffold's README "Pipeline" section explains the split. To set them up, follow [docs/cloud-setup.md](docs/cloud-setup.md): it uses the `setup-gcp.sh` / `teardown-gcp.sh` scripts and the `terraform/` directory that `init` copies into your repo. It needs a GCP billing account and a Neon account, and costs about $0 a month with a billing kill-switch.
+
 ## Clone project repository
 
 Clone your new repository to work on it locally:

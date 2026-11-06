@@ -229,7 +229,8 @@ func TestPipelineSection(t *testing.T) {
 	without := pipelineSection(&config.Config{NoLegacy: true})
 	for _, s := range []string{with, without} {
 		for _, want := range []string{"Works out of the box", "acceptance-stage-docker-compose.yml", "Needs GCP set up first",
-			"[Cloud setup](#cloud-setup)", "### Cloud setup", "_qa-stage.yml", "_prod-stage.yml"} {
+			"[Cloud setup](#cloud-setup)", "### Cloud setup", "_qa-stage.yml", "_prod-stage.yml",
+			"(https://github.com/optivem/gh-optivem/blob/main/docs/cloud-setup.md)", "./setup-gcp.sh"} {
 			if !strings.Contains(s, want) {
 				t.Errorf("missing %q in:\n%s", want, s)
 			}
@@ -237,6 +238,9 @@ func TestPipelineSection(t *testing.T) {
 	}
 	if !strings.Contains(with, "acceptance-stage-docker-compose-legacy.yml") {
 		t.Error("legacy gate not mentioned")
+	}
+	if strings.Contains(with, "is coming") {
+		t.Error("Cloud setup subsection is still a placeholder")
 	}
 	if strings.Contains(without, "legacy") {
 		t.Error("--no-legacy: legacy gate mentioned")

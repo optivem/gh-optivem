@@ -66,7 +66,6 @@ const (
 	infoCopyingDbMigrations = "Copying Flyway db migrations..."
 	infoCopyingContracts    = "Copying Pact contracts..."
 	infoCopyingSystemTests  = "Copying system-tests..."
-	infoCopyingCloudRun     = "Copying Cloud Run scripts..."
 	infoCopyingDocs         = "Copying docs..."
 )
 
@@ -412,10 +411,8 @@ func applyMonolithMonorepo(cfg *config.Config) {
 	// TS: rewrite the integration spec's MIGRATIONS_DIR (4→3 up).
 	templates.FixupSourceFiles(repoDir, tsMigrationsPathReplacements())
 
-	if cfg.Deploy == deployCloudRun {
-		log.Info(infoCopyingCloudRun)
-		copyCloudRunScripts(shop, repoDir)
-	}
+	log.Info(infoCopyingCloudSetup)
+	copyCloudSetup(shop, repoDir, "monolith", lang)
 
 	scheduleLegacyGate(repoDir)
 
@@ -467,10 +464,8 @@ func applyMonolithMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(repoDir, monolithSonarKeyReplacements(lang))
 	templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
 
-	if cfg.Deploy == deployCloudRun {
-		log.Info(infoCopyingCloudRun)
-		copyCloudRunScripts(shop, repoDir)
-	}
+	log.Info(infoCopyingCloudSetup)
+	copyCloudSetup(shop, repoDir, "monolith", lang)
 
 	log.Info(infoCopyingDocs)
 	copyDocs(shop, repoDir, "monolith")
@@ -630,10 +625,8 @@ func applyMultitierMonorepo(cfg *config.Config) {
 	// .NET backend provider verification: deeper path, .cs-scoped (7→5 `../`).
 	templates.FixupDotnetSourceFiles(repoDir, dotnetContractsPathReplacements())
 
-	if cfg.Deploy == deployCloudRun {
-		log.Info(infoCopyingCloudRun)
-		copyCloudRunScripts(shop, repoDir)
-	}
+	log.Info(infoCopyingCloudSetup)
+	copyCloudSetup(shop, repoDir, "multitier", backendLang)
 
 	scheduleLegacyGate(repoDir)
 
@@ -694,10 +687,8 @@ func applyMultitierMultirepo(cfg *config.Config) {
 	templates.FixupAllTextFiles(repoDir, multitierSonarKeyReplacements(backendLang, frontendLang))
 	templates.FixupAllTextFiles(repoDir, systemTestSonarKeyReplacements())
 
-	if cfg.Deploy == deployCloudRun {
-		log.Info(infoCopyingCloudRun)
-		copyCloudRunScripts(shop, repoDir)
-	}
+	log.Info(infoCopyingCloudSetup)
+	copyCloudSetup(shop, repoDir, "multitier", backendLang)
 
 	log.Info(infoCopyingDocs)
 	copyDocs(shop, repoDir, "multitier")
@@ -1232,16 +1223,6 @@ func copyDocs(shop, repoDir, arch string) {
 	files.CopyDir(filepath.Join(shop, Names.ShopDocsSharedDir), dst)
 }
 
-// copyCloudRunScripts copies setup-gcp.sh and teardown-gcp.sh from shop to repo.
-func copyCloudRunScripts(shop, repoDir string) {
-	for _, name := range []string{"setup-gcp.sh", "teardown-gcp.sh"} {
-		src := filepath.Join(shop, name)
-		if _, err := os.Stat(src); err == nil {
-			files.CopyFile(src, filepath.Join(repoDir, name))
-		}
-	}
-}
-
 // ── Post-condition validation ──────────────────────────────────────────────
 
 // ValidateNoLeftoverTemplateRefs checks that ApplyTemplate's content
@@ -1348,7 +1329,12 @@ func multitierForbiddenRefs(backendLang, frontendLang, testLang string) []string
 func checkNoTemplateRefs(repoDir string, refs []string) {
 	var failed bool
 	for _, needle := range refs {
-		hits := files.FindInTree(repoDir, needle)
+		var hits []string
+		for _, h := range files.FindInTree(repoDir, needle) {
+			if !isCloudSetupPath(h) {
+				hits = append(hits, h)
+			}
+		}
 		if len(hits) == 0 {
 			continue
 		}

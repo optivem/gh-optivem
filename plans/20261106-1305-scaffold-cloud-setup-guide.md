@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Decisions are settled (all six recommendations accepted, 2026-11-06). Do Steps 1–3 and the gh-optivem half of 4b; hand Step 4 and the shop half of 4b to the user's shop chat. The scaffolder port it builds on shipped in gh-optivem `v1.6.106` (README "Pipeline" section; `init` skips QA/prod verification without GCP vars). Don't start Step 5 (live GCP) without the user: it costs money and needs their accounts.
+Steps 1–4b are done (2026-11-06). Next is Step 5 (live GCP rehearsal, with the user only), plus the small follow-ups below it. The scaffolder port it builds on shipped in gh-optivem `v1.6.106` (README "Pipeline" section; `init` skips QA/prod verification without GCP vars). Don't start Step 5 (live GCP) without the user: it costs money and needs their accounts.
 
 ## Context
 
@@ -74,23 +74,12 @@ About $0 a month in normal use: Cloud Run scales to zero with max 1-2 instances,
 
 ## Steps
 
-- [ ] Step 1 — Write `docs/cloud-setup.md` in gh-optivem, covering:
-  - prerequisites (accounts, tools, or open the devcontainer)
-  - choosing `SYSTEM_NAME` (the 8/12-character rule)
-  - `./setup-gcp.sh`
-  - making the GHCR packages public
-  - running cloud acceptance → QA → QA sign-off → prod
-  - adding Keycloak `shop-prod` users
-  - cost, kill-switch and restoring billing
-  - the Docker-only QA/prod alternative
-  - `./teardown-gcp.sh`
-  - troubleshooting (WIF repo binding, missing variables, the 49-character error)
+Steps 1–4b done 2026-11-06: guide `docs/cloud-setup.md`; `init` always copies `setup-gcp.sh`, `teardown-gcp.sh`, `terraform/` (and `setup-custom-domains.sh`, per-language, for multitier); multitier-only SYSTEM_NAME warning (>8 typescript, >12 dotnet); environment names verified with a drift check. Shop half (Step 4 + 4b callers) moved to `plans/move-to-shop/20261106-2048-setup-gcp-flavor-aware-and-domain-callers.md`.
 
-  Link it from `README.md` and `docs/setup.md`.
-- [ ] Step 2 — Scaffold `setup-gcp.sh`, `teardown-gcp.sh` and `terraform/` unconditionally, minus local state files (per Q2). Coordinate with the sibling plan's Step 1, which owns the copy list. Add a test that a scaffolded repo contains `terraform/neon.sh` and `terraform/state-backend.sh`.
-- [ ] Step 3 — Preflight in `init`: warn when the derived `SYSTEM_NAME` is over 8 characters (per Q6). Confirm the `environment:` rewrite matches the new `_*-stage.yml` expressions, and fix it or create `<arch>-<lang>-{acceptance,qa,production}` environments instead.
-- [ ] Step 4 — (If Q5 is accepted) write a shop plan to make `setup-gcp.sh` flavor-aware and its "next steps" hint generic.
-- [ ] Step 4b — Custom domains (shop P5, `setup-custom-domains.sh`, multitier only): scaffold the script for multitier flavors whenever `setup-gcp.sh` is scaffolded (today `setup-gcp.sh:306-308` calls `../setup-custom-domains.sh`, so setting `ACC_DOMAIN`/`E2E_DOMAIN` in a scaffold fails); rewrite its multitier-java hints (`multitier-java-acceptance-stage.yml` → `acceptance-stage.yml`) and check its service-name pattern `<system>-<architecture>-<language>-<stack>-frontend` matches the ported scaffold's Cloud Run names; ask shop to pass `acc-domain: ${{ vars.ACC_DOMAIN }}` / `e2e-domain: ${{ vars.E2E_DOMAIN }}` in the multitier-dotnet/typescript callers too (only multitier-java does); omit it for monolith (`_acceptance-stage.yml` rejects domains there). Guide section "Custom domains (optional)": verify the parent domain in Search Console for your gcloud account, CNAME → `ghs.googlehosted.com`, one cloud acceptance run, then `ACC_DOMAIN=… E2E_DOMAIN=… ./setup-custom-domains.sh` (sets the repo variables once mappings are Ready).
+Follow-ups (gh-optivem):
+- [ ] `--deploy` help/config still says "docker | cloud-run" but no longer changes which cloud files are copied (`internal/kernel/projectconfig/config.go:115,185`); decide whether to drop the flag.
+- [ ] Guide unverified bits (marked in `docs/cloud-setup.md`): GHCR fix-link `/orgs/` vs `/users/` for personal accounts; whether packages of public repos are public automatically; where multirepo scaffolds keep the scripts. Settle during Step 5.
+
 - [ ] Step 5 — **With the user (costs money, uses their GCP billing and Neon accounts):** scaffold a throwaway repo with a short name. Follow `docs/cloud-setup.md` word for word, and check that cloud acceptance creates an RC, QA deploys and is signed off, and prod deploys and publishes. Then run `./teardown-gcp.sh` and confirm that no GCP project, Neon project or repo variables remain. Fold any gaps back into the guide.
 
 ## Not in scope

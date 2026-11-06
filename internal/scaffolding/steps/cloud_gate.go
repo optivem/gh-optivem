@@ -11,7 +11,8 @@ import (
 // CloudVars are the repo-level Actions variables the scaffolded cloud stages
 // (acceptance-stage.yml, qa-stage.yml, prod-stage.yml) need to deploy to
 // Google Cloud Run. `init` does not set them; the user's setup-gcp.sh run does
-// (see the scaffolded README's "Cloud setup" section).
+// (see gh-optivem docs/cloud-setup.md, linked from the scaffolded README's
+// "Cloud setup" section).
 var CloudVars = []string{
 	"GCP_PROJECT_ID",
 	"GCP_REGION",
@@ -70,7 +71,7 @@ func (c *CloudGate) Ready() bool {
 		}
 		log.Warn("Skipping QA stage, QA signoff, production stage and cloud acceptance (acceptance-stage.yml): they deploy to Google Cloud Run and need cloud setup, which init does not do.")
 		log.Warnf("  Missing repo variables on %s: %s", c.gh.Repo, strings.Join(missing, " "))
-		log.Warnf("  See the README \"Cloud setup\" section: https://github.com/%s#cloud-setup", c.gh.Repo)
+		log.Warnf("  See the cloud setup guide: %s", cloudSetupGuideURL)
 		log.Warnf("  After setup-gcp.sh has run, dispatch acceptance-stage.yml, qa-stage.yml and prod-stage.yml yourself.")
 	})
 	return c.ready

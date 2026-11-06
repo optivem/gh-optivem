@@ -118,3 +118,7 @@ gh optivem claude setup
 Re-run it after each `gh extension upgrade optivem`. `gh optivem claude check` reports drift without writing anything. See [the full reference](cli-reference.md#claude-code-setup) for what `setup` actually does.
 
 Once this passes, head back to the [README](../README.md) to create your project.
+
+## Cloud setup (after `init`, optional)
+
+Nothing above sets up Google Cloud. The scaffolded repo's cloud acceptance, QA and production stages deploy to Cloud Run and need a GCP billing account, a Neon account and one run of `./setup-gcp.sh` in the new repo. See [cloud-setup.md](cloud-setup.md).

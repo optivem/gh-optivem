@@ -45,9 +45,8 @@ func readmeFooter(licenseName, owner string) string {
 
 // pipelineSection returns the Pipeline section of the scaffolded root README:
 // which stages run out of the box and which need cloud setup. The Cloud setup
-// subsection is a placeholder until the setup guide exists (gh-optivem plan
-// 20261106-1305-scaffold-cloud-setup-guide); keep its heading, since the text
-// above links to it.
+// subsection points at gh-optivem's guide (docs/cloud-setup.md); keep its
+// heading, since the text above and init's cloud-gate warning link to it.
 func pipelineSection(cfg *config.Config) string {
 	gates := "`" + acceptanceStage + ".yml`"
 	if !cfg.NoLegacy {
@@ -61,7 +60,9 @@ func pipelineSection(cfg *config.Config) string {
 		"QA and production can deploy with Docker Compose instead: uncomment the Docker Compose block in " +
 		"`.github/workflows/_qa-stage.yml` and `_prod-stage.yml`.\n\n" +
 		"### Cloud setup\n\n" +
-		"A step-by-step guide to setting up Google Cloud for this repo is coming. Until then, the cloud stages fail at their first GCP step.\n\n"
+		"Follow the [cloud setup guide](" + cloudSetupGuideURL + ") to take this repo to a green cloud acceptance run, QA and production " +
+		"on your own Google Cloud project and Neon account, using `./setup-gcp.sh` (and `./teardown-gcp.sh` to remove it all again). " +
+		"Until then, the cloud stages fail at their first GCP step.\n\n"
 }
 
 // docsSection returns the Documentation section for scaffolded repos that

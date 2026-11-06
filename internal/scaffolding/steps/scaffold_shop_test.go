@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -120,6 +121,34 @@ func checkScaffoldedPipeline(t *testing.T, cfg *config.Config, actionlint string
 		t.Errorf("legacy gate has no schedule")
 	}
 
+	// Every environment the scaffolded workflows reference must be one
+	// SetupEnvironments creates.
+	wfDir := filepath.Join(cfg.RepoDir, ".github")
+	filepath.Walk(wfDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !(strings.HasSuffix(path, ".yml") || strings.HasSuffix(path, ".yaml")) {
+			return nil
+		}
+		data, _ := os.ReadFile(path)
+		if bad := unknownEnvironmentRefs(string(data)); len(bad) > 0 {
+			t.Errorf("%s references environments init does not create: %v", filepath.Base(path), bad)
+		}
+		return nil
+	})
+
+	// Cloud setup files, unconditionally (setup-gcp.sh sources terraform/*.sh).
+	cloudFiles := []string{"setup-gcp.sh", "teardown-gcp.sh", "terraform/neon.sh", "terraform/state-backend.sh", "terraform/main.tf"}
+	if cfg.Arch == "multitier" {
+		cloudFiles = append(cloudFiles, "setup-custom-domains.sh")
+	}
+	for _, f := range cloudFiles {
+		if !fileExists(filepath.Join(cfg.RepoDir, f)) {
+			t.Errorf("cloud setup file %s not scaffolded", f)
+		}
+	}
+	if cfg.Arch == "monolith" && fileExists(filepath.Join(cfg.RepoDir, "setup-custom-domains.sh")) {
+		t.Errorf("setup-custom-domains.sh scaffolded for monolith")
+	}
+
 	refs := forbiddenTemplateRefs(cfg)
 	for _, dir := range scaffoldRepoDirs(cfg) {
 		// Only .github/: the leftover guard also flags shop-path comments in
@@ -144,4 +173,26 @@ func checkScaffoldedPipeline(t *testing.T, cfg *config.Config, actionlint string
 			t.Errorf("actionlint in %s: %v\n%s", dir, err, out)
 		}
 	}
+}
+
+// environmentRefRe matches a non-comment "environment:" key (a job's GitHub
+// environment, or an action input naming one) and captures its value.
+var environmentRefRe = regexp.MustCompile(`(?m)^\s*(?:-\s*)?environment:\s*(\S.*?)\s*$`)
+
+// unknownEnvironmentRefs returns the environment values in a workflow that
+// are neither a SetupEnvironments name nor ${{ inputs.stage }} (which the
+// shared _deploy-stage.yml gets as qa or production).
+func unknownEnvironmentRefs(workflow string) []string {
+	known := map[string]bool{"${{ inputs.stage }}": true}
+	for _, e := range scaffoldEnvironments {
+		known[e] = true
+	}
+	var bad []string
+	for _, m := range environmentRefRe.FindAllStringSubmatch(workflow, -1) {
+		v := strings.Trim(m[1], `'"`)
+		if !known[v] {
+			bad = append(bad, v)
+		}
+	}
+	return bad
 }

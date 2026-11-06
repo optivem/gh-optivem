@@ -423,6 +423,7 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 	allSteps := []stepDef{
 		// PHASE: PREPARE — pull prerequisites (shop template) needed by all later phases
 		{name: "Clone shop template", phase: phasePrepare, fn: func() { steps.CloneShopTemplate(cfg) }},
+		{name: "Check cloud system name", phase: phasePrepare, fn: func() { steps.WarnCloudSystemName(cfg) }},
 
 		// PHASE: SETUP REPOSITORY — remote infra for this repo
 		{name: "Create repositories", phase: phaseSetupRepo, fn: func() { steps.CreateRepos(cfg, gh) }},

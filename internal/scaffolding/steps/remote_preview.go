@@ -119,8 +119,6 @@ func ProbeRemote(cfg *config.Config, targets RemoteTargets) ([]RemoteEntry, erro
 	return out, nil
 }
 
-var scaffoldEnvironments = []string{"acceptance", "qa", "production"}
-
 func probeEnvironments(cfg *config.Config) ([]RemoteEntry, error) {
 	present := map[string]bool{}
 	if cfg.PreExistingRepos[cfg.FullRepo] {

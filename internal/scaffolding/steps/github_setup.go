@@ -47,15 +47,22 @@ func createOrReuseRepo(cfg *config.Config, gh *shell.GitHub, fullRepo string) {
 	logCreated(fullRepo)
 }
 
-// SetupEnvironments creates GitHub environments on the main repo.
+// scaffoldEnvironments are the GitHub environments SetupEnvironments creates.
 //
 // Scaffolded repos only ever host one arch+lang combination, so the env names
-// drop the arch+lang prefix used inside optivem/shop and are just the bare
-// stage names. The workflow content rewrite in apply_template.go rewrites the
-// template's prefixed "environment:" references to match.
+// drop the <arch>-<lang>- prefix used inside optivem/shop and are just the
+// bare stage names. The workflow rewrites match: sharedWorkflowRewrites turns
+// the shared _*.yml files' "${{ inputs.architecture }}-${{ inputs.language }}-<stage>"
+// and "${{ env.PREFIX }}-qa" environments into bare names, and the per-flavor
+// content replacements (apply_template.go) do the same for the callers'
+// literal "<arch>-<lang>-<stage>" ones. TestScaffoldAgainstShopCheckout checks
+// every scaffolded environment reference against this list.
+var scaffoldEnvironments = []string{"acceptance", "qa", "production"}
+
+// SetupEnvironments creates GitHub environments on the main repo.
 func SetupEnvironments(cfg *config.Config, gh *shell.GitHub) {
 	log.Info("Creating environments...")
-	for _, stage := range []string{"acceptance", "qa", "production"} {
+	for _, stage := range scaffoldEnvironments {
 		gh.CreateEnvironment(stage)
 		log.Successf("  environment: %s", stage)
 	}

@@ -328,10 +328,11 @@ func stageCommitAndPush(repoDir, fullRepo, commitMsg string, preExisting bool) (
 
 func fixExecBits(repoDir, fullRepo string) error {
 	execNames := map[string]bool{
-		"gradlew":         true,
-		"setup-gcp.sh":    true,
-		"teardown-gcp.sh": true,
-		"run-sonar.sh":    true,
+		"gradlew":      true,
+		"run-sonar.sh": true,
+	}
+	for _, s := range cloudSetupExecScripts {
+		execNames[s] = true
 	}
 	out, err := shell.RunCapture("git ls-files", repoDir)
 	if err != nil {
