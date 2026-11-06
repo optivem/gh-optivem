@@ -70,6 +70,8 @@ var Names = struct {
 	ShopKeycloakDir             string
 	ShopDocsArchDir             string
 	ShopDocsSharedDir           string
+	ShopSpecFile                string
+	ShopUseCasesDir             string
 	ShopVersionFile             string
 	ShopSimulatorsDir           string
 	ShopStubsDir                string
@@ -123,6 +125,8 @@ var Names = struct {
 	ShopKeycloakDir:             "docker/keycloak",
 	ShopDocsArchDir:             "docs/design/${arch}",
 	ShopDocsSharedDir:           "docs/design/shared",
+	ShopSpecFile:                "spec.yaml",
+	ShopUseCasesDir:             "docs/use-cases",
 	ShopVersionFile:             "system/${arch}/${lang}/VERSION",
 	ShopSimulatorsDir:           "external-systems/simulators",
 	ShopStubsDir:                "external-systems/stubs",

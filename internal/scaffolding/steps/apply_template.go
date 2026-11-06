@@ -3,6 +3,7 @@ package steps
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
@@ -153,11 +154,57 @@ func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string,
 
 	templates.CopyVersion(shop, repoDir, arch, systemLang)
 
+	// Spec-coverage gate inputs (spec.yaml + use-case markdown) land beside
+	// system-test/: the acceptance gate's spec-gate step and ATDD's
+	// record-spec-fingerprints both read ./spec.yaml at the repo root.
+	copySpec(shop, repoDir)
+
 	// Regenerate ChannelType from the declared channel set (the SSoT), replacing
 	// the verbatim copy. DefaultChannels() is the scaffold-authoritative set —
 	// the same source BuildOptivemYAML writes into gh-optivem.yaml's channels:.
 	templates.WriteChannelType(testDst, testLang, projectconfig.DefaultChannels())
 	return testDst
+}
+
+// specTestLangs are the shop system-test/<lang>/ dirs spec.yaml's results
+// globs may name; each is flattened to the scaffold's system-test/.
+var specTestLangs = []string{"java", "dotnet", "typescript"}
+
+// specResultsReplacements rewrites shop's per-language system-test paths in
+// spec.yaml (results globs) to the scaffold's flat system-test/ layout. Shop's
+// spec.yaml names system-test/java/ whatever the scaffold's test language is,
+// so every language is rewritten, not just testLang.
+func specResultsReplacements() [][2]string {
+	var out [][2]string
+	for _, l := range specTestLangs {
+		out = append(out, [2]string{dirSystemTest + "/" + l + "/", Names.TargetSystemTestDir + "/"})
+	}
+	return out
+}
+
+// copySpec copies shop's spec-coverage gate config (spec.yaml) and use-case
+// markdown (docs/use-cases/) into repoDir, rewriting spec.yaml's results globs
+// to the flat system-test/ layout. Each copy is skipped when the shop ref
+// predates it. System-name placeholders are rewritten later by
+// ReplaceSystemName, like every other scaffolded text file. Legacy results are
+// already kept out by spec.yaml's exclude (**/legacy/**), so --no-legacy needs
+// no special handling here.
+func copySpec(shop, repoDir string) {
+	src := filepath.Join(shop, Names.ShopSpecFile)
+	if data, err := os.ReadFile(src); err == nil {
+		content := string(data)
+		for _, r := range specResultsReplacements() {
+			content = strings.ReplaceAll(content, r[0], r[1])
+		}
+		if err := os.WriteFile(filepath.Join(repoDir, Names.ShopSpecFile), []byte(content), 0o644); err != nil {
+			log.Fatalf("Write %s: %v", Names.ShopSpecFile, err)
+		}
+	} else if !os.IsNotExist(err) {
+		log.Fatalf("Read %s: %v", src, err)
+	}
+	if ucSrc := filepath.Join(shop, Names.ShopUseCasesDir); dirExists(ucSrc) {
+		files.CopyDir(ucSrc, filepath.Join(repoDir, Names.ShopUseCasesDir))
+	}
 }
 
 // legacyTestPaths lists, per test language, the legacy artifacts shop ships
