@@ -253,13 +253,16 @@ func copySpec(shop, repoDir, testLang string) {
 	}
 }
 
+// legacyTestsConfigFile is the legacy suites config shop ships per test language.
+const legacyTestsConfigFile = "tests.legacy.yaml"
+
 // legacyTestPaths lists, per test language, the legacy artifacts shop ships
 // under system-test/<testLang>/: the mod-numbered suites config plus the
 // self-contained legacy source tree (latest tests never import from it).
 var legacyTestPaths = map[string][]string{
-	"java":       {"tests.legacy.yaml", filepath.Join("src", "test", "java", "com", "mycompany", "myshop", "systemtest", "legacy")},
-	"dotnet":     {"tests.legacy.yaml", filepath.Join("SystemTests", "Legacy")},
-	"typescript": {"tests.legacy.yaml", filepath.Join("tests", "legacy")},
+	"java":       {legacyTestsConfigFile, filepath.Join("src", "test", "java", "com", "mycompany", "myshop", "systemtest", "legacy")},
+	"dotnet":     {legacyTestsConfigFile, filepath.Join("SystemTests", "Legacy")},
+	"typescript": {legacyTestsConfigFile, filepath.Join("tests", "legacy")},
 }
 
 // removeLegacyTests deletes the legacy suites config and legacy test sources

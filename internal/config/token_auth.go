@@ -37,6 +37,9 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/shell"
 )
 
+// ghCLILabel is the check name under which the gh CLI probes are reported.
+const ghCLILabel = "gh CLI"
+
 // tokenAuthTimeout is the per-request cap. Providers usually answer in
 // <500ms; anything over this means a network problem the user needs to
 // resolve before scaffolding anyway.
@@ -496,9 +499,9 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 		// docker's installed/running below) so a missing binary, a bad
 		// auth, and a too-old version are three distinguishable lines
 		// instead of one check's error message trying to cover all three.
-		{"gh CLI", verifyGhInstalled, "installed"},
-		{"gh CLI", func() error { return verifyGhAuth(&scopeResults, &scopeErr) }, "authenticated"},
-		{"gh CLI", verifyGhVersion, "valid version"},
+		{ghCLILabel, verifyGhInstalled, "installed"},
+		{ghCLILabel, func() error { return verifyGhAuth(&scopeResults, &scopeErr) }, "authenticated"},
+		{ghCLILabel, verifyGhVersion, "valid version"},
 		{"actionlint", verifyActionlint, "installed"},
 		{"bash", verifyBash, "installed"},
 		// docker is unconditional, not deploy-target-gated: every scaffold
@@ -534,7 +537,7 @@ func verifyEnvironmentWithClient(langs []string, client *http.Client) error {
 	// nothing to show as its own section in that case.
 	logScopeResults(scopeResults)
 	if scopeErr != nil {
-		toolFailures = append(toolFailures, checkResult{name: "gh CLI", err: scopeErr})
+		toolFailures = append(toolFailures, checkResult{name: ghCLILabel, err: scopeErr})
 	}
 
 	// Phase 2: environment variables — presence first, then live provider

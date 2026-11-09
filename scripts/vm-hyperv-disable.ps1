@@ -109,6 +109,7 @@ try {
     }
 } catch {
     # Module absent or unelevated - nothing useful to say, and not a blocker.
+    Write-Verbose "Get-VM failed: $_"
 }
 
 # WSL 2 rides on VirtualMachinePlatform + the hypervisor. wsl.exe writes UTF-16LE,
@@ -126,7 +127,10 @@ try {
     if ($distros.Count -gt 0) {
         $warnings += ("WSL distributions will stop starting: {0}" -f ($distros -join ', '))
     }
-} catch { }
+} catch {
+    # Best-effort probe: no WSL (or a wsl.exe that fails) means no distros to warn about.
+    Write-Verbose "WSL distro listing failed: $_"
+}
 
 # Docker Desktop's default backend is WSL 2; the Hyper-V backend is the hypervisor
 # directly. Either way it stops working.
@@ -146,7 +150,10 @@ try {
     if ($dg.SecurityServicesRunning -and $dg.SecurityServicesRunning.Count -gt 0) {
         $warnings += 'Virtualization-Based Security (Core Isolation / Memory Integrity) is active - it keeps the hypervisor loaded even after Hyper-V is removed, so this will not free the virtualization overhead unless you also turn Memory Integrity off in Windows Security'
     }
-} catch { }
+} catch {
+    # Best-effort probe: DeviceGuard WMI is absent on some editions; skip the VBS warning.
+    Write-Verbose "DeviceGuard query failed: $_"
+}
 
 if ($warnings) {
     Write-Host ''

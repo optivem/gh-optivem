@@ -177,25 +177,33 @@ func isVerifiedPostGreenStep(proc *Process, pn Node, depth int) bool {
 		return false
 	}
 	for _, p := range preds {
-		n := proc.Nodes[p]
-		if isCallTo(n, "implement-and-verify-system") {
-			continue
-		}
-		// Cover path: the AT cascade itself verified the tests PASS.
-		if isCallTo(n, "write-acceptance-tests-and-system-adapters") && strings.TrimSpace(n.Raw.Params["expected-test-result"]) == "success" {
-			continue
-		}
-		if !isCallTo(n, "commit") {
+		if !isVerifiedPostGreenPredecessor(proc, proc.Nodes[p], depth) {
 			return false
 		}
-		cps := dispatchingPredecessors(proc, n.ID)
-		if len(cps) == 0 {
+	}
+	return true
+}
+
+// isVerifiedPostGreenPredecessor reports whether n is an acceptable dispatching
+// predecessor of a post-green step (see isVerifiedPostGreenStep).
+func isVerifiedPostGreenPredecessor(proc *Process, n Node, depth int) bool {
+	if isCallTo(n, "implement-and-verify-system") {
+		return true
+	}
+	// Cover path: the AT cascade itself verified the tests PASS.
+	if isCallTo(n, "write-acceptance-tests-and-system-adapters") && strings.TrimSpace(n.Raw.Params["expected-test-result"]) == "success" {
+		return true
+	}
+	if !isCallTo(n, "commit") {
+		return false
+	}
+	cps := dispatchingPredecessors(proc, n.ID)
+	if len(cps) == 0 {
+		return false
+	}
+	for _, cp := range cps {
+		if !isVerifiedPostGreenStep(proc, proc.Nodes[cp], depth+1) {
 			return false
-		}
-		for _, cp := range cps {
-			if !isVerifiedPostGreenStep(proc, proc.Nodes[cp], depth+1) {
-				return false
-			}
 		}
 	}
 	return true

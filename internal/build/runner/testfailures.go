@@ -200,6 +200,11 @@ func junitFailures(data []byte) ([]FailedTestCase, error) {
 
 // ---- TRX (dotnet) -----------------------------------------------------------
 
+type trxFailErrorInfo struct {
+	Message    string `xml:"Message"`
+	StackTrace string `xml:"StackTrace"`
+}
+
 type trxFailRun struct {
 	XMLName xml.Name `xml:"TestRun"`
 	Results struct {
@@ -207,10 +212,7 @@ type trxFailRun struct {
 			TestName string `xml:"testName,attr"`
 			Outcome  string `xml:"outcome,attr"`
 			Output   struct {
-				ErrorInfo struct {
-					Message    string `xml:"Message"`
-					StackTrace string `xml:"StackTrace"`
-				} `xml:"ErrorInfo"`
+				ErrorInfo trxFailErrorInfo `xml:"ErrorInfo"`
 			} `xml:"Output"`
 		} `xml:"UnitTestResult"`
 	} `xml:"Results"`

@@ -382,7 +382,7 @@ func TestWatchRunID_DeadlineExpiryFallsBackToPolling(t *testing.T) {
 	if len(*timeouts) != 1 {
 		t.Fatalf("watchRunFn calls = %d, want 1 (deadline expiry must not be retried)", len(*timeouts))
 	}
-	if got := atomic.LoadInt32(&pollCalls); got == 0 {
+	if atomic.LoadInt32(&pollCalls) == 0 {
 		t.Fatal("poll calls = 0, want >= 1 (deadline expiry must fall through to pollRunUntilComplete)")
 	}
 }

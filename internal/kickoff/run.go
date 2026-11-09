@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// Agents runs a kickoff agent by name.
-type Agents interface {
+// AgentDispatcher runs a kickoff agent by name.
+type AgentDispatcher interface {
 	Run(ctx context.Context, name string, vars map[string]string) error
 }
 
@@ -40,7 +40,7 @@ type Options struct {
 
 	Description DescriptionInput
 
-	Agents    Agents
+	Agents    AgentDispatcher
 	Remove    RemoveFunc
 	Publisher Publisher
 	Implement ImplementFunc

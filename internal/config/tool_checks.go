@@ -31,6 +31,9 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
+// outputFmt is the trailing "Output:" block appended to probe-failure errors.
+const outputFmt = "Output:\n%s"
+
 // check is the unit the parallel runner in VerifyEnvironment fans out over:
 // a label for the success / failure line, a no-arg function returning an
 // error, and the word printed after "name: " when fn succeeds (okWord) —
@@ -123,7 +126,7 @@ func activeAccountScopeLine(output string) (string, bool) {
 // ghTokenScopes extracts the scope names from `gh auth status` output, which
 // reports them on a line shaped:
 //
-//	  - Token scopes: 'gist', 'project', 'read:org', 'repo', 'workflow'
+//   - Token scopes: 'gist', 'project', 'read:org', 'repo', 'workflow'
 //
 // The bool reports whether that line was present at all — distinguishing "the
 // token has no scopes" from "gh did not say", which verifyGhAuth treats
@@ -196,7 +199,7 @@ type scopeStatus struct {
 // one of them guessing.
 func ghNotFoundErr() error {
 	return errors.New("gh CLI not found on PATH.\n    " +
-		"Install: "+ghInstallURL)
+		"Install: " + ghInstallURL)
 }
 
 // verifyGhInstalled checks that the gh binary is on PATH. Sibling of
@@ -267,7 +270,7 @@ func verifyGhAuth(scopes *[]scopeStatus, scopeErr *error) error {
 	if err != nil {
 		return fmt.Errorf("gh CLI is not authenticated.\n    "+
 			"Run: gh auth login\n    "+
-			"Output:\n%s", string(out))
+			outputFmt, string(out))
 	}
 	have, reported := ghTokenScopes(string(out))
 	if !reported || len(have) == 0 {
@@ -383,7 +386,7 @@ func verifyGhVersion() error {
 func verifyActionlint() error {
 	if _, err := exec.LookPath("actionlint"); err != nil {
 		return errors.New("actionlint not found on PATH.\n    " +
-			"Install: go install "+actionlintGoPackage)
+			"Install: go install " + actionlintGoPackage)
 	}
 	return nil
 }
@@ -472,7 +475,7 @@ func claudeCheckSkipped() (bool, error) {
 func verifyNpm() error {
 	if _, err := exec.LookPath("npm"); err != nil {
 		return errors.New("npm not found on PATH.\n    " +
-			"Install Node.js (bundles npm): "+npmInstallURL)
+			"Install Node.js (bundles npm): " + npmInstallURL)
 	}
 	return nil
 }
@@ -482,7 +485,7 @@ func verifyNpm() error {
 func verifyDotnet() error {
 	if _, err := exec.LookPath("dotnet"); err != nil {
 		return errors.New("dotnet not found on PATH.\n    " +
-			"Install the .NET SDK: "+dotnetInstallURL)
+			"Install the .NET SDK: " + dotnetInstallURL)
 	}
 	return nil
 }
@@ -493,7 +496,7 @@ func verifyDotnet() error {
 func verifyJava() error {
 	if _, err := exec.LookPath("java"); err != nil {
 		return errors.New("java not found on PATH.\n    " +
-			"Install a JDK (Temurin recommended): "+javaInstallURL)
+			"Install a JDK (Temurin recommended): " + javaInstallURL)
 	}
 	return nil
 }
@@ -609,7 +612,7 @@ func probeDockerDaemon() error {
 		}
 		return fmt.Errorf("docker daemon is not reachable.\n    "+
 			"Start Docker Desktop (macOS/Windows) or run: sudo systemctl start docker (Linux)\n    "+
-			"Output:\n%s", tail)
+			outputFmt, tail)
 	}
 	return nil
 }
@@ -633,7 +636,7 @@ func probeDockerCompose() error {
 		}
 		return fmt.Errorf("docker Compose v2 plugin not found.\n    "+
 			"Install: https://docs.docker.com/compose/install/\n    "+
-			"Output:\n%s", tail)
+			outputFmt, tail)
 	}
 	return nil
 }

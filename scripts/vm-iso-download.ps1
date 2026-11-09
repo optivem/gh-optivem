@@ -77,7 +77,7 @@ $DownloadPage  = 'https://www.microsoft.com/en-us/software-download/windows11'
 $ConnectorBase = 'https://www.microsoft.com/software-download-connector/api'
 $SentinelUrl   = 'https://vlscppe.microsoft.com/fp/tags?org_id=y6jn8c31&session_id={0}'
 # Constant in Microsoft's own page JavaScript, not a credential.
-$Profile       = '606624d44113'
+$IsoProfile    = '606624d44113'
 $UserAgent     = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0'
 
 if (-not $OutDir) {
@@ -226,7 +226,7 @@ if (-not $Open) {
         Start-Sleep -Seconds 3
 
         # 3. Languages / SKUs.
-        $skuUrl = "$ConnectorBase/getskuinformationbyproductedition?profile=$Profile&ProductEditionId=$editionId&SKU=undefined&friendlyFileName=undefined&Locale=en-US&sessionID=$sessionId"
+        $skuUrl = "$ConnectorBase/getskuinformationbyproductedition?profile=$IsoProfile&ProductEditionId=$editionId&SKU=undefined&friendlyFileName=undefined&Locale=en-US&sessionID=$sessionId"
         $skuJson = (Invoke-WebRequest -Uri $skuUrl -WebSession $session -Headers $headers -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
         if ($skuJson.Errors) { throw ($skuJson.Errors | ForEach-Object { $_.Value }) -join '; ' }
 
@@ -238,7 +238,7 @@ if (-not $Open) {
         Write-Host ("  Edition         : {0} ({1})" -f $sku.ProductDisplayName, $sku.Language) -ForegroundColor DarkGray
 
         # 4. The gated call. This is the one that usually says no.
-        $linkUrl = "$ConnectorBase/GetProductDownloadLinksBySku?profile=$Profile&productEditionId=undefined&SKU=$($sku.Id)&friendlyFileName=undefined&Locale=en-US&sessionID=$sessionId"
+        $linkUrl = "$ConnectorBase/GetProductDownloadLinksBySku?profile=$IsoProfile&productEditionId=undefined&SKU=$($sku.Id)&friendlyFileName=undefined&Locale=en-US&sessionID=$sessionId"
         $linkJson = (Invoke-WebRequest -Uri $linkUrl -WebSession $session -Headers $headers -UseBasicParsing -TimeoutSec 30).Content | ConvertFrom-Json
 
         if ($linkJson.Errors) {

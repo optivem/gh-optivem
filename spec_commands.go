@@ -25,6 +25,9 @@ import (
 	"github.com/optivem/gh-optivem/internal/spec"
 )
 
+// specFlagUsage is the --flag usage text shared by the spec subcommands.
+const specFlagUsage = "Feature flag considered on (repeatable); adds to flags: in spec.yaml"
+
 const defaultSpecConfig = "spec.yaml"
 
 type specOptions struct {
@@ -75,7 +78,7 @@ func addSpecReportFlags(cmd *cobra.Command, opts *specOptions) {
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Print the JSON report (schema v1) instead of the terminal report")
 	cmd.Flags().StringVar(&opts.HTML, "html", "", "Also write a self-contained HTML report to this path")
 	cmd.Flags().BoolVar(&opts.PRComment, "pr-comment", false, "Print the sticky pull-request comment markdown instead of the terminal report (printed, never posted)")
-	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, "Feature flag considered on (repeatable); adds to flags: in spec.yaml")
+	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, specFlagUsage)
 }
 
 // runSpecCmd turns a run function's result into the process exit code:
@@ -176,7 +179,7 @@ new unverified criterion, still blocks.`,
 		},
 	}
 	addSpecConfigFlag(cmd, &opts)
-	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, "Feature flag considered on (repeatable); adds to flags: in spec.yaml")
+	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, specFlagUsage)
 	return cmd
 }
 
@@ -207,7 +210,7 @@ implement' does this for every story (--create --criteria <merged criteria>).`,
 		},
 	}
 	addSpecConfigFlag(cmd, &opts)
-	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, "Feature flag considered on (repeatable); adds to flags: in spec.yaml")
+	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, specFlagUsage)
 	cmd.Flags().StringSliceVar(&opts.Refresh, "refresh", nil, "Criterion id whose changed text is accepted as re-verified (repeatable)")
 	cmd.Flags().StringSliceVar(&opts.Criteria, "criteria", nil, "Only record fingerprints for these criterion ids (repeatable or comma-separated); default all")
 	cmd.Flags().BoolVar(&opts.Create, "create", false, "Create the state file (empty unverified list) when it does not exist instead of failing")

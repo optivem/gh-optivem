@@ -28,6 +28,7 @@ import (
 const (
 	sharedWorkflowPrefix = "_"
 	actionsDirName       = "actions"
+	dirGitHub            = ".github"
 )
 
 var (
@@ -47,10 +48,10 @@ var (
 // multirepo component repo gets only the commit-stage actions. A referenced
 // file missing from shop is an error: the scaffold would not run.
 func copySharedPipeline(shop, repoDir string) error {
-	wfSrc := filepath.Join(shop, ".github", "workflows")
-	wfDst := filepath.Join(repoDir, ".github", "workflows")
-	actSrc := filepath.Join(shop, ".github", actionsDirName)
-	actDst := filepath.Join(repoDir, ".github", actionsDirName)
+	wfSrc := filepath.Join(shop, dirGitHub, "workflows")
+	wfDst := filepath.Join(repoDir, dirGitHub, "workflows")
+	actSrc := filepath.Join(shop, dirGitHub, actionsDirName)
+	actDst := filepath.Join(repoDir, dirGitHub, actionsDirName)
 
 	seenWf := map[string]bool{}
 	seenAct := map[string]bool{}
@@ -172,18 +173,18 @@ func sharedWorkflowRewrites() [][2]string {
 		{"VERSION_FILE: system/" + arch + "/" + lang + "/VERSION", "VERSION_FILE: VERSION"},
 		{"COMPOSE_DIR: docker/" + testLang + "/" + arch, "COMPOSE_DIR: docker"},
 		{`docker/${TEST_LANGUAGE}/${ARCHITECTURE}/systems.yaml`, "docker/systems.yaml"},
-		{"system-test/${{ env.TEST_LANGUAGE }}", "system-test"},
-		{"system-test/java", "system-test"},
-		{"system-test/dotnet", "system-test"},
-		{"system-test/typescript", "system-test"},
+		{"system-test/${{ env.TEST_LANGUAGE }}", dirSystemTest},
+		{"system-test/java", dirSystemTest},
+		{"system-test/dotnet", dirSystemTest},
+		{"system-test/typescript", dirSystemTest},
 		// The canonical gh-optivem.yaml / gh-optivem.legacy.yaml pair.
 		{"gh-optivem-" + arch + "-" + testLang + legacy + ".yaml",
 			"gh-optivem${{ inputs.suite-set == 'legacy' && '.legacy' || '' }}.yaml"},
 		{"gh-optivem-" + arch + "-" + testLang + ".yaml", "gh-optivem.yaml"},
 		// Bare acceptance / qa / production environments (SetupEnvironments).
-		{"environment: " + arch + "-" + lang + "-${{ inputs.stage }}", "environment: ${{ inputs.stage }}"},
-		{"environment: " + arch + "-" + lang + "-", "environment: "},
-		{"environment: " + prefix + "-", "environment: "},
+		{envPrefixYAML + arch + "-" + lang + "-${{ inputs.stage }}", "environment: ${{ inputs.stage }}"},
+		{envPrefixYAML + arch + "-" + lang + "-", envPrefixYAML},
+		{envPrefixYAML + prefix + "-", envPrefixYAML},
 		// Unprefixed workflow file names and v<x.y.z> tags. PREFIX itself stays:
 		// it still names the Cloud Run services and databases.
 		{".github/workflows/" + prefix + "-", ".github/workflows/"},
@@ -270,7 +271,7 @@ var (
 // other flavors' case arms are dropped; build-shared-images builds db-migrate
 // from system/db, which the scaffold keeps at db/ (copyDbImage).
 func fixupLocalActions(repoDir string, rewrites [][2]string) {
-	root := filepath.Join(repoDir, ".github", actionsDirName)
+	root := filepath.Join(repoDir, dirGitHub, actionsDirName)
 	if !dirExists(root) {
 		return
 	}

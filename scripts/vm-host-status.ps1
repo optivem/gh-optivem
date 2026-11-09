@@ -134,7 +134,11 @@ try {
     if ($dg.SecurityServicesRunning -and $dg.SecurityServicesRunning.Count -gt 0) {
         Write-Line '  VBS / Memory Integrity is active - it loads the hypervisor regardless of the Hyper-V feature.' 'DarkGray'
     }
-} catch { }
+} catch {
+    # Best-effort probe: DeviceGuard WMI is absent on some editions; the status
+    # report goes on without the VBS line.
+    Write-Verbose "DeviceGuard query failed: $_"
+}
 
 # --- VMs ---------------------------------------------------------------------
 Write-Line ''

@@ -192,7 +192,7 @@ try {
 }
 
 # Boot the ISO ahead of the (empty) disk for the initial install.
-$dvd = Add-VMDvdDrive -VMName $Name -Path $IsoPath -Passthru
+$dvd = Add-VMDvdDrive -VMName $Name -Path $IsoPath -PassThru
 Set-VMFirmware -VMName $Name -FirstBootDevice $dvd -EnableSecureBoot On
 
 Write-Host ''

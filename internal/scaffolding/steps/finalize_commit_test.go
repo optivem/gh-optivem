@@ -95,7 +95,7 @@ func TestStageCommitAndPush_DirtyPreExisting_CommitsAndPushes(t *testing.T) {
 	if !pushed {
 		t.Fatal("expected pushed=true for a dirty tree")
 	}
-	if after := gitIn(t, bare, "rev-parse", "main"); after == before {
+	if gitIn(t, bare, "rev-parse", "main") == before {
 		t.Fatal("remote main did not advance")
 	}
 	if got := gitIn(t, bare, "log", "-1", "--format=%s", "main"); got != "Apply pipeline template" {

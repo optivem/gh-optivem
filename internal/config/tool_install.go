@@ -27,6 +27,14 @@ import (
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
+// Command-line tokens shared by the install probes and PowerShell calls.
+const (
+	versionFlag         = "--version"
+	powershellExe       = "powershell.exe"
+	powershellNoProfile = "-NoProfile"
+	powershellCommand   = "-Command"
+)
+
 // Install hints shared with the failure messages in tool_checks.go.
 const (
 	ghInstallURL         = "https://cli.github.com/"
@@ -122,16 +130,16 @@ func goBinDir(r *installer) (string, error) {
 // compilerChecksFor).
 func installTable(langs []string) []installTool {
 	tools := []installTool{
-		{label: "GitHub CLI", probe: []string{"gh", "--version"}, tier: tierHumanFinishes,
+		{label: "GitHub CLI", probe: []string{"gh", versionFlag}, tier: tierHumanFinishes,
 			kind: installWinget, winget: "GitHub.cli", docURL: ghInstallURL},
-		{label: "Git Bash", probe: []string{"bash", "--version"}, tier: tierAuto,
+		{label: "Git Bash", probe: []string{"bash", versionFlag}, tier: tierAuto,
 			kind: installWinget, winget: "Git.Git", docURL: gitBashInstallURL},
 		{label: "Go", probe: []string{"go", "version"}, tier: tierAuto,
 			kind: installWinget, winget: "GoLang.Go", docURL: goInstallURL, pathDir: goBinDir},
-		{label: "actionlint", probe: []string{"actionlint", "--version"}, tier: tierAuto,
+		{label: "actionlint", probe: []string{"actionlint", versionFlag}, tier: tierAuto,
 			kind: installGoInstall, goPackage: actionlintGoPackage,
 			docURL: "https://github.com/rhysd/actionlint", pathDir: goBinDir, needs: "Go"},
-		{label: "Claude Code", probe: []string{"claude", "--version"}, tier: tierHumanFinishes,
+		{label: "Claude Code", probe: []string{"claude", versionFlag}, tier: tierHumanFinishes,
 			kind: installPowerShell, script: claudeWindowsInstall,
 			docURL: claudeInstallURL, unixHint: claudeUnixInstall, pathDir: claudeBinDir},
 	}
@@ -143,10 +151,10 @@ func installTable(langs []string) []installTool {
 		seen[l] = true
 		switch l {
 		case projectconfig.LangTypescript:
-			tools = append(tools, installTool{label: "Node.js", probe: []string{"npm", "--version"}, tier: tierAuto,
+			tools = append(tools, installTool{label: "Node.js", probe: []string{"npm", versionFlag}, tier: tierAuto,
 				kind: installWinget, winget: "OpenJS.NodeJS.22", docURL: npmInstallURL})
 		case projectconfig.LangDotnet:
-			tools = append(tools, installTool{label: ".NET SDK", probe: []string{"dotnet", "--version"}, tier: tierAuto,
+			tools = append(tools, installTool{label: ".NET SDK", probe: []string{"dotnet", versionFlag}, tier: tierAuto,
 				kind: installWinget, winget: "Microsoft.DotNet.SDK.8", docURL: dotnetInstallURL})
 		case projectconfig.LangJava:
 			tools = append(tools, installTool{label: "Java JDK", probe: []string{"java", "-version"}, tier: tierAuto,
@@ -306,7 +314,7 @@ func (r *installer) runInstall(t installTool) (string, error) {
 		return r.run("winget", "install", "--id", t.winget, "-e", "--source", "winget",
 			"--accept-source-agreements", "--accept-package-agreements")
 	case installPowerShell:
-		return r.run("powershell.exe", "-NoProfile", "-Command", t.script)
+		return r.run(powershellExe, powershellNoProfile, powershellCommand, t.script)
 	case installGoInstall:
 		return r.run("go", "install", t.goPackage)
 	}
@@ -377,7 +385,7 @@ func mergePath(current, persisted, sep string, fold bool) string {
 // merging nothing is indistinguishable from a successful no-op, and the
 // later lookups would then fail for the wrong reason.
 func refreshProcessPath() error {
-	out, err := execRun("powershell.exe", "-NoProfile", "-Command",
+	out, err := execRun(powershellExe, powershellNoProfile, powershellCommand,
 		`[Environment]::ExpandEnvironmentVariables([Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User"))`)
 	if err != nil {
 		return fmt.Errorf("reading PATH back from the registry: %w\n%s", err, strings.TrimSpace(out))
@@ -434,7 +442,7 @@ func persistUserPath(dir string) (bool, error) {
 		`$has=$false; foreach ($e in $cur -split ';') { if ($e.Trim().TrimEnd('\') -ieq $d.TrimEnd('\')) { $has=$true } }; ` +
 		`if ($has) { 'present' } else { ` +
 		`[Environment]::SetEnvironmentVariable('Path', ($cur.TrimEnd(';') + ';' + $d).TrimStart(';'), 'User'); 'added' }`
-	out, err := execRun("powershell.exe", "-NoProfile", "-Command", script)
+	out, err := execRun(powershellExe, powershellNoProfile, powershellCommand, script)
 	if err != nil {
 		return false, fmt.Errorf("%w\n%s", err, strings.TrimSpace(out))
 	}

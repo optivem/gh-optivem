@@ -192,6 +192,13 @@ func writeMDCounts(b *strings.Builder, rep Report) {
 }
 
 func writeMDProblems(b *strings.Builder, rep Report) {
+	writeMDGateAndValidation(b, rep)
+	writeMDTestProblems(b, rep)
+}
+
+// writeMDGateAndValidation writes the gate-reason, spec-validation-error and
+// spec-warning sections of writeMDProblems.
+func writeMDGateAndValidation(b *strings.Builder, rep Report) {
 	if rep.Gate != nil && len(rep.Gate.Reasons) > 0 {
 		b.WriteString("\n### Gate reasons\n\n")
 		for _, r := range rep.Gate.Reasons {
@@ -210,6 +217,11 @@ func writeMDProblems(b *strings.Builder, rep Report) {
 			fmt.Fprintf(b, "- %s\n", mdText(w))
 		}
 	}
+}
+
+// writeMDTestProblems writes the planned-use-case, orphan-test and
+// unknown-criterion-ID sections of writeMDProblems.
+func writeMDTestProblems(b *strings.Builder, rep Report) {
 	if len(rep.PlannedUseCases) > 0 {
 		b.WriteString("\n### Planned use cases (not gated)\n\n")
 		for _, p := range rep.PlannedUseCases {
@@ -279,6 +291,9 @@ func RenderPRComment(rep Report) string {
 	writeMDProblems(&b, rep)
 	return b.String()
 }
+
+// htmlCodeOpen is the opening <code> tag used by the HTML problem lists.
+const htmlCodeOpen = "<code>"
 
 func stateClass(st State) string {
 	return "s-" + strings.ReplaceAll(strings.ToLower(string(st)), " ", "-")
@@ -438,13 +453,13 @@ func RenderHTML(rep Report, generated time.Time) string {
 		w("</ul>\n</section>\n")
 	}
 	list("Orphan tests (not linked to any criterion)", len(rep.Orphans), func(i int) string {
-		return "<code>" + esc(rep.Orphans[i].Name) + "</code>: " + esc(rep.Orphans[i].Reason)
+		return htmlCodeOpen + esc(rep.Orphans[i].Name) + "</code>: " + esc(rep.Orphans[i].Reason)
 	})
 	list("Tests referencing unknown criterion IDs", len(rep.UnknownIDs), func(i int) string {
-		return "<code>" + esc(rep.UnknownIDs[i].ID) + "</code> in <code>" + esc(rep.UnknownIDs[i].Test) + "</code>"
+		return htmlCodeOpen + esc(rep.UnknownIDs[i].ID) + "</code> in <code>" + esc(rep.UnknownIDs[i].Test) + "</code>"
 	})
 	list("Spec validation errors", len(rep.Validation.Errors), func(i int) string {
-		return "<code>" + esc(rep.Validation.Errors[i].Code) + "</code>: " + esc(rep.Validation.Errors[i].Message)
+		return htmlCodeOpen + esc(rep.Validation.Errors[i].Code) + "</code>: " + esc(rep.Validation.Errors[i].Message)
 	})
 
 	w("</main>\n</body>\n</html>\n")

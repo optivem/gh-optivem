@@ -103,7 +103,13 @@ try {
 function Stop-Log {
     if ($script:transcribing) {
         $script:transcribing = $false
-        try { Stop-Transcript | Out-Null } catch { }
+        try {
+            Stop-Transcript | Out-Null
+        } catch {
+            # Best effort: a transcript that is already gone must not turn a
+            # finished run into a failed one.
+            Write-Verbose "Stop-Transcript failed: $_"
+        }
     }
 }
 

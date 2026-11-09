@@ -43,8 +43,8 @@ func IsGitDir(path string) bool {
 	return false
 }
 
-// ReplaceInFile replaces all occurrences of old with new in a file.
-func ReplaceInFile(path, old, new string) bool {
+// ReplaceInFile replaces all occurrences of old with replacement in a file.
+func ReplaceInFile(path, old, replacement string) bool {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return false
@@ -53,14 +53,14 @@ func ReplaceInFile(path, old, new string) bool {
 	if !strings.Contains(content, old) {
 		return false
 	}
-	result := strings.ReplaceAll(content, old, new)
+	result := strings.ReplaceAll(content, old, replacement)
 	os.WriteFile(path, []byte(result), 0644)
 	return true
 }
 
 // ReplaceInTree replaces in files under root filtered by extension.
 // If extensions is nil, it replaces in all non-binary text files.
-func ReplaceInTree(root, old, new string, extensions []string) int {
+func ReplaceInTree(root, old, replacement string, extensions []string) int {
 	count := 0
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || IsGitDir(path) {
@@ -69,7 +69,7 @@ func ReplaceInTree(root, old, new string, extensions []string) int {
 		if !shouldProcessForExts(info.Name(), extensions) {
 			return nil
 		}
-		if ReplaceInFile(path, old, new) {
+		if ReplaceInFile(path, old, replacement) {
 			count++
 		}
 		return nil
@@ -112,7 +112,7 @@ func FindInTree(root, needle string) []string {
 }
 
 // ReplaceInDockerfiles replaces in all Dockerfile files under root.
-func ReplaceInDockerfiles(root, old, new string) int {
+func ReplaceInDockerfiles(root, old, replacement string) int {
 	count := 0
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
@@ -122,7 +122,7 @@ func ReplaceInDockerfiles(root, old, new string) int {
 			return nil
 		}
 		if info.Name() == "Dockerfile" {
-			if ReplaceInFile(path, old, new) {
+			if ReplaceInFile(path, old, replacement) {
 				count++
 			}
 		}
@@ -131,15 +131,15 @@ func ReplaceInDockerfiles(root, old, new string) int {
 	return count
 }
 
-// RenameFilesInTree renames files containing old in their name to new.
-func RenameFilesInTree(root, old, new string) int {
+// RenameFilesInTree renames files containing old in their name to replacement.
+func RenameFilesInTree(root, old, replacement string) int {
 	count := 0
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || IsGitDir(path) {
 			return nil
 		}
 		if strings.Contains(info.Name(), old) {
-			newName := strings.ReplaceAll(info.Name(), old, new)
+			newName := strings.ReplaceAll(info.Name(), old, replacement)
 			newPath := filepath.Join(filepath.Dir(path), newName)
 			os.Rename(path, newPath)
 			count++
@@ -149,22 +149,22 @@ func RenameFilesInTree(root, old, new string) int {
 	return count
 }
 
-// RenameDirsInTree renames directories containing old in their name to new.
+// RenameDirsInTree renames directories containing old in their name to replacement.
 // Walks bottom-up to avoid renaming parent before child. Returns an error
 // naming the source and destination on any rename failure (e.g. a
 // destination-already-exists collision) instead of silently skipping it.
-func RenameDirsInTree(root, old, new string) (int, error) {
-	return renameDirs(root, old, new, nil)
+func RenameDirsInTree(root, old, replacement string) (int, error) {
+	return renameDirs(root, old, replacement, nil)
 }
 
 // RenameDirsInSubtree is like RenameDirsInTree but only renames directories
 // whose path contains subtreeMarker (e.g. filepath.Join("system-test", "typescript")).
 // Used to apply language-specific casing rules to domain folders.
-func RenameDirsInSubtree(root, subtreeMarker, old, new string) (int, error) {
-	return renameDirs(root, old, new, &subtreeMarker)
+func RenameDirsInSubtree(root, subtreeMarker, old, replacement string) (int, error) {
+	return renameDirs(root, old, replacement, &subtreeMarker)
 }
 
-func renameDirs(root, old, new string, subtreeMarker *string) (int, error) {
+func renameDirs(root, old, replacement string, subtreeMarker *string) (int, error) {
 	var dirs []string
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || !info.IsDir() || IsGitDir(path) {
@@ -181,7 +181,7 @@ func renameDirs(root, old, new string, subtreeMarker *string) (int, error) {
 	count := 0
 	for i := len(dirs) - 1; i >= 0; i-- {
 		dir := dirs[i]
-		newName := strings.ReplaceAll(filepath.Base(dir), old, new)
+		newName := strings.ReplaceAll(filepath.Base(dir), old, replacement)
 		newPath := filepath.Join(filepath.Dir(dir), newName)
 		if err := os.Rename(dir, newPath); err != nil {
 			return count, fmt.Errorf("rename %s -> %s: %w", dir, newPath, err)

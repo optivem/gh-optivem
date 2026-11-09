@@ -1089,8 +1089,8 @@ processes:
 	eng.AgentFn = func(name string) NodeFn {
 		return func(ctx *Context) Outcome {
 			count, _ := ctx.Get("visit-count").(int)
-			max, _ := ctx.Get("visit-max").(int)
-			dispatches = append(dispatches, seen{agent: name, count: count, max: max})
+			maxVisits, _ := ctx.Get("visit-max").(int)
+			dispatches = append(dispatches, seen{agent: name, count: count, max: maxVisits})
 			return Outcome{}
 		}
 	}

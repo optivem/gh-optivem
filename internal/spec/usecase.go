@@ -110,27 +110,14 @@ func parseFrontMatter(lines []string, uc *UseCase) ([]string, string) {
 	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
 		return lines, "missing front matter (expected a leading --- block with id and title)"
 	}
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			end = i
-			break
-		}
-	}
+	end := frontMatterEnd(lines)
 	if end < 0 {
 		return lines, "front matter is not closed with ---"
 	}
 	rest := lines[end+1:]
-	fields := map[string]string{}
-	for _, l := range lines[1:end] {
-		if strings.TrimSpace(l) == "" {
-			continue
-		}
-		k, v, ok := strings.Cut(l, ":")
-		if !ok {
-			return rest, fmt.Sprintf("malformed front matter line %q", l)
-		}
-		fields[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), "\"'")
+	fields, msg := parseFrontMatterFields(lines[1:end])
+	if msg != "" {
+		return rest, msg
 	}
 	uc.ID = fields["id"]
 	uc.Title = fields["title"]
@@ -138,19 +125,53 @@ func parseFrontMatter(lines []string, uc *UseCase) ([]string, string) {
 	if uc.Status == "" {
 		uc.Status = StatusImplemented
 	}
+	return rest, validateFrontMatter(uc)
+}
+
+// frontMatterEnd returns the index of the closing --- line of the front
+// matter that opens at lines[0], or -1 when it is not closed.
+func frontMatterEnd(lines []string) int {
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			return i
+		}
+	}
+	return -1
+}
+
+// parseFrontMatterFields parses the key: value lines between the front matter
+// delimiters and returns an error message ("" when valid).
+func parseFrontMatterFields(body []string) (map[string]string, string) {
+	fields := map[string]string{}
+	for _, l := range body {
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		k, v, ok := strings.Cut(l, ":")
+		if !ok {
+			return nil, fmt.Sprintf("malformed front matter line %q", l)
+		}
+		fields[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), "\"'")
+	}
+	return fields, ""
+}
+
+// validateFrontMatter checks the parsed front matter fields of uc and returns
+// an error message ("" when valid).
+func validateFrontMatter(uc *UseCase) string {
 	if uc.ID == "" {
-		return rest, "front matter is missing id"
+		return "front matter is missing id"
 	}
 	if !useCaseIDPattern.MatchString(uc.ID) {
-		return rest, fmt.Sprintf("front matter id %q does not match UC-<n>", uc.ID)
+		return fmt.Sprintf("front matter id %q does not match UC-<n>", uc.ID)
 	}
 	if uc.Title == "" {
-		return rest, "front matter is missing title"
+		return "front matter is missing title"
 	}
 	if uc.Status != StatusImplemented && uc.Status != StatusPlanned {
-		return rest, fmt.Sprintf("front matter status %q must be %s or %s", uc.Status, StatusImplemented, StatusPlanned)
+		return fmt.Sprintf("front matter status %q must be %s or %s", uc.Status, StatusImplemented, StatusPlanned)
 	}
-	return rest, ""
+	return ""
 }
 
 // criteriaFileName is the spec file inside a use-case folder. Other files in
@@ -217,19 +238,28 @@ func Validate(useCases []UseCase) []ValidationError {
 			errs = append(errs, ValidationError{"no-criteria",
 				fmt.Sprintf("%s: use case %s has no criteria (expected `- %s.N: text` bullets or Gherkin scenarios tagged @%s.N)", uc.File, uc.ID, uc.ID, uc.ID)})
 		}
-		for _, c := range uc.Criteria {
-			prefix, _, _ := strings.Cut(c.ID, ".")
-			if uc.FrontErr == "" && prefix != uc.ID {
-				errs = append(errs, ValidationError{"prefix-mismatch",
-					fmt.Sprintf("%s: criterion %s does not match use case id %s", uc.File, c.ID, uc.ID)})
-			}
-			if first, dup := seen[c.ID]; dup {
-				errs = append(errs, ValidationError{"duplicate-id",
-					fmt.Sprintf("%s: criterion %s already defined in %s", uc.File, c.ID, first)})
-				continue
-			}
-			seen[c.ID] = uc.File
+		errs = append(errs, validateCriteria(uc, seen)...)
+	}
+	return errs
+}
+
+// validateCriteria checks the criterion IDs of uc for a prefix mismatch with
+// the use case id and for duplicates against seen (criterion ID -> file),
+// recording each new ID in seen.
+func validateCriteria(uc UseCase, seen map[string]string) []ValidationError {
+	var errs []ValidationError
+	for _, c := range uc.Criteria {
+		prefix, _, _ := strings.Cut(c.ID, ".")
+		if uc.FrontErr == "" && prefix != uc.ID {
+			errs = append(errs, ValidationError{"prefix-mismatch",
+				fmt.Sprintf("%s: criterion %s does not match use case id %s", uc.File, c.ID, uc.ID)})
 		}
+		if first, dup := seen[c.ID]; dup {
+			errs = append(errs, ValidationError{"duplicate-id",
+				fmt.Sprintf("%s: criterion %s already defined in %s", uc.File, c.ID, first)})
+			continue
+		}
+		seen[c.ID] = uc.File
 	}
 	return errs
 }

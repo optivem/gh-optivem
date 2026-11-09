@@ -494,13 +494,17 @@ type projectItemsResponseOwner struct {
 }
 
 type projectItemsResponseProjectV2 struct {
-	Items struct {
-		PageInfo struct {
-			HasNextPage bool   `json:"hasNextPage"`
-			EndCursor   string `json:"endCursor"`
-		} `json:"pageInfo"`
-		Nodes []projectItemNode `json:"nodes"`
-	} `json:"items"`
+	Items projectItemsConnection `json:"items"`
+}
+
+type projectItemsConnection struct {
+	PageInfo projectItemsPageInfo `json:"pageInfo"`
+	Nodes    []projectItemNode    `json:"nodes"`
+}
+
+type projectItemsPageInfo struct {
+	HasNextPage bool   `json:"hasNextPage"`
+	EndCursor   string `json:"endCursor"`
 }
 
 type projectItemNode struct {
@@ -538,11 +542,15 @@ type projectFieldsResponse struct {
 }
 
 type projectFieldsResponseOwner struct {
-	ProjectV2 *struct {
-		Fields struct {
-			Nodes []projectField `json:"nodes"`
-		} `json:"fields"`
-	} `json:"projectV2"`
+	ProjectV2 *projectFieldsResponseProjectV2 `json:"projectV2"`
+}
+
+type projectFieldsResponseProjectV2 struct {
+	Fields projectFieldsConnection `json:"fields"`
+}
+
+type projectFieldsConnection struct {
+	Nodes []projectField `json:"nodes"`
 }
 
 type projectField struct {

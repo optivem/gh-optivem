@@ -326,7 +326,7 @@ func execNode(process *Process, cur string, node Node, visit int, ctx *Context) 
 	// count survives down to the dispatch, and a non-looped dispatch
 	// outside any loop frame sees no count (so it renders no attempt
 	// label). visit is 1-based (the caller increments visits[cur] first).
-	restoreVisit := func() {}
+	restoreVisit := func() { /* no visit context to restore: node isn't a loop node */ }
 	if node.Raw.MaxVisits > 0 {
 		restoreVisit = pushVisitContext(ctx, visit, node.Raw.MaxVisits)
 	}

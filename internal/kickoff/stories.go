@@ -218,12 +218,12 @@ type Publisher interface {
 	Open(ctx context.Context) ([]Created, error)
 }
 
-// GH runs the gh CLI.
-type GH interface {
+// GHRunner runs the gh CLI.
+type GHRunner interface {
 	Run(ctx context.Context, stdin string, args ...string) ([]byte, error)
 }
 
-// ExecGH is the production GH.
+// ExecGH is the production GHRunner.
 type ExecGH struct{}
 
 // Run executes `gh <args>`; stderr is folded into the error.
@@ -246,7 +246,7 @@ var projectURLRe = regexp.MustCompile(`^https://github\.com/(?:users|orgs)/([^/]
 // GitHubPublisher creates GitHub issues of type Story in Repo and adds them to
 // the project board.
 type GitHubPublisher struct {
-	GH         GH
+	GH         GHRunner
 	Repo       string // owner/name
 	ProjectURL string
 }

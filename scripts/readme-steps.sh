@@ -83,8 +83,9 @@ step() {
 # signal here also turns "it stopped" into "it was interrupted", which is the
 # distinction worth having at 2am in a VM console.
 on_signal() {
-    signal="$1"
-    exit "$2"   # into the EXIT trap below, with a status that says which
+    local sig="$1" status="$2"
+    signal="$sig"
+    exit "$status"   # into the EXIT trap below, with a status that says which
 }
 trap 'on_signal INT 130'  INT
 trap 'on_signal TERM 143' TERM
@@ -101,20 +102,20 @@ trap 'on_signal HUP 129'  HUP
 finish() {
     rc=$?
     ok=0
-    if [ -n "$signal" ]; then
+    if [[ -n "$signal" ]]; then
         verdict="readme-steps: INTERRUPTED by SIG$signal during [$current_step]. Nothing after that step ran."
-    elif [ "$completed" -eq 1 ] && [ "$rc" -eq 0 ]; then
+    elif [[ "$completed" -eq 1 && "$rc" -eq 0 ]]; then
         ok=1
         verdict="readme-steps: done."
     else
         # A killed shell arrives here carrying the status of the last command
         # that succeeded. Never let that 0 pass for a verdict.
-        if [ "$rc" -eq 0 ]; then rc=1; fi
+        if [[ "$rc" -eq 0 ]]; then rc=1; fi
         verdict="readme-steps: FAILED (exit $rc) during [$current_step]."
     fi
     echo "$verdict"
     exec 1>&3 2>&4
-    if [ "$ok" -eq 1 ]; then
+    if [[ "$ok" -eq 1 ]]; then
         echo "readme-steps: log written to $log_file"
     else
         echo "$verdict Log: $log_file" >&2
@@ -153,7 +154,7 @@ refresh_path() {
     win=$(powershell.exe -NoProfile -Command \
         '[Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [Environment]::GetEnvironmentVariable("Path","User")' \
         | tr -d '\r')
-    if [ -z "$win" ]; then
+    if [[ -z "$win" ]]; then
         # Appending an empty list would put "" on PATH, which bash reads as the
         # current directory. Fail instead.
         echo "readme-steps: could not read PATH back from the registry." >&2
@@ -167,7 +168,7 @@ refresh_path() {
 }
 
 require_tty() {
-    if [ ! -t 0 ]; then
+    if [[ ! -t 0 ]]; then
         echo "readme-steps: $1 needs the keyboard. Run this script from a console, not a pipe." >&2
         exit 1
     fi
@@ -214,7 +215,8 @@ run_interactive() {
 probe_tool() {
     local label="$1"
     shift
-    if ! command -v "$1" >/dev/null 2>&1; then
+    local cmd="$1"
+    if ! command -v "$cmd" >/dev/null 2>&1; then
         echo "machine setup: $label NOT installed"
         return 1
     fi
@@ -223,7 +225,7 @@ probe_tool() {
         # On PATH but not runnable. Treated as absent so the caller reinstalls,
         # which is the likely fix - but said out loud, because "not installed"
         # would be a lie and the reinstall is then unexplained.
-        echo "machine setup: $label is on PATH ($(command -v "$1")) but '$*' failed:" >&2
+        echo "machine setup: $label is on PATH ($(command -v "$cmd")) but '$*' failed:" >&2
         printf '%s\n' "$out" >&2
         return 1
     fi
@@ -239,13 +241,15 @@ probe_tool() {
 #
 # $1 winget id
 package_installed() {
-    winget list --id "$1" -e >/dev/null 2>&1
+    local id="$1"
+    winget list --id "$id" -e >/dev/null 2>&1
 }
 
 # $1 winget id, $2 label, $3.. version command
 winget_install() {
     local id="$1" label="$2"
     shift 2
+    local cmd="$1"
     if probe_tool "$label" "$@"; then
         return
     fi
@@ -258,7 +262,7 @@ winget_install() {
     #
     # Only for the not-on-PATH case: a tool that IS on PATH and does not run
     # still falls through to the install, which is the likely fix for it.
-    if ! command -v "$1" >/dev/null 2>&1 && package_installed "$id"; then
+    if ! command -v "$cmd" >/dev/null 2>&1 && package_installed "$id"; then
         # Installed, but invisible from here. The usual cause is a stale shell
         # PATH, which refresh_path repairs - so ask again before conceding. The
         # concession is not free: a toolchain whose installer skipped the PATH
@@ -382,7 +386,8 @@ add_claude_bin_to_path() {
 #
 # $1 'before' or 'after'
 inventory() {
-    case "$1" in
+    local phase="$1"
+    case "$phase" in
         before)
             step 'inventory: before'
             echo "readme-steps: what this guest already has, before anything is installed:"
@@ -392,7 +397,7 @@ inventory() {
             echo "readme-steps: what this guest has now, after everything this script installs:"
             ;;
         *)
-            echo "readme-steps: inventory called with '$1'; expected 'before' or 'after'." >&2
+            echo "readme-steps: inventory called with '$phase'; expected 'before' or 'after'." >&2
             exit 1
             ;;
     esac
@@ -477,7 +482,7 @@ ensure_gh_signed_in() {
     local login_rc=0
     run_interactive gh auth login || login_rc=$?
     echo "machine setup: gh auth login exited $login_rc"
-    if [ "$login_rc" -ne 0 ]; then exit "$login_rc"; fi
+    if [[ "$login_rc" -ne 0 ]]; then exit "$login_rc"; fi
 }
 
 # The native-Windows installer, run through a PowerShell shim because this file
@@ -516,7 +521,7 @@ ensure_claude_signed_in() {
     local claude_rc=0
     run_interactive claude || claude_rc=$?
     echo "machine setup: Claude Code exited $claude_rc"
-    if [ "$claude_rc" -ne 0 ]; then exit "$claude_rc"; fi
+    if [[ "$claude_rc" -ne 0 ]]; then exit "$claude_rc"; fi
 }
 
 
@@ -692,7 +697,7 @@ copy_source_ticket() {
     local title body url
     title="$(gh issue view "$SOURCE_TICKET" --repo "$SOURCE_TICKET_REPO" --json title --jq .title)"
     body="$(gh issue view "$SOURCE_TICKET" --repo "$SOURCE_TICKET_REPO" --json body --jq .body)"
-    if [ -z "$title" ] || [ -z "$body" ]; then
+    if [[ -z "$title" || -z "$body" ]]; then
         echo "implement: $SOURCE_TICKET_REPO#$SOURCE_TICKET came back with an empty title or body. It is a public issue, so check 'gh auth status' first." >&2
         exit 1
     fi
@@ -709,6 +714,9 @@ copy_source_ticket() {
         ''|*[!0-9]*)
             echo "implement: could not read an issue number out of 'gh issue create' (got '$url')." >&2
             exit 1
+            ;;
+        *)
+            # All digits: a usable issue number, nothing to reject.
             ;;
     esac
     echo "implement: created $OWNER/$REPO#$ticket_number - $title"
@@ -735,7 +743,7 @@ add_ticket_to_project_board() {
     # https://github.com/users/<login>/projects/<n>, or /orgs/ for an org.
     owner="$( printf '%s\n' "$project_url" | sed -nE 's#^https://github\.com/(users|orgs)/([^/]+)/projects/[0-9]+/?$#\2#p')"
     number="$(printf '%s\n' "$project_url" | sed -nE 's#^https://github\.com/(users|orgs)/[^/]+/projects/([0-9]+)/?$#\2#p')"
-    if [ -z "$owner" ] || [ -z "$number" ]; then
+    if [[ -z "$owner" || -z "$number" ]]; then
         echo "implement: no usable project URL under 'project:' in gh-optivem.yaml (read '$project_url'). init writes it there when it creates the board." >&2
         exit 1
     fi
@@ -788,7 +796,7 @@ readme_implement_a_ticket
 # across runs instead of making a new one - every run leaves another item on the
 # same board, and deleting the repo does not clear them.
 echo "readme-steps: remember to delete $OWNER/$REPO"
-if [ -n "$project_url" ]; then
+if [[ -n "$project_url" ]]; then
     echo "readme-steps: and to remove this run's item from $project_url"
 fi
 

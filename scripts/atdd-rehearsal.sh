@@ -101,10 +101,11 @@ log() { echo "${PREFIX} $*"; }
 # C:\... that they can. On Linux/macOS cygpath is absent, so the
 # raw POSIX path is already native — pass it through unchanged.
 display_path() {
+  local path="$1"
   if command -v cygpath >/dev/null 2>&1; then
-    cygpath -w "$1"
+    cygpath -w "$path"
   else
-    printf '%s' "$1"
+    printf '%s' "$path"
   fi
 }
 

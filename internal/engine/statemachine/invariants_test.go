@@ -73,7 +73,7 @@ func TestGraphInvariants_SpecRecordCommitNeedsVerifiedSystem(t *testing.T) {
 	if n := count("SYS"); n != 0 {
 		t.Errorf("record after implement-and-verify-system: want no commit-is-verified violation, got %d", n)
 	}
-	if n := count("REC"); n == 0 {
+	if count("REC") == 0 {
 		t.Error("record without a preceding implement-and-verify-system must violate commit-is-verified")
 	}
 }
