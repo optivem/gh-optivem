@@ -25,7 +25,7 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md` ("Refactor" and "Rev
 
 ## ▶ Next executable step (resume here)
 
-Review this plan with the user, especially the guidelines-file question below. After that, Step 1 can run via `/execute-plan`.
+User to OK the proposed decisions below. Then Step 1 (`${guidelines-path}` placeholder, default `docs/guidelines/`) can run via `/execute-plan`.
 
 ## Steps
 
@@ -36,8 +36,9 @@ Review this plan with the user, especially the guidelines-file question below. A
 - [ ] Step 5: Add the guidelines-update step (agent) with write scope limited to the guidelines files plus the occurrences it fixes.
 - [ ] Step 6: Tests. Run with `-p 2`.
 
-## Open questions
+## Decisions (proposed 2026-11-09, pending user OK — override any line)
 
-- Where do the guidelines live? Options: the scaffolded repo's `CLAUDE.md`, a dedicated `docs/guidelines/` folder, or per-area files (architecture, naming). The article warns that big guideline files degrade results, so they must be prunable.
-- Is this offered only inside a story's opportunistic refactor, or also as a `task/system-refactor` ticket subtype?
-- How does `HUMAN_REVIEW` capture "issues found" in a structured way the next agent can consume (free text vs. a list)?
+- **Guidelines live in per-area files under `docs/guidelines/`** in the scaffolded repo (e.g. `architecture.md`, `naming.md`, `testing.md`), addressed by one `${guidelines-path}` placeholder. Not `CLAUDE.md`: it is loaded into every agent and grows unbounded, which is exactly the degradation the article warns about. Per-area files keep each one small and prunable, and the reviewer reads only the folder.
+- **Offered through the `refactor` menu only** (opportunistic-inside-change and ad-hoc operator entry). The `task/system-refactor` subtype bypasses the menu (`GATE_TASK_SUBTYPE` → `REFACTOR_SYSTEM_STRUCTURE` directly), and a ticket subtype for review can be added later if teams ask; the review loop needs the human present anyway, which fits the interactive menu.
+- **`HUMAN_REVIEW` captures issues as free text, one issue per line** (same convention as the Red reviewer's findings — the output CLI comma-splits lists). An empty answer means "no issues" and ends the loop.
+- **Step 3: `EXECUTE_PLAN` reuses `system-refactorer` / `test-refactorer`**, passing the approved plan through a `${refactoring-plan}` placeholder.
