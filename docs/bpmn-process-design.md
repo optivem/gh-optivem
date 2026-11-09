@@ -137,6 +137,27 @@ registered external system:
    whole system via `implement-and-verify-system` (`action: update-system`), because
    either side of the boundary can shift the system's port surface.
 
+## Spec-driven stages: executor, reviewer, approver
+
+The 2026-11 redesign (from the "Spec-Driven Development for QA" talk, the 2026-11-06
+articles and the 2026-10-30 Circle Q&A) gives every stage the same three roles: an
+**executor** agent does the work, a **reviewer** agent checks it adversarially against
+the spec without changing anything, and a **human approver** decides. Humans review what
+agents cannot judge; every issue a human catches becomes a rule the reviewer applies next
+time. Current state per stage:
+
+| Stage | Today (in `process-flow.yaml`) | Still target |
+|---|---|---|
+| Align | `refine-backlog-item` loops: refiner drafts criteria (concrete example per business rule, contradictions with the use cases, shortest main success scenario), the human answers "Three Amigos agreed?", a "no" feeds back into the next round; 5 rounds max (`AC_REFINEMENT_EXHAUSTED`). | — |
+| Merge into use cases | `use-case-merger` writes narrative + `BR-n` business rules + Gherkin criteria tagged `@UC-NNN.M @narrative-Xy`; `VERIFY_STORY_MERGE` checks tags and rule references; `LINK_STORY_CRITERIA` writes the touched ids into the ticket's "Use Case Criteria" section. | — |
+| Red | `execute-agent` takes an optional `reviewer`: the acceptance-test, DSL and driver-adapter writers are each checked by a read-only `*-reviewer`; blocking findings return to the writer (2 passes max); the approval names the approver role and lists findings. Channels run API before UI. | — |
+| Green | Once the last channel is green, `remove-wip-gate` strips `GH_OPTIVEM_RUN_WIP_TESTS` from the story's tests (also in `cover-system-behavior`), so CI runs them from then on. | Delete the acceptance criteria of green behaviour from the use cases; the tests are the spec, and `gh optivem spec generate` renders them back as Gherkin for POs ([plan](../plans/20261109-1258-ac-delete-and-generate.md)). |
+| Refactor & review | The `refactor` menu offers `review-code-and-architecture`: reviewer proposes a plan, human approves, refactorers execute it with the full suite, human lists issues, `guidelines-updater` records rules under `${guidelines-path}` and fixes other occurrences (3 rounds max). | UX/UI review ([plan](../plans/20261109-1302-ux-ui-review.md)); running only the touched use case's tests after refactor ([discussion](../plans/20261109-1250-refactor-touched-use-case-tests.md)). |
+| Legacy | `cover-system-behavior` pins the expected result to success. | Legacy baseline mode ([discussion](../plans/20261109-1301-legacy-baseline-mode.md)). |
+
+Statuses are unchanged: gh-optivem ends at IN ACCEPTANCE; manual QA (quick functional,
+exploratory and usability testing) happens outside it, and a human sets DONE.
+
 ## Open explorations
 
 Deferred during design; not yet settled:

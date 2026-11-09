@@ -477,7 +477,7 @@ Circle 2026-10-30 additions to Red:
 
 ## ▶ Next executable step (resume here)
 
-All open questions are decided (Q1–Q10), and the work is split into per-stage plans (see the table under `## Steps`). Next: review each stage plan with `/refine-plan <file>`. The only step executable right now without review is Step 1 of `plans/20261109-1300-remove-wip-gate-at-green.md` (read-only: confirm the gap). Step 1 here (docs) can run via `/execute-plan`.
+Stages 1, 2, 3, 4 (WIP gate), 5a and the docs are done. Next: the user OKs `plans/20261109-1258-ac-delete-and-generate.md` (delete criteria on green, retire spec fingerprints) and refines `plans/20261109-1302-ux-ui-review.md`; `1250` and `1301` are discussion plans. Operator rehearsals per row once shop is free.
 
 ## Steps
 
@@ -485,18 +485,17 @@ This file is the umbrella design (Q1). The work is split into one plan per stage
 
 | Stage | Plan | State |
 |---|---|---|
-| Docs | Step 1 below (this file) | ready |
+| Docs | ~~Step 1~~ | **done**: `docs/bpmn-process-design.md` § "Spec-driven stages: executor, reviewer, approver" (today vs target per stage). |
 | 1. Align | ~~`plans/20261109-1255-align-refinement-loop.md`~~ | **done** (this commit): refine-backlog-item loops until the Three Amigos agree. The refiner's POST approval is the verdict (no separate review node); a "no" asks what should change and re-runs the refiner with that feedback and its open questions (`${refinement-feedback-section}`); 5 rounds max, then AC_REFINEMENT_EXHAUSTED prints the unresolved questions. The refiner now checks a concrete example per business rule, contradictions with `docs/use-cases` (criterion id, narrative step, tests), and main success scenario = shortest path. Operator: refine a shop story with a rule stated only in general terms and confirm the refiner proposes a numeric example, then answer "no" once and confirm the next round uses the feedback. |
 | 2. Use case format | ~~`plans/20261109-1256-use-case-format-and-story-link.md`~~ | **done** (commit 81c1418c and the Step 3 commit): `use-case-merger` writes BR-n business rules beside the use case and Gherkin criteria tagged `@UC-NNN.M @narrative-Xy`; VERIFY_STORY_MERGE checks the tags and BR-n references; the new LINK_STORY_CRITERIA service task writes the touched criterion ids into the ticket's "Use Case Criteria" body section (new `Tracker.WriteBody`: `gh issue edit --body-file` on GitHub, file rewrite on markdown; replaced on re-run). Operator: run a shop story that changes a use case and confirm the GitHub issue body gains a "Use Case Criteria" section listing the ids, and that re-running the ticket still parses. |
 | 3. Red reviewers | ~~`plans/20261109-1257-red-reviewer-agents.md`~~ | **done** (commits 7aad5a58, f62fbf69 and the Step 6/7 commit): three read-only `*-reviewer` agents check the Red writers' output before approval; blocking findings go back to the writer (2 passes max), the approval names the approver role and lists the findings; channels run API before UI. Operator: gift-wrap rehearsal on shop with a planted dropped `.then().shouldSucceed()` and confirm the AT reviewer flags it. |
-| 4/6. AC policy | `plans/20261109-1258-ac-delete-and-generate.md` | to review (ordering vs. use-case format plan) |
+| 4/6. AC policy | `plans/20261109-1258-ac-delete-and-generate.md` | ready for user OK: generator `gh optivem spec generate` shipped (commit 0dc8daf2); delete-on-green + fingerprint retirement remain |
 | 5a. Code & Architecture Review | ~~`plans/20261109-1259-code-architecture-review.md`~~ | **done** (commits dcbf03b1, a00ec26a and the Step 4 commit): the `refactor` menu offers `review-code-and-architecture`: a read-only code-architecture-reviewer proposes findings plus a system/test refactoring plan, the human approves it, the refactorers execute it as their Checklist with the full suite, then the human lists remaining issues and the guidelines-updater fixes them, records a rule under `${guidelines-path}` (default `docs/guidelines`) and fixes other occurrences (3 rounds max, each a `GUIDELINES` commit). Operator: on shop, run the `refactor` menu -> `review-code-and-architecture`, approve the plan, list one issue at HUMAN_REVIEW, and confirm `docs/guidelines/<area>.md` gains a rule, other occurrences are fixed, and a `GUIDELINES` commit lands. |
 | 4. Green: WIP gate removal | ~~`plans/20261109-1300-remove-wip-gate-at-green.md`~~ | **done** (commits 83c01a71, 95c8cc5f and the Step 4/5 commit): gate stripped after Green in change-system-behavior and cover-system-behavior. Operator: re-run a shop rehearsal (e.g. #71 gift-wrap) and confirm the final commit has no gate and the pipeline runs the tests. |
 | 0. Legacy baseline | `plans/20261109-1301-legacy-baseline-mode.md` | discussion |
-| 5b. UX/UI Review | `plans/20261109-1302-ux-ui-review.md` | deferred until 5a ships |
+| 5b. UX/UI Review | `plans/20261109-1302-ux-ui-review.md` | unblocked (5a shipped); open questions to refine |
 | Refactor test scope | `plans/20261109-1250-refactor-touched-use-case-tests.md` | discussion (parked Q5) |
 
-- [ ] Step 1: Promote `## Proposed process flow` into the process docs as the target design. Use the location the BPMN doc-blocks reference, with a "today vs target" column. Do not regenerate `docs/process-diagram.md` (CI does it).
 - [ ] Step 2: When every stage plan is executed or dropped, delete this umbrella plan.
 
 ## Verification
