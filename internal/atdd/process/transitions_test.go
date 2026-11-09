@@ -41,6 +41,7 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"redesign-external-system-structure",
 		"refactor-system-structure",
 		"refactor-test-structure",
+		"review-code-and-architecture",
 		// HIGH
 		"implement-external-drivers-if-needed",
 		"write-acceptance-tests-and-system-adapters",
@@ -1496,8 +1497,12 @@ func TestBackEdgesAreAudited(t *testing.T) {
 		"refactor: REDESIGN_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":              true,
 		"refactor: REFACTOR_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":              true,
 		"refactor: REFACTOR_TEST_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":                true,
-		"verify-tests-fail: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                        true,
-		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                        true,
+		"refactor: REVIEW_CODE_AND_ARCHITECTURE -> GATE_REFACTOR_TYPE_CHOICE":           true,
+		// Guidelines loop (plan 20261109-1259): capped by max-visits 3 on
+		// UPDATE_GUIDELINES, then GUIDELINES_LOOP_EXHAUSTED.
+		"review-code-and-architecture: COMMIT_GUIDELINES -> HUMAN_REVIEW": true,
+		"verify-tests-fail: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":          true,
+		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":          true,
 	}
 	got := map[string]bool{}
 	for name, p := range eng.Processes {

@@ -93,6 +93,10 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"approval-outcome",
 		"outputs-and-scopes-valid",
 		"ticket-kind",
+		"refactoring-needed",
+		"system-refactoring-plan-present",
+		"test-refactoring-plan-present",
+		"human-review-issues-found",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
@@ -824,7 +828,7 @@ func TestRefactorTypeChoice(t *testing.T) {
 			t.Fatalf("prompter should not have been asked: %v", p.asked)
 		}
 	})
-	for _, ans := range []string{"refactor-system-structure", "refactor-test-structure", "redesign-system-structure", "redesign-external-system-structure", "none"} {
+	for _, ans := range []string{"refactor-system-structure", "refactor-test-structure", "redesign-system-structure", "redesign-external-system-structure", "review-code-and-architecture", "none"} {
 		t.Run("prompt/"+ans, func(t *testing.T) {
 			p := &fakePrompter{answers: []string{ans}}
 			b := newBindings(t, Deps{Prompter: p})

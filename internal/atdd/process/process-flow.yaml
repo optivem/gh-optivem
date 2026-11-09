@@ -376,7 +376,9 @@ processes:
       - {from: MARK_IN_ACCEPTANCE,        to: IMPLEMENT_TICKET_END}
 
   # Loopable refactor-type chooser. The operator picks a refactor CYCLE
-  # (opportunistic mode, no checklist) or exits. No Mark-Ticket bookends —
+  # (opportunistic mode, no checklist), the Code & Architecture Review
+  # (`review-code-and-architecture`: review-first, the human approves the
+  # plan; plan 20261109-1259), or exits. No Mark-Ticket bookends —
   # there is no ticket. Reused by `change-system-behavior` step 3 (via a
   # single `REFACTOR_OPPORTUNISTICALLY` call-activity) so the
   # opportunistic-inside-change surface shares this menu instead of
@@ -393,7 +395,7 @@ processes:
       # ticket-kind / task-subtype gateways, whose catch-alls guard real
       # out-of-set ticket labels). `refactor-type-choice` is a re-prompting
       # menu, not a parser: under --auto it defaults to `none`, otherwise it
-      # re-prompts on any unrecognised reply — so it only ever emits the 5
+      # re-prompts on any unrecognised reply — so it only ever emits the 6
       # enumerated values below. A catch-all here would be unreachable.
       - id: GATE_REFACTOR_TYPE_CHOICE
         type: gateway
@@ -420,6 +422,11 @@ processes:
         process: redesign-external-system-structure
         name: "Redesign External System Structure"
 
+      - id: REVIEW_CODE_AND_ARCHITECTURE
+        type: call-activity
+        process: review-code-and-architecture
+        name: "Code & Architecture Review"
+
       - id: REFACTOR_TOP_END
         type: end-event
         name: "Refactor Complete"
@@ -429,11 +436,13 @@ processes:
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REFACTOR_TEST_STRUCTURE,            when: "refactor-type-choice == refactor-test-structure"}
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REDESIGN_SYSTEM_STRUCTURE,          when: "refactor-type-choice == redesign-system-structure"}
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, when: "refactor-type-choice == redesign-external-system-structure"}
+      - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REVIEW_CODE_AND_ARCHITECTURE,       when: "refactor-type-choice == review-code-and-architecture"}
       - {from: GATE_REFACTOR_TYPE_CHOICE,          to: REFACTOR_TOP_END,                   when: "refactor-type-choice == none"}
       - {from: REFACTOR_SYSTEM_STRUCTURE,          to: GATE_REFACTOR_TYPE_CHOICE}
       - {from: REFACTOR_TEST_STRUCTURE,            to: GATE_REFACTOR_TYPE_CHOICE}
       - {from: REDESIGN_SYSTEM_STRUCTURE,          to: GATE_REFACTOR_TYPE_CHOICE}
       - {from: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, to: GATE_REFACTOR_TYPE_CHOICE}
+      - {from: REVIEW_CODE_AND_ARCHITECTURE,       to: GATE_REFACTOR_TYPE_CHOICE}
 
   # Align loop (plan 20261109-1255). The refiner drafts the criteria; its
   # human-tier POST approval is the Three Amigos' verdict (no separate review
@@ -877,6 +886,186 @@ processes:
       - {from: GATE_EXTERNAL_SYSTEM_TOUCHED, to: EXTERNAL_SYSTEM_SKIPPED,                when: "external-system-touched == false"}
       - {from: UPDATE_EXTERNAL_SYSTEM_DRIVER_ADAPTERS, to: RECONCILE_EXTERNAL_CONTRACT_PRODUCER}
       - {from: RECONCILE_EXTERNAL_CONTRACT_PRODUCER,   to: REDESIGN_EXTERNAL_PER_SYSTEM_END}
+
+  # Code & Architecture Review (plan 20261109-1259), offered on the `refactor`
+  # menu only (it needs the human present). Review-first refactoring:
+  #
+  #   RUN_REVIEWER        read-only code-architecture-reviewer: findings plus
+  #                       a refactoring plan split into a system half and a
+  #                       test half, checked against ${guidelines-path}.
+  #   APPROVE_PLAN        the human approves the plan (human tier: never
+  #                       skipped). A "no" ends the review, nothing changed.
+  #   EXECUTE_*_PLAN      the existing refactor-system-structure /
+  #                       refactor-test-structure cycles run the approved half
+  #                       as their ${checklist}: refactor, build/compile,
+  #                       start, the full suite (plus the component inner loop
+  #                       where configured), commit.
+  #   HUMAN_REVIEW        the human lists the issues they still find, one per
+  #                       line; an empty answer ends the review.
+  #   UPDATE_GUIDELINES   guidelines-updater fixes each issue, records it in
+  #                       the guidelines and fixes other occurrences; then the
+  #                       full suite runs, the result is committed and the
+  #                       human reviews again.
+  #
+  # Loop cap: 3 guideline rounds (max-visits on UPDATE_GUIDELINES); the 4th
+  # arrival halts at GUIDELINES_LOOP_EXHAUSTED. The rounds already done are
+  # committed.
+  review-code-and-architecture:
+    name: "Code & Architecture Review"
+    diagram-section-order: 11
+    start: RESET_CODE_REVIEW
+    nodes:
+      # Clears the previous review's outputs: they are optional, and the
+      # menu can run this review more than once in one run.
+      - id: RESET_CODE_REVIEW
+        type: service-task
+        action: reset-code-review
+        name: "Reset Review State"
+
+      - id: RUN_REVIEWER
+        type: call-activity
+        process: review-code-architecture
+        name: "Review Code & Architecture"
+
+      - id: SUMMARIZE_REFACTORING_PLAN
+        type: service-task
+        action: summarize-refactoring-plan
+        name: "Summarize the Refactoring Plan"
+
+      - id: GATE_REFACTORING_NEEDED
+        type: gateway
+        binding: refactoring-needed
+        name: "Refactoring Needed?"
+
+      - id: APPROVE_PLAN
+        type: call-activity
+        process: approve
+        name: "Approve the Refactoring Plan"
+        params:
+          question: "Approve this refactoring plan?${refactoring-plan-summary}"
+          category: human
+
+      - id: GATE_PLAN_APPROVED
+        type: gateway
+        binding: approval-outcome
+        name: "Plan Approved?"
+
+      - id: GATE_SYSTEM_PLAN_PRESENT
+        type: gateway
+        binding: system-refactoring-plan-present
+        name: "System Refactoring Planned?"
+
+      - id: EXECUTE_SYSTEM_PLAN
+        type: call-activity
+        process: refactor-system-structure
+        name: "Execute the System Refactoring Plan"
+        params:
+          checklist: ${system-refactoring-plan}
+
+      - id: GATE_TEST_PLAN_PRESENT
+        type: gateway
+        binding: test-refactoring-plan-present
+        name: "Test Refactoring Planned?"
+
+      - id: EXECUTE_TEST_PLAN
+        type: call-activity
+        process: refactor-test-structure
+        name: "Execute the Test Refactoring Plan"
+        params:
+          checklist: ${test-refactoring-plan}
+
+      - id: HUMAN_REVIEW
+        type: service-task
+        action: record-human-review-issues
+        name: "Human Review"
+
+      - id: GATE_HUMAN_ISSUES
+        type: gateway
+        binding: human-review-issues-found
+        name: "Issues Found?"
+
+      - id: UPDATE_GUIDELINES
+        type: call-activity
+        process: update-guidelines
+        name: "Fix Issues and Update Guidelines"
+        params:
+          human-review-issues: ${human-review-issues}
+        max-visits: 3
+        on-max-visits: GUIDELINES_LOOP_EXHAUSTED
+
+      - id: COMPILE_TESTS
+        type: call-activity
+        process: compile-tests
+        name: "Compile Tests"
+        params:
+          # A compile fixer inherits the updater's scope.
+          task-name: update-guidelines
+
+      - id: BUILD_SYSTEM
+        type: call-activity
+        process: build-system
+        name: "Build the System"
+
+      - id: START_SYSTEM
+        type: call-activity
+        process: start-system-restart
+        name: "Start the System"
+
+      - id: VERIFY_TESTS_PASS
+        type: call-activity
+        process: verify-tests-pass
+        name: "Verify Tests Pass"
+        # Behaviour-preserving change: full regression, like the refactor cycles.
+        params:
+          suite: ""
+          test-names: ""
+
+      - id: COMMIT_GUIDELINES
+        type: call-activity
+        process: commit
+        name: "Commit Fixes and Guidelines"
+        params:
+          category: system-commit
+          layer: "GUIDELINES"
+
+      - id: REVIEW_CODE_AND_ARCHITECTURE_END
+        type: end-event
+        name: "Code & Architecture Reviewed"
+
+      - id: REFACTORING_PLAN_DECLINED_END
+        type: end-event
+        name: "Refactoring Plan Declined"
+
+      # Loop-cap halt. The `_EXHAUSTED` suffix marks it for the
+      # halt-terminals-are-error-end invariant.
+      - id: GUIDELINES_LOOP_EXHAUSTED
+        type: error-end-event
+        name: "Guidelines Loop Exhausted — the human still found issues after 3 guideline rounds (the rounds so far are committed; re-run the review)"
+
+    sequence-flows:
+      - {from: RESET_CODE_REVIEW,           to: RUN_REVIEWER}
+      - {from: RUN_REVIEWER,                to: SUMMARIZE_REFACTORING_PLAN}
+      - {from: SUMMARIZE_REFACTORING_PLAN,  to: GATE_REFACTORING_NEEDED}
+      - {from: GATE_REFACTORING_NEEDED,     to: APPROVE_PLAN,                  when: "refactoring-needed == true"}
+      - {from: GATE_REFACTORING_NEEDED,     to: HUMAN_REVIEW,                  when: "refactoring-needed == false"}
+      - {from: APPROVE_PLAN,                to: GATE_PLAN_APPROVED}
+      - {from: GATE_PLAN_APPROVED,          to: GATE_SYSTEM_PLAN_PRESENT,      when: "approval-outcome == approved"}
+      - {from: GATE_PLAN_APPROVED,          to: REFACTORING_PLAN_DECLINED_END, when: "approval-outcome == rejected"}
+      - {from: GATE_SYSTEM_PLAN_PRESENT,    to: EXECUTE_SYSTEM_PLAN,           when: "system-refactoring-plan-present == true"}
+      - {from: GATE_SYSTEM_PLAN_PRESENT,    to: GATE_TEST_PLAN_PRESENT,        when: "system-refactoring-plan-present == false"}
+      - {from: EXECUTE_SYSTEM_PLAN,         to: GATE_TEST_PLAN_PRESENT}
+      - {from: GATE_TEST_PLAN_PRESENT,      to: EXECUTE_TEST_PLAN,             when: "test-refactoring-plan-present == true"}
+      - {from: GATE_TEST_PLAN_PRESENT,      to: HUMAN_REVIEW,                  when: "test-refactoring-plan-present == false"}
+      - {from: EXECUTE_TEST_PLAN,           to: HUMAN_REVIEW}
+      - {from: HUMAN_REVIEW,                to: GATE_HUMAN_ISSUES}
+      - {from: GATE_HUMAN_ISSUES,           to: UPDATE_GUIDELINES,             when: "human-review-issues-found == true"}
+      - {from: GATE_HUMAN_ISSUES,           to: REVIEW_CODE_AND_ARCHITECTURE_END, when: "human-review-issues-found == false"}
+      - {from: UPDATE_GUIDELINES,           to: COMPILE_TESTS}
+      - {from: COMPILE_TESTS,               to: BUILD_SYSTEM}
+      - {from: BUILD_SYSTEM,                to: START_SYSTEM}
+      - {from: START_SYSTEM,                to: VERIFY_TESTS_PASS}
+      - {from: VERIFY_TESTS_PASS,           to: COMMIT_GUIDELINES}
+      - {from: COMMIT_GUIDELINES,           to: HUMAN_REVIEW}
 
   # Step 1 calls HIGH `implement-and-verify-system` with
   # `action: refactor-system`. Was the prototype encoded in Item 1 of

@@ -247,6 +247,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	// Both resolve from the tracker (Classify / Subtypes respectively).
 	r.Register("ticket-kind", b.ticketKind)
 	r.Register("task-subtype", b.taskSubtype)
+	// Code & Architecture Review gateways (plan 20261109-1259).
+	registerCodeReview(r, b)
 }
 
 // bindings is a thin closure-receiver so each method has access to deps
@@ -776,12 +778,13 @@ func (b bindings) refactorTypeChoice(ctx *statemachine.Context) statemachine.Out
 		"refactor-test-structure",
 		"redesign-system-structure",
 		"redesign-external-system-structure",
+		"review-code-and-architecture",
 		"none",
 	}
 	answer, err := promptio.SelectOneOfVia(
 		b.deps.Prompter,
 		os.Stderr,
-		"Refactor type? (refactor-system-structure | refactor-test-structure | redesign-system-structure | redesign-external-system-structure | none) [none]: ",
+		"Refactor type? (refactor-system-structure | refactor-test-structure | redesign-system-structure | redesign-external-system-structure | review-code-and-architecture | none) [none]: ",
 		allowed,
 		"none",
 	)
