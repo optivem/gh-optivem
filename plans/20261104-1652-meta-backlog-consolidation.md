@@ -98,7 +98,7 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 
 ## Follow-ups found by the run (not units yet)
 
-- **Spec coverage for .NET/TypeScript (updated 2026-11-06):** scaffolds now ship `spec.yaml` with a per-language `results` glob (Java Gradle XML, .NET `SystemTests/TestResults/**/*.trx`, TS `playwright-report/*.json`). Still missing for `spec record`/`spec check` to work there: (1) the spec parser (`ReadJUnitFiles`) reads JUnit XML only (TRX → 0 tests, Playwright JSON → parse error); (2) shop's .NET/TS system tests carry no `UC-x.y` criterion tags (Java gets them via build.gradle injecting `@Tag` as JUnit properties). Needs a shop plan (tag .NET/TS tests, or emit JUnit XML) plus a gh-optivem parser change; until then .NET/TS story runs fail at RECORD_SPEC_FINGERPRINTS. Also unchecked: Playwright's HTML reporter may clear `playwright-report/` between suites.
+- **Spec coverage for .NET/TypeScript (updated 2026-11-09):** no TRX/Playwright-JSON parser is needed. Shop now tags its .NET (`[Trait("tag", "UC-…")]` + `JunitXml.TestLogger`) and TypeScript (`criteria(…)` annotations + Playwright `junit` reporter) tests and writes JUnit XML, which `internal/spec` already reads; the scaffold `results` globs now point at `SystemTests/TestResults/junit/*.xml` and `junit-results/*.xml`. The remaining gh-optivem work (Gherkin criteria, folder per use case, `status: planned`, no-criteria error) is in `plans/20261107-1300-spec-parse-gherkin-criteria.md`; only its release is left.
 
 ## Rehearsal setup (Linux devcontainer, verified 2026-11-05)
 

@@ -187,17 +187,16 @@ func specResultsReplacements() [][2]string {
 // the scaffold's flat system-test/ layout. Shop's spec.yaml only names the
 // Java Gradle JUnit XML, so for the other languages the glob is replaced with
 // where that language's runner (per shop's system-test/<lang>/tests.yaml)
-// writes its machine-readable results:
-//   - dotnet: `dotnet test --logger 'trx;...'` run in SystemTests/ writes
-//     TRX under SystemTests/TestResults/.
-//   - typescript: Playwright's json reporter writes
-//     PLAYWRIGHT_JSON_OUTPUT_NAME=playwright-report/<suite>.json.
-//
-// Note: the spec parser (internal/spec) reads JUnit XML only, so these paths
-// are located correctly but not yet parsed into tagged tests.
+// writes JUnit XML, the format internal/spec reads:
+//   - dotnet: `dotnet test --logger 'junit;LogFilePath=TestResults/junit/<suite>.xml'`
+//     run in SystemTests/ (JunitXml.TestLogger writes xUnit traits as
+//     testcase properties).
+//   - typescript: Playwright's junit reporter writes
+//     junit-results/<PLAYWRIGHT_JUNIT_OUTPUT_NAME> (annotations become
+//     testcase properties).
 var specResultsGlobs = map[string]string{
-	"dotnet":     Names.TargetSystemTestDir + "/SystemTests/TestResults/**/*.trx",
-	"typescript": Names.TargetSystemTestDir + "/playwright-report/*.json",
+	"dotnet":     Names.TargetSystemTestDir + "/SystemTests/TestResults/junit/*.xml",
+	"typescript": Names.TargetSystemTestDir + "/junit-results/*.xml",
 }
 
 // specResultsKeyRe / specResultsItemRe match spec.yaml's results key and the YAML list items

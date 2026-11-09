@@ -134,6 +134,10 @@ func RenderText(rep Report) string {
 			}
 		}
 	}
+	writeTextList(&b, "Planned use cases (not gated)", len(rep.PlannedUseCases), func(i int) string {
+		p := rep.PlannedUseCases[i]
+		return fmt.Sprintf("%s %s: planned, %d criteria, not gated", p.ID, p.Title, p.Criteria)
+	})
 	writeTextList(&b, "Orphan tests (not linked to any criterion)", len(rep.Orphans), func(i int) string {
 		return fmt.Sprintf("%s: %s", rep.Orphans[i].Name, rep.Orphans[i].Reason)
 	})
@@ -143,6 +147,7 @@ func RenderText(rep Report) string {
 	writeTextList(&b, "Spec validation errors", len(rep.Validation.Errors), func(i int) string {
 		return fmt.Sprintf("%s: %s", rep.Validation.Errors[i].Code, rep.Validation.Errors[i].Message)
 	})
+	writeTextList(&b, "Spec warnings", len(rep.Validation.Warnings), func(i int) string { return rep.Validation.Warnings[i] })
 	if rep.Gate != nil {
 		writeTextList(&b, "Gate reasons", len(rep.Gate.Reasons), func(i int) string { return rep.Gate.Reasons[i] })
 	}
@@ -197,6 +202,18 @@ func writeMDProblems(b *strings.Builder, rep Report) {
 		b.WriteString("\n### Spec validation errors\n\n")
 		for _, e := range rep.Validation.Errors {
 			fmt.Fprintf(b, "- `%s`: %s\n", e.Code, mdText(e.Message))
+		}
+	}
+	if len(rep.Validation.Warnings) > 0 {
+		b.WriteString("\n### Spec warnings\n\n")
+		for _, w := range rep.Validation.Warnings {
+			fmt.Fprintf(b, "- %s\n", mdText(w))
+		}
+	}
+	if len(rep.PlannedUseCases) > 0 {
+		b.WriteString("\n### Planned use cases (not gated)\n\n")
+		for _, p := range rep.PlannedUseCases {
+			fmt.Fprintf(b, "- %s %s: %d criteria\n", mdText(p.ID), mdText(p.Title), p.Criteria)
 		}
 	}
 	if len(rep.Orphans) > 0 {

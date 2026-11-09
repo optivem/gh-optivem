@@ -355,8 +355,23 @@ func runSpecValidate(opts specOptions, out io.Writer) (int, error) {
 		return 0, err
 	}
 	errs := spec.Validate(in.useCases)
+	for _, w := range spec.Warnings(in.useCases) {
+		fmt.Fprintf(out, "WARN %s\n", w)
+	}
 	if len(errs) == 0 {
-		fmt.Fprintf(out, "OK: %d use case(s) valid\n", len(in.useCases))
+		criteria, planned := 0, 0
+		for _, uc := range in.useCases {
+			if uc.Planned() {
+				planned++
+				continue
+			}
+			criteria += len(uc.Criteria)
+		}
+		fmt.Fprintf(out, "OK: %d use case(s) valid, %d criteria gated", len(in.useCases), criteria)
+		if planned > 0 {
+			fmt.Fprintf(out, " (%d planned use case(s) not gated)", planned)
+		}
+		fmt.Fprintln(out)
 		return 0, nil
 	}
 	for _, e := range errs {

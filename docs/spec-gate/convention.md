@@ -18,7 +18,12 @@ This document defines how acceptance criteria are written, how tests link to the
 
 ## 3. Markdown layout
 
-Default spec directory: `docs/use-cases/` (configurable, see section 8). One file per use case.
+Default spec directory: `docs/use-cases/` (configurable, see section 8). Two layouts, which can be mixed:
+
+- **Flat:** one `.md` file per use case directly in the spec directory. `README.md` is skipped (use it as an index).
+- **Folder per use case:** `<specDir>/UC-NNN-<name>/acceptance-criteria.md` is the spec file. Other files in the folder (for example `use-case-narrative.md`, `business-rules.md`) are for people and are not parsed. A `UC-NNN-*` folder whose front-matter `id` differs gets a warning.
+
+Criteria are written as bullets or as tagged Gherkin scenarios.
 
 ```markdown
 ---
@@ -44,10 +49,32 @@ title: Place Order
 Rules:
 
 - Front matter is required and must contain `id` and `title`. Missing or malformed front matter is a validation error.
+- Optional front matter `status: implemented | planned` (default `implemented`). A planned use case is specified but not built yet: it is validated and listed as "planned, N criteria, not gated", but left out of the totals, coverage and threshold.
 - A criterion is a list line: `- <ID>: <text>`, under the scenario or extension it belongs to. The heading it sits under is its grouping context.
 - An optional `[flag: <name>]` follows the ID (see section 6).
 - Everything else in the file is free prose and is ignored.
-- No Gherkin in v1.
+
+Gherkin form, inside a fenced ```` ```gherkin ```` block:
+
+```gherkin
+Feature: Place Order
+
+  @UC-001.1
+  Scenario: Should place order with valid input
+    When the customer places an order
+    Then the order is placed
+
+  @UC-001.8 @narrative-4a
+  Scenario: Should reject order with zero quantity
+    When the customer places an order with quantity 0
+    Then the order is rejected
+```
+
+- Each distinct `@UC-NNN.M` tag on a `Scenario:` / `Scenario Outline:` / `Example:` is one criterion. Other tags (such as `@narrative-4a`) are ignored.
+- Several scenarios may share one tag; they form one criterion whose text is their titles joined with `; ` (so editing any of them marks the criterion Changed).
+- The grouping context is the enclosing `Rule:` title, else the markdown heading above the block.
+- A scenario with two `@UC-…` tags is a validation error (one scenario, one criterion). A scenario with none is a warning: it is not a criterion.
+- Scenarios outside a `gherkin` fence are ignored.
 
 ## 4. Linking tests to criteria
 
@@ -62,8 +89,8 @@ The criterion ID is carried by a test **tag** (JUnit tag, surfaced as a property
 | Stack | Syntax | Notes |
 |---|---|---|
 | Java (JUnit 5) | `@Tag("UC-001.3")`, `@Tag("wip")` | Repeatable; several tags per method. **Stock Gradle does not write tags into the XML** (it writes an empty `<properties/>`), so a `TestExecutionListener` plus a `doLast` step on the `test` task must inject them as `<property>` entries; see below. |
-| .NET (xUnit/NUnit) | `[Trait("Criterion", "UC-001.3")]` / `[Category("UC-001.3")]` | Configure the logger so traits/categories are written as `<property>` entries. |
-| TypeScript (Jest/Playwright/Vitest) | Annotation or title tag, e.g. `{ tag: ["@UC-001.3"] }` | Use a JUnit reporter that emits tags as `<property name="tag" value="UC-001.3">`; a leading `@` is stripped. |
+| .NET (xUnit) | `[Trait("tag", "UC-001.3")]`, one per ID | `JunitXml.TestLogger` (`dotnet test --logger "junit;LogFilePath=..."`) writes each trait as `<property name="tag" value="UC-001.3"/>`. The property name must be lowercase `tag` or `criterion`. |
+| TypeScript (Playwright) | Annotation `{ type: "tag", description: "UC-001.3" }` (shop wraps it as `criteria("UC-001.3")`) | Playwright's built-in `junit` reporter writes annotations as `<property name="tag" value="UC-001.3"/>`; a leading `@` is stripped. |
 | Any other | Emit a `<property>` (name `tag` or `criterion`, value the ID) or a test-case-level tag in JUnit XML | The only contract is that the ID appears as a property value on the `<testcase>`. |
 
 ### Java and Gradle: getting tags into the XML
@@ -126,9 +153,13 @@ A criterion may carry `[flag: <name>]` in the markdown. In strict mode it is exc
 
 `validate` fails (error) on:
 
-- duplicate criterion IDs;
+- duplicate criterion IDs (across files, or a bullet and a scenario with the same ID);
 - a criterion ID whose prefix does not match its use case `id`;
-- malformed or missing front matter.
+- malformed or missing front matter, or a `status` other than `implemented`/`planned`;
+- a Gherkin scenario tagged with more than one criterion ID;
+- an implemented use case with no criteria (so a file in an unreadable format can't pass silently).
+
+It warns (without failing) on a Gherkin scenario with no criterion tag and on a `UC-NNN-*` folder whose front-matter `id` differs.
 
 The report also lists:
 

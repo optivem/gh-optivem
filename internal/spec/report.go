@@ -95,9 +95,19 @@ type UnknownID struct {
 	Test string `json:"test"`
 }
 
-// Validation holds spec validation errors.
+// Validation holds spec validation errors and warnings. Warnings don't fail
+// the gate.
 type Validation struct {
-	Errors []ValidationError `json:"errors"`
+	Errors   []ValidationError `json:"errors"`
+	Warnings []string          `json:"warnings"`
+}
+
+// PlannedUseCase is a use case whose front matter says `status: planned`: it
+// is specified but not built yet, so it is listed but not gated.
+type PlannedUseCase struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Criteria int    `json:"criteria"`
 }
 
 // Gate is the gating verdict, filled in by the gating step.
@@ -113,10 +123,12 @@ type Report struct {
 	Threshold     float64         `json:"threshold"`
 	Summary       Summary         `json:"summary"`
 	UseCases      []ReportUseCase `json:"useCases"`
-	Orphans       []Orphan        `json:"orphans"`
-	UnknownIDs    []UnknownID     `json:"unknownIds"`
-	Validation    Validation      `json:"validation"`
-	Gate          *Gate           `json:"gate,omitempty"`
+	// PlannedUseCases are left out of Summary, coverage and the threshold.
+	PlannedUseCases []PlannedUseCase `json:"plannedUseCases"`
+	Orphans         []Orphan         `json:"orphans"`
+	UnknownIDs      []UnknownID      `json:"unknownIds"`
+	Validation      Validation       `json:"validation"`
+	Gate            *Gate            `json:"gate,omitempty"`
 }
 
 // JSON renders the report as indented JSON.
@@ -147,19 +159,25 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 		}
 	}
 	rep := Report{
-		SchemaVersion: SchemaVersion,
-		Mode:          mode,
-		Threshold:     threshold,
-		UseCases:      []ReportUseCase{},
-		Orphans:       []Orphan{},
-		UnknownIDs:    []UnknownID{},
-		Validation:    Validation{Errors: []ValidationError{}},
+		SchemaVersion:   SchemaVersion,
+		Mode:            mode,
+		Threshold:       threshold,
+		UseCases:        []ReportUseCase{},
+		PlannedUseCases: []PlannedUseCase{},
+		Orphans:         []Orphan{},
+		UnknownIDs:      []UnknownID{},
+		Validation:      Validation{Errors: []ValidationError{}, Warnings: []string{}},
 	}
 	rep.Validation.Errors = append(rep.Validation.Errors, Validate(useCases)...)
+	rep.Validation.Warnings = append(rep.Validation.Warnings, Warnings(useCases)...)
 
 	linked := linkTests(&rep, tests, known)
 
 	for _, uc := range useCases {
+		if uc.Planned() {
+			rep.PlannedUseCases = append(rep.PlannedUseCases, PlannedUseCase{ID: uc.ID, Title: uc.Title, Criteria: len(uc.Criteria)})
+			continue
+		}
 		rep.UseCases = append(rep.UseCases, buildUseCase(uc, linked, waivers, flagsOn, opts.Fingerprints, &rep.Summary))
 	}
 	if rep.Summary.Total > 0 {

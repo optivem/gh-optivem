@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -20,12 +21,31 @@ type Criterion struct {
 
 // UseCase is a parsed use-case markdown file.
 type UseCase struct {
-	ID       string
-	Title    string
+	ID    string
+	Title string
+	// Status is the front matter status: StatusImplemented (the default when
+	// the field is absent) or StatusPlanned. Planned use cases are validated
+	// but left out of coverage and the threshold.
+	Status   string
 	File     string
 	Criteria []Criterion
 	FrontErr string
+	// ParseErrs are content problems found while parsing (for example a
+	// scenario tagged with two criterion IDs); Validate reports them.
+	ParseErrs []string
+	// Warnings are problems that don't fail validation (for example a
+	// Gherkin scenario with no criterion tag).
+	Warnings []string
 }
+
+// Use case statuses (front matter `status:`).
+const (
+	StatusImplemented = "implemented"
+	StatusPlanned     = "planned"
+)
+
+// Planned reports whether the use case is specified but not built yet.
+func (uc UseCase) Planned() bool { return uc.Status == StatusPlanned }
 
 // ValidationError describes one problem found by Validate.
 type ValidationError struct {
@@ -37,6 +57,10 @@ var (
 	useCaseIDPattern = regexp.MustCompile(`^UC-\d+$`)
 	criterionPattern = regexp.MustCompile(`^[-*]\s+(UC-\d+\.\d+)(?:\s+\[flag:\s*([^\]\s][^\]]*?)\s*\])?\s*:\s*(.*)$`)
 	headingPattern   = regexp.MustCompile(`^#{1,6}\s+(.*?)\s*#*\s*$`)
+	fenceOpenPattern = regexp.MustCompile("^\\s*```+\\s*gherkin\\s*$")
+	fenceAnyPattern  = regexp.MustCompile("^\\s*```")
+	ruleHeader       = regexp.MustCompile(`^\s*Rule\s*:\s*(.*?)\s*$`)
+	criterionTagRe   = regexp.MustCompile(`^@(UC-\d+\.\d+)$`)
 )
 
 // Parse parses the markdown content of one use-case file. A front matter
@@ -50,7 +74,20 @@ func Parse(file, content string) UseCase {
 	uc.FrontErr = frontErr
 
 	group := ""
+	var g *gherkinParser
 	for _, line := range body {
+		if g != nil {
+			if fenceAnyPattern.MatchString(line) {
+				g = nil
+				continue
+			}
+			g.line(line)
+			continue
+		}
+		if fenceOpenPattern.MatchString(line) {
+			g = &gherkinParser{uc: &uc, group: group, byID: map[string]int{}}
+			continue
+		}
 		if m := headingPattern.FindStringSubmatch(line); m != nil {
 			group = m[1]
 			continue
@@ -97,6 +134,10 @@ func parseFrontMatter(lines []string, uc *UseCase) ([]string, string) {
 	}
 	uc.ID = fields["id"]
 	uc.Title = fields["title"]
+	uc.Status = fields["status"]
+	if uc.Status == "" {
+		uc.Status = StatusImplemented
+	}
 	if uc.ID == "" {
 		return rest, "front matter is missing id"
 	}
@@ -106,10 +147,23 @@ func parseFrontMatter(lines []string, uc *UseCase) ([]string, string) {
 	if uc.Title == "" {
 		return rest, "front matter is missing title"
 	}
+	if uc.Status != StatusImplemented && uc.Status != StatusPlanned {
+		return rest, fmt.Sprintf("front matter status %q must be %s or %s", uc.Status, StatusImplemented, StatusPlanned)
+	}
 	return rest, ""
 }
 
-// LoadDir parses every .md file directly inside dir, sorted by file name.
+// criteriaFileName is the spec file inside a use-case folder. Other files in
+// the folder (narrative, business rules) are for people and are not parsed.
+const criteriaFileName = "acceptance-criteria.md"
+
+var useCaseFolderPattern = regexp.MustCompile(`^(UC-\d+)-`)
+
+// LoadDir parses the use cases under dir, in two layouts that can be mixed:
+//   - flat: every .md file directly inside dir except README.md;
+//   - folder per use case: <dir>/<folder>/acceptance-criteria.md, one level deep.
+//
+// Results are sorted by file path (folder name for the folder layout).
 func LoadDir(dir string) ([]UseCase, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -117,18 +171,32 @@ func LoadDir(dir string) ([]UseCase, error) {
 	}
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".md") {
+		switch {
+		case e.IsDir():
+			p := filepath.Join(dir, e.Name(), criteriaFileName)
+			if _, err := os.Stat(p); err == nil {
+				names = append(names, e.Name()+"/"+criteriaFileName)
+			} else if !os.IsNotExist(err) {
+				return nil, fmt.Errorf("stat %s: %w", p, err)
+			}
+		case strings.EqualFold(filepath.Ext(e.Name()), ".md") && !strings.EqualFold(e.Name(), "README.md"):
 			names = append(names, e.Name())
 		}
 	}
 	sort.Strings(names)
 	var out []UseCase
 	for _, n := range names {
-		data, err := os.ReadFile(filepath.Join(dir, n))
+		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(n)))
 		if err != nil {
 			return nil, fmt.Errorf("read use case %s: %w", n, err)
 		}
-		out = append(out, Parse(n, string(data)))
+		uc := Parse(n, string(data))
+		if folder, _, ok := strings.Cut(n, "/"); ok {
+			if m := useCaseFolderPattern.FindStringSubmatch(folder); m != nil && uc.FrontErr == "" && m[1] != uc.ID {
+				uc.Warnings = append(uc.Warnings, fmt.Sprintf("folder %s is named for %s but its front matter id is %s", folder, m[1], uc.ID))
+			}
+		}
+		out = append(out, uc)
 	}
 	return out, nil
 }
@@ -141,6 +209,13 @@ func Validate(useCases []UseCase) []ValidationError {
 	for _, uc := range useCases {
 		if uc.FrontErr != "" {
 			errs = append(errs, ValidationError{"front-matter", fmt.Sprintf("%s: %s", uc.File, uc.FrontErr)})
+		}
+		for _, pe := range uc.ParseErrs {
+			errs = append(errs, ValidationError{"criteria", fmt.Sprintf("%s: %s", uc.File, pe)})
+		}
+		if uc.FrontErr == "" && !uc.Planned() && len(uc.Criteria) == 0 {
+			errs = append(errs, ValidationError{"no-criteria",
+				fmt.Sprintf("%s: use case %s has no criteria (expected `- %s.N: text` bullets or Gherkin scenarios tagged @%s.N)", uc.File, uc.ID, uc.ID, uc.ID)})
 		}
 		for _, c := range uc.Criteria {
 			prefix, _, _ := strings.Cut(c.ID, ".")
@@ -157,4 +232,70 @@ func Validate(useCases []UseCase) []ValidationError {
 		}
 	}
 	return errs
+}
+
+// Warnings returns the non-failing problems found in the use cases, each
+// prefixed with its file.
+func Warnings(useCases []UseCase) []string {
+	var out []string
+	for _, uc := range useCases {
+		for _, w := range uc.Warnings {
+			out = append(out, uc.File+": "+w)
+		}
+	}
+	return out
+}
+
+// gherkinParser turns the scenarios of one fenced gherkin block into
+// criteria. Each distinct @UC-NNN.M tag is one criterion; several scenarios
+// may share a tag (for example a scenario and an outline covering the same
+// path), and their titles are joined into the criterion text so a change to
+// any of them changes the criterion fingerprint.
+type gherkinParser struct {
+	uc    *UseCase
+	group string
+	tags  []string
+	byID  map[string]int // criterion ID -> index in uc.Criteria (Gherkin only)
+}
+
+func (g *gherkinParser) line(line string) {
+	t := strings.TrimSpace(line)
+	switch {
+	case t == "" || strings.HasPrefix(t, "#"):
+		return
+	case strings.HasPrefix(t, "@"):
+		g.tags = append(g.tags, strings.Fields(t)...)
+		return
+	}
+	if m := ruleHeader.FindStringSubmatch(t); m != nil {
+		g.group = m[1]
+		g.tags = nil
+		return
+	}
+	m := scenarioHeader.FindStringSubmatch(t)
+	if m == nil {
+		g.tags = nil
+		return
+	}
+	title := m[1]
+	var ids []string
+	for _, tag := range g.tags {
+		if tm := criterionTagRe.FindStringSubmatch(tag); tm != nil && !slices.Contains(ids, tm[1]) {
+			ids = append(ids, tm[1])
+		}
+	}
+	g.tags = nil
+	switch len(ids) {
+	case 0:
+		g.uc.Warnings = append(g.uc.Warnings, fmt.Sprintf("scenario %q has no @UC-N.M tag, so it is not a criterion", title))
+	case 1:
+		if i, ok := g.byID[ids[0]]; ok {
+			g.uc.Criteria[i].Text += "; " + title
+			return
+		}
+		g.byID[ids[0]] = len(g.uc.Criteria)
+		g.uc.Criteria = append(g.uc.Criteria, Criterion{ID: ids[0], Text: title, Group: g.group})
+	default:
+		g.uc.ParseErrs = append(g.uc.ParseErrs, fmt.Sprintf("scenario %q is tagged with %d criterion IDs (%s); tag each scenario with one", title, len(ids), strings.Join(ids, ", ")))
+	}
 }

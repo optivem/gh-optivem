@@ -68,8 +68,8 @@ func TestCopySpec_ResultsPerTestLang(t *testing.T) {
 	}
 	want := map[string]string{
 		"java":       "system-test/build/test-results/**/*.xml",
-		"dotnet":     "system-test/SystemTests/TestResults/**/*.trx",
-		"typescript": "system-test/playwright-report/*.json",
+		"dotnet":     "system-test/SystemTests/TestResults/junit/*.xml",
+		"typescript": "system-test/junit-results/*.xml",
 	}
 	for shape, body := range shopSpecs {
 		for lang, glob := range want {
