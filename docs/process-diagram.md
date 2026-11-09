@@ -211,13 +211,20 @@ flowchart TD
 flowchart TD
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED[Implement External Drivers If Needed]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS["Write Passing Acceptance Tests — see § write-acceptance-tests-and-system-adapters<br/>expected-test-result = success<br/>verify-mode = green-when-complete"]
+    REMOVE_WIP_GATE[[Remove WIP Gate From Green Tests]]
+    COMMIT_WIP_GATE_REMOVAL["Commit WIP Gate Removal — see § commit<br/>category = test-commit<br/>layer = WIP GATE REMOVAL"]
     COVER_END(( ))
 
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED --> WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS
-    WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS --> COVER_END
+    WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS --> REMOVE_WIP_GATE
+    REMOVE_WIP_GATE --> COMMIT_WIP_GATE_REMOVAL
+    COMMIT_WIP_GATE_REMOVAL --> COVER_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class REMOVE_WIP_GATE serviceNode
 
     classDef tddGreenNode stroke:#28a745,stroke-width:3px
-    class IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS tddGreenNode
+    class COMMIT_WIP_GATE_REMOVAL,IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,REMOVE_WIP_GATE,WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS tddGreenNode
 ```
 
 ## Redesign System Structure
