@@ -944,15 +944,17 @@ flowchart TD
     MERGE_USE_CASES[Merge Into Use Cases — see § merge-use-cases]
     MERGE_STORY_END(( ))
     VERIFY_STORY_MERGE[[Verify Story Merge]]
+    LINK_STORY_CRITERIA[[Link Story to Use Case Criteria]]
 
     CHECK_STORY_MERGE_NEEDED --> GATE_STORY_MERGE_NEEDED
     GATE_STORY_MERGE_NEEDED -- Yes --> MERGE_USE_CASES
     GATE_STORY_MERGE_NEEDED -- No --> MERGE_STORY_END
     MERGE_USE_CASES --> VERIFY_STORY_MERGE
-    VERIFY_STORY_MERGE --> MERGE_STORY_END
+    VERIFY_STORY_MERGE --> LINK_STORY_CRITERIA
+    LINK_STORY_CRITERIA --> MERGE_STORY_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CHECK_STORY_MERGE_NEEDED,VERIFY_STORY_MERGE serviceNode
+    class CHECK_STORY_MERGE_NEEDED,LINK_STORY_CRITERIA,VERIFY_STORY_MERGE serviceNode
 ```
 
 ## Merge Use Cases
