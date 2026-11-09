@@ -173,6 +173,8 @@ flowchart TD
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED[Implement External Drivers If Needed]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS["Write Failing Acceptance Tests — see § write-acceptance-tests-and-system-adapters<br/>expected-test-result = failure"]
     IMPLEMENT_AND_VERIFY_SYSTEM["Implement System — see § implement-and-verify-system<br/>action = implement-system<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-system"]
+    REMOVE_WIP_GATE[[Remove WIP Gate From Green Tests]]
+    COMMIT_WIP_GATE_REMOVAL["Commit WIP Gate Removal — see § commit<br/>category = test-commit<br/>layer = WIP GATE REMOVAL"]
     GATE_STORY_SPEC_RECORD{Story?}
     RECORD_SPEC_FINGERPRINTS[Record Spec Fingerprints]
     REFACTOR_OPPORTUNISTICALLY["Opportunistic Refactor (Loopable) — see § refactor"]
@@ -181,18 +183,23 @@ flowchart TD
 
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED --> WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
-    IMPLEMENT_AND_VERIFY_SYSTEM --> GATE_STORY_SPEC_RECORD
+    IMPLEMENT_AND_VERIFY_SYSTEM --> REMOVE_WIP_GATE
+    REMOVE_WIP_GATE --> COMMIT_WIP_GATE_REMOVAL
+    COMMIT_WIP_GATE_REMOVAL --> GATE_STORY_SPEC_RECORD
     GATE_STORY_SPEC_RECORD -- Story --> RECORD_SPEC_FINGERPRINTS
     GATE_STORY_SPEC_RECORD --> REFACTOR_OPPORTUNISTICALLY
     RECORD_SPEC_FINGERPRINTS --> COMMIT_SPEC_FINGERPRINTS
     COMMIT_SPEC_FINGERPRINTS --> REFACTOR_OPPORTUNISTICALLY
     REFACTOR_OPPORTUNISTICALLY --> CHANGE_SYSTEM_BEHAVIOR_END
 
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class REMOVE_WIP_GATE serviceNode
+
     classDef tddRedNode stroke:#dc3545,stroke-width:3px
     class IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS tddRedNode
 
     classDef tddGreenNode stroke:#28a745,stroke-width:3px
-    class COMMIT_SPEC_FINGERPRINTS,IMPLEMENT_AND_VERIFY_SYSTEM,RECORD_SPEC_FINGERPRINTS tddGreenNode
+    class COMMIT_SPEC_FINGERPRINTS,COMMIT_WIP_GATE_REMOVAL,IMPLEMENT_AND_VERIFY_SYSTEM,RECORD_SPEC_FINGERPRINTS,REMOVE_WIP_GATE tddGreenNode
 
     classDef tddRefactorNode stroke:#007bff,stroke-width:3px
     class REFACTOR_OPPORTUNISTICALLY tddRefactorNode
