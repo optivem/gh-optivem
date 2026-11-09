@@ -501,6 +501,31 @@ processes:
         name: "Implement System"
         tdd-stage: green
 
+      # Remove the WIP gate (plan 20261109-1300). Runs once, after the LAST
+      # channel's IMPLEMENT_AND_VERIFY_SYSTEM clone (every touched channel is
+      # green), for stories and bugs alike. The AT writer gated every test it
+      # added with GH_OPTIVEM_RUN_WIP_TESTS, which only the orchestrator's own
+      # verify runs set; until the gate is stripped, CI / local / IDE runs skip
+      # these tests forever. remove-wip-gate strips it from exactly the tests in
+      # `test-names` (the AT writer's list; the contract excursion ran earlier,
+      # see IMPLEMENT_AND_VERIFY_SYSTEM) and the commit lands it as a
+      # test-commit. A ticket whose tests carried no gate leaves a clean tree,
+      # which `gh optivem commit` treats as a no-op.
+      - id: REMOVE_WIP_GATE
+        type: service-task
+        action: remove-wip-gate
+        name: "Remove WIP Gate From Green Tests"
+        tdd-stage: green
+
+      - id: COMMIT_WIP_GATE_REMOVAL
+        type: call-activity
+        process: commit
+        name: "Commit WIP Gate Removal"
+        params:
+          category: test-commit
+          layer: "WIP GATE REMOVAL"
+        tdd-stage: green
+
       # Story only: record the spec fingerprints of the criteria the green
       # acceptance tests just verified. Runs once, after the LAST channel's
       # IMPLEMENT_AND_VERIFY_SYSTEM clone (every channel green and committed),
@@ -543,7 +568,9 @@ processes:
     sequence-flows:
       - {from: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,        to: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS}
       - {from: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS,  to: IMPLEMENT_AND_VERIFY_SYSTEM}
-      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,                 to: GATE_STORY_SPEC_RECORD}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM,                 to: REMOVE_WIP_GATE}
+      - {from: REMOVE_WIP_GATE,                             to: COMMIT_WIP_GATE_REMOVAL}
+      - {from: COMMIT_WIP_GATE_REMOVAL,                     to: GATE_STORY_SPEC_RECORD}
       - {from: GATE_STORY_SPEC_RECORD,                      to: RECORD_SPEC_FINGERPRINTS, when: "ticket-kind == story"}
       - {from: GATE_STORY_SPEC_RECORD,                      to: REFACTOR_OPPORTUNISTICALLY}
       - {from: RECORD_SPEC_FINGERPRINTS,                    to: COMMIT_SPEC_FINGERPRINTS}

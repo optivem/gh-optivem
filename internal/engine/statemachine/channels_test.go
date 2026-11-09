@@ -62,7 +62,7 @@ func TestUnrollSystemChannels_TwoChannels(t *testing.T) {
 	// channel is green.
 	assertSingleEdge(t, proc, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
 	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "IMPLEMENT_AND_VERIFY_SYSTEM_UI")
-	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_UI", "GATE_STORY_SPEC_RECORD")
+	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_UI", "REMOVE_WIP_GATE")
 
 	// The unrolled graph still satisfies every invariant (the spec-fingerprint
 	// commit stays gated behind the channel clones).
@@ -86,7 +86,7 @@ func TestUnrollSystemChannels_SingleChannel(t *testing.T) {
 
 	// The sole channel stitches straight from predecessor to successor.
 	assertSingleEdge(t, proc, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
-	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "GATE_STORY_SPEC_RECORD")
+	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "REMOVE_WIP_GATE")
 }
 
 func TestUnrollSystemChannels_Guards(t *testing.T) {

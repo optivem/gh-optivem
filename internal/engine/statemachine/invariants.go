@@ -96,7 +96,8 @@ func CheckInvariants(eng *Engine) []Violation {
 // (each clone ends in its own verified COMMIT_SYSTEM), then commits the state
 // file. That commit's dispatching predecessor is record-spec-fingerprints,
 // accepted iff the record step is itself reached only from
-// implement-and-verify-system call-activities. See isVerifiedSpecRecord.
+// implement-and-verify-system call-activities. The WIP-gate removal commit
+// (plan 20261109-1300) is accepted the same way. See isVerifiedPostGreenStep.
 func ruleCommitIsVerified(eng *Engine) []Violation {
 	const rule = "commit-is-verified"
 	var out []Violation
@@ -153,7 +154,21 @@ func isVerifyingPredecessor(pn Node, compileOnly bool) bool {
 // implement-and-verify-system call-activities, i.e. it only runs after the
 // system cycle verified the acceptance tests green and committed.
 func isVerifiedSpecRecord(proc *Process, pn Node) bool {
-	if !isCallTo(pn, "record-spec-fingerprints") {
+	return isVerifiedPostGreenStep(proc, pn, 0)
+}
+
+// isVerifiedPostGreenStep accepts the post-green bookkeeping steps whose
+// commits carry no verify of their own: record-spec-fingerprints (D3d) and the
+// remove-wip-gate service task (plan 20261109-1300). Each runs once every
+// channel's implement-and-verify-system clone is green, so it is accepted iff
+// every dispatching predecessor is an implement-and-verify-system call-activity,
+// or a commit whose own predecessor is another accepted post-green step (the
+// steps chain: WIP-gate removal is committed, then the spec record runs).
+func isVerifiedPostGreenStep(proc *Process, pn Node, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	if !isCallTo(pn, "record-spec-fingerprints") && strings.TrimSpace(pn.Raw.Action) != "remove-wip-gate" {
 		return false
 	}
 	preds := dispatchingPredecessors(proc, pn.ID)
@@ -161,8 +176,21 @@ func isVerifiedSpecRecord(proc *Process, pn Node) bool {
 		return false
 	}
 	for _, p := range preds {
-		if !isCallTo(proc.Nodes[p], "implement-and-verify-system") {
+		n := proc.Nodes[p]
+		if isCallTo(n, "implement-and-verify-system") {
+			continue
+		}
+		if !isCallTo(n, "commit") {
 			return false
+		}
+		cps := dispatchingPredecessors(proc, n.ID)
+		if len(cps) == 0 {
+			return false
+		}
+		for _, cp := range cps {
+			if !isVerifiedPostGreenStep(proc, proc.Nodes[cp], depth+1) {
+				return false
+			}
 		}
 	}
 	return true

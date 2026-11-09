@@ -16,11 +16,14 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md`, Q7 + Q8 ("Implement
 
 ## ▶ Next executable step (resume here)
 
-Step 2 is done: the `remove-wip-gate` service task (`internal/atdd/process/actions/wip_gate.go`, tests in `wip_gate_test.go`) strips the gate for Java/.NET/TypeScript from the tests in `test-names`. It skips listed tests that carry no gate (reconciled pre-existing tests are not gated) and fails loudly on a listed test it cannot find. It is registered but **not wired into the BPMN yet**. Next is Step 3: add `REMOVE_WIP_GATE` + a commit call-activity in `change-system-behavior` right after `IMPLEMENT_AND_VERIFY_SYSTEM`. The doc block there says it runs once after the last channel clone, the same spot `GATE_STORY_SPEC_RECORD` relies on, for stories and bugs alike. Audit statemachine fixtures before running tests.
+Steps 2 and 3 are done:
+- `remove-wip-gate` (`internal/atdd/process/actions/wip_gate.go`) is wired into `change-system-behavior` as `IMPLEMENT_AND_VERIFY_SYSTEM → REMOVE_WIP_GATE → COMMIT_WIP_GATE_REMOVAL → GATE_STORY_SPEC_RECORD`. It runs once after the last channel clone, for stories and bugs.
+- The `commit-is-verified` invariant now accepts post-green bookkeeping steps (`isVerifiedPostGreenStep` in `internal/engine/statemachine/invariants.go`).
+
+Next is Step 4: `cover-system-behavior` also runs the AT writer, which gates every test it adds, so covered tests stay gated forever too. Add the same removal after `WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS` there, and extend the invariant exception to accept that predecessor.
 
 ## Steps
 
-- [ ] Step 3: Add the nodes to `process-flow.yaml`. Find out how "last touched channel" is known after `UnrollSystemChannels` (it may be better placed in `change-system-behavior` right after `IMPLEMENT_AND_VERIFY_SYSTEM`, which runs once after all channels).
 - [ ] Step 4: Check `cover-system-behavior` (expected-pass tests): do covered tests get gated at all? If yes, they need the same removal.
 - [ ] Step 5: Update the `acceptance-test-writer.md` gate paragraph (it says "never removed"; it should also gate reconciled pre-existing tests per parent Q8), the `clauderun.go` / `release.go` comments, and the unit/statemachine tests. Run with `-p 2`.
 
@@ -38,4 +41,4 @@ Step 2 is done: the `remove-wip-gate` service task (`internal/atdd/process/actio
 
 ## Open questions
 
-- Placement: inside `implement-and-verify-system` after the last channel, or once in `change-system-behavior` after `IMPLEMENT_AND_VERIFY_SYSTEM`? The second looks simpler; Step 3 confirms.
+- ~~Placement~~ Decided: once in `change-system-behavior` after `IMPLEMENT_AND_VERIFY_SYSTEM` (runs after the last channel clone).

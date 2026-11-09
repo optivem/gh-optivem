@@ -1365,11 +1365,29 @@ func TestImplementTicket_StoryMergesIntoUseCasesFirst(t *testing.T) {
 // (every channel clone green and committed) and before the refactor, then
 // commits the state file. Bugs skip it: they carry no merged-criteria. The
 // record command is scoped to merged-criteria and creates a missing state file.
+// The WIP gate is stripped once every touched channel is green, for stories and
+// bugs alike, before the story-only spec record (plan 20261109-1300).
+func TestChangeSystemBehavior_RemovesWipGateAfterGreen(t *testing.T) {
+	eng := loadSnapshot(t)
+	csb := eng.Processes["change-system-behavior"]
+
+	wantEdge(t, csb, "IMPLEMENT_AND_VERIFY_SYSTEM", "REMOVE_WIP_GATE", "")
+	wantEdge(t, csb, "REMOVE_WIP_GATE", "COMMIT_WIP_GATE_REMOVAL", "")
+	wantEdge(t, csb, "COMMIT_WIP_GATE_REMOVAL", "GATE_STORY_SPEC_RECORD", "")
+	if got := csb.Nodes["REMOVE_WIP_GATE"].Raw.Action; got != "remove-wip-gate" {
+		t.Errorf("REMOVE_WIP_GATE action = %q, want remove-wip-gate", got)
+	}
+	commit := csb.Nodes["COMMIT_WIP_GATE_REMOVAL"]
+	if commit.Raw.Process != "commit" || commit.Raw.Params["category"] != "test-commit" {
+		t.Errorf("COMMIT_WIP_GATE_REMOVAL = process %q category %q, want commit / test-commit", commit.Raw.Process, commit.Raw.Params["category"])
+	}
+}
+
 func TestChangeSystemBehavior_StoryRecordsSpecFingerprints(t *testing.T) {
 	eng := loadSnapshot(t)
 	csb := eng.Processes["change-system-behavior"]
 
-	wantEdge(t, csb, "IMPLEMENT_AND_VERIFY_SYSTEM", "GATE_STORY_SPEC_RECORD", "")
+	wantEdge(t, csb, "COMMIT_WIP_GATE_REMOVAL", "GATE_STORY_SPEC_RECORD", "")
 	notEdge(t, csb, "IMPLEMENT_AND_VERIFY_SYSTEM", "REFACTOR_OPPORTUNISTICALLY")
 	wantEdge(t, csb, "GATE_STORY_SPEC_RECORD", "RECORD_SPEC_FINGERPRINTS", "ticket-kind == story")
 	wantEdge(t, csb, "GATE_STORY_SPEC_RECORD", "REFACTOR_OPPORTUNISTICALLY", "")
