@@ -1076,9 +1076,10 @@ const projectExistsQuery = `query($login:String!,$number:Int!){%s(login:$login){
 
 // realCheckProjectExists is the production CheckProjectExistsFn. Parses
 // the URL into (ownerKind, owner, number) and probes the project via a
-// minimal GraphQL query. A non-zero exit covers both "doesn't exist" and
-// "exists but caller can't read it" — same operator-visible failure
-// either way (`gh optivem init` will fail at the same step).
+// minimal GraphQL query. GitHub answers NOT_FOUND both for a missing
+// project and for one the caller can't read, so those two stay one
+// message. Any other failure (auth, missing token scope, network, 5xx)
+// is not an answer about the project and is reported with gh's output.
 func realCheckProjectExists(url string) error {
 	ownerKind, owner, number, err := parseProjectURL(url)
 	if err != nil {
@@ -1089,11 +1090,22 @@ func realCheckProjectExists(url string) error {
 		"-F", "login="+owner,
 		"-F", "number="+strconv.Itoa(number),
 		"-f", "query="+query)
-	cmd.Stderr = nil
-	if err := cmd.Run(); err != nil {
+	out, runErr := cmd.CombinedOutput()
+	return classifyProjectProbe(owner, number, string(out), runErr)
+}
+
+// classifyProjectProbe turns the gh GraphQL probe result into the
+// CheckProjectExistsFn verdict. Split out of realCheckProjectExists so the
+// classification is unit-testable without shelling out to gh.
+func classifyProjectProbe(owner string, number int, out string, runErr error) error {
+	if runErr == nil {
+		return nil
+	}
+	if strings.Contains(out, "NOT_FOUND") || strings.Contains(out, "Could not resolve to") {
 		return fmt.Errorf("project %s/%d not found or not accessible", owner, number)
 	}
-	return nil
+	return fmt.Errorf("could not check project %s/%d (%v): %s\nIf this is a token scope error, run: gh auth refresh -s read:project",
+		owner, number, runErr, strings.TrimSpace(out))
 }
 
 // parseProjectURL splits a GitHub Project (v2) URL into ownerKind
