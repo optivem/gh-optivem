@@ -1485,6 +1485,7 @@ func TestBackEdgesAreAudited(t *testing.T) {
 	eng := loadSnapshot(t)
 	want := map[string]bool{
 		"execute-agent: FIX -> RUN_AGENT":                                           true,
+		"execute-agent: REQUEST_REVISION -> RUN_AGENT":                              true,
 		"execute-command: FIX -> RUN_COMMAND":                                       true,
 		"refactor: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE": true,
 		"refactor: REDESIGN_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":          true,

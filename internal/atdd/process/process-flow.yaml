@@ -1015,6 +1015,9 @@ processes:
           expected-test-result: ${expected-test-result}
           test-category: acceptance
           suite: acceptance
+          # Red DSL reviewer for the acceptance-test path (plan 20261109-1257);
+          # read by implement-dsl's `reviewer: ${dsl-reviewer}`.
+          dsl-reviewer: review-dsl
           # Acceptance test list: the tests the AT writer just authored.
           # Threaded into implement-test-layer so VERIFY_TESTS_FAIL_FILTERED
           # selects only those methods rather than running the full suite.
@@ -1372,6 +1375,9 @@ processes:
           expected-test-result: success
           test-category: contract
           suite: contract-real
+          # No DSL reviewer on the contract-test path (plan 20261109-1257): the
+          # dsl-reviewer checks against the Acceptance Criteria.
+          dsl-reviewer: ""
           # External-system discriminator for the DSL commit label, e.g.
           # " (external: erp)". Resolves against the external clone's baked
           # external-system-name (channels.go UnrollExternalSystems), keeping
@@ -2242,6 +2248,10 @@ processes:
           agent: acceptance-test-writer
           # test-agent tier: writing tests is the test-contract step.
           category: test-agent
+          # Red reviewer (plan 20261109-1257): every Given/When/Then has a
+          # line, values match, tags are right, nothing extra.
+          reviewer: review-acceptance-tests
+          approver-role: "QA and/or Developers"
         read:  [at-test, dsl-port, common, common-domain]
         write: [at-test, dsl-port, dsl-core, common, common-domain]
         scope-rationale: |
@@ -2382,6 +2392,12 @@ processes:
           agent: dsl-implementer
           # system-agent tier: production-code writing agent.
           category: system-agent
+          # Red reviewer (plan 20261109-1257): business vocabulary matches the
+          # use case. Threaded per call site: review-dsl on the acceptance-test
+          # path, "" on the contract-test path (the reviewer checks against the
+          # Acceptance Criteria, not the External System Contract Criteria).
+          reviewer: ${dsl-reviewer}
+          approver-role: "Developers"
         # Adapters are in scope because dsl-implementer adds throwing-TODO
         # stub bodies in the impl classes whenever it adds a new method
         # signature to a port (interfaces hold signatures only).
@@ -2495,6 +2511,10 @@ processes:
           agent: system-driver-adapter-implementer
           # system-agent tier: production-code writing agent.
           category: system-agent
+          # Red reviewer (plan 20261109-1257): one port method per use case,
+          # request/response types, consistent REST design.
+          reviewer: review-system-driver-adapters
+          approver-role: "Developers"
         read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared, common, common-domain]
         # This node is shared: UnrollSystemDriverAdapterChannels clones it
         # once per channel (binding a `channel` param). The scope checker
@@ -3369,6 +3389,20 @@ processes:
   # call site from `fix` itself) skip remediation and let POST approval
   # see the broken state. The fix recovery re-enters execute-agent, so
   # the fix agent gets its own snapshot step automatically.
+  #
+  # Red reviewer loop (plan 20261109-1257). A caller may pass two more
+  # params: `reviewer` (a reviewer MID: review-acceptance-tests,
+  # review-dsl, review-system-driver-adapters) and `approver-role` (who
+  # approves: "QA and/or Developers" for acceptance tests, "Developers" for
+  # DSL and drivers). Without `reviewer` (every other call site) the flow
+  # is unchanged: valid output goes straight to APPROVE_POST. With it, valid
+  # output goes to RUN_REVIEWER, which calls the reviewer MID (itself an
+  # execute-agent dispatch of a read-only `*-reviewer` agent). Blocking
+  # findings go back to RUN_AGENT through REQUEST_REVISION (the findings
+  # reach the writer's prompt), capped at 2 revision passes; a clean
+  # verdict, or the cap, goes to SUMMARIZE_REVIEW and the human approves
+  # with the findings and approver role in the question. Non-blocking
+  # findings never loop; they only show at approval.
   execute-agent:
     name: "Execute Agent"
     diagram-no-inline-expand: true
@@ -3467,6 +3501,43 @@ processes:
         max-visits: 2
         on-max-visits: AGENT_FIX_EXHAUSTED
 
+      # Red reviewer loop (plan 20261109-1257); see the doc-block above.
+      - id: GATE_REVIEWER_CONFIGURED
+        type: gateway
+        binding: reviewer-configured
+        name: "Reviewer Configured?"
+
+      # Calls the reviewer MID named by the `reviewer` param. The MID passes
+      # `reviewer: ""` so its own execute-agent does not review again.
+      - id: RUN_REVIEWER
+        type: call-activity
+        process: ${reviewer}
+        name: "Review the Agent Output"
+
+      - id: GATE_REVIEW_FINDINGS
+        type: gateway
+        binding: review-has-blocking-findings
+        name: "Blocking Review Findings?"
+
+      # Hands the blocking findings to the writer's re-dispatch and clears the
+      # verdict. Revision cap (decision: 2 passes): the 3rd arrival skips the
+      # re-dispatch and goes to SUMMARIZE_REVIEW, so the human adjudicates the
+      # remaining findings; more passes would mean writer and reviewer
+      # disagree, which is a human call. Bounds the REQUEST_REVISION ->
+      # RUN_AGENT back-edge; the FIX cap above still bounds invalid output
+      # within a revision.
+      - id: REQUEST_REVISION
+        type: service-task
+        action: request-review-revision
+        name: "Send Blocking Findings to the Agent"
+        max-visits: 2
+        on-max-visits: SUMMARIZE_REVIEW
+
+      - id: SUMMARIZE_REVIEW
+        type: service-task
+        action: summarize-review
+        name: "Summarize Review Findings"
+
       - id: APPROVE_POST
         type: call-activity
         process: approve
@@ -3476,6 +3547,19 @@ processes:
           # Threaded from the writing-agent MID caller; same tier as
           # APPROVE_PRE so opting in/out of the dispatch tier toggles
           # both gates symmetrically.
+          category: ${category}
+
+      # Reviewed variant of APPROVE_POST: names the approver role and lists
+      # the reviewer's findings (review-summary, rendered by
+      # SUMMARIZE_REVIEW). A separate node because ${approver-role} and
+      # ${review-summary} only exist on the reviewed path, and the question
+      # expands strictly.
+      - id: APPROVE_POST_REVIEWED
+        type: call-activity
+        process: approve
+        name: "Confirm Approval (Reviewed)"
+        params:
+          question: "Approve output from agent ${task-name}? Approver: ${approver-role}.${review-summary}"
           category: ${category}
 
       - id: GATE_APPROVED_POST
@@ -3569,12 +3653,20 @@ processes:
       - {from: GATE_SCOPE_EXCEPTION_NEEDS_ESCC, to: ESCC_UNDECLARED_HALT,           when: "scope-exception-kind == escc-undeclared"}
       - {from: GATE_SCOPE_EXCEPTION_NEEDS_ESCC, to: CONTRADICTORY_TESTS_HALT,       when: "scope-exception-kind == contradictory-tests"}
       - {from: GATE_SCOPE_EXCEPTION_NEEDS_ESCC, to: STOP_SCOPE_VIOLATION,           when: "scope-exception-kind == other"}
-      - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: APPROVE_POST,        when: "outputs-and-scopes-valid == true"}
+      - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: GATE_REVIEWER_CONFIGURED, when: "outputs-and-scopes-valid == true"}
       - {from: GATE_OUTPUTS_AND_SCOPES_VALID, to: GATE_FIX_ON_FAILURE, when: "outputs-and-scopes-valid == false"}
       - {from: GATE_FIX_ON_FAILURE,           to: FIX,             when: "fix-on-failure-enabled == true"}
       - {from: GATE_FIX_ON_FAILURE,           to: APPROVE_POST,         when: "fix-on-failure-enabled == false"}
       - {from: FIX,                      to: RUN_AGENT}
+      - {from: GATE_REVIEWER_CONFIGURED,      to: RUN_REVIEWER,          when: "reviewer-configured == true"}
+      - {from: GATE_REVIEWER_CONFIGURED,      to: APPROVE_POST,          when: "reviewer-configured == false"}
+      - {from: RUN_REVIEWER,                  to: GATE_REVIEW_FINDINGS}
+      - {from: GATE_REVIEW_FINDINGS,          to: REQUEST_REVISION,      when: "review-has-blocking-findings == true"}
+      - {from: GATE_REVIEW_FINDINGS,          to: SUMMARIZE_REVIEW,      when: "review-has-blocking-findings == false"}
+      - {from: REQUEST_REVISION,              to: RUN_AGENT}
+      - {from: SUMMARIZE_REVIEW,              to: APPROVE_POST_REVIEWED}
       - {from: APPROVE_POST,                  to: GATE_APPROVED_POST}
+      - {from: APPROVE_POST_REVIEWED,         to: GATE_APPROVED_POST}
       - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_END,                  when: "approval-outcome == approved"}
       - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_OUTPUT_REJECTED_END,  when: "approval-outcome == rejected"}
 
@@ -3713,6 +3805,10 @@ processes:
           # at human via execute-agent's threading.
           category: human
           fix-on-failure: "false"
+          # No review of the fixer's own output: the outer execute-agent's
+          # FIX -> RUN_AGENT loop re-validates and re-reviews the writer
+          # (plan 20261109-1257). Overrides the inherited `reviewer`.
+          reviewer: ""
           # originating-task-name carries the OUTER MID's task-name (e.g.
           # "write-acceptance-tests") through the fix dispatch so the inner
           # validate-outputs-and-scopes (and the dispatcher's ${scope_block}

@@ -17,6 +17,8 @@ ${acceptance-criteria}
 
 ${use-case-traceability}
 
+${review-findings-section}
+
 ## Steps
 
 1. For every Acceptance Criterion, write a corresponding Acceptance Test (`${at-test}`). This should be a mechanical 1:1 translation — translate every AC item, and do not classify items as acceptance-vs-contract or reason about what other cycles (contract tests, adapters) do; that is out of your lane. (One carve-out to "do not touch what the ticket didn't author": when the ticket *changes a rule that existing acceptance tests already encode*, reconciling those pre-existing tests **is** in your lane — see **Behavior-change tickets** below. The 1:1 rule still governs how you author the new test; it does not license leaving the suite self-contradictory.) Add the WIP gate to every Acceptance Test method you add, and to every pre-existing one you modify (see **Behavior-change tickets** below), *alongside* its existing channel-parameterization annotations/wrapper — the gate is additive, not a replacement for the test's declaration. Follow the language-specific shape exactly:

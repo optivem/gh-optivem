@@ -243,11 +243,14 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 		FailingTaskName:     "implement-system",
 		MissingOutputs:      "some-key: string",
 		ViolatingPaths:      "system/Bar.java",
-		ScopeRead:           []string{"at-test"},
-		ScopeWrite:          []string{"system-driver-adapter"},
-		AttemptNumber:       1,
-		AttemptMax:          2,
-		Placeholders:        ph,
+		// Reviewer findings a Red writer re-dispatch renders into
+		// ${review-findings-section} (plan 20261109-1257).
+		ReviewFindings: "FooTest.java: scenario line `Then the order succeeds` has no assertion",
+		ScopeRead:      []string{"at-test"},
+		ScopeWrite:     []string{"system-driver-adapter"},
+		AttemptNumber:  1,
+		AttemptMax:     2,
+		Placeholders:   ph,
 		NodeParams: map[string]string{
 			"channel":              channel,
 			"common":               "true",

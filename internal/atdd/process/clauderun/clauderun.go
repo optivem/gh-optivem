@@ -183,6 +183,14 @@ type Options struct {
 	// that start past it; the section then renders as nothing.
 	ScenarioCriteria string
 
+	// ReviewFindings carries the blocking findings an adversarial reviewer
+	// raised against this agent's previous pass (plan 20261109-1257), stamped
+	// by execute-agent's REQUEST_REVISION into ctx.State as
+	// "review-revision-findings" and cleared by SUMMARIZE_REVIEW. Rendered into
+	// ${review-findings-section} so the re-dispatched Red writer fixes them.
+	// Empty on every first dispatch; the section then renders as nothing.
+	ReviewFindings string
+
 	// ParsedConcepts is the absolute path to the parsed-concepts artifact
 	// materialize_parsed_concepts writes at the start of the
 	// backlog_refinement sub-process. Substituted into
@@ -960,6 +968,9 @@ func renderPrompt(opts Options) (string, error) {
 	// Always registered: empty (renders nothing) unless the story was merged
 	// into the use cases, so bug and task prompts are unchanged.
 	params["use-case-traceability"] = renderTraceabilitySection(opts.ScenarioCriteria)
+	// Always registered: empty (renders nothing) unless a reviewer sent this
+	// Red writer back with blocking findings (plan 20261109-1257).
+	params["review-findings-section"] = renderReviewFindingsSection(opts.ReviewFindings)
 	// Checklist is load-bearing for the four task subtypes whose cycles
 	// consume ${checklist} (system-redesign, external-system-redesign,
 	// system-refactor, test-refactor). Same rationale as
@@ -1425,6 +1436,24 @@ func renderTraceabilitySection(scenarioCriteria string) string {
 		}
 	}
 	b.WriteString("\nTag syntax: Java `@Tag(\"UC-001.3\")`; .NET `[Trait(\"Criterion\", \"UC-001.3\")]`; TypeScript `{ tag: [\"@UC-001.3\"] }`. Add the tag next to the test's existing annotations; it never replaces the channel or WIP-gate declarations.\n")
+	return b.String()
+}
+
+// renderReviewFindingsSection renders the blocking findings a reviewer raised
+// against the writer's previous pass (plan 20261109-1257), or "" when there
+// are none.
+func renderReviewFindingsSection(findings string) string {
+	if strings.TrimSpace(findings) == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("### Reviewer findings to fix\n\n")
+	b.WriteString("An adversarial reviewer checked your previous output against the spec and raised these blocking findings. Your previous output is still in the working tree: fix each finding there, and change nothing else.\n\n")
+	for _, line := range strings.Split(findings, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			b.WriteString("- " + strings.TrimLeft(line, "-* ") + "\n")
+		}
+	}
 	return b.String()
 }
 

@@ -170,6 +170,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("fix-loop-progressing", b.fixLoopProgressing)
 	r.Register("expected-test-result", b.expectedTestResult)
 	r.Register("fix-on-failure-enabled", b.fixOnFailureEnabled)
+	// Red reviewer loop in execute-agent (plan 20261109-1257).
+	// GATE_REVIEWER_CONFIGURED: true iff the call site passed a non-empty
+	// `reviewer` param (the reviewer MID to call). GATE_REVIEW_FINDINGS: the
+	// reviewer's required bool verdict, strict like the port-changed flags.
+	r.Register("reviewer-configured", b.reviewerConfigured)
+	r.Register("review-has-blocking-findings", b.reviewHasBlockingFindings)
 	// Port-changed verdicts: the writing-agent output flags consumed by the
 	// per-test-layer fanout in implement-and-verify-dsl and the parent re-gates.
 	// Both AT and CT cascades run sequentially, so each cascade reads the shared
@@ -460,6 +466,29 @@ func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Ou
 		return statemachine.Outcome{Err: fmt.Errorf("fix-on-failure-enabled: unrecognised value %q (expected true|false|yes|no)", raw)}
 	}
 	return statemachine.Outcome{Bool: yes}
+}
+
+// reviewerConfigured is GATE_REVIEWER_CONFIGURED in execute-agent (plan
+// 20261109-1257). The Red writer MIDs pass `reviewer: <review MID>`; every
+// other call site omits it, and the reviewer MIDs and `fix` pass "" so the
+// nested execute-agent does not review again (params inherit down the stack).
+func (b bindings) reviewerConfigured(ctx *statemachine.Context) statemachine.Outcome {
+	return statemachine.Outcome{Bool: strings.TrimSpace(ctx.Params["reviewer"]) != ""}
+}
+
+// reviewHasBlockingFindings is GATE_REVIEW_FINDINGS in execute-agent (plan
+// 20261109-1257): the reviewer's required verdict. Strict — unset means the
+// reviewer skipped its `output write`, which validate-outputs-and-scopes
+// would already have routed to the missing-output fixer. The one legitimate
+// absence is an operator declining the reviewer's own PRE approval (the
+// reviewer never ran; approval-outcome is still "rejected"): that is a
+// definite "no review", so route as no blocking findings and let
+// summarize-review say the review was skipped.
+func (b bindings) reviewHasBlockingFindings(ctx *statemachine.Context) statemachine.Outcome {
+	if _, ok := ctx.State["review-has-blocking-findings"]; !ok && ctx.GetString("approval-outcome") == "rejected" {
+		return statemachine.Outcome{Bool: false}
+	}
+	return boolStateGate(ctx, "review-has-blocking-findings")
 }
 
 // dslPortChanged, systemDriverPortChanged, externalDriverPortChanged are the

@@ -126,4 +126,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	// GH_OPTIVEM_RUN_WIP_TESTS gate from the ticket's acceptance tests once they
 	// pass on every touched channel, so CI runs them from then on. See wip_gate.go.
 	r.Register("remove-wip-gate", a.removeWipGate)
+	// Red reviewer loop in execute-agent (plan 20261109-1257). request-review-
+	// revision hands blocking findings to the writer's re-dispatch;
+	// summarize-review renders the findings for APPROVE_POST_REVIEWED. Both
+	// clear the reviewer's verdict keys so no stale verdict leaks into the
+	// next pass or phase. See review.go.
+	r.Register("request-review-revision", a.requestReviewRevision)
+	r.Register("summarize-review", a.summarizeReview)
 }

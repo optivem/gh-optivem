@@ -24,13 +24,10 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md` ("Execute Agent" dia
 
 ## ▶ Next executable step (resume here)
 
-Step 3: add the reviewer nodes to `execute-agent`. Steps 1–2 are done: the three `*-reviewer` prompts, the shared `adversarial-review.md` chunk, and the three read-only reviewer MIDs (`review-acceptance-tests`, `review-dsl`, `review-system-driver-adapters`, `write: []`, output contract `review-has-blocking-findings` + `blocking-findings` / `non-blocking-findings`) exist but are not yet called.
+Step 6: pin the API-before-UI channel order. Steps 1–5 are done: the reviewer agents and MIDs exist, `execute-agent` has the reviewer loop (`GATE_REVIEWER_CONFIGURED → RUN_REVIEWER → GATE_REVIEW_FINDINGS → REQUEST_REVISION (max-visits 2) → RUN_AGENT | SUMMARIZE_REVIEW → APPROVE_POST_REVIEWED`), the three Red writer MIDs pass `reviewer` + `approver-role` (the DSL reviewer only on the acceptance-test path, via `dsl-reviewer`), and blocking findings reach the writer's prompt as `${review-findings-section}`.
 
 ## Steps
 
-- [ ] Step 3: Add the reviewer nodes and `reviewer` param to `execute-agent` in `process-flow.yaml`, with a `max-visits` cap on the findings → writer loop. Audit the new loop-back for statemachine deadlocks before running tests.
-- [ ] Step 4: Set `reviewer:` at the three Red call sites (`write-acceptance-tests`, `implement-dsl`, `implement-system-driver-adapters`). Check that the contract-test cascade's DSL dispatch is not affected unless intended.
-- [ ] Step 5: Pass the findings and approver role into the `APPROVE_POST` question text.
 - [ ] Step 6: Pin the API-before-UI order in `RESOLVE_CHANNEL`.
 - [ ] Step 7: Tests: render matrix (monolith + multitier) for the new agents, statemachine tests for the new nodes, and `bpmn-logic-audit` on the change. Run with `-p 2`.
 
