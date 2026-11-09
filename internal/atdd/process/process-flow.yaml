@@ -2576,8 +2576,10 @@ processes:
         params:
           task-name: review-acceptance-tests
           agent: acceptance-test-reviewer
-          # Same tier as the writer it reviews (write-acceptance-tests).
-          category: test-agent
+          # Command tier: the reviewer is read-only, so its own pre/post approvals
+          # auto-yes under --auto; the human sees its findings at the writer's
+          # APPROVE_POST_REVIEWED instead.
+          category: command
           reviewer: ""
         read:  [at-test, dsl-port, dsl-core, common, common-domain]
         write: []
@@ -2609,8 +2611,7 @@ processes:
         params:
           task-name: review-dsl
           agent: dsl-reviewer
-          # Same tier as the writer it reviews (implement-dsl).
-          category: system-agent
+          category: command
           reviewer: ""
         read:  [dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, common, common-domain]
         write: []
@@ -2642,8 +2643,7 @@ processes:
         params:
           task-name: review-system-driver-adapters
           agent: system-driver-adapter-reviewer
-          # Same tier as the writer it reviews (implement-system-driver-adapters).
-          category: system-agent
+          category: command
           reviewer: ""
         read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared, common, common-domain]
         write: []
