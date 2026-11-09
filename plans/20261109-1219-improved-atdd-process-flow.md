@@ -488,7 +488,7 @@ This file is the umbrella design (Q1). The work is split into one plan per stage
 | Docs | Step 1 below (this file) | ready |
 | 1. Align | `plans/20261109-1255-align-refinement-loop.md` | to review |
 | 2. Use case format | `plans/20261109-1256-use-case-format-and-story-link.md` | to review (coordinate with shop plan 20261106-1533) |
-| 3. Red reviewers | `plans/20261109-1257-red-reviewer-agents.md` | to review |
+| 3. Red reviewers | ~~`plans/20261109-1257-red-reviewer-agents.md`~~ | **done** (commits 7aad5a58, f62fbf69 and the Step 6/7 commit): three read-only `*-reviewer` agents check the Red writers' output before approval; blocking findings go back to the writer (2 passes max), the approval names the approver role and lists the findings; channels run API before UI. Operator: gift-wrap rehearsal on shop with a planted dropped `.then().shouldSucceed()` and confirm the AT reviewer flags it. |
 | 4/6. AC policy | `plans/20261109-1258-ac-delete-and-generate.md` | to review (ordering vs. use-case format plan) |
 | 5a. Code & Architecture Review | `plans/20261109-1259-code-architecture-review.md` | to review |
 | 4. Green: WIP gate removal | ~~`plans/20261109-1300-remove-wip-gate-at-green.md`~~ | **done** (commits 83c01a71, 95c8cc5f and the Step 4/5 commit): gate stripped after Green in change-system-behavior and cover-system-behavior. Operator: re-run a shop rehearsal (e.g. #71 gift-wrap) and confirm the final commit has no gate and the pipeline runs the tests. |

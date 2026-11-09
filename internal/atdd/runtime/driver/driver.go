@@ -564,11 +564,12 @@ func unrollProjectTopology(eng *statemachine.Engine, cfg *projectconfig.Config) 
 	if cfg == nil {
 		return nil
 	}
-	if len(cfg.Channels) > 0 {
-		if err := eng.UnrollSystemChannels(cfg.Channels); err != nil {
+	if channels := cfg.ExecutionChannels(); len(channels) > 0 {
+		// API before UI, whatever order channels: lists (plan 20261109-1257).
+		if err := eng.UnrollSystemChannels(channels); err != nil {
 			return fmt.Errorf("driver: unroll system channels: %w", err)
 		}
-		if err := eng.UnrollSystemDriverAdapterChannels(cfg.Channels); err != nil {
+		if err := eng.UnrollSystemDriverAdapterChannels(channels); err != nil {
 			return fmt.Errorf("driver: unroll system driver adapter channels: %w", err)
 		}
 	}

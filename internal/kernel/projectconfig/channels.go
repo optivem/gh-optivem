@@ -17,7 +17,8 @@ import (
 // has: a driver (MyShopApiDriver / MyShopUiDriver), a ChannelType constant, and
 // that acceptance partition pair.
 // channels: therefore *selects a subset* of these — narrow to [api] for an
-// API-only project, or reorder — it does not declare arbitrary new channels.
+// API-only project — it does not declare arbitrary new channels, and its
+// order does not change the implementation order (see ExecutionChannels).
 // Adding a genuinely new channel (cli, grpc) means building its driver +
 // testkit and extending this enum, not editing config.
 const (
@@ -42,6 +43,23 @@ var canonicalChannels = []string{ChannelAPI, ChannelUI}
 func DefaultChannels() []string {
 	out := make([]string, len(canonicalChannels))
 	copy(out, canonicalChannels)
+	return out
+}
+
+// ExecutionChannels returns the project's channels in implementation order:
+// canonical order (API before UI), whatever order channels: lists them in.
+// The API channel goes first so the first (common:true) channel builds the
+// shared layer behind the API, and the UI channel then only adds its adapter
+// delta on top of an already-working backend (plan 20261109-1257). The
+// per-channel unrolls and the scoped --target resume both read this, so a
+// full run and a scoped resume agree on which channel is first.
+func (c *Config) ExecutionChannels() []string {
+	out := make([]string, 0, len(c.Channels))
+	for _, ch := range canonicalChannels {
+		if slices.Contains(c.Channels, ch) {
+			out = append(out, ch)
+		}
+	}
 	return out
 }
 

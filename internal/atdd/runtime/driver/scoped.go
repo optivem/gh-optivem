@@ -149,7 +149,7 @@ func resolveScopedEntry(target Target, channel string, cfg *projectconfig.Config
 			// D-common option b: the FIRST channel carries the channel-agnostic
 			// common layer; later channels are common:false deltas. Same
 			// first-channel rule UnrollSystemChannels applies (i == 0).
-			sCtx.Params["common"] = boolStr(channel == cfg.Channels[0])
+			sCtx.Params["common"] = boolStr(channel == cfg.ExecutionChannels()[0])
 			// `acceptance-<channel>` is the per-channel group alias (testselect),
 			// expanded by the CLI to both the parallel and isolated partitions —
 			// matching UnrollSystemChannels so a scoped resume covers identical
@@ -191,7 +191,7 @@ func checkUpstreamDone(target Target, channel string, cfg *projectconfig.Config,
 			fmt.Sprintf("run `gh optivem implement --target driver-adapter --channel %s` and commit it first", channel)); err != nil {
 			return err
 		}
-		if first := cfg.Channels[0]; channel != first {
+		if first := cfg.ExecutionChannels()[0]; channel != first {
 			if err := requireDone(repoPath, fmt.Sprintf("the common layer (built on the first channel %q)", first),
 				commonFootprint(cfg),
 				fmt.Sprintf("run `gh optivem implement --target system --channel %s` first so the common layer lands", first)); err != nil {

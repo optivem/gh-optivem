@@ -1244,7 +1244,9 @@ processes:
       # shared-contract's RED acceptance verify wrote it before this driver-adapter
       # tail runs (write-and-verify-acceptance-tests: SHARED_CONTRACT precedes
       # GATE_SYSTEM_DRIVER_PORTS_CHANGED → this clone). An API-only ticket reads an
-      # empty UI report → the UI adapter clone skips.
+      # empty UI report → the UI adapter clone skips. Clone order is pinned API
+      # before UI (projectconfig.ExecutionChannels, plan 20261109-1257),
+      # whatever order the config's channels: list uses.
       - id: RESOLVE_CHANNEL
         type: service-task
         action: resolve-channel
@@ -1727,7 +1729,9 @@ processes:
       #
       # Inert for non-channel callers: the structural redesign/refactor cycles
       # reuse this process without a channel unroll, so they bake no `channel`
-      # and resolve-channel stamps touched=true (run normally).
+      # and resolve-channel stamps touched=true (run normally). Clone order is
+      # pinned API before UI (projectconfig.ExecutionChannels, plan
+      # 20261109-1257): one system commit per channel, API first.
       - id: RESOLVE_CHANNEL
         type: service-task
         action: resolve-channel

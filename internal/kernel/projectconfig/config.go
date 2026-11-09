@@ -197,7 +197,9 @@ type Config struct {
 	// channels.go (Validate rejects unknown tokens, and casing slips on a
 	// real channel get a did-you-mean) because the tokens are identity for
 	// the selectors derived from them — acceptance-${channel} →
-	// acceptance-api / acceptance-ui. List order is implementation order.
+	// acceptance-api / acceptance-ui. List order does not set implementation
+	// order: the runtime always implements API before UI (see
+	// ExecutionChannels).
 	// Scaffold-authoritative: `gh optivem init` writes the value matching
 	// the scaffolded testkit; operator-owned afterwards. Optional/absent is
 	// accepted (a pre-this-field config keeps working; no migrate or
