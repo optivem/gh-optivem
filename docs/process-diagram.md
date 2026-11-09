@@ -192,31 +192,31 @@ flowchart TD
     IMPLEMENT_AND_VERIFY_SYSTEM["Implement System — see § implement-and-verify-system<br/>action = implement-system<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-system"]
     REMOVE_WIP_GATE[[Remove WIP Gate From Green Tests]]
     COMMIT_WIP_GATE_REMOVAL["Commit WIP Gate Removal — see § commit<br/>category = test-commit<br/>layer = WIP GATE REMOVAL"]
-    GATE_STORY_SPEC_RECORD{Story?}
-    RECORD_SPEC_FINGERPRINTS[Record Spec Fingerprints]
+    GATE_STORY_AC_POLICY{Story?}
+    APPLY_AC_POLICY[[Delete Green Acceptance Criteria]]
     REFACTOR_OPPORTUNISTICALLY["Opportunistic Refactor (Loopable) — see § refactor"]
-    COMMIT_SPEC_FINGERPRINTS["Commit Spec Fingerprints — see § commit<br/>category = test-commit<br/>layer = SPEC FINGERPRINTS"]
+    COMMIT_AC_POLICY["Commit Acceptance Criteria Deletion — see § commit<br/>category = test-commit<br/>layer = ACCEPTANCE CRITERIA DELETION"]
     CHANGE_SYSTEM_BEHAVIOR_END(( ))
 
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED --> WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REMOVE_WIP_GATE
     REMOVE_WIP_GATE --> COMMIT_WIP_GATE_REMOVAL
-    COMMIT_WIP_GATE_REMOVAL --> GATE_STORY_SPEC_RECORD
-    GATE_STORY_SPEC_RECORD -- Story --> RECORD_SPEC_FINGERPRINTS
-    GATE_STORY_SPEC_RECORD --> REFACTOR_OPPORTUNISTICALLY
-    RECORD_SPEC_FINGERPRINTS --> COMMIT_SPEC_FINGERPRINTS
-    COMMIT_SPEC_FINGERPRINTS --> REFACTOR_OPPORTUNISTICALLY
+    COMMIT_WIP_GATE_REMOVAL --> GATE_STORY_AC_POLICY
+    GATE_STORY_AC_POLICY -- Story --> APPLY_AC_POLICY
+    GATE_STORY_AC_POLICY --> REFACTOR_OPPORTUNISTICALLY
+    APPLY_AC_POLICY --> COMMIT_AC_POLICY
+    COMMIT_AC_POLICY --> REFACTOR_OPPORTUNISTICALLY
     REFACTOR_OPPORTUNISTICALLY --> CHANGE_SYSTEM_BEHAVIOR_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class REMOVE_WIP_GATE serviceNode
+    class APPLY_AC_POLICY,REMOVE_WIP_GATE serviceNode
 
     classDef tddRedNode stroke:#dc3545,stroke-width:3px
     class IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS tddRedNode
 
     classDef tddGreenNode stroke:#28a745,stroke-width:3px
-    class COMMIT_SPEC_FINGERPRINTS,COMMIT_WIP_GATE_REMOVAL,IMPLEMENT_AND_VERIFY_SYSTEM,RECORD_SPEC_FINGERPRINTS,REMOVE_WIP_GATE tddGreenNode
+    class APPLY_AC_POLICY,COMMIT_AC_POLICY,COMMIT_WIP_GATE_REMOVAL,IMPLEMENT_AND_VERIFY_SYSTEM,REMOVE_WIP_GATE tddGreenNode
 
     classDef tddRefactorNode stroke:#007bff,stroke-width:3px
     class REFACTOR_OPPORTUNISTICALLY tddRefactorNode
@@ -752,16 +752,6 @@ flowchart TD
     START_SYS_END(( ))
 
     EXECUTE_COMMAND --> START_SYS_END
-```
-
-## Record Spec Fingerprints
-
-```mermaid
-flowchart TD
-    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>task-name = record-spec-fingerprints"]
-    RECORD_SPEC_FINGERPRINTS_END(( ))
-
-    EXECUTE_COMMAND --> RECORD_SPEC_FINGERPRINTS_END
 ```
 
 ## Commit
