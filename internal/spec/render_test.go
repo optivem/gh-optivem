@@ -31,7 +31,7 @@ func golden(t *testing.T, name, got string) {
 	}
 }
 
-// mixedReport has a failing, a wip, a waived and a baselined criterion plus an
+// mixedReport has a failing, a wip and a waived criterion plus an
 // orphan, an unknown ID and a validation error, gated strictly.
 func mixedReport(t *testing.T) Report {
 	t.Helper()
@@ -40,8 +40,7 @@ func mixedReport(t *testing.T) Report {
 	rep.Mode = ModeStrict
 	rep.Threshold = 80
 	rep.Validation.Errors = append(rep.Validation.Errors, ValidationError{"duplicate-id", "UC-001.9 is defined twice"})
-	b := Baseline{SchemaVersion: BaselineSchemaVersion, Unverified: []string{"UC-001.14"}}
-	if err := ApplyGate(&rep, &b); err != nil {
+	if err := ApplyGate(&rep); err != nil {
 		t.Fatal(err)
 	}
 	return rep
@@ -50,7 +49,7 @@ func mixedReport(t *testing.T) Report {
 func cleanReport(t *testing.T) Report {
 	t.Helper()
 	rep := fixtureReport(t, Config{}, "junit-all-pass.xml")
-	if err := ApplyGate(&rep, nil); err != nil {
+	if err := ApplyGate(&rep); err != nil {
 		t.Fatal(err)
 	}
 	return rep

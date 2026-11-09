@@ -27,10 +27,10 @@ func TestGraphInvariants_SnapshotIsClean(t *testing.T) {
 	t.Errorf("embedded snapshot violates %d graph invariant(s):%s", len(violations), b.String())
 }
 
-// The spec-fingerprint carve-out of commit-is-verified only excuses a
-// record-spec-fingerprints predecessor that is itself reached from
-// implement-and-verify-system; a bare record → commit chain still violates.
-func TestGraphInvariants_SpecRecordCommitNeedsVerifiedSystem(t *testing.T) {
+// The post-green carve-out of commit-is-verified only excuses an
+// apply-ac-policy (or remove-wip-gate) predecessor that is itself reached from
+// implement-and-verify-system; a bare apply → commit chain still violates.
+func TestGraphInvariants_AcPolicyCommitNeedsVerifiedSystem(t *testing.T) {
 	const stub = `
   %s:
     name: "stub"
@@ -44,7 +44,7 @@ func TestGraphInvariants_SpecRecordCommitNeedsVerifiedSystem(t *testing.T) {
 	build := func(head string) string {
 		y := "processes:\n  p:\n    name: \"p\"\n    start: " + head + "\n    nodes:\n" +
 			"      - {id: SYS, type: call-activity, process: implement-and-verify-system, name: SYS}\n" +
-			"      - {id: REC, type: call-activity, process: record-spec-fingerprints, name: REC}\n" +
+			"      - {id: REC, type: service-task, action: apply-ac-policy, name: REC}\n" +
 			"      - {id: COMMIT, type: call-activity, process: commit, name: COMMIT, params: {category: test-commit}}\n" +
 			"      - {id: END, type: end-event, name: END}\n" +
 			"    sequence-flows:\n"
@@ -52,7 +52,7 @@ func TestGraphInvariants_SpecRecordCommitNeedsVerifiedSystem(t *testing.T) {
 			y += "      - {from: SYS, to: REC}\n"
 		}
 		y += "      - {from: REC, to: COMMIT}\n      - {from: COMMIT, to: END}\n"
-		for _, p := range []string{"implement-and-verify-system", "record-spec-fingerprints", "commit"} {
+		for _, p := range []string{"implement-and-verify-system", "commit"} {
 			y += strings.Replace(stub, "%s", p, 1)
 		}
 		return y
@@ -71,9 +71,9 @@ func TestGraphInvariants_SpecRecordCommitNeedsVerifiedSystem(t *testing.T) {
 		return n
 	}
 	if n := count("SYS"); n != 0 {
-		t.Errorf("record after implement-and-verify-system: want no commit-is-verified violation, got %d", n)
+		t.Errorf("apply-ac-policy after implement-and-verify-system: want no commit-is-verified violation, got %d", n)
 	}
 	if count("REC") == 0 {
-		t.Error("record without a preceding implement-and-verify-system must violate commit-is-verified")
+		t.Error("apply-ac-policy without a preceding implement-and-verify-system must violate commit-is-verified")
 	}
 }

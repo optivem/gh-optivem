@@ -1,7 +1,5 @@
 # 2026-11-09 11:58 UTC — Acceptance criteria: delete on green, generate on demand
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-09T17:27:38Z`
-
 ## TL;DR
 
 **Why:** Each acceptance criterion and its acceptance test say the same thing, one to one. Kept by hand, they drift, and only the test is guaranteed current because it must pass. Today `change-system-behavior` keeps both and runs `RECORD_SPEC_FINGERPRINTS` / `COMMIT_SPEC_FINGERPRINTS` so CI's `spec check` reports later edits. The articles ("will drift, keep one", the coverage article's Step 2.5) say to delete the criteria once their tests pass, and to generate readable Gherkin from the tests when a PO or customer needs to read them.
@@ -18,7 +16,7 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md`, Q4 ("Change System 
 
 ## ▶ Next executable step (resume here)
 
-Step 2: replace the fingerprint nodes with `APPLY_AC_POLICY` + `COMMIT_AC_POLICY`.
+Step 7 (deferred): fix one stale comment in `internal/scaffolding/steps/apply_template.go` once that file has no other session's uncommitted edits. Everything else in this plan is done.
 
 ## Inventory (Step 1, done 2026-11-09)
 
@@ -37,14 +35,13 @@ Everything that depends on spec fingerprints or the spec state file (`<specDir>/
 
 ## Steps
 
-- [ ] Step 2: Replace the fingerprint nodes with `APPLY_AC_POLICY` (deterministic: delete the story's `merged-criteria` from the use case) and `COMMIT_AC_POLICY` (test-commit).
-- [ ] Step 4: Remove the fingerprint machinery found in Step 1, including scaffolded CI steps.
-- [ ] Step 5: Update the merger and refiner prompts that assume criteria text exists for already-implemented behaviour.
-- [ ] Step 6: Tests.
+- [ ] Step 7: In `internal/scaffolding/steps/apply_template.go` (the comment above the spec.yaml copy, ~line 158), replace "ATDD's record-spec-fingerprints both read ./spec.yaml" with "`gh optivem spec generate` both read ./spec.yaml" (the fingerprint step is gone). — ⏳ Deferred: the file had another session's uncommitted edits on 2026-11-09.
 
 ## Decisions (accepted by the user 2026-11-09)
 
 - **Generated output goes to stdout, with `--out <file>` as an option; never committed** (committing it re-creates the second copy the deletion removes).
 - **The DSL→Gherkin generator gets its own plan**, written when this one is executed. Start with regex over the DSL chain per language, escalating to tree-sitter only if regex fails on real shop tests (memory `feedback_testselect_parsing_escalation`).
 - **Generator shipped** (plan 20261109-1636, executed and deleted 2026-11-09): `gh optivem spec generate --config <spec.yaml> --tests <at-test dir>`, covering Step 3. Operator check left: read its output on shop and judge whether the plain When voice and Given article rule read well to a PO; if not, write a vocabulary plan. Shop has 11 acceptance tests with no `@UC` tag (listed on stderr).
+- **Coverage gate kept, fingerprints and state file removed** (2026-11-09, executor): `spec record`, `spec adopt`, the `Changed` state, the `baseline:` key and `.spec-baseline.json` are gone; `spec check`/`status`/`validate` stay, and an implemented use case with no criteria left is valid and Verified. Removing `spec check` too would mean dropping `results`/`threshold` from `spec.yaml`, which shop's `spec.yaml` sets and strict key parsing would then reject. Side effect: `spec check` now lists the tests of built (deleted) criteria as unknown IDs (not blocking). Whether to retire the coverage gate entirely is a follow-up for a new plan.
+- **Shop needs no edit**: its spec-gate CI step is already commented out and still names a command that exists (`spec check --mode lenient`); nothing in shop calls `spec record`/`spec adopt`, and its `spec.yaml` has no `baseline:` key.
 - **Ship the generator before deleting criteria.** Otherwise there is a window where nobody can read the criteria of implemented behaviour. Order: use-case IDs (`20261109-1256`) → generator → delete-on-green.

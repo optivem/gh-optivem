@@ -6,17 +6,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
-// DefaultSpecDir, DefaultThreshold and BaselineFileName are the spec.yaml defaults.
+// DefaultSpecDir and DefaultThreshold are the spec.yaml defaults.
 const (
 	DefaultSpecDir   = "docs/use-cases"
 	DefaultThreshold = 100.0
-	BaselineFileName = ".spec-baseline.json"
 )
 
 const dateLayout = "2006-01-02"
@@ -73,7 +71,6 @@ type Config struct {
 	Waivers   []Waiver   `yaml:"waivers"`
 	Exclude   StringList `yaml:"exclude"`
 	Flags     StringList `yaml:"flags"`
-	Baseline  string     `yaml:"baseline"`
 }
 
 // ThresholdValue returns the configured threshold or the default (100).
@@ -95,9 +92,6 @@ func ParseConfig(data []byte) (Config, error) {
 	}
 	if c.SpecDir == "" {
 		c.SpecDir = DefaultSpecDir
-	}
-	if c.Baseline == "" {
-		c.Baseline = path.Join(c.SpecDir, BaselineFileName)
 	}
 	if c.Threshold != nil && (*c.Threshold < 0 || *c.Threshold > 100) {
 		return Config{}, fmt.Errorf("spec.yaml: threshold %v must be between 0 and 100", *c.Threshold)

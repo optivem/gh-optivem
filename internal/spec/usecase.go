@@ -223,7 +223,10 @@ func LoadDir(dir string) ([]UseCase, error) {
 }
 
 // Validate checks malformed front matter, criterion IDs whose prefix does not
-// match the use case id, and duplicate criterion IDs across all use cases.
+// match the use case id, and duplicate criterion IDs across all use cases. A
+// use case with no criteria is valid: once a story's acceptance tests are
+// green its criteria are deleted (the tests are the spec), so a fully built
+// use case keeps only its narrative and business rules.
 func Validate(useCases []UseCase) []ValidationError {
 	var errs []ValidationError
 	seen := map[string]string{}
@@ -233,10 +236,6 @@ func Validate(useCases []UseCase) []ValidationError {
 		}
 		for _, pe := range uc.ParseErrs {
 			errs = append(errs, ValidationError{"criteria", fmt.Sprintf("%s: %s", uc.File, pe)})
-		}
-		if uc.FrontErr == "" && !uc.Planned() && len(uc.Criteria) == 0 {
-			errs = append(errs, ValidationError{"no-criteria",
-				fmt.Sprintf("%s: use case %s has no criteria (expected `- %s.N: text` bullets or Gherkin scenarios tagged @%s.N)", uc.File, uc.ID, uc.ID, uc.ID)})
 		}
 		errs = append(errs, validateCriteria(uc, seen)...)
 	}
@@ -279,8 +278,7 @@ func Warnings(useCases []UseCase) []string {
 // gherkinParser turns the scenarios of one fenced gherkin block into
 // criteria. Each distinct @UC-NNN.M tag is one criterion; several scenarios
 // may share a tag (for example a scenario and an outline covering the same
-// path), and their titles are joined into the criterion text so a change to
-// any of them changes the criterion fingerprint.
+// path), and their titles are joined into the criterion text.
 type gherkinParser struct {
 	uc    *UseCase
 	group string

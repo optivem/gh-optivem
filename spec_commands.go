@@ -38,9 +38,6 @@ type specOptions struct {
 	HTML      string
 	PRComment bool
 	Flags     []string
-	Refresh   []string
-	Criteria  []string
-	Create    bool
 }
 
 func newSpecCmd() *cobra.Command {
@@ -52,18 +49,21 @@ func newSpecCmd() *cobra.Command {
 Use-case markdown files define acceptance criteria with stable IDs (UC-001.3).
 Acceptance tests carry those IDs as tags that surface as properties in JUnit
 XML. The gate reads only the markdown and the XML and derives a lifecycle
-state per criterion: Planned, In progress, Verified, Failing, Waived or
-Changed (tests pass but the criterion text changed since it was verified).
+state per criterion: Planned, In progress, Verified, Failing or Waived.
+
+Criteria are deleted from the use cases once their acceptance tests are green
+(gh optivem implement does this), so the gate covers the criteria still
+waiting to be built; 'spec generate' renders the built ones back from the
+tagged tests.
 
 Configuration lives in spec.yaml (default: ./spec.yaml, override with --config).
 Exit codes: 0 pass, 1 gate failed, 2 usage or configuration error.`,
 		Example: `  gh optivem spec validate
   gh optivem spec check --mode lenient
   gh optivem spec check --mode strict --threshold 90 --html spec-report.html
-  gh optivem spec adopt
-  gh optivem spec record`,
+  gh optivem spec generate --out criteria.feature`,
 	}
-	cmd.AddCommand(newSpecCheckCmd(), newSpecStatusCmd(), newSpecValidateCmd(), newSpecAdoptCmd(), newSpecRecordCmd(), newSpecGenerateCmd())
+	cmd.AddCommand(newSpecCheckCmd(), newSpecStatusCmd(), newSpecValidateCmd(), newSpecGenerateCmd())
 	return cmd
 }
 
@@ -161,62 +161,6 @@ Exit codes: 0 valid, 1 validation errors, 2 usage or configuration error.`,
 	return cmd
 }
 
-func newSpecAdoptCmd() *cobra.Command {
-	opts := specOptions{}
-	cmd := &cobra.Command{
-		Use:   "adopt",
-		Short: "Write the adoption baseline of currently unverified criteria",
-		Long: `Write the spec state file (spec.yaml 'baseline', default
-<specDir>/.spec-baseline.json) listing every criterion that is not Verified
-now, plus the text fingerprint of every Verified criterion. In strict mode,
-baselined criteria stop blocking; a Verified criterion that regresses, or any
-new unverified criterion, still blocks.`,
-		Example: `  gh optivem spec adopt
-  gh optivem spec adopt --config path/to/spec.yaml`,
-		Args: cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			runSpecCmd(func() (int, error) { return runSpecAdopt(opts, cmd.OutOrStdout()) })
-		},
-	}
-	addSpecConfigFlag(cmd, &opts)
-	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, specFlagUsage)
-	return cmd
-}
-
-func newSpecRecordCmd() *cobra.Command {
-	opts := specOptions{}
-	cmd := &cobra.Command{
-		Use:   "record",
-		Short: "Record text fingerprints of newly verified criteria in the spec state file",
-		Long: `Store the text fingerprint of every Verified criterion that has none yet in
-the spec state file (spec.yaml 'baseline', default <specDir>/.spec-baseline.json),
-leaving the unverified baseline list untouched. A criterion whose text changed
-since its fingerprint was recorded keeps the old fingerprint, so 'check' keeps
-reporting it as Changed until you re-verify it and name it with --refresh.
-Fingerprints of criteria no longer in the spec are dropped.
-
-Requires an existing state file (run 'spec adopt' first) unless --create is
-given: then a missing state file is created with an empty unverified list, so
-no existing gap is baselined. --criteria limits recording to the named
-criteria; a named criterion that is not Verified is reported and skipped.
-Run it after the acceptance tests for a story are green; 'gh optivem
-implement' does this for every story (--create --criteria <merged criteria>).`,
-		Example: `  gh optivem spec record
-  gh optivem spec record --refresh UC-001.4
-  gh optivem spec record --create --criteria UC-001.2,UC-001.3`,
-		Args: cobra.NoArgs,
-		Run: func(cmd *cobra.Command, args []string) {
-			runSpecCmd(func() (int, error) { return runSpecRecord(opts, cmd.OutOrStdout()) })
-		},
-	}
-	addSpecConfigFlag(cmd, &opts)
-	cmd.Flags().StringSliceVar(&opts.Flags, "flag", nil, specFlagUsage)
-	cmd.Flags().StringSliceVar(&opts.Refresh, "refresh", nil, "Criterion id whose changed text is accepted as re-verified (repeatable)")
-	cmd.Flags().StringSliceVar(&opts.Criteria, "criteria", nil, "Only record fingerprints for these criterion ids (repeatable or comma-separated); default all")
-	cmd.Flags().BoolVar(&opts.Create, "create", false, "Create the state file (empty unverified list) when it does not exist instead of failing")
-	return cmd
-}
-
 // specInputs is everything loaded from spec.yaml, the markdown and the XML.
 type specInputs struct {
 	cfg      spec.Config
@@ -276,19 +220,8 @@ func buildGatedReport(in specInputs, ro spec.Options) (spec.Report, error) {
 	if ro.Threshold != nil && (*ro.Threshold < 0 || *ro.Threshold > 100) {
 		return spec.Report{}, fmt.Errorf("--threshold %v must be between 0 and 100", *ro.Threshold)
 	}
-	var baseline *spec.Baseline
-	b, err := spec.LoadBaseline(resolveUnder(in.base, in.cfg.Baseline))
-	switch {
-	case err == nil:
-		baseline = &b
-		ro.Fingerprints = b.Fingerprints
-	case errors.Is(err, fs.ErrNotExist):
-		// No baseline file means adopt was never run; that is a valid state.
-	default:
-		return spec.Report{}, err
-	}
 	rep := spec.BuildReport(in.useCases, in.tests, in.cfg, ro)
-	if err := spec.ApplyGate(&rep, baseline); err != nil {
+	if err := spec.ApplyGate(&rep); err != nil {
 		return spec.Report{}, err
 	}
 	return rep, nil
@@ -382,107 +315,6 @@ func runSpecValidate(opts specOptions, out io.Writer) (int, error) {
 	}
 	fmt.Fprintf(out, "%d validation error(s)\n", len(errs))
 	return spec.ExitGateFailed, nil
-}
-
-func runSpecAdopt(opts specOptions, out io.Writer) (int, error) {
-	in, err := loadSpecInputs(opts.Config, true)
-	if err != nil {
-		return 0, err
-	}
-	rep := spec.BuildReport(in.useCases, in.tests, in.cfg, spec.Options{Mode: spec.ModeLenient, Flags: opts.Flags, Now: time.Now()})
-	if n := len(rep.Validation.Errors); n > 0 {
-		return 0, fmt.Errorf("cannot adopt: %d validation error(s); run 'gh optivem spec validate' and fix them first", n)
-	}
-	b := spec.NewBaseline(rep)
-	file := resolveUnder(in.base, in.cfg.Baseline)
-	if err := spec.WriteBaseline(file, b); err != nil {
-		return 0, err
-	}
-	fmt.Fprintf(out, "Baseline written to %s (%d unverified criteria, %d fingerprints)\n", file, len(b.Unverified), len(b.Fingerprints))
-	return 0, nil
-}
-
-// runSpecRecord stores fingerprints of newly verified criteria. Without
-// --create it requires an existing state file (run 'spec adopt' first). With
-// --create a missing file starts with an empty unverified list, which gates
-// exactly like no file, so no unverified criterion is ever silently baselined.
-func runSpecRecord(opts specOptions, out io.Writer) (int, error) {
-	in, err := loadSpecInputs(opts.Config, true)
-	if err != nil {
-		return 0, err
-	}
-	file := resolveUnder(in.base, in.cfg.Baseline)
-	b, err := loadRecordBaseline(file, opts.Create)
-	if err != nil {
-		return 0, err
-	}
-	rep := spec.BuildReport(in.useCases, in.tests, in.cfg, spec.Options{Mode: spec.ModeLenient, Flags: opts.Flags, Now: time.Now()})
-	if n := len(rep.Validation.Errors); n > 0 {
-		return 0, fmt.Errorf("cannot record: %d validation error(s); run 'gh optivem spec validate' and fix them first", n)
-	}
-	scope, err := recordScope(rep, opts, in.cfg.SpecDir)
-	if err != nil {
-		return 0, err
-	}
-	rec := spec.RecordFingerprints(rep, b.Fingerprints, opts.Refresh, scope)
-	b.Fingerprints = rec.Fingerprints
-	if err := spec.WriteBaseline(file, b); err != nil {
-		return 0, err
-	}
-	fmt.Fprintf(out, "Fingerprints recorded in %s: %d added, %d refreshed, %d pruned\n", file, len(rec.Added), len(rec.Refreshed), len(rec.Pruned))
-	for _, id := range rec.StillChanged {
-		fmt.Fprintf(out, "  %s changed since it was last verified; re-run with --refresh %s once its test is re-checked\n", id, id)
-	}
-	for _, id := range rec.NotVerified {
-		fmt.Fprintf(out, "  %s is not Verified by the test results; no fingerprint recorded\n", id)
-	}
-	return 0, nil
-}
-
-// loadRecordBaseline loads the spec state file for 'spec record'. A missing
-// file is an error unless create is set, in which case it starts empty.
-func loadRecordBaseline(file string, create bool) (spec.Baseline, error) {
-	b, err := spec.LoadBaseline(file)
-	if err == nil {
-		return b, nil
-	}
-	if !errors.Is(err, fs.ErrNotExist) {
-		return spec.Baseline{}, err
-	}
-	if !create {
-		return spec.Baseline{}, fmt.Errorf("no spec state file at %s; run 'gh optivem spec adopt' first (or pass --create)", file)
-	}
-	return spec.Baseline{SchemaVersion: spec.BaselineSchemaVersion, Unverified: []string{}}, nil
-}
-
-// recordScope checks that every --refresh and --criteria id names a known
-// criterion (gated or planned) and returns the trimmed --criteria scope.
-func recordScope(rep spec.Report, opts specOptions, specDir string) ([]string, error) {
-	known := map[string]bool{}
-	for _, uc := range rep.AllUseCases() {
-		for _, c := range uc.Criteria {
-			known[c.ID] = true
-		}
-	}
-	for _, id := range opts.Refresh {
-		if !known[id] {
-			return nil, fmt.Errorf("--refresh %s: no such criterion in %s", id, specDir)
-		}
-	}
-	var scope []string
-	for _, id := range opts.Criteria {
-		if id = strings.TrimSpace(id); id == "" {
-			continue
-		}
-		if !known[id] {
-			return nil, fmt.Errorf("--criteria %s: no such criterion in %s", id, specDir)
-		}
-		scope = append(scope, id)
-	}
-	if len(opts.Criteria) > 0 && len(scope) == 0 {
-		return nil, errors.New("--criteria names no criterion id")
-	}
-	return scope, nil
 }
 
 // expandResultGlobs resolves glob patterns (with ** for any number of

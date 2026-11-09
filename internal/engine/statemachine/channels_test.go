@@ -57,15 +57,15 @@ func TestUnrollSystemChannels_TwoChannels(t *testing.T) {
 		checkParam(t, n, "test-names", "${test-names}")
 	}
 
-	// Linear chain: WRITE_ACCEPTANCE_TESTS → API → UI → story spec-record gate,
-	// no loopback. The spec fingerprints are recorded once, after the LAST
-	// channel is green.
+	// Linear chain: WRITE_ACCEPTANCE_TESTS → API → UI → WIP-gate removal, no
+	// loopback. The story's acceptance criteria are deleted once, after the
+	// LAST channel is green.
 	assertSingleEdge(t, proc, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "IMPLEMENT_AND_VERIFY_SYSTEM_API")
 	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_API", "IMPLEMENT_AND_VERIFY_SYSTEM_UI")
 	assertSingleEdge(t, proc, "IMPLEMENT_AND_VERIFY_SYSTEM_UI", "REMOVE_WIP_GATE")
 
-	// The unrolled graph still satisfies every invariant (the spec-fingerprint
-	// commit stays gated behind the channel clones).
+	// The unrolled graph still satisfies every invariant (the post-green
+	// commits stay gated behind the channel clones).
 	if v := CheckInvariants(eng); len(v) != 0 {
 		t.Errorf("unrolled graph violates invariants: %v", v)
 	}

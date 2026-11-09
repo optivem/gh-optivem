@@ -71,7 +71,7 @@ Feature: Place Order
 ```
 
 - Each distinct `@UC-NNN.M` tag on a `Scenario:` / `Scenario Outline:` / `Example:` is one criterion. Other tags (such as `@narrative-4a`) are ignored.
-- Several scenarios may share one tag; they form one criterion whose text is their titles joined with `; ` (so editing any of them marks the criterion Changed).
+- Several scenarios may share one tag; they form one criterion whose text is their titles joined with `; `.
 - The grouping context is the enclosing `Rule:` title, else the markdown heading above the block.
 - A scenario with two `@UC-…` tags is a validation error (one scenario, one criterion). A scenario with none is a warning: it is not a criterion.
 - Scenarios outside a `gherkin` fence are ignored.
@@ -119,11 +119,10 @@ Results named `method [Channel: UI]` (a templated or parameterised method run on
 | Verified | Proven | At least one linked test, all linked results pass, none tagged `wip` |
 | Failing | Broken | A linked result is red (failure or error) and not tagged `wip` |
 | Waived | Deliberate, time-boxed exception | Waiver entry present and not expired |
-| Changed | Text edited since it was verified | The linked tests would make it Verified, but the criterion text no longer matches the fingerprint recorded when it was last verified (section 9, Spec state file) |
 
-Precedence when conditions overlap: Waived (if unexpired) > In progress (`wip`) > Failing > Changed > Verified > Planned. A Changed criterion counts as not verified, so a passing old test cannot hide a changed requirement. A skipped result does not count as passing; a criterion with only skipped results is not Verified.
+Precedence when conditions overlap: Waived (if unexpired) > In progress (`wip`) > Failing > Verified > Planned. A skipped result does not count as passing; a criterion with only skipped results is not Verified.
 
-**Use case state** is derived from its criteria: Planned (no criterion has a test), In progress (some verified, or a linked test tagged `wip`), Verified (all criteria verified).
+**Use case state** is derived from its criteria: Planned (no criterion has a test), In progress (some verified, or a linked test tagged `wip`), Verified (all criteria verified, or none left: see section 12).
 
 A Waived criterion counts as **not verified** in the coverage percentage, but is not reported as a gap until its waiver expires; an expired waiver reverts the criterion to its test-derived state.
 
@@ -156,14 +155,15 @@ A criterion may carry `[flag: <name>]` in the markdown. In strict mode it is exc
 - duplicate criterion IDs (across files, or a bullet and a scenario with the same ID);
 - a criterion ID whose prefix does not match its use case `id`;
 - malformed or missing front matter, or a `status` other than `implemented`/`planned`;
-- a Gherkin scenario tagged with more than one criterion ID;
-- an implemented use case with no criteria (so a file in an unreadable format can't pass silently).
+- a Gherkin scenario tagged with more than one criterion ID.
+
+A use case with no criteria is valid: once every criterion is built, its criteria are deleted (section 12).
 
 It warns (without failing) on a Gherkin scenario with no criterion tag and on a `UC-NNN-*` folder whose front-matter `id` differs.
 
 The report also lists:
 
-- **unknown IDs**: a test references an ID that is not in any spec;
+- **unknown IDs**: a test references an ID that is not in any spec (this includes the tests of built criteria, whose text was deleted on green; section 12);
 - **orphan tests**: tagged tests whose IDs are all unknown, or results that cannot be linked to a spec.
 
 ## 8. `spec.yaml`
@@ -178,7 +178,6 @@ Located at the repository root.
 | `waivers` | list | `[]` | Waiver entries (section 6) |
 | `exclude` | list of globs | `[]` | Result files to ignore, for example `**/legacy/**` |
 | `flags` | list of strings | `[]` | Flags considered on |
-| `baseline` | string | `<specDir>/.spec-baseline.json` | Spec state file path (adoption baseline and criterion fingerprints) |
 
 ## 9. Gating
 
@@ -191,25 +190,6 @@ The mode is chosen by the **pipeline stage**, never by branch. `--mode lenient|s
 | Release / promotion | strict | validate errors, Failing, any in-scope criterion not Verified, coverage below `--threshold` | Waived (until expiry) |
 
 In strict mode, in-scope means: not excluded by an off flag and not waived (unexpired).
-
-### Adoption baseline
-
-`adopt` writes the baseline file listing currently unverified criteria. In strict mode, baselined criteria are non-blocking; a criterion that was Verified at baseline and regresses, or any new unverified criterion, blocks.
-
-### Spec state file and criterion fingerprints
-
-The baseline file is the machine-managed spec state file. Besides the `unverified` list it holds `fingerprints`, a map from criterion id to a hash of the criterion text (whitespace-normalised SHA-256, truncated to 16 hex characters):
-
-```json
-{ "schemaVersion": 1, "unverified": ["UC-001.3"], "fingerprints": { "UC-001.1": "7f3a9c01d2b4e856" } }
-```
-
-- `adopt` writes a fingerprint for every Verified criterion.
-- `record` adds the fingerprint of each Verified criterion that has none yet (run it after a story's acceptance tests are green), drops fingerprints of criteria that no longer exist, and never overwrites a differing fingerprint. `--criteria <ids>` limits it to the named criteria (a named one that is not Verified is reported and skipped); `--create` creates a missing state file with an empty `unverified` list instead of failing, so no existing gap is baselined. `gh optivem implement` runs `record --create --criteria <the story's merged criteria>` for every story once its acceptance tests are green on all channels, and commits the state file.
-- When a Verified criterion's text no longer matches its fingerprint, `status` and `check` report it as **Changed** (unverified); strict mode blocks it. After the criterion's test has been re-checked against the new wording, `record --refresh <id>` accepts the new text.
-- A criterion with no recorded fingerprint is never Changed.
-
-This is how a story that edits a criterion (merged into the use cases before ATDD builds it) shows up as unverified until its test is written or re-checked.
 
 ### Exit codes
 
@@ -226,7 +206,7 @@ This is how a story that edits a criterion (merged into the use cases before ATD
   "threshold": 100,
   "summary": {
     "total": 14, "verified": 13, "inProgress": 0,
-    "failing": 0, "planned": 1, "waived": 0, "changed": 0,
+    "failing": 0, "planned": 1, "waived": 0,
     "coveragePercent": 92.9
   },
   "useCases": [
@@ -239,8 +219,7 @@ This is how a story that edits a criterion (merged into the use cases before ATD
           "tests": [
             { "name": "shouldPlaceOrder", "results": [ { "name": "shouldPlaceOrder [Channel: UI]", "status": "passed" } ], "wip": false }
           ],
-          "waiver": null,
-          "baselined": false
+          "waiver": null
         }
       ]
     }
@@ -306,3 +285,11 @@ Feature: UC-001 Place Order
 ```
 
 It is all or nothing. A test the grammar cannot read fails the run with `file:line test-name: reason`, and so does a criterion whose use case is not in `specDir`. On such a failure nothing is printed or written. Exit codes: 0 ok, 1 unparseable tests or unknown IDs, 2 usage or configuration error.
+
+## 12. Criteria of built behaviour
+
+A criterion and its acceptance test say the same thing, and only the test is guaranteed current because it must pass. So once a story's acceptance tests are green on every channel, `gh optivem implement` deletes the story's criteria (the ones its merge mapped to) from the use cases and commits the deletion. The narrative and business rules stay; each test keeps its `UC-NNN.M` tag.
+
+- `gh optivem spec generate` renders the criteria of built behaviour back as Gherkin per use case, from the tagged tests (stdout, or `--out <file>`). Its output is for reading (review, PO or customer sign-off) and is never committed: committing it would re-create the second copy.
+- A later story that modifies a built criterion adds it back to the use case under the same ID, and the acceptance-test writer edits the test that carries the tag. A new criterion takes an ID above every ID of the use case, including the built ones the generator shows, so a deleted ID is never reused.
+- There is no criterion fingerprint or spec state file: with the text deleted, nothing can drift from the test.

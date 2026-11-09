@@ -671,21 +671,20 @@ gh optivem hooks install                       # install a pre-push hook that re
 
 ## Spec-coverage gate (`spec`)
 
-`gh optivem spec` derives the lifecycle state of each acceptance criterion (Planned, In progress, Verified, Failing, Waived, Changed) from use-case markdown plus JUnit XML, and gates on it. Concepts, ID format, tag syntax per stack, waivers, flags and `spec.yaml` are defined in [spec-gate/convention.md](spec-gate/convention.md).
+`gh optivem spec` derives the lifecycle state of each acceptance criterion (Planned, In progress, Verified, Failing, Waived) from use-case markdown plus JUnit XML, and gates on it. Concepts, ID format, tag syntax per stack, waivers, flags and `spec.yaml` are defined in [spec-gate/convention.md](spec-gate/convention.md).
 
 | Subcommand | Purpose |
 |---|---|
 | `spec validate` | Parse the use-case markdown only; fail on duplicate IDs, prefix mismatches, malformed front matter. No test results needed. |
 | `spec status` | Same report as `check`, but a failing gate verdict is shown, not enforced (exit `0`). |
 | `spec check` | Evaluate the gate for `--mode` and exit non-zero when it fails. |
-| `spec adopt` | Write the adoption baseline (`<specDir>/.spec-baseline.json`) of currently unverified criteria; in strict mode they stop blocking, new regressions still fail. |
-| `spec record` | Record a fingerprint of each Verified criterion's text in the same state file (run it after a story's tests are green). A criterion whose text later differs from its fingerprint is reported as **Changed** (unverified). `gh optivem implement` runs it for every story (scoped to the story's merged criteria, creating the state file when missing) once the acceptance tests are green, and commits the result. |
+| `spec generate` | Render readable Gherkin per use case from the `UC-NNN.M`-tagged acceptance tests (`--tests <dir>`, default `system-test.paths.at-test` from `gh-optivem.yaml`; `--use-case UC-NNN`; `--out <file>`, default stdout). The criteria of built behaviour live only in the tests: `gh optivem implement` deletes a story's criteria from the use cases once its acceptance tests are green. |
 
-Flags (`check` and `status`): `--config <path>` (default `spec.yaml`), `--mode lenient|strict` (default `lenient`), `--threshold <0-100>` (strict only; overrides `spec.yaml`, default 100), `--json` (versioned report, `schemaVersion: 1`), `--html <path>` (self-contained report for product owners), `--pr-comment` (print the sticky PR-comment markdown, marker `<!-- gh-optivem-spec -->`; never posted), `--flag <name>` (repeatable; feature flag considered on). `validate`, `adopt` and `record` take `--config` (and `--flag` for `adopt` and `record`); `record --refresh <id>` (repeatable) accepts the edited text of a Changed criterion once its test has been re-checked; `record --criteria <id>` (repeatable or comma-separated) records only the named criteria; `record --create` creates a missing state file (empty unverified list) instead of failing. When `GITHUB_STEP_SUMMARY` is set, `check` also appends a Markdown summary to it.
+Flags (`check` and `status`): `--config <path>` (default `spec.yaml`), `--mode lenient|strict` (default `lenient`), `--threshold <0-100>` (strict only; overrides `spec.yaml`, default 100), `--json` (versioned report, `schemaVersion: 1`), `--html <path>` (self-contained report for product owners), `--pr-comment` (print the sticky PR-comment markdown, marker `<!-- gh-optivem-spec -->`; never posted), `--flag <name>` (repeatable; feature flag considered on). `validate` takes `--config`. When `GITHUB_STEP_SUMMARY` is set, `check` also appends a Markdown summary to it.
 
 **Exit codes:** `0` pass, `1` gate failed, `2` usage or configuration error.
 
-**Modes:** `lenient` blocks only validation errors and Failing criteria; `strict` also blocks any in-scope criterion that is not Verified (baselined and unflagged ones excepted) and coverage below the threshold. The mode is chosen by the pipeline stage, not by branch; see [tbd.md](tbd.md#stage-based-spec-gating).
+**Modes:** `lenient` blocks only validation errors and Failing criteria; `strict` also blocks any in-scope criterion that is not Verified (flag-off ones excepted) and coverage below the threshold. The mode is chosen by the pipeline stage, not by branch; see [tbd.md](tbd.md#stage-based-spec-gating).
 
 ```bash
 gh optivem spec check --mode lenient
@@ -694,7 +693,7 @@ gh optivem spec check --mode strict --threshold 90 --json > spec-report.json
 
 ### Stories and the merge step
 
-`gh optivem implement` runs a `merge-story-into-use-cases` step for stories (not bugs or tasks) before the acceptance tests. Use cases are the current spec; the story is an increment; the merge is one-way (only the use cases are edited). If every scenario of the story names an existing criterion (a `@UC-001.4` tag, or the id in a comment line above the scenario, its title or steps), the merge is a no-op and needs no approval. Otherwise the `use-case-merger` agent proposes the narrative and `UC-NNN.M` changes, and the diff needs your approval (`test-agent` tier: `--auto` skips it, so review the use case change in its commit). The run fails on a contradiction with existing criteria, an unmapped scenario, or invalid merged use cases.
+`gh optivem implement` runs a `merge-story-into-use-cases` step for stories (not bugs or tasks) before the acceptance tests. Use cases hold the criteria of behaviour not built yet (a story's criteria are deleted once its acceptance tests are green; `spec generate` renders built ones from the tests); the story is an increment; the merge is one-way (only the use cases are edited). If every scenario of the story names an existing criterion (a `@UC-001.4` tag, or the id in a comment line above the scenario, its title or steps), the merge is a no-op and needs no approval. Otherwise the `use-case-merger` agent proposes the narrative and `UC-NNN.M` changes, and the diff needs your approval (`test-agent` tier: `--auto` skips it, so review the use case change in its commit). The run fails on a contradiction with existing criteria, an unmapped scenario, or invalid merged use cases.
 
 ## Methodology assets
 

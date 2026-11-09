@@ -11,7 +11,7 @@ import (
 )
 
 // copySpec ships shop's spec.yaml (results flattened to system-test/) and the
-// use-case markdown, so `gh optivem spec check` and `spec record` find their
+// use-case markdown, so `gh optivem spec check` and `spec generate` find their
 // config in a scaffolded repo.
 func TestCopySpec(t *testing.T) {
 	t.Parallel()
@@ -158,7 +158,7 @@ func checkScaffoldedSpec(t *testing.T, repoDir, testLang string) {
 		}
 	}
 	rep := spec.BuildReport(ucs, tests, cfg, spec.Options{Mode: spec.ModeLenient, Now: time.Now()})
-	if err := spec.ApplyGate(&rep, nil); err != nil {
+	if err := spec.ApplyGate(&rep); err != nil {
 		t.Fatal(err)
 	}
 	if !rep.Gate.Passed {

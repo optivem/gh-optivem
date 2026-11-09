@@ -129,6 +129,10 @@ func RegisterAll(r *Registry, deps Deps) {
 	// GH_OPTIVEM_RUN_WIP_TESTS gate from the ticket's acceptance tests once they
 	// pass on every touched channel, so CI runs them from then on. See wip_gate.go.
 	r.Register("remove-wip-gate", a.removeWipGate)
+	// Acceptance-criteria policy at Green (plan 20261109-1258). Deletes the
+	// story's merged-criteria from the use cases once its acceptance tests are
+	// green; the tagged tests are the spec from then on. See ac_policy.go.
+	r.Register("apply-ac-policy", a.applyAcPolicy)
 	// Red reviewer loop in execute-agent (plan 20261109-1257). request-review-
 	// revision hands blocking findings to the writer's re-dispatch;
 	// summarize-review renders the findings for APPROVE_POST_REVIEWED. Both

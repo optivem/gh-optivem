@@ -122,12 +122,13 @@ func TestValidate_TwoTagsReportedAsCriteriaError(t *testing.T) {
 	}
 }
 
-func TestValidate_NoCriteria(t *testing.T) {
+// TestValidate_NoCriteriaIsValid: once every criterion of a use case is
+// deleted on green, the use case keeps only prose, and that is valid.
+func TestValidate_NoCriteriaIsValid(t *testing.T) {
 	implemented := Parse("a.md", gherkinHeader+"Just prose.\n")
 	planned := Parse("b.md", "---\nid: UC-010\ntitle: Later\nstatus: planned\n---\nNothing yet.\n")
-	errs := Validate([]UseCase{implemented, planned})
-	if len(errs) != 1 || errs[0].Code != "no-criteria" || !strings.Contains(errs[0].Message, "a.md") {
-		t.Fatalf("got %v, want one no-criteria error for a.md only", errs)
+	if errs := Validate([]UseCase{implemented, planned}); len(errs) != 0 {
+		t.Fatalf("got %v, want no errors", errs)
 	}
 }
 
@@ -210,24 +211,5 @@ func TestBuildReport_PlannedCriterionTagIsNotUnknown(t *testing.T) {
 	rep := BuildReport([]UseCase{planned}, tests, Config{}, Options{})
 	if len(rep.UnknownIDs) != 0 {
 		t.Errorf("unknown IDs = %v, want none", rep.UnknownIDs)
-	}
-}
-
-// TestRecordFingerprints_PlannedUseCase: a story built test-first on a use
-// case that is still `status: planned` must be able to record fingerprints
-// for its verified criteria, and existing ones must not be pruned.
-func TestRecordFingerprints_PlannedUseCase(t *testing.T) {
-	planned := Parse("p.md", "---\nid: UC-010\ntitle: Later\nstatus: planned\n---\n- UC-010.1: a\n- UC-010.2: b\n")
-	tests := []Test{{Class: "C", Method: "m", IDs: []string{"UC-010.1"}, Results: []Result{{Name: "m", Status: StatusPassed}}}}
-	rep := BuildReport([]UseCase{planned}, tests, Config{}, Options{})
-	if rep.Summary.Total != 0 {
-		t.Fatalf("planned criteria counted in summary: %+v", rep.Summary)
-	}
-	rec := RecordFingerprints(rep, map[string]string{"UC-010.2": "old"}, nil, []string{"UC-010.1"})
-	if _, ok := rec.Fingerprints["UC-010.1"]; !ok || len(rec.Added) != 1 {
-		t.Errorf("UC-010.1 not recorded: %+v", rec)
-	}
-	if rec.Fingerprints["UC-010.2"] != "old" || len(rec.Pruned) != 0 {
-		t.Errorf("planned UC-010.2 fingerprint pruned: %+v", rec)
 	}
 }

@@ -11,7 +11,6 @@ Spec coverage: 2 of 14 acceptance criteria verified (14.3%)
 | Failing | 0 |
 | Planned | 12 |
 | Waived | 0 |
-| Changed | 0 |
 
 ### UC-001 Place Order (In progress)
 

@@ -12,7 +12,6 @@ Spec coverage: 0 of 14 acceptance criteria verified (0.0%)
 | Failing | 2 |
 | Planned | 10 |
 | Waived | 1 |
-| Changed | 0 |
 
 <details><summary>Criteria not yet verified</summary>
 
@@ -29,7 +28,7 @@ Spec coverage: 0 of 14 acceptance criteria verified (0.0%)
 - `UC-001.11` Planned: Non-existent, expired or over-used coupon is rejected.
 - `UC-001.12` Planned: Admin cannot place an order.
 - `UC-001.13` Planned: Order rejected at year end.
-- `UC-001.14` Planned: ERP unavailable message (narrative 5a). _(baselined)_
+- `UC-001.14` Planned: ERP unavailable message (narrative 5a).
 
 </details>
 
@@ -48,6 +47,7 @@ Spec coverage: 0 of 14 acceptance criteria verified (0.0%)
 - UC-001.11 is Planned (strict requires Verified)
 - UC-001.12 is Planned (strict requires Verified)
 - UC-001.13 is Planned (strict requires Verified)
+- UC-001.14 is Planned (strict requires Verified)
 - coverage 0.0% is below threshold 80.0%
 
 ### Spec validation errors

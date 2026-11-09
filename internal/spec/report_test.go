@@ -228,7 +228,7 @@ func TestJSONContract(t *testing.T) {
 		t.Fatal("gate must be absent until gating fills it")
 	}
 	crit := m["useCases"].([]any)[0].(map[string]any)["criteria"].([]any)[0].(map[string]any)
-	if crit["state"] != "Verified" || crit["flag"] != nil || crit["waiver"] != nil || crit["baselined"] != false {
+	if crit["state"] != "Verified" || crit["flag"] != nil || crit["waiver"] != nil {
 		t.Fatalf("criterion: %v", crit)
 	}
 	res := crit["tests"].([]any)[0].(map[string]any)["results"].([]any)[0].(map[string]any)

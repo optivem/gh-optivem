@@ -91,13 +91,14 @@ func CheckInvariants(eng *Engine) []Violation {
 // the meaningful gate that stands in for the verify. See
 // isCompileOnlyVerifiedCommit.
 //
-// Exception — the spec-fingerprint commit (D3d). A story records its spec
-// fingerprints once every channel's implement-and-verify-system clone is green
-// (each clone ends in its own verified COMMIT_SYSTEM), then commits the state
-// file. That commit's dispatching predecessor is record-spec-fingerprints,
-// accepted iff the record step is itself reached only from
-// implement-and-verify-system call-activities. The WIP-gate removal commit
-// (plan 20261109-1300) is accepted the same way. See isVerifiedPostGreenStep.
+// Exception — the post-green bookkeeping commits. Once every channel's
+// implement-and-verify-system clone is green (each clone ends in its own
+// verified COMMIT_SYSTEM), the WIP gate is removed (plan 20261109-1300) and a
+// story's acceptance criteria are deleted from the use cases (apply-ac-policy,
+// plan 20261109-1258), each committed right away. Those commits' dispatching
+// predecessors are the remove-wip-gate / apply-ac-policy service tasks,
+// accepted iff the step is itself reached only from verified-green work. See
+// isVerifiedPostGreenStep.
 func ruleCommitIsVerified(eng *Engine) []Violation {
 	const rule = "commit-is-verified"
 	var out []Violation
@@ -125,7 +126,7 @@ func commitVerifiedViolations(proc *Process, node Node, rule string) []Violation
 	}
 	for _, pred := range preds {
 		pn := proc.Nodes[pred]
-		if isVerifyingPredecessor(pn, compileOnly) || isVerifiedSpecRecord(proc, pn) {
+		if isVerifyingPredecessor(pn, compileOnly) || isVerifiedPostGreenStep(proc, pn, 0) {
 			continue
 		}
 		out = append(out, Violation{
@@ -149,27 +150,26 @@ func isVerifyingPredecessor(pn Node, compileOnly bool) bool {
 	return compileOnly && (isCallTo(pn, "start-system") || isCallTo(pn, "start-system-restart") || isCallTo(pn, "compile-tests"))
 }
 
-// isVerifiedSpecRecord reports whether pn is a record-spec-fingerprints
-// call-activity whose own dispatching predecessors are all
-// implement-and-verify-system call-activities, i.e. it only runs after the
-// system cycle verified the acceptance tests green and committed.
-func isVerifiedSpecRecord(proc *Process, pn Node) bool {
-	return isVerifiedPostGreenStep(proc, pn, 0)
+// postGreenActions are the service-task actions of the post-green
+// bookkeeping steps whose commits carry no verify of their own.
+var postGreenActions = map[string]bool{
+	"remove-wip-gate": true, // plan 20261109-1300
+	"apply-ac-policy": true, // plan 20261109-1258
 }
 
-// isVerifiedPostGreenStep accepts the post-green bookkeeping steps whose
-// commits carry no verify of their own: record-spec-fingerprints (D3d) and the
-// remove-wip-gate service task (plan 20261109-1300). Each runs once every
-// channel's implement-and-verify-system clone is green, so it is accepted iff
-// every dispatching predecessor is an implement-and-verify-system call-activity,
-// a write-acceptance-tests-and-system-adapters call with expected-test-result
-// success (cover path: the cascade verified the tests pass), or a commit whose own predecessor is another accepted post-green step (the
-// steps chain: WIP-gate removal is committed, then the spec record runs).
+// isVerifiedPostGreenStep accepts a post-green bookkeeping step (a
+// postGreenActions service task). Each runs once every channel's
+// implement-and-verify-system clone is green, so it is accepted iff every
+// dispatching predecessor is an implement-and-verify-system call-activity, a
+// write-acceptance-tests-and-system-adapters call with expected-test-result
+// success (cover path: the cascade verified the tests pass), or a commit whose
+// own predecessor is another accepted post-green step (the steps chain:
+// WIP-gate removal is committed, then the criteria deletion runs).
 func isVerifiedPostGreenStep(proc *Process, pn Node, depth int) bool {
 	if depth > 8 {
 		return false
 	}
-	if !isCallTo(pn, "record-spec-fingerprints") && strings.TrimSpace(pn.Raw.Action) != "remove-wip-gate" {
+	if !postGreenActions[strings.TrimSpace(pn.Raw.Action)] {
 		return false
 	}
 	preds := dispatchingPredecessors(proc, pn.ID)

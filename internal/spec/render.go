@@ -12,7 +12,7 @@ import (
 const PRCommentMarker = "<!-- gh-optivem-spec -->"
 
 // allStates lists the lifecycle states in display order.
-var allStates = []State{StateVerified, StateInProgress, StateFailing, StatePlanned, StateWaived, StateChanged}
+var allStates = []State{StateVerified, StateInProgress, StateFailing, StatePlanned, StateWaived}
 
 // stateRules describes each state for the lifecycle legend.
 var stateRules = map[State]string{
@@ -21,7 +21,6 @@ var stateRules = map[State]string{
 	StateFailing:    "A linked acceptance test is red and not marked wip. Always blocks the gate.",
 	StatePlanned:    "No passing acceptance test is linked yet.",
 	StateWaived:     "Exempted by an approved, time-limited waiver. Counts as not verified.",
-	StateChanged:    "Tests pass, but the criterion text changed since it was last verified. Counts as not verified until its test is re-checked.",
 }
 
 // stateColors are the pill and bar fill colours per state.
@@ -31,7 +30,6 @@ var stateColors = map[State]string{
 	StateFailing:    "#C0392B",
 	StatePlanned:    "#6B7580",
 	StateWaived:     "#7E6BB8",
-	StateChanged:    "#B8860B",
 }
 
 func stateCount(s Summary, st State) int {
@@ -46,8 +44,6 @@ func stateCount(s Summary, st State) int {
 		return s.Planned
 	case StateWaived:
 		return s.Waived
-	case StateChanged:
-		return s.Changed
 	}
 	return 0
 }
@@ -86,9 +82,6 @@ func criterionNotes(c ReportCriterion) []string {
 		} else {
 			notes = append(notes, "flag "+*c.Flag+" off")
 		}
-	}
-	if c.Baselined {
-		notes = append(notes, "baselined")
 	}
 	if c.Waiver != nil {
 		notes = append(notes, fmt.Sprintf("waived until %s by %s: %s", c.Waiver.Until, c.Waiver.Approver, c.Waiver.Reason))
@@ -427,8 +420,8 @@ func RenderHTML(rep Report, generated time.Time) string {
 	w("</section>\n")
 
 	w("<section class=\"card\">\n<h2>%s</h2>\n", esc(coverageLine(rep)))
-	w("<div class=\"bar\" role=\"img\" aria-label=\"%d verified, %d in progress, %d failing, %d planned, %d waived, %d changed criteria\">",
-		s.Verified, s.InProgress, s.Failing, s.Planned, s.Waived, s.Changed)
+	w("<div class=\"bar\" role=\"img\" aria-label=\"%d verified, %d in progress, %d failing, %d planned, %d waived criteria\">",
+		s.Verified, s.InProgress, s.Failing, s.Planned, s.Waived)
 	renderStateBarAndLegend(w, s)
 	w("</div>\n<p class=\"note\">Threshold %.1f%% applies in strict mode.</p>\n</section>\n", rep.Threshold)
 

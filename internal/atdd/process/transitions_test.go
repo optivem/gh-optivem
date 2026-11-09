@@ -1365,19 +1365,16 @@ func TestImplementTicket_StoryMergesIntoUseCasesFirst(t *testing.T) {
 	}
 }
 
-// A story records its spec fingerprints once, after the system GREEN step
-// (every channel clone green and committed) and before the refactor, then
-// commits the state file. Bugs skip it: they carry no merged-criteria. The
-// record command is scoped to merged-criteria and creates a missing state file.
 // The WIP gate is stripped once every touched channel is green, for stories and
-// bugs alike, before the story-only spec record (plan 20261109-1300).
+// bugs alike, before the story-only acceptance-criteria policy (plan
+// 20261109-1300).
 func TestChangeSystemBehavior_RemovesWipGateAfterGreen(t *testing.T) {
 	eng := loadSnapshot(t)
 	csb := eng.Processes["change-system-behavior"]
 
 	wantEdge(t, csb, "IMPLEMENT_AND_VERIFY_SYSTEM", "REMOVE_WIP_GATE", "")
 	wantEdge(t, csb, "REMOVE_WIP_GATE", "COMMIT_WIP_GATE_REMOVAL", "")
-	wantEdge(t, csb, "COMMIT_WIP_GATE_REMOVAL", "GATE_STORY_SPEC_RECORD", "")
+	wantEdge(t, csb, "COMMIT_WIP_GATE_REMOVAL", "GATE_STORY_AC_POLICY", "")
 	if got := csb.Nodes["REMOVE_WIP_GATE"].Raw.Action; got != "remove-wip-gate" {
 		t.Errorf("REMOVE_WIP_GATE action = %q, want remove-wip-gate", got)
 	}
@@ -1397,48 +1394,41 @@ func TestCoverSystemBehavior_RemovesWipGateAfterPassingTests(t *testing.T) {
 	notEdge(t, cover, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "COVER_END")
 }
 
-func TestChangeSystemBehavior_StoryRecordsSpecFingerprints(t *testing.T) {
+// A story deletes its acceptance criteria from the use cases once, after the
+// system GREEN step (every channel clone green and committed) and the WIP-gate
+// removal, and before the refactor, then commits the deletion (plan
+// 20261109-1258). Bugs skip it: they carry no merged-criteria. The deletion is
+// a deterministic service task, not an agent or a command.
+func TestChangeSystemBehavior_StoryDeletesGreenCriteria(t *testing.T) {
 	eng := loadSnapshot(t)
 	csb := eng.Processes["change-system-behavior"]
 
-	wantEdge(t, csb, "COMMIT_WIP_GATE_REMOVAL", "GATE_STORY_SPEC_RECORD", "")
+	wantEdge(t, csb, "COMMIT_WIP_GATE_REMOVAL", "GATE_STORY_AC_POLICY", "")
 	notEdge(t, csb, "IMPLEMENT_AND_VERIFY_SYSTEM", "REFACTOR_OPPORTUNISTICALLY")
-	wantEdge(t, csb, "GATE_STORY_SPEC_RECORD", "RECORD_SPEC_FINGERPRINTS", "ticket-kind == story")
-	wantEdge(t, csb, "GATE_STORY_SPEC_RECORD", "REFACTOR_OPPORTUNISTICALLY", "")
-	wantEdge(t, csb, "RECORD_SPEC_FINGERPRINTS", "COMMIT_SPEC_FINGERPRINTS", "")
-	wantEdge(t, csb, "COMMIT_SPEC_FINGERPRINTS", "REFACTOR_OPPORTUNISTICALLY", "")
-	if got := csb.Nodes["GATE_STORY_SPEC_RECORD"].Raw.Binding; got != "ticket-kind" {
-		t.Errorf("GATE_STORY_SPEC_RECORD binding = %q, want ticket-kind", got)
+	wantEdge(t, csb, "GATE_STORY_AC_POLICY", "APPLY_AC_POLICY", "ticket-kind == story")
+	wantEdge(t, csb, "GATE_STORY_AC_POLICY", "REFACTOR_OPPORTUNISTICALLY", "")
+	wantEdge(t, csb, "APPLY_AC_POLICY", "COMMIT_AC_POLICY", "")
+	wantEdge(t, csb, "COMMIT_AC_POLICY", "REFACTOR_OPPORTUNISTICALLY", "")
+	if got := csb.Nodes["GATE_STORY_AC_POLICY"].Raw.Binding; got != "ticket-kind" {
+		t.Errorf("GATE_STORY_AC_POLICY binding = %q, want ticket-kind", got)
 	}
-	if got := csb.Nodes["RECORD_SPEC_FINGERPRINTS"].Raw.Process; got != "record-spec-fingerprints" {
-		t.Errorf("RECORD_SPEC_FINGERPRINTS calls %q", got)
+	if n := csb.Nodes["APPLY_AC_POLICY"]; n.Raw.Type != "service-task" || n.Raw.Action != "apply-ac-policy" {
+		t.Errorf("APPLY_AC_POLICY = type %q action %q, want service-task / apply-ac-policy", n.Raw.Type, n.Raw.Action)
 	}
-	commit := csb.Nodes["COMMIT_SPEC_FINGERPRINTS"]
+	commit := csb.Nodes["COMMIT_AC_POLICY"]
 	if commit.Raw.Process != "commit" || commit.Raw.Params["category"] != "test-commit" {
-		t.Errorf("COMMIT_SPEC_FINGERPRINTS = process %q category %q, want commit / test-commit", commit.Raw.Process, commit.Raw.Params["category"])
+		t.Errorf("COMMIT_AC_POLICY = process %q category %q, want commit / test-commit", commit.Raw.Process, commit.Raw.Params["category"])
 	}
 
-	for kind, want := range map[string]string{"story": "RECORD_SPEC_FINGERPRINTS", "bug": "REFACTOR_OPPORTUNISTICALLY"} {
+	for kind, want := range map[string]string{"story": "APPLY_AC_POLICY", "bug": "REFACTOR_OPPORTUNISTICALLY"} {
 		ctx := statemachine.NewContext()
 		ctx.Set("ticket-kind", kind)
-		if to, err := eng.NextEdge("change-system-behavior", "GATE_STORY_SPEC_RECORD", ctx); err != nil || to != want {
+		if to, err := eng.NextEdge("change-system-behavior", "GATE_STORY_AC_POLICY", ctx); err != nil || to != want {
 			t.Errorf("%s routes to %q (err %v), want %s", kind, to, err, want)
 		}
 	}
-
-	rec, ok := eng.Processes["record-spec-fingerprints"]
-	if !ok {
-		t.Fatal("process record-spec-fingerprints missing")
-	}
-	node := rec.Nodes[rec.Start]
-	if node.Raw.Process != "execute-command" {
-		t.Fatalf("record-spec-fingerprints start node calls %q, want execute-command", node.Raw.Process)
-	}
-	if got, want := node.Raw.Params["command"], "gh optivem spec record --create --criteria '${merged-criteria}'"; got != want {
-		t.Errorf("record command = %q, want %q", got, want)
-	}
-	if got := node.Raw.Params["category"]; got != "command" {
-		t.Errorf("record category = %q, want command", got)
+	if _, ok := eng.Processes["record-spec-fingerprints"]; ok {
+		t.Error("process record-spec-fingerprints must be gone (spec fingerprints are retired)")
 	}
 }
 

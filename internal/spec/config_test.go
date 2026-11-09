@@ -23,7 +23,7 @@ waivers:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.SpecDir != "specs" || len(c.Results) != 1 || c.ThresholdValue() != 90 || c.Baseline != "specs/.spec-baseline.json" {
+	if c.SpecDir != "specs" || len(c.Results) != 1 || c.ThresholdValue() != 90 {
 		t.Fatalf("%+v", c)
 	}
 	if len(c.Waivers) != 1 || c.Waivers[0].Until != "2026-12-31" || len(c.Exclude) != 1 || c.Flags[0] != "dark" {

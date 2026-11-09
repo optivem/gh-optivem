@@ -1,6 +1,6 @@
 Spec coverage: 0 of 14 acceptance criteria verified (0.0%)
 Mode: strict (threshold 80.0%)   Gate: FAILED
-Verified 0 | In progress 1 | Failing 2 | Planned 10 | Waived 1 | Changed 0
+Verified 0 | In progress 1 | Failing 2 | Planned 10 | Waived 1
 
 UC-001 Place Order [In progress]
   Acceptance criteria
@@ -19,7 +19,6 @@ UC-001 Place Order [In progress]
     [Planned]     UC-001.12  Admin cannot place an order.
     [Planned]     UC-001.13  Order rejected at year end.
     [Planned]     UC-001.14  ERP unavailable message (narrative 5a).
-                  note: baselined
 
 Orphan tests (not linked to any criterion)
   - com.shop.PlaceOrderTest.shouldHaveNoTag: no criterion ID
@@ -45,4 +44,5 @@ Gate reasons
   - UC-001.11 is Planned (strict requires Verified)
   - UC-001.12 is Planned (strict requires Verified)
   - UC-001.13 is Planned (strict requires Verified)
+  - UC-001.14 is Planned (strict requires Verified)
   - coverage 0.0% is below threshold 80.0%

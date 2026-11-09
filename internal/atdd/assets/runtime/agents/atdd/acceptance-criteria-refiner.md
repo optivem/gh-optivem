@@ -104,8 +104,11 @@ business rule is a `Rule:` block, or a rule the ticket states in prose.
 
 The use cases are the current spec of the system's behaviour. Find their
 directory: `specDir` in `spec.yaml` at the repo root, else `docs/use-cases`.
-Read the use case files there (`UC-NNN-<slug>.md`: a narrative plus
-`UC-NNN.M` criteria). If there are none, skip this check.
+Read the use case files there (a narrative plus the `UC-NNN.M` criteria of
+behaviour not built yet). Criteria of built behaviour are deleted from the use
+cases once their acceptance tests pass; run `gh optivem spec generate` to read
+them, rendered as Gherkin from the tagged tests. If there are no use cases and
+no built criteria, skip this check.
 
 - Compare every scenario with the use cases. A contradiction is the same
   condition with a different outcome, where the ticket does not say it
