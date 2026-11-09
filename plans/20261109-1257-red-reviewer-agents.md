@@ -39,8 +39,8 @@ Review this plan with the user. After that, Step 1 (agent prompts + shared chunk
 
 - Operator: gift-wrap rehearsal on shop with a planted dropped `.then().shouldSucceed()`. The AT reviewer flags it.
 
-## Open questions
+## Decisions (proposed 2026-11-09, pending user OK — override any line)
 
-- Fix-loop cap for reviewer findings: 1 or 2 passes before handing over to the human?
-- Should non-blocking findings (style) skip the writer loop and only be shown at approval? Recommended: yes.
-- Should the reviewer use a cheaper model than the writer? It is a comparison task.
+- **Fix-loop cap: 2 passes**, then hand over to the human approval with the remaining findings attached. One pass often only half-fixes a finding; more than two means writer and reviewer disagree, which is a human call anyway.
+- **Non-blocking findings (style) skip the writer loop** and are only shown at approval. Only blocking findings (wrong behaviour asserted, criterion not covered, test passes for the wrong reason) re-dispatch the writer.
+- **Reviewer uses the same model as the writer.** Acceptance-test accuracy beats agent cost (see memory `feedback_acceptance_tests_accuracy_over_speed`); an adversarial reviewer that is weaker than the writer misses exactly the subtle errors it exists for. Revisit after rehearsals show the token cost.

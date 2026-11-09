@@ -40,7 +40,7 @@ Review this plan with the user. Check first whether the shop plan 20261106-1533 
 - [ ] Step 3: Add the `LINK_STORY_CRITERIA` service task after `VERIFY_STORY_MERGE` in `merge-story-into-use-cases`. Write the IDs to the ticket through the tracker abstraction, naming it for GitHub + Jira.
 - [ ] Step 4: Update the acceptance-test writer's tag guidance if the criterion ID format changes. Update tests.
 
-## Open questions
+## Decisions (proposed 2026-11-09, pending user OK — override any line)
 
-- Where on the ticket do the criterion IDs go: a comment, a body section or labels? Recommended: a body section, because it is readable and parseable on both GitHub and Jira.
-- Interaction with the AC-delete policy (`plans/20261109-1258-ac-delete-and-generate.md`): once green criteria are deleted, a "modify" story has no criterion text to edit. The merger must then add the new criterion with the same ID, and the AT writer changes the existing test in place (Q8 of the parent). Settle the ordering between the two plans.
+- **Criterion IDs go in a ticket body section** (not comments or labels): readable and parseable on both GitHub and Jira, and the body is what `parse-ticket` already reads.
+- **Ordering: this plan ships before `20261109-1258-ac-delete-and-generate.md`.** The stable `@UC-NNN.M` IDs this plan introduces are the key the AC-delete plan needs: deleting a green criterion is only safe when its test still carries the ID, so a later "modify" story can re-add a criterion with the same ID and the AT writer edits the tagged test in place (parent Q8).

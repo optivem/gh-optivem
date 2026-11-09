@@ -27,8 +27,8 @@ Review this plan with the user. Settle the ordering with `plans/20261109-1256-us
 - [ ] Step 5: Update the merger and refiner prompts that assume criteria text exists for already-implemented behaviour.
 - [ ] Step 6: Tests.
 
-## Open questions
+## Decisions (proposed 2026-11-09, pending user OK — override any line)
 
-- Generated output: printed to stdout, written to a file, or a doc artifact? Recommended: stdout or a file, never committed (committing it would re-create the second copy).
-- How does the generator turn a DSL chain into Gherkin across Java/.NET/TypeScript? This is the hardest part; it may justify a separate plan.
-- Before generation exists, is there a gap where nobody can read the criteria of implemented behaviour? Consider shipping the generator before deleting criteria.
+- **Generated output goes to stdout, with `--out <file>` as an option; never committed** (committing it re-creates the second copy the deletion removes).
+- **The DSL→Gherkin generator gets its own plan**, written when this one is executed. Start with regex over the DSL chain per language, escalating to tree-sitter only if regex fails on real shop tests (memory `feedback_testselect_parsing_escalation`).
+- **Ship the generator before deleting criteria.** Otherwise there is a window where nobody can read the criteria of implemented behaviour. Order: use-case IDs (`20261109-1256`) → generator → delete-on-green.

@@ -41,7 +41,7 @@ Review this plan with the user (`/refine-plan plans/20261109-1255-align-refineme
   Pin its `read:` scope in `phase-scopes.yaml` to include the use-case directory.
 - [ ] Step 4: Update statemachine/process tests and render-matrix tests for the new nodes and placeholder. Run with `-p 2`.
 
-## Open questions
+## Decisions (proposed 2026-11-09, pending user OK — override any line)
 
-- Does `THREE_AMIGOS_REVIEW` need its own node, or is the existing human-tier POST approval on the refiner enough, with "Agreed?" as its outcome? A separate node is clearer in the diagram; folding it in means fewer prompts per round.
-- Loop cap: how many refinement rounds before the run halts (e.g. 5)?
+- **No separate `THREE_AMIGOS_REVIEW` node**: reuse the refiner's existing human-tier POST approval, labelled "Three Amigos agreed?" in the diagram. Same outcome with one prompt per round instead of two; the label keeps it visible.
+- **Loop cap: 5 refinement rounds**, then halt loudly naming the unresolved questions (same pattern as `FIX_LOOP_EXHAUSTED`).
