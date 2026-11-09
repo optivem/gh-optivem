@@ -1,5 +1,7 @@
 # 2026-11-09 16:36 local — Acceptance-criteria generator: Gherkin from tagged acceptance tests
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-09T16:19:43Z`
+
 ## TL;DR
 
 **Why:** Plan `plans/20261109-1258-ac-delete-and-generate.md` deletes a story's acceptance criteria once its tests are green. After that, the tagged acceptance tests are the only copy of the criteria. A PO or customer still needs to read them, and nobody can do that without a generator. 1258 says to ship the generator first.
@@ -16,32 +18,10 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md` (Q4, "Change System 
 
 ## ▶ Next executable step (resume here)
 
-Step 1. Before starting, check `git status` on `internal/spec/`, because another session had uncommitted edits there on 2026-11-09. This plan adds only new files under `internal/spec/generate/` and one `AddCommand` line in `spec_commands.go`. If `spec_commands.go` is dirty, wait.
+Step 10 (CLI wiring). Steps 1–9 are done: the package `internal/spec/generate` exists with the model, the renderer, the three front-ends, golden tests, the round-trip test and the fail-loud tests. Check `git status spec_commands.go` first. If another session has uncommitted edits there, wait.
 
 ## Steps
 
-- [ ] Step 1: Create package `internal/spec/generate` with the shared model: `TestCase{File, Line, Name, Tags, Wip, Params, Examples, Sections}`, `Section{Keyword: given|when|then, Continuation bool (from .and()), Subject Call, Modifiers []Call}`, `Call{Name (lowerCamel), Args []Arg}`, `Arg{Kind: string|number|bool|null|enum|identifier|param|template, Text}`. No language logic in this file.
-- [ ] Step 2: Write the renderer from the model to Gherkin, following the mapping rules in Decisions. Output is deterministic: use cases sorted by number, criteria by number, then file path and line. Every output starts with a header comment: generated, not committed, source dirs.
-- [ ] Step 3: Write the Java front-end (`java.go`). It finds test methods (`@Test` / `@TestTemplate` / `@ParameterizedTest`), collects the `@Tag` values (`UC-N.M`, `wip`), treats an `@EnabledIfEnvironmentVariable(named = "GH_OPTIVEM_RUN_WIP_TESTS"…)` gate as wip, takes inline `@DataSource(...)` / `@ValueSource` rows as Examples and an `@ArgumentsSource(X.class)` as a named source, and then tokenizes the method body's single `scenario….;` statement into the model. Parsing works on a tokenizer that respects strings and parentheses, with regex for the annotation and method headers. It is not one giant regex.
-- [ ] Step 4: Write the .NET front-end (`csharp.go`). It reads `[Fact]` / `[Theory]`, `[Trait("tag", "UC-N.M")]` (also `"criterion"`, the same names `internal/spec/junit.go` accepts), takes `[InlineData]` / `[ChannelInlineData]` rows as Examples, handles the body `await Scenario(channel)….;`, turns PascalCase calls into lowerCamel, and drops numeric suffixes (`20.00m`, `5L`).
-- [ ] Step 5: Write the TypeScript front-end (`typescript.go`). It reads `test('name', criteria('UC-N.M', …), async ({ scenario… }) => { await scenario….; })` and `test.each(cases)` / `test.eachAlsoFirstRow(cases)`, which take Examples from a same-file `const cases = [{…}]` array of object literals. It strips the `_$param` suffix from titles, treats single-quoted strings as strings, and treats a template literal with `${…}` as `template`.
-- [ ] Step 6: Survey run, which is the escalation checkpoint. Run all three front-ends over shop `system-test/{java,dotnet,typescript}` `latest` acceptance dirs on shop's current checkout (read-only) and over `git -C ../shop show rehearsal/71-gift-wrap-an-order:<path>` for the gift-wrap tests. Record in this plan the number of tests per language and the number that do not parse. If any real test cannot be parsed without a per-file special case, stop and apply the escalation decision. Do not add workarounds.
-- [ ] Step 7: Golden tests. Copy these into `internal/spec/generate/testdata/{java,dotnet,typescript}/`, unchanged except for a header comment naming the shop source path and commit:
-  - shop `PlaceOrderPositiveTest` (plain chains, `@DataSource` / `ChannelInlineData` / `test.eachAlsoFirstRow` outlines, enum args, `null` args)
-  - `PlaceOrderNegativeTest` (`shouldFail` + `errorMessage` / `fieldErrorMessage`, `@ArgumentsSource`, imported constants)
-  - `PlaceOrderPositiveIsolatedTest` (one-line chained sections, clock)
-  - TS `cancel-order-negative-test.spec.ts` (`test.each` with a top-level const array, template literal)
-  - rehearsal-71 `GiftWrapOrderPositiveTest.java` (untagged, WIP-gated)
-
-  Each input gets a `<name>.feature.golden`, using the same `-update` flag pattern as `internal/spec/render_test.go`.
-- [ ] Step 8: Round-trip test. Feed each golden output into `spec.Parse` (inside a ```` ```gherkin ```` fence with front matter) and assert no `ParseErrs`, plus the expected set of criterion IDs. This keeps the generator's output valid under `docs/spec-gate/convention.md` §3.
-- [ ] Step 9: Fail-loud tests with small hand-written fixtures, each expecting an error that names `file:line` and the test:
-  - a lambda or `new` argument
-  - a second statement in the body
-  - a chain without `.then()`
-  - an unknown section keyword
-  - unbalanced parentheses
-  - a tag whose `UC-NNN` has no use case in `specDir`
 - [ ] Step 10: Add the command `newSpecGenerateCmd` in a new file `spec_generate_commands.go`, plus one `AddCommand` entry and an `Example` line in `spec_commands.go`. Flags:
   - `--config`: the existing spec.yaml flag, for `specDir`, `exclude` and use-case titles
   - `--tests` (repeatable; default `system-test.paths.at-test` from the project's `gh-optivem.yaml`)
@@ -51,6 +31,19 @@ Step 1. Before starting, check `git status` on `internal/spec/`, because another
   Exit codes follow the spec family: 0 ok, 1 tests that cannot be parsed or have unknown IDs, 2 usage or config error. On exit 1, nothing is written to stdout or `--out`.
 - [ ] Step 11: Docs. Add a short "Generating readable criteria" section to `docs/spec-gate/convention.md` with the command, the mapping rules and one before/after example. Update the `--help` text.
 - [ ] Step 12: Run `go test -p 2 ./internal/spec/generate/... .` (never unbounded `go test ./...` on Windows) and `go vet`.
+
+## Survey results (Step 6, 2026-11-09)
+
+All three front-ends use the regex/tokenizer approach. None needed tree-sitter. Shop `main` @ `ac04be12`, `latest` acceptance dirs, read-only:
+
+| Language | Tests found | Not parsed |
+|---|---|---|
+| Java | 86 | 0 |
+| .NET | 86 | 0 |
+| TypeScript | 86 | 0 |
+| rehearsal-71 `GiftWrapOrderPositiveTest.java` (`9056c76b`) | 2 (untagged, WIP-gated) | 0 |
+
+The first run failed on 10 tests: 4 Java, 4 .NET, 2 TS. Every failure was an argument expression, not the chain structure. Each was fixed with a general grammar rule (see Decisions, "Value expressions"), not a per-file case. Tree-sitter would not have helped, because the open question was how to render these expressions, not how to parse them.
 
 ## Decisions
 
@@ -86,6 +79,26 @@ Step 1. Before starting, check `git status` on `internal/spec/`, because another
 - **Output goes to stdout or `--out`, never committed, and starts with a "generated, do not commit" header.** This is decided in 1258: committing it would recreate the second copy.
 - **Golden tests use real shop files copied with a provenance header.** Tests must not read `../shop` at run time: shop changes under other sessions, and CI has no sibling checkout.
 
+- **When-line voice: plain action (`When place order with quantity 5`).** Accepted by the user on 2026-11-09. A fixed subject with conjugated verbs would need a vocabulary, which can come later as a separate plan.
+- **Given article: "a"/"an" only for a one-word subject.** `Given an order with status PLACED`, but `And logged in as customer "A"`, not "a logged in as customer". This is deterministic: a one-word subject is a noun (product, order, coupon, clock), and a multi-word subject is a state.
+- **Acronyms keep their case in prose.** A run of two or more capitals stays as written (`orderPrefixShouldBeORD` → "Order prefix should be ORD"). Everything else is lowercased.
+- **Feature name: `Feature: UC-NNN <title>`.** The title comes from the use case's front matter.
+- **Value expressions (found by the Step 6 survey).** These argument forms only restate a value, so each renders as that value:
+  - C# null-forgiving `null!`
+  - a cast `(decimal) x`
+  - parentheses
+  - a standard conversion call (`OrderStatus.valueOf(s)`, `Number.parseFloat(s)`, `decimal.Parse(s, …)`; the list is in `conversionCalls`)
+  - string concatenation `"Order " + X + " does not exist."`, rendered as one template `"Order ${X} does not exist."`, which matches how a TS template literal renders
+
+  `new`, lambdas and any other call still fail loud.
+- **Body grammar.** Besides the single chain, a body may hold:
+  - local constants bound to a literal (`const code = 'SUMMER2025';`, used in shop TS), which are inlined into the chain
+  - the WIP gate statement (`test.skip(…GH_OPTIVEM_RUN_WIP_TESTS…)` or `Skip.IfNot(…)`), which marks the test wip
+
+  Any other statement is the "second statement" error.
+- **TS `xs.forEach((x) => { test(…) })` is an outline over `x`.** Its rows come from `xs` if that is an inline or same-file const array, otherwise it is a named source (`emptyArguments`). C# `[ChannelClassData]` / `[ChannelMemberData]` and Java `@MethodSource` are named sources as well.
+- **Exclude globs from spec.yaml apply to test paths too.** `**` matches any number of directories, the same as the results globs.
+
 ## Open questions
 
-- **When-line voice: plain action (`When place order with quantity 5`) or a fixed subject (`When the customer places an order with quantity 5`)?** **Recommended: plain action in v1.** Turning arbitrary method names into conjugated verbs needs a vocabulary, which can be added later as a separate plan if readers find the plain form too terse. The plain form is deterministic and correct for every DSL verb.
+None.
