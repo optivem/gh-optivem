@@ -491,7 +491,7 @@ This file is the umbrella design (Q1). The work is split into one plan per stage
 | 3. Red reviewers | `plans/20261109-1257-red-reviewer-agents.md` | to review |
 | 4/6. AC policy | `plans/20261109-1258-ac-delete-and-generate.md` | to review (ordering vs. use-case format plan) |
 | 5a. Code & Architecture Review | `plans/20261109-1259-code-architecture-review.md` | to review |
-| 4. Green: WIP gate removal | `plans/20261109-1300-remove-wip-gate-at-green.md` | Step 1 (confirm the gap) is executable now |
+| 4. Green: WIP gate removal | `plans/20261109-1300-remove-wip-gate-at-green.md` | gap confirmed; Step 2 (implement) next |
 | 0. Legacy baseline | `plans/20261109-1301-legacy-baseline-mode.md` | discussion |
 | 5b. UX/UI Review | `plans/20261109-1302-ux-ui-review.md` | deferred until 5a ships |
 | Refactor test scope | `plans/20261109-1250-refactor-touched-use-case-tests.md` | discussion (parked Q5) |

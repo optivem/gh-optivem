@@ -16,15 +16,22 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md`, Q7 + Q8 ("Implement
 
 ## ▶ Next executable step (resume here)
 
-Step 1 is a read-only confirmation and can run right away via `/execute-plan`. It checks that the gap is real end to end before any code changes.
+The gap is confirmed (see `## Evidence`). Next is Step 2: implement the per-language gate strip, keyed on the `wip-gate-*.md` snippets. Review this plan with `/refine-plan` first if the placement question (Step 3) should be settled before coding.
 
 ## Steps
 
-- [ ] Step 1: Confirm the gap. Find a rehearsal branch or run where ATDD-written tests were committed, and check that (a) they still carry the gate on the final commit and (b) the shop/scaffold pipeline does not set `GH_OPTIVEM_RUN_WIP_TESTS`. Record the evidence here. If the gap is not real, stop and report.
 - [ ] Step 2: Implement the per-language strip (Java annotation line + import if unused, .NET guard line, TypeScript `test.skip(...)` line), keyed on the exact snippets in `wip-gate-*.md` so they can't drift. Fail loudly if a listed test doesn't carry the gate.
 - [ ] Step 3: Add the nodes to `process-flow.yaml`. Find out how "last touched channel" is known after `UnrollSystemChannels` (it may be better placed in `change-system-behavior` right after `IMPLEMENT_AND_VERIFY_SYSTEM`, which runs once after all channels).
 - [ ] Step 4: Check `cover-system-behavior` (expected-pass tests): do covered tests get gated at all? If yes, they need the same removal.
 - [ ] Step 5: Update the `clauderun.go` / `release.go` comments and the unit/statemachine tests. Run with `-p 2`.
+
+## Evidence (gap confirmed 2026-11-09)
+
+- **Gate survives Green.** On shop rehearsal branches, the final commit (the last `SYSTEM` commit) still carries the WIP gate on the ATDD-written tests:
+  - `rehearsal/71-gift-wrap-an-order`: tip `9056c76b` "SYSTEM (ui)"; `GiftWrapOrderPositiveTest.java` has the gate on both `shouldMarkOrderAsGiftWrapped` and `shouldAddGiftWrappingFeeToOrderTotal`.
+  - `rehearsal/69-reject-order-with-line-quantity-of-100`, `rehearsal/72-charge-shipping-based-on-product-weight` and `rehearsal/76-bug-order-cancellation-blackout-on-dec`: same, with gated test files at the tip.
+- **No pipeline lifts it.** `GH_OPTIVEM_RUN_WIP_TESTS` is set only in `internal/atdd/process/actions/command.go:196` (orchestrator verify runs, restored afterwards). It does not appear anywhere in shop `.github/`, in the `actions` repo, or in gh-optivem scaffolding. Shop's `system-test/java/build.gradle` only forwards the variable when it is already set.
+- Consequence: once merged, these tests would be skipped by every acceptance-stage pipeline run.
 
 ## Verification
 
