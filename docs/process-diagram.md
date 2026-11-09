@@ -1068,7 +1068,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-test-reviewer<br/>category = test-agent<br/>reviewer = <br/>task-name = review-acceptance-tests"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-test-reviewer<br/>category = command<br/>reviewer = <br/>task-name = review-acceptance-tests"]
     REVIEW_AT_END(( ))
 
     EXECUTE_AGENT --> REVIEW_AT_END
@@ -1083,7 +1083,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = dsl-reviewer<br/>category = system-agent<br/>reviewer = <br/>task-name = review-dsl"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = dsl-reviewer<br/>category = command<br/>reviewer = <br/>task-name = review-dsl"]
     REVIEW_DSL_END(( ))
 
     EXECUTE_AGENT --> REVIEW_DSL_END
@@ -1098,7 +1098,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-reviewer<br/>category = system-agent<br/>reviewer = <br/>task-name = review-system-driver-adapters"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-reviewer<br/>category = command<br/>reviewer = <br/>task-name = review-system-driver-adapters"]
     REVIEW_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> REVIEW_SYS_DA_END
