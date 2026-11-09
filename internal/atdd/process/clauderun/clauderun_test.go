@@ -3194,6 +3194,10 @@ func TestRenderPrompt_UseCaseTraceabilitySection(t *testing.T) {
 	mustContain(t, got, "- place a valid order => UC-001.1")
 	mustContain(t, got, "- reject zero => UC-001.2, UC-001.3")
 	mustContain(t, got, `@Tag("UC-001.3")`)
+	// The spec gate reads only the lowercase "tag"/"criterion" property names
+	// (internal/spec/junit.go), so the .NET trait name must be lowercase.
+	mustContain(t, got, `[Trait("tag", "UC-001.3")]`)
+	mustContain(t, got, `{ type: "tag", description: "UC-001.3" }`)
 	if strings.Contains(got, "${use-case-traceability}") {
 		t.Error("placeholder left unexpanded")
 	}

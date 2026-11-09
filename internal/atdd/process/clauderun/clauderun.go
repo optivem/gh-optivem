@@ -1447,7 +1447,7 @@ func renderTraceabilitySection(scenarioCriteria string) string {
 			b.WriteString("- " + line + "\n")
 		}
 	}
-	b.WriteString("\nTag syntax: Java `@Tag(\"UC-001.3\")`; .NET `[Trait(\"Criterion\", \"UC-001.3\")]`; TypeScript `{ tag: [\"@UC-001.3\"] }`. Add the tag next to the test's existing annotations; it never replaces the channel or WIP-gate declarations.\n")
+	b.WriteString("\nTag syntax: Java `@Tag(\"UC-001.3\")`; .NET `[Trait(\"tag\", \"UC-001.3\")]` (one per id; the trait name must be lowercase `tag`); TypeScript the annotation `{ annotation: { type: \"tag\", description: \"UC-001.3\" } }` (or the repo's own helper that wraps it). Only the `UC-NNN.M` id goes on the test, never the use case's `@narrative-…` tags. Add the tag next to the test's existing annotations; it never replaces the channel or WIP-gate declarations.\n")
 	return b.String()
 }
 

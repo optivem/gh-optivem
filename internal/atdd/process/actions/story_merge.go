@@ -99,7 +99,9 @@ func (a actions) checkStoryMergeNeeded(ctx *statemachine.Context) statemachine.O
 
 // verifyStoryMerge is the consistency check after the merge agent: the agent
 // raised no contradiction, the merged use cases validate, every story scenario
-// is mapped to a criterion that now exists. Any gap fails loudly with every
+// is mapped to a criterion that now exists, and in the use cases the story
+// touched every @narrative-Xy tag and BR-n reference resolves
+// (useCaseFormatProblems). Any gap fails loudly with every
 // problem listed; nothing is repaired or skipped.
 func (a actions) verifyStoryMerge(ctx *statemachine.Context) statemachine.Outcome {
 	if c := stringListState(ctx, ctxKeyContradictions); len(c) > 0 {
@@ -115,6 +117,11 @@ func (a actions) verifyStoryMerge(ctx *statemachine.Context) statemachine.Outcom
 	}
 	scenarios := spec.StoryScenarios(ctx.GetString("acceptance-criteria"))
 	problems, covered := spec.CheckStoryMerge(scenarios, mapping, ucs)
+	formatProblems, err := useCaseFormatProblems(dir, ucs, covered)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("verify-story-merge: %w", err)}
+	}
+	problems = append(problems, formatProblems...)
 	if len(problems) > 0 {
 		return statemachine.Outcome{Err: fmt.Errorf("verify-story-merge: the story is not fully merged into the use cases in %s:\n  - %s", dir, strings.Join(problems, "\n  - "))}
 	}
