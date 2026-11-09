@@ -435,6 +435,24 @@ processes:
       - {from: REDESIGN_SYSTEM_STRUCTURE,          to: GATE_REFACTOR_TYPE_CHOICE}
       - {from: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE, to: GATE_REFACTOR_TYPE_CHOICE}
 
+  # Align loop (plan 20261109-1255). The refiner drafts the criteria; its
+  # human-tier POST approval is the Three Amigos' verdict (no separate review
+  # node: one prompt per round). refine-acceptance-criteria passes
+  # `return-on-post-rejection`, so a "no" returns here instead of halting
+  # the run, and GATE_AC_AGREED routes on the same approval-outcome:
+  #
+  #   agreed      -> REFINE_BACKLOG_ITEM_END (refine-ticket then marks READY)
+  #   not agreed  -> RECORD_REFINEMENT_FEEDBACK asks what should change and
+  #                  hands it, with the refiner's open questions, to the next
+  #                  round's ${refinement-feedback}; then loops back.
+  #
+  # A declined PRE approval also leaves approval-outcome "rejected", so it
+  # counts as "not agreed": READY is set only after a "yes".
+  #
+  # Loop cap: 5 refinement rounds (max-visits on REFINE_ACCEPTANCE_CRITERIA).
+  # The 6th arrival skips the refiner and goes to REPORT_UNRESOLVED_REFINEMENT,
+  # which prints the unresolved questions, then halts at
+  # AC_REFINEMENT_EXHAUSTED (same pattern as FIX_LOOP_EXHAUSTED).
   refine-backlog-item:
     name: "Refine Backlog Item"
     start: REFINE_ACCEPTANCE_CRITERIA
@@ -443,13 +461,40 @@ processes:
         type: call-activity
         process: refine-acceptance-criteria
         name: "Refine Acceptance Criteria"
+        max-visits: 5
+        on-max-visits: REPORT_UNRESOLVED_REFINEMENT
+
+      - id: GATE_AC_AGREED
+        type: gateway
+        binding: approval-outcome
+        name: "Three Amigos Agreed?"
+
+      - id: RECORD_REFINEMENT_FEEDBACK
+        type: service-task
+        action: record-refinement-feedback
+        name: "Record the Three Amigos' Feedback"
+
+      - id: REPORT_UNRESOLVED_REFINEMENT
+        type: service-task
+        action: report-unresolved-refinement
+        name: "Report Unresolved Questions"
 
       - id: REFINE_BACKLOG_ITEM_END
         type: end-event
         name: "Backlog Item Refined"
 
+      # Loop-cap halt. The `_EXHAUSTED` suffix marks it for the
+      # halt-terminals-are-error-end invariant.
+      - id: AC_REFINEMENT_EXHAUSTED
+        type: error-end-event
+        name: "Acceptance Criteria Refinement Exhausted — no agreement after 5 rounds (resolve the open questions with the PO and re-run)"
+
     sequence-flows:
-      - {from: REFINE_ACCEPTANCE_CRITERIA, to: REFINE_BACKLOG_ITEM_END}
+      - {from: REFINE_ACCEPTANCE_CRITERIA,   to: GATE_AC_AGREED}
+      - {from: GATE_AC_AGREED,               to: REFINE_BACKLOG_ITEM_END,    when: "approval-outcome == approved"}
+      - {from: GATE_AC_AGREED,               to: RECORD_REFINEMENT_FEEDBACK, when: "approval-outcome == rejected"}
+      - {from: RECORD_REFINEMENT_FEEDBACK,   to: REFINE_ACCEPTANCE_CRITERIA}
+      - {from: REPORT_UNRESOLVED_REFINEMENT, to: AC_REFINEMENT_EXHAUSTED}
 
   # Classic red-green-REFACTOR triad (Q33). Step 3 delegates to the
   # canonical `refactor` TOP process — same gateway, same three
@@ -2921,9 +2966,17 @@ processes:
   # exemption from inline read/write (see runtime/shared/scope.md and
   # Engine.IsScopeNone). Plan 20260526-1448 Item 9 moved the SSoT here
   # from the prompt frontmatter.
+  #
+  # `open-questions` (optional): what the refiner could not settle alone.
+  # RECORD_REFINEMENT_FEEDBACK carries it into the next round; the loop-cap
+  # halt prints it (plan 20261109-1255).
   refine-acceptance-criteria:
     name: "Refine Acceptance Criteria"
     start: EXECUTE_AGENT
+    outputs:
+      - key: open-questions
+        type: string
+        optional: true
     nodes:
       - id: EXECUTE_AGENT
         type: call-activity
@@ -2934,6 +2987,9 @@ processes:
           agent: acceptance-criteria-refiner
           # human tier: always-engage contract step.
           category: human
+          # A POST "no" means "the Three Amigos have not agreed yet":
+          # return to refine-backlog-item's loop instead of halting.
+          return-on-post-rejection: "true"
         scope: none
 
       - id: REFINE_AC_END
@@ -3571,9 +3627,23 @@ processes:
         binding: approval-outcome
         name: "Approval Outcome?"
 
+      # POST rejection halts (EXECUTE_AGENT_OUTPUT_REJECTED_END) unless the
+      # caller passes `return-on-post-rejection: "true"` and owns the "no"
+      # itself: refine-acceptance-criteria, whose caller loops until the
+      # Three Amigos agree (plan 20261109-1255). `fix` resets the param so a
+      # fixer's rejected output still halts.
+      - id: GATE_RETURN_ON_POST_REJECTION
+        type: gateway
+        binding: return-on-post-rejection
+        name: "Caller Handles Rejection?"
+
       - id: EXECUTE_AGENT_END
         type: end-event
         name: "Agent Dispatch Complete"
+
+      - id: EXECUTE_AGENT_OUTPUT_DECLINED_END
+        type: end-event
+        name: "Agent Output Declined (caller decides)"
 
       - id: EXECUTE_AGENT_REJECTED_END
         type: end-event
@@ -3672,7 +3742,9 @@ processes:
       - {from: APPROVE_POST,                  to: GATE_APPROVED_POST}
       - {from: APPROVE_POST_REVIEWED,         to: GATE_APPROVED_POST}
       - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_END,                  when: "approval-outcome == approved"}
-      - {from: GATE_APPROVED_POST,            to: EXECUTE_AGENT_OUTPUT_REJECTED_END,  when: "approval-outcome == rejected"}
+      - {from: GATE_APPROVED_POST,            to: GATE_RETURN_ON_POST_REJECTION,      when: "approval-outcome == rejected"}
+      - {from: GATE_RETURN_ON_POST_REJECTION, to: EXECUTE_AGENT_OUTPUT_DECLINED_END,  when: "return-on-post-rejection == true"}
+      - {from: GATE_RETURN_ON_POST_REJECTION, to: EXECUTE_AGENT_OUTPUT_REJECTED_END,  when: "return-on-post-rejection == false"}
 
   # PRE approval only (Q2 = C asymmetric — commands have machine-checkable
   # success). On command failure, gate on `fix-on-failure` (mirrors the
@@ -3813,6 +3885,9 @@ processes:
           # FIX -> RUN_AGENT loop re-validates and re-reviews the writer
           # (plan 20261109-1257). Overrides the inherited `reviewer`.
           reviewer: ""
+          # A rejected fix output halts, even under a caller that owns its
+          # own POST rejection (plan 20261109-1255).
+          return-on-post-rejection: "false"
           # originating-task-name carries the OUTER MID's task-name (e.g.
           # "write-acceptance-tests") through the fix dispatch so the inner
           # validate-outputs-and-scopes (and the dispatcher's ${scope_block}

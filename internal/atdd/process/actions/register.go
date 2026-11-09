@@ -133,4 +133,10 @@ func RegisterAll(r *Registry, deps Deps) {
 	// next pass or phase. See review.go.
 	r.Register("request-review-revision", a.requestReviewRevision)
 	r.Register("summarize-review", a.summarizeReview)
+	// Align loop in refine-backlog-item (plan 20261109-1255). record-
+	// refinement-feedback hands the Three Amigos' answer and the refiner's
+	// open questions to the next round; report-unresolved-refinement prints
+	// them when the round cap halts the loop. See refinement.go.
+	r.Register("record-refinement-feedback", a.recordRefinementFeedback)
+	r.Register("report-unresolved-refinement", a.reportUnresolvedRefinement)
 }

@@ -191,6 +191,15 @@ type Options struct {
 	// Empty on every first dispatch; the section then renders as nothing.
 	ReviewFindings string
 
+	// RefinementFeedback carries the Three Amigos' answer and the refiner's
+	// open questions from the previous Align round (plan 20261109-1255),
+	// stamped by refine-backlog-item's RECORD_REFINEMENT_FEEDBACK into
+	// ctx.State as "refinement-feedback". Rendered into
+	// ${refinement-feedback-section} so the acceptance-criteria-refiner
+	// knows it is on a refine round. Empty on the first (draft) round; the
+	// section then renders as nothing.
+	RefinementFeedback string
+
 	// ParsedConcepts is the absolute path to the parsed-concepts artifact
 	// materialize_parsed_concepts writes at the start of the
 	// backlog_refinement sub-process. Substituted into
@@ -971,6 +980,9 @@ func renderPrompt(opts Options) (string, error) {
 	// Always registered: empty (renders nothing) unless a reviewer sent this
 	// Red writer back with blocking findings (plan 20261109-1257).
 	params["review-findings-section"] = renderReviewFindingsSection(opts.ReviewFindings)
+	// Always registered: empty (renders nothing) on the refiner's first round
+	// (plan 20261109-1255).
+	params["refinement-feedback-section"] = renderRefinementFeedbackSection(opts.RefinementFeedback)
 	// Checklist is load-bearing for the four task subtypes whose cycles
 	// consume ${checklist} (system-redesign, external-system-redesign,
 	// system-refactor, test-refactor). Same rationale as
@@ -1437,6 +1449,18 @@ func renderTraceabilitySection(scenarioCriteria string) string {
 	}
 	b.WriteString("\nTag syntax: Java `@Tag(\"UC-001.3\")`; .NET `[Trait(\"Criterion\", \"UC-001.3\")]`; TypeScript `{ tag: [\"@UC-001.3\"] }`. Add the tag next to the test's existing annotations; it never replaces the channel or WIP-gate declarations.\n")
 	return b.String()
+}
+
+// renderRefinementFeedbackSection renders the previous Align round's feedback
+// for the acceptance-criteria-refiner (plan 20261109-1255). Empty on the
+// first round, so the prompt shows no section.
+func renderRefinementFeedbackSection(feedback string) string {
+	if strings.TrimSpace(feedback) == "" {
+		return ""
+	}
+	return "### Feedback from the previous round\n\n" +
+		"This is a refine round: the Three Amigos reviewed your previous draft and have not agreed yet. Your previous draft is already in the parsed-concepts file. Address this feedback and settle the open questions; change nothing else.\n\n" +
+		strings.TrimSpace(feedback) + "\n"
 }
 
 // renderReviewFindingsSection renders the blocking findings a reviewer raised

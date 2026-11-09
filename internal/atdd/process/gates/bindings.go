@@ -175,6 +175,9 @@ func RegisterAll(r *Registry, deps Deps) {
 	// `reviewer` param (the reviewer MID to call). GATE_REVIEW_FINDINGS: the
 	// reviewer's required bool verdict, strict like the port-changed flags.
 	r.Register("reviewer-configured", b.reviewerConfigured)
+	// GATE_RETURN_ON_POST_REJECTION in execute-agent (plan 20261109-1255):
+	// true iff the caller owns a POST "no" (refine-acceptance-criteria).
+	r.Register("return-on-post-rejection", b.returnOnPostRejection)
 	r.Register("review-has-blocking-findings", b.reviewHasBlockingFindings)
 	// Port-changed verdicts: the writing-agent output flags consumed by the
 	// per-test-layer fanout in implement-and-verify-dsl and the parent re-gates.
@@ -464,6 +467,22 @@ func (b bindings) fixOnFailureEnabled(ctx *statemachine.Context) statemachine.Ou
 	yes, ok := promptio.ParseYN(raw)
 	if !ok {
 		return statemachine.Outcome{Err: fmt.Errorf("fix-on-failure-enabled: unrecognised value %q (expected true|false|yes|no)", raw)}
+	}
+	return statemachine.Outcome{Bool: yes}
+}
+
+// returnOnPostRejection is GATE_RETURN_ON_POST_REJECTION in execute-agent
+// (plan 20261109-1255). Reads the `return-on-post-rejection` param; unset
+// means false, so every call site except refine-acceptance-criteria keeps
+// the hard halt on a rejected output.
+func (b bindings) returnOnPostRejection(ctx *statemachine.Context) statemachine.Outcome {
+	raw := strings.TrimSpace(ctx.Params["return-on-post-rejection"])
+	if raw == "" {
+		return statemachine.Outcome{Bool: false}
+	}
+	yes, ok := promptio.ParseYN(raw)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("return-on-post-rejection: unrecognised value %q (expected true|false|yes|no)", raw)}
 	}
 	return statemachine.Outcome{Bool: yes}
 }

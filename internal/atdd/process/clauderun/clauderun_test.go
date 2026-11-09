@@ -246,7 +246,10 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 		// Reviewer findings a Red writer re-dispatch renders into
 		// ${review-findings-section} (plan 20261109-1257).
 		ReviewFindings: "FooTest.java: scenario line `Then the order succeeds` has no assertion",
-		ScopeRead:      []string{"at-test"},
+		// Previous Align round's feedback the acceptance-criteria-refiner
+		// renders into ${refinement-feedback-section} (plan 20261109-1255).
+		RefinementFeedback: "Three Amigos feedback: the fee applies per order, not per item\nOpen questions from the previous round:\n- Is the fee waived for orders over $100?",
+		ScopeRead:          []string{"at-test"},
 		ScopeWrite:     []string{"system-driver-adapter"},
 		AttemptNumber:  1,
 		AttemptMax:     2,

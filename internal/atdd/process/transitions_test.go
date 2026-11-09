@@ -1484,15 +1484,18 @@ func TestMergeUseCases_AgentContract(t *testing.T) {
 func TestBackEdgesAreAudited(t *testing.T) {
 	eng := loadSnapshot(t)
 	want := map[string]bool{
-		"execute-agent: FIX -> RUN_AGENT":                                           true,
-		"execute-agent: REQUEST_REVISION -> RUN_AGENT":                              true,
-		"execute-command: FIX -> RUN_COMMAND":                                       true,
-		"refactor: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE": true,
-		"refactor: REDESIGN_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":          true,
-		"refactor: REFACTOR_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":          true,
-		"refactor: REFACTOR_TEST_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":            true,
-		"verify-tests-fail: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                    true,
-		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                    true,
+		"execute-agent: FIX -> RUN_AGENT":              true,
+		"execute-agent: REQUEST_REVISION -> RUN_AGENT": true,
+		"execute-command: FIX -> RUN_COMMAND":          true,
+		// Align loop (plan 20261109-1255): capped by max-visits 5 on
+		// REFINE_ACCEPTANCE_CRITERIA, then AC_REFINEMENT_EXHAUSTED.
+		"refine-backlog-item: RECORD_REFINEMENT_FEEDBACK -> REFINE_ACCEPTANCE_CRITERIA": true,
+		"refactor: REDESIGN_EXTERNAL_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":     true,
+		"refactor: REDESIGN_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":              true,
+		"refactor: REFACTOR_SYSTEM_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":              true,
+		"refactor: REFACTOR_TEST_STRUCTURE -> GATE_REFACTOR_TYPE_CHOICE":                true,
+		"verify-tests-fail: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                        true,
+		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                        true,
 	}
 	got := map[string]bool{}
 	for name, p := range eng.Processes {
