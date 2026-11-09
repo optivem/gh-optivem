@@ -23,7 +23,6 @@ func monolithRawFlags() *config.RawFlags {
 		TestLang:     "java",
 		ProjectURL:   "https://github.com/orgs/acme/projects/1",
 		License:      projectconfig.LicenseMIT,
-		Deploy:       projectconfig.DeployDocker,
 	}
 }
 

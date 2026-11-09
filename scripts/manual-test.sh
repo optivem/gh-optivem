@@ -83,7 +83,7 @@ while [[ $# -gt 0 ]]; do
     --arch)              CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     --repo-strategy)     CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     --monolith-lang|--backend-lang|--frontend-lang|--test-lang) CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
-    --license|--deploy)  CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
+    --license)           CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     --project-url)       CONFIG_INIT_FLAGS+=("$1" "$2"); shift 2 ;;
     # Tier-path flags are forwarded as-passed; the binary defaults
     # empty paths to the flat scaffold layout itself.

@@ -14,12 +14,12 @@ func envOf(pairs map[string]string) func(string) string {
 
 func TestCategory_String(t *testing.T) {
 	cases := map[Category]string{
-		CategoryCommand:    "command",
+		CategoryCommand:      "command",
 		CategorySystemAgent:  "system-agent",
-		CategoryTestAgent:  "test-agent",
+		CategoryTestAgent:    "test-agent",
 		CategorySystemCommit: "system-commit",
-		CategoryTestCommit: "test-commit",
-		CategoryHuman:      "human",
+		CategoryTestCommit:   "test-commit",
+		CategoryHuman:        "human",
 	}
 	for c, want := range cases {
 		if got := c.String(); got != want {

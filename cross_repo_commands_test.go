@@ -289,11 +289,11 @@ func TestWorkingTreeClean(t *testing.T) {
 
 func TestIsNonFastForwardRejection(t *testing.T) {
 	cases := map[string]bool{
-		"":                                  false,
-		"fatal: Authentication failed":      false,
-		" ! [rejected]        main -> main (non-fast-forward)\nerror: failed to push some refs":       true,
+		"":                             false,
+		"fatal: Authentication failed": false,
+		" ! [rejected]        main -> main (non-fast-forward)\nerror: failed to push some refs":        true,
 		" ! [rejected]        main -> main (fetch first)\nhint: Updates were rejected because the tip": true,
-		"Updates were rejected because the remote contains work that you do":                            true,
+		"Updates were rejected because the remote contains work that you do":                           true,
 	}
 	for in, want := range cases {
 		if got := isNonFastForwardRejection(in); got != want {

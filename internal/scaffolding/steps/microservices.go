@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 
 	"github.com/optivem/gh-optivem/internal/config"
-	"github.com/optivem/gh-optivem/internal/scaffolding/files"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
+	"github.com/optivem/gh-optivem/internal/scaffolding/files"
 )
 
 // applyMicroservices scaffolds the microservices backend: one backend scaffold

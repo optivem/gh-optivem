@@ -38,7 +38,7 @@ func newPrMergeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "merge [<pr-number>]",
 		Short: "Squash- or rebase-merge a PR via `gh pr merge`; never a merge commit",
-		Long: `Wrapper over gh pr merge. Defaults to --squash; --rebase opt-in. The --merge mode is intentionally not exposed because merge commits on main break docs/tbd.md's linear-trunk invariant. Pass any other gh pr merge flags directly to the underlying CLI.`,
+		Long:  `Wrapper over gh pr merge. Defaults to --squash; --rebase opt-in. The --merge mode is intentionally not exposed because merge commits on main break docs/tbd.md's linear-trunk invariant. Pass any other gh pr merge flags directly to the underlying CLI.`,
 		Example: `  gh optivem pr merge
   gh optivem pr merge 123 --rebase
   gh optivem pr merge --squash --delete-branch

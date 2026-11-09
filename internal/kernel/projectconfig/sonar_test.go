@@ -17,7 +17,7 @@ func TestDeriveSonarProjects(t *testing.T) {
 		want         DerivedSonar
 	}{
 		{
-			name: "monolith monorepo",
+			name:  "monolith monorepo",
 			owner: "acme", repo: "page-turner",
 			arch: ArchMonolith, repoStrategy: RepoStrategyMonoRepo,
 			want: DerivedSonar{
@@ -26,7 +26,7 @@ func TestDeriveSonarProjects(t *testing.T) {
 			},
 		},
 		{
-			name: "monolith multirepo",
+			name:  "monolith multirepo",
 			owner: "acme", repo: "page-turner",
 			arch: ArchMonolith, repoStrategy: RepoStrategyMultiRepo,
 			want: DerivedSonar{
@@ -35,7 +35,7 @@ func TestDeriveSonarProjects(t *testing.T) {
 			},
 		},
 		{
-			name: "multitier monorepo",
+			name:  "multitier monorepo",
 			owner: "acme", repo: "page-turner",
 			arch: ArchMultitier, repoStrategy: RepoStrategyMonoRepo,
 			want: DerivedSonar{
@@ -45,7 +45,7 @@ func TestDeriveSonarProjects(t *testing.T) {
 			},
 		},
 		{
-			name: "multitier multirepo",
+			name:  "multitier multirepo",
 			owner: "acme", repo: "page-turner",
 			arch: ArchMultitier, repoStrategy: RepoStrategyMultiRepo,
 			want: DerivedSonar{

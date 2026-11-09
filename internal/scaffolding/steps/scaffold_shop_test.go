@@ -57,7 +57,7 @@ func shopScaffoldConfig(t *testing.T, shop, arch, lang, testLang, strategy strin
 	cfg := &config.Config{
 		Arch: arch, RepoStrategy: strategy, TestLang: testLang,
 		Owner: "acme", Repo: "shopx", FullRepo: "acme/shopx", SystemName: "shopx",
-		Deploy: "docker", NoLegacy: noLegacy, ShopPath: shop,
+		NoLegacy: noLegacy, ShopPath: shop,
 		RepoDir: filepath.Join(root, "shopx"),
 	}
 	if arch == "monolith" {

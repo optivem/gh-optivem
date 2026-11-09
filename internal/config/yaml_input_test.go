@@ -16,7 +16,6 @@ func validMonolithYAML() *projectconfig.Config {
 		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
 		SystemName:   "Page Turner",
 		License:      projectconfig.LicenseMIT,
-		Deploy:       projectconfig.DeployDocker,
 		System: projectconfig.System{
 			Architecture: projectconfig.ArchMonolith,
 			Path:         "system",
@@ -35,7 +34,6 @@ func validMultitierMultirepoYAML() *projectconfig.Config {
 		RepoStrategy: projectconfig.RepoStrategyMultiRepo,
 		SystemName:   "Page Turner",
 		License:      projectconfig.LicenseApache2,
-		Deploy:       projectconfig.DeployDocker,
 		System: projectconfig.System{
 			Architecture: projectconfig.ArchMultitier,
 			Backend:      projectconfig.TierSpec{Path: "backend", Repo: "acme/page-turner-backend", Lang: projectconfig.LangDotnet},
@@ -54,7 +52,6 @@ func validMicroservicesMonorepoYAML() *projectconfig.Config {
 		RepoStrategy: projectconfig.RepoStrategyMonoRepo,
 		SystemName:   "Shop",
 		License:      projectconfig.LicenseMIT,
-		Deploy:       projectconfig.DeployDocker,
 		System: projectconfig.System{
 			Architecture: projectconfig.ArchMicroservices,
 			BackendServices: map[string]projectconfig.TierSpec{
@@ -150,8 +147,8 @@ func TestFillRawFlagsFromYAML_MonolithMonorepo(t *testing.T) {
 	if f.SystemPath != "system" || f.SystemTestPath != "system-test" {
 		t.Errorf("paths: got system=%q system-test=%q", f.SystemPath, f.SystemTestPath)
 	}
-	if f.License != projectconfig.LicenseMIT || f.Deploy != projectconfig.DeployDocker {
-		t.Errorf("license/deploy: got %q/%q", f.License, f.Deploy)
+	if f.License != projectconfig.LicenseMIT {
+		t.Errorf("license: got %q", f.License)
 	}
 }
 
@@ -177,20 +174,16 @@ func TestFillRawFlagsFromYAML_MultitierMultirepoStripsSuffix(t *testing.T) {
 	}
 }
 
-func TestFillRawFlagsFromYAML_DefaultsAbsentLicenseAndDeploy(t *testing.T) {
+func TestFillRawFlagsFromYAML_DefaultsAbsentLicense(t *testing.T) {
 	t.Parallel()
 	pc := validMonolithYAML()
 	pc.License = ""
-	pc.Deploy = ""
 	f := &RawFlags{}
 	if err := FillRawFlagsFromYAML(f, pc); err != nil {
 		t.Fatalf("FillRawFlagsFromYAML: %v", err)
 	}
 	if f.License != projectconfig.LicenseMIT {
 		t.Errorf("absent license should default to mit, got %q", f.License)
-	}
-	if f.Deploy != projectconfig.DeployDocker {
-		t.Errorf("absent deploy should default to docker, got %q", f.Deploy)
 	}
 }
 

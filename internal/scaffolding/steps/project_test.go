@@ -171,10 +171,10 @@ func TestParseProjectURL(t *testing.T) {
 		{"https://github.com/users/acme/projects/5", "acme", 5, false},
 		{"https://github.com/orgs/acme/projects/12", "acme", 12, false},
 		{"https://github.com/orgs/acme/projects/5/", "acme", 5, false},
-		{"https://github.com/acme/projects/5", "", 0, true},                    // missing users/orgs prefix
-		{"https://gitlab.com/users/acme/projects/5", "", 0, true},              // wrong host
-		{"https://github.com/users/acme/projects/abc", "", 0, true},            // non-numeric
-		{"https://github.com/users/acme/projects/0", "", 0, true},              // zero
+		{"https://github.com/acme/projects/5", "", 0, true},         // missing users/orgs prefix
+		{"https://gitlab.com/users/acme/projects/5", "", 0, true},   // wrong host
+		{"https://github.com/users/acme/projects/abc", "", 0, true}, // non-numeric
+		{"https://github.com/users/acme/projects/0", "", 0, true},   // zero
 		{"not a url", "", 0, true},
 	}
 	for _, tc := range cases {
@@ -314,7 +314,7 @@ func TestEnsureProjectBoard_PathA_FirstRun(t *testing.T) {
 	}
 	names := captureGraphqlOptions(t, mutCalls[0].stdin)
 	containsAll(t, names, canonicalStatusOptions...)
-	// Default Todo must be replaced (not in canonical set).
+	// GitHub's default to-do option must be replaced (not in canonical set).
 	for _, n := range names {
 		if strings.EqualFold(n, "Todo") {
 			t.Errorf("canonical replace must drop Todo, got names=%v", names)
@@ -504,7 +504,7 @@ func TestEnsureProjectBoard_PathB_AdditiveMerge(t *testing.T) {
 	names := captureGraphqlOptions(t, mut[0].stdin)
 	// All required ATDD options present.
 	containsAll(t, names, atddRequiredStatusOptions...)
-	// Existing Todo / Done preserved (case-insensitive match).
+	// Existing default options preserved (case-insensitive match).
 	containsAll(t, names, "Todo", "Done")
 
 	// Path B must NOT auto-create, link, or list projects.

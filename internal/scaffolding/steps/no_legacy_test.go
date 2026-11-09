@@ -15,22 +15,17 @@ func TestAddLegacyWorkflow_NoLegacy(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name     string
-		deploy   string
 		noLegacy bool
 		want     bool
 	}{
-		{"docker, legacy kept", "docker", false, true},
-		{"docker, --no-legacy", "docker", true, false},
-		// The single-pipeline layout has no deploy-target twins: legacy is
-		// scaffolded whatever --deploy says.
-		{"cloud-run, legacy kept", deployCloudRun, false, true},
-		{"cloud-run, --no-legacy", deployCloudRun, true, false},
+		{"legacy kept", false, true},
+		{"--no-legacy", true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			wfMap := map[string]string{}
-			cfg := &config.Config{Deploy: tc.deploy, NoLegacy: tc.noLegacy}
+			cfg := &config.Config{NoLegacy: tc.noLegacy}
 			addLegacyWorkflow(wfMap, Names.MonolithLegacyAcceptWf, map[string]string{"testLang": "java"}, cfg)
 			dst, got := wfMap["monolith-java-acceptance-stage-docker-compose-legacy.yml"]
 			if got != tc.want {
@@ -53,11 +48,11 @@ func TestPipelineBadges_NoLegacy(t *testing.T) {
 		}
 		return false
 	}
-	if !hasLegacy(&config.Config{Deploy: "docker"}) {
-		t.Error("docker without --no-legacy: legacy badge missing")
+	if !hasLegacy(&config.Config{}) {
+		t.Error("without --no-legacy: legacy badge missing")
 	}
-	if hasLegacy(&config.Config{Deploy: "docker", NoLegacy: true}) {
-		t.Error("docker with --no-legacy: legacy badge present")
+	if hasLegacy(&config.Config{NoLegacy: true}) {
+		t.Error("with --no-legacy: legacy badge present")
 	}
 }
 

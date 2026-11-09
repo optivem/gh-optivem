@@ -250,10 +250,10 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 		// renders into ${refinement-feedback-section} (plan 20261109-1255).
 		RefinementFeedback: "Three Amigos feedback: the fee applies per order, not per item\nOpen questions from the previous round:\n- Is the fee waived for orders over $100?",
 		ScopeRead:          []string{"at-test"},
-		ScopeWrite:     []string{"system-driver-adapter"},
-		AttemptNumber:  1,
-		AttemptMax:     2,
-		Placeholders:   ph,
+		ScopeWrite:         []string{"system-driver-adapter"},
+		AttemptNumber:      1,
+		AttemptMax:         2,
+		Placeholders:       ph,
 		NodeParams: map[string]string{
 			"channel":              channel,
 			"common":               "true",

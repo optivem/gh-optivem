@@ -101,8 +101,8 @@ so editing it takes effect on the next run with no terminal restart.`,
 // The bash and docker checks are NOT gated on anything: every scaffold shells
 // out through bash and runs its system locally through `docker compose`,
 // whatever it deploys to, so both sit in the always-run set alongside gh and
-// actionlint. There is no --deploy flag here; when a target-specific tool
-// lands (gcloud for cloud-run), it gets its own opt-in flag then.
+// actionlint. Target-specific tools (gcloud for Cloud Run) are not checked;
+// if one is ever needed, it gets its own opt-in flag then.
 func newEnvironmentVerifyCmd() *cobra.Command {
 	var langs []string
 	cmd := &cobra.Command{

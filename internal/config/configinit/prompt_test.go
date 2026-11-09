@@ -40,31 +40,31 @@ func stubExistenceChecks(t *testing.T, owner func(string) error, project func(st
 // is a promptio y/n.
 func monolithAnswers() []string {
 	return []string{
-		"acme",                                    // owner
-		"page-turner",                             // repo
-		"Page Turner",                             // system-name
-		"1",                                       // arch → monolith
-		"1",                                       // repo-strategy → monorepo
-		"1",                                       // monolith-lang → java
-		"3",                                       // test-lang → typescript
-		"y",                                       // project-url gate → yes
+		"acme",        // owner
+		"page-turner", // repo
+		"Page Turner", // system-name
+		"1",           // arch → monolith
+		"1",           // repo-strategy → monorepo
+		"1",           // monolith-lang → java
+		"3",           // test-lang → typescript
+		"y",           // project-url gate → yes
 		"https://github.com/orgs/acme/projects/1", // project-url
-		"",                                        // license → ENTER = mit (keys are sorted; mit is not [1])
+		"", // license → ENTER = mit (keys are sorted; mit is not [1])
 	}
 }
 
 func multitierAnswers() []string {
 	return []string{
-		"acme",                                    // owner
-		"page-turner",                             // repo
-		"Page Turner",                             // system-name
-		"2",                                       // arch → multitier
-		"2",                                       // repo-strategy → multirepo
-		"2",                                       // backend-lang → dotnet
-		"1",                                       // test-lang → java
-		"y",                                       // project-url gate → yes
+		"acme",        // owner
+		"page-turner", // repo
+		"Page Turner", // system-name
+		"2",           // arch → multitier
+		"2",           // repo-strategy → multirepo
+		"2",           // backend-lang → dotnet
+		"1",           // test-lang → java
+		"y",           // project-url gate → yes
 		"https://github.com/orgs/acme/projects/2", // project-url
-		"",                                        // license → ENTER = mit (keys are sorted; mit is not [1])
+		"", // license → ENTER = mit (keys are sorted; mit is not [1])
 	}
 }
 
@@ -262,7 +262,7 @@ func TestPrompt_SkipsURLOnNo(t *testing.T) {
 	const gatePos = 7
 	const licensePos = 9
 	lines := append([]string{}, answers[:gatePos]...)
-	lines = append(lines, "n")                  // gate → no
+	lines = append(lines, "n")                     // gate → no
 	lines = append(lines, answers[licensePos:]...) // skip URL, jump to license
 	var out bytes.Buffer
 	f, err := Prompt(script(lines), &out)

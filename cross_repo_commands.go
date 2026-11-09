@@ -475,9 +475,7 @@ func confirmCommit(repo string, opts commitOptions) (bool, error) {
 	if !stdinIsTTY() {
 		return false, errors.New("stdin is not a TTY and --yes was not set; refusing to commit unattended.\n       Re-run with --yes if this is a scripted invocation.")
 	}
-	// TODO(non-implement-tiering): placeholder; proper tier assignment
-	// deferred to the follow-up plan. See plan
-	// 20260528-0930-approval-tier-ladder.md §D5.
+	// CategoryHuman by design: --auto tiers only the ATDD ladder; unattended runs are handled by --yes above.
 	return approval.Confirm(opts.Approval, approval.CategoryHuman, os.Stdin, os.Stdout, fmt.Sprintf("Commit these changes to %s?", relOrSelf(repo)))
 }
 
@@ -830,13 +828,9 @@ func runRateLimit() error {
 // rails. lint-history flags merge commits on main, which violate the
 // "linear trunk" rule (#4). stale-branches flags local branches older
 // than --age, which violate the "hours, not days" rule (#3 / line 61).
-// Both are periodic-audit tools, not daily-workflow tools.
-//
-// TODO(placement): they're currently Hidden at root while the operator
-// decides where they belong long-term. Options: keep at root + unhide,
-// move under a new `tbd` / `audit` noun, or merge into `actions` if its
-// scope broadens. Revisit per plans/20260515-0736-extend-test-system-
-// with-universal-git-verbs.md "Deferred follow-ups".
+// Both are periodic-audit tools, not daily-workflow tools. They live at
+// root, listed in --help, next to the other universal git verbs (sync,
+// commit, branch); decided 2026-11-09.
 
 // lintHistoryOptions captures the per-invocation flags for `lint-history`.
 type lintHistoryOptions struct {
@@ -846,9 +840,8 @@ type lintHistoryOptions struct {
 func newLintHistoryCmd() *cobra.Command {
 	opts := lintHistoryOptions{}
 	cmd := &cobra.Command{
-		Use:    "lint-history [--limit N]",
-		Short:  "Flag merge commits on main in every repo in scope (docs/tbd.md drift detector)",
-		Hidden: true,
+		Use:   "lint-history [--limit N]",
+		Short: "Flag merge commits on main in every repo in scope (docs/tbd.md drift detector)",
 		Long: `For each repo in scope, scan the last N first-parent commits of main for
 merge commits and flag any hits. docs/tbd.md mandates a linear trunk — any
 merge commit on main is drift. Exits non-zero when drift is found.
@@ -968,9 +961,8 @@ type staleBranch struct {
 func newStaleBranchesCmd() *cobra.Command {
 	opts := staleBranchesOptions{Age: 24 * time.Hour}
 	cmd := &cobra.Command{
-		Use:    "stale-branches [--age <duration>]",
-		Short:  "List local branches in each repo in scope whose tip is older than the threshold",
-		Hidden: true,
+		Use:   "stale-branches [--age <duration>]",
+		Short: "List local branches in each repo in scope whose tip is older than the threshold",
 		Long: `For each repo in scope, list local branches (excluding main) whose tip
 commit was authored more than --age ago. docs/tbd.md:62 sets the "hours, not
 days" expectation for Scaled-TBD branch lifetime; this command helps

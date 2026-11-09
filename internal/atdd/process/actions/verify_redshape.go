@@ -22,8 +22,8 @@
 //     the same crash signatures.
 //
 // "Test-level reason" is deliberately broader than a literal assertion type:
-// the expected red of an acceptance test is often a `TODO: DSL` / `TODO:
-// System Driver` stub exception, not an AssertionError, so requiring an
+// the expected red of an acceptance test is often an unimplemented DSL or
+// System Driver stub exception, not an AssertionError, so requiring an
 // assertion exception class would reject every legitimate red.
 package actions
 

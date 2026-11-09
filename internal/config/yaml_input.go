@@ -53,10 +53,6 @@ func FillRawFlagsFromYAML(f *RawFlags, pc *projectconfig.Config) error {
 	// gh-optivem.yaml's copyright-holder is the documented way an operator
 	// names a legal entity instead, so it must be hydrated.
 	f.CopyrightHolder = pc.CopyrightHolder
-	f.Deploy = pc.Deploy
-	if f.Deploy == "" {
-		f.Deploy = projectconfig.DeployDocker
-	}
 
 	if err := fillTierFieldsFromYAML(f, pc); err != nil {
 		return err

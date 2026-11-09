@@ -59,7 +59,6 @@ func BuildOptivemYAML(cfg *config.Config) *projectconfig.Config {
 		SystemName:      cfg.SystemName,
 		License:         cfg.License,
 		CopyrightHolder: cfg.CopyrightHolder,
-		Deploy:          cfg.Deploy,
 	}
 	if cfg.Arch == "" {
 		// Partial config (no architecture chosen yet) — emit just the

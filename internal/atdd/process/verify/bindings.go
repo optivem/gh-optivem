@@ -61,8 +61,8 @@ func Bindings(deps Deps) map[string]struct {
 		Post PostFn
 	}{
 		// AT cycle — each WRITE must be preceded by the matching commit.
-		"AT_RED_DSL":             {Pre: requireHead("AT - RED - TEST")},
-		"CT_RED_DSL":             {Pre: requireHead("CT - RED - TEST")},
+		"AT_RED_DSL":                    {Pre: requireHead("AT - RED - TEST")},
+		"CT_RED_DSL":                    {Pre: requireHead("CT - RED - TEST")},
 		"CT_RED_EXTERNAL_SYSTEM_DRIVER": {Pre: requireHead("CT - RED - DSL")},
 	}
 }

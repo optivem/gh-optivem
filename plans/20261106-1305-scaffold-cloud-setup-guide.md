@@ -71,13 +71,13 @@ About $0 a month in normal use: Cloud Run scales to zero with max 1-2 instances,
 4. Guide at gh-optivem `docs/cloud-setup.md`, linked from the scaffolded README; shop's `terraform/README.md` is copied along and linked as the deep reference.
 5. Make `setup-gcp.sh` flavor-aware in shop (shop change: handed to the user's shop chat, not done from gh-optivem).
 6. `init` warns when the derived `SYSTEM_NAME` is over 8 characters; it never auto-picks a name.
+7. Decided 2026-11-09: `--deploy` removed (flag, `deploy:` YAML key, validation, prompt default). Cloud files ship with every scaffold, so it no longer changed anything; an old `gh-optivem.yaml` with `deploy:` now fails strict parsing.
 
 ## Steps
 
 Steps 1–4b done 2026-11-06: guide `docs/cloud-setup.md`; `init` always copies `setup-gcp.sh`, `teardown-gcp.sh`, `terraform/` (and `setup-custom-domains.sh`, per-language, for multitier); multitier-only SYSTEM_NAME warning (>8 typescript, >12 dotnet); environment names verified with a drift check. Shop half (Step 4 + 4b callers) moved to `plans/move-to-shop/20261106-2048-setup-gcp-flavor-aware-and-domain-callers.md`.
 
 Follow-ups (gh-optivem):
-- [ ] `--deploy` help/config still says "docker | cloud-run" but no longer changes which cloud files are copied (`internal/kernel/projectconfig/config.go:115,185`); decide whether to drop the flag.
 - [ ] Guide unverified bits (marked in `docs/cloud-setup.md`): GHCR fix-link `/orgs/` vs `/users/` for personal accounts; whether packages of public repos are public automatically; where multirepo scaffolds keep the scripts. Settle during Step 5.
 
 - [ ] Step 5 — **With the user (costs money, uses their GCP billing and Neon accounts):** scaffold a throwaway repo with a short name. Follow `docs/cloud-setup.md` word for word, and check that cloud acceptance creates an RC, QA deploys and is signed off, and prod deploys and publishes. Then run `./teardown-gcp.sh` and confirm that no GCP project, Neon project or repo variables remain. Fold any gaps back into the guide.

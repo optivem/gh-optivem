@@ -101,10 +101,10 @@ func TestConfirmYN_AppendsHint(t *testing.T) {
 // scriptedAsker replays a fixed slice of (answer, error) pairs in order,
 // failing the test if Ask is called more times than scripted.
 type scriptedAsker struct {
-	t      *testing.T
-	calls  []scriptedCall
-	index  int
-	asked  []string
+	t     *testing.T
+	calls []scriptedCall
+	index int
+	asked []string
 }
 
 type scriptedCall struct {

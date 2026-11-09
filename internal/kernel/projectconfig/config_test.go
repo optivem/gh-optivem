@@ -1544,11 +1544,11 @@ func TestWriteToPath_EmptyPathErrors(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// system-name / license / deploy field validation
+// system-name / license field validation
 // ---------------------------------------------------------------------------
 
 // validMonolithBase is the smallest Config that Validate accepts with
-// architecture set. Each system-name/license/deploy test mutates a copy.
+// architecture set. Each system-name/license test mutates a copy.
 func validMonolithBase() *Config {
 	return &Config{
 		Project:      Project{Provider: ProviderGitHub, URL: "https://github.com/orgs/acme/projects/1"},
@@ -1651,41 +1651,16 @@ func TestValidate_RejectsUnknownLicense(t *testing.T) {
 	}
 }
 
-func TestValidate_AcceptsKnownDeploys(t *testing.T) {
-	t.Parallel()
-	for _, key := range []string{DeployDocker, DeployCloudRun} {
-		cfg := validMonolithBase()
-		cfg.Deploy = key
-		if err := cfg.Validate(); err != nil {
-			t.Errorf("Validate(deploy=%q): %v", key, err)
-		}
-	}
-}
-
-func TestValidate_RejectsUnknownDeploy(t *testing.T) {
-	t.Parallel()
-	cfg := validMonolithBase()
-	cfg.Deploy = "bare-metal"
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("Validate: want error for unknown deploy, got nil")
-	}
-	if !strings.Contains(err.Error(), "deploy") {
-		t.Errorf("error should mention deploy, got: %v", err)
-	}
-}
-
 func TestValidate_AcceptsEmptyIdentityFields(t *testing.T) {
 	t.Parallel()
-	// system-name / license / deploy are all optional at the schema layer
+	// system-name / license are both optional at the schema layer
 	// (init re-checks presence). A config with architecture set and these
 	// fields absent must still validate.
 	cfg := validMonolithBase()
 	cfg.SystemName = ""
 	cfg.License = ""
-	cfg.Deploy = ""
 	if err := cfg.Validate(); err != nil {
-		t.Errorf("Validate: %v (empty system-name/license/deploy must be OK)", err)
+		t.Errorf("Validate: %v (empty system-name/license must be OK)", err)
 	}
 }
 
@@ -1695,7 +1670,6 @@ func TestRoundTrip_PreservesIdentityFields(t *testing.T) {
 	in := validMonolithBase()
 	in.SystemName = "Page Turner"
 	in.License = LicenseApache2
-	in.Deploy = DeployDocker
 	if err := Write(dir, in); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
@@ -1708,9 +1682,6 @@ func TestRoundTrip_PreservesIdentityFields(t *testing.T) {
 	}
 	if out.License != in.License {
 		t.Errorf("license: got %q, want %q", out.License, in.License)
-	}
-	if out.Deploy != in.Deploy {
-		t.Errorf("deploy: got %q, want %q", out.Deploy, in.Deploy)
 	}
 }
 

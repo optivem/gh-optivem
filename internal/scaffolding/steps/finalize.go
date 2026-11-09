@@ -112,7 +112,7 @@ var manifestLicenseLine = regexp.MustCompile(`(?m)^(\s*"license"\s*:\s*")[^"]*("
 func templateManifestLicense(repoDir, licenseKey string) {
 	spdx := projectconfig.LicenseSPDXID(licenseKey)
 	if spdx == "" {
-		// Unreachable via the CLI (applyLicenseAndDeployDefaults rejects an
+		// Unreachable via the CLI (applyLicenseDefault rejects an
 		// unknown key first) but fatal rather than silent if it ever is: an
 		// empty license field reads as "unlicensed" to npm.
 		log.Fatalf("No SPDX identifier for license key %q -- cannot template package manifests", licenseKey)

@@ -43,11 +43,11 @@ func TestReplaceNamespacesAndSystemNameGeneric(t *testing.T) {
 
 	// Spot-check a handful of the rewritten values.
 	expect := map[string]string{
-		filepath.Join("system", "Program.cs"):                       "SkyTraveler.SkyTravel.Monolith",
+		filepath.Join("system", "Program.cs"):                                                "SkyTraveler.SkyTravel.Monolith",
 		filepath.Join("src", "main", "java", "com", "skytraveler", "skytravel", "Main.java"): "package com.skytraveler.skytravel;",
-		filepath.Join("system-test", "src", "skyTravel", "dsl.ts"):  "class SkyTravelDsl",
-		filepath.Join("SkyTraveler.SkyTravel.Monolith.sln"):         "SkyTraveler.SkyTravel.Monolith",
-		filepath.Join("sky-travel-api-driver.ts"):                   "const skyTravelUiBaseUrl",
+		filepath.Join("system-test", "src", "skyTravel", "dsl.ts"):                           "class SkyTravelDsl",
+		filepath.Join("SkyTraveler.SkyTravel.Monolith.sln"):                                  "SkyTraveler.SkyTravel.Monolith",
+		filepath.Join("sky-travel-api-driver.ts"):                                            "const skyTravelUiBaseUrl",
 	}
 	for rel, substr := range expect {
 		full := filepath.Join(repoDir, rel)
@@ -66,14 +66,14 @@ func seedGenericFixtures(t *testing.T, repoDir string) {
 	t.Helper()
 	fixtures := map[string]string{
 		// Content: .NET namespace, Java package, TS identifier.
-		"system/Program.cs":                                        "namespace MyCompany.MyShop.Monolith;",
-		"src/main/java/com/mycompany/myshop/Main.java":             "package com.mycompany.myshop;",
-		"system-test/src/myShop/dsl.ts":                            "class MyShopDsl {}",
+		"system/Program.cs":                            "namespace MyCompany.MyShop.Monolith;",
+		"src/main/java/com/mycompany/myshop/Main.java": "package com.mycompany.myshop;",
+		"system-test/src/myShop/dsl.ts":                "class MyShopDsl {}",
 		// Filenames to be renamed.
-		"MyCompany.MyShop.Monolith.sln":                            "MyCompany.MyShop.Monolith contents",
-		"my-shop-api-driver.ts":                                    "const myShopUiBaseUrl = '/';",
+		"MyCompany.MyShop.Monolith.sln": "MyCompany.MyShop.Monolith contents",
+		"my-shop-api-driver.ts":         "const myShopUiBaseUrl = '/';",
 		// Env-style and snake-style variants.
-		".env":                                                     "DB_PREFIX=my_shop\nAPP=MY_SHOP",
+		".env": "DB_PREFIX=my_shop\nAPP=MY_SHOP",
 	}
 	for rel, content := range fixtures {
 		p := filepath.Join(repoDir, filepath.FromSlash(rel))
@@ -1131,7 +1131,9 @@ func TestTsMigrationsPathRewriteFlattensToRepoRoot(t *testing.T) {
 // that the rewrite is idempotent, and that it is wired through a .cs-scoped fixup —
 // FixupSourceFiles (.java/.ts/.tsx only) must leave .cs untouched. A regression on
 // any of these reproduces the runtime failure
-//   Failed to load pact '/home/runner/work/contracts/frontend-backend.json'
+//
+//	Failed to load pact '/home/runner/work/contracts/frontend-backend.json'
+//
 // (seven `../` from the flattened repo overshoots two levels above the repo root).
 func TestDotnetContractsPathRewriteOnFlatten(t *testing.T) {
 	const (

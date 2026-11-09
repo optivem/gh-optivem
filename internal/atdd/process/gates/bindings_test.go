@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
-	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/tracker"
+	"github.com/optivem/gh-optivem/internal/engine/statemachine"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 )
 
 // ---------------------------------------------------------------------------
@@ -623,10 +623,10 @@ func TestExpectedTestResult(t *testing.T) {
 
 func TestFixOnFailureEnabled(t *testing.T) {
 	for _, tc := range []struct {
-		name    string
-		param   string
+		name     string
+		param    string
 		wantBool bool
-		err     bool
+		err      bool
 	}{
 		{name: "empty_defaults_true", param: "", wantBool: true},
 		{name: "true", param: "true", wantBool: true},
@@ -663,8 +663,12 @@ func TestDriverPortChangedGates(t *testing.T) {
 	}
 	gates := []gateCase{
 		{key: "dsl-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.dslPortChanged(ctx) }},
-		{key: "system-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.systemDriverPortChanged(ctx) }},
-		{key: "external-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome { return b.externalDriverPortChanged(ctx) }},
+		{key: "system-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome {
+			return b.systemDriverPortChanged(ctx)
+		}},
+		{key: "external-driver-port-changed", invoke: func(b bindings, ctx *statemachine.Context) statemachine.Outcome {
+			return b.externalDriverPortChanged(ctx)
+		}},
 	}
 	for _, g := range gates {
 		t.Run(g.key+"/true", func(t *testing.T) {
@@ -1111,7 +1115,6 @@ func TestTaskSubtype_NoIssueURL_Halts(t *testing.T) {
 		t.Fatalf("expected err for missing issue-url, got %+v", out)
 	}
 }
-
 
 func TestInnerLoopModeGate(t *testing.T) {
 	b := newBindings(t, Deps{Prompter: &fakePrompter{}})

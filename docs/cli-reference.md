@@ -139,7 +139,6 @@ Project-stable values — prompted on first run and written to `gh-optivem.yaml`
 - `--project-url` — URL of the GitHub Project board to attach. When omitted, `init` auto-creates the board and writes the URL back into `gh-optivem.yaml`.
 - `--license` — GitHub license key (not an SPDX id): `0bsd`, `agpl-3.0`, `apache-2.0`, `bsd-2-clause`, `bsd-3-clause`, `bsl-1.0`, `cc0-1.0`, `epl-2.0`, `gpl-2.0`, `gpl-3.0`, `lgpl-2.1`, `lgpl-3.0`, `mit` (default), `mit-0`, `mpl-2.0`, or `unlicense`. That is every key the GitHub licenses API offers, plus `mit-0` and `0bsd`. Drives the scaffolded `LICENSE` file, the README badge, and the `license` field of every scaffolded `package.json`. The texts are bundled with the extension, so generation needs no network access.
 - `--copyright-holder` — name written into the `LICENSE` copyright notice (optional; defaults to `--owner`). Applies only to the licenses whose notice is inline (`mit`, `mit-0`, `bsd-2-clause`, `bsd-3-clause`, `0bsd`); every other license (Apache, the GNU family, MPL, EPL, BSL, CC0, the Unlicense) ships verbatim.
-- `--deploy` — deployment target: `docker` (default). `cloud-run` is in development and not yet usable.
 - Tier paths — `--system-path`, `--system-test-path`, `--backend-path`, `--frontend-path`. Repo-relative paths to the corresponding tier. Pass these only to point the YAML at a non-flat existing repo; the flat scaffold layout `init` itself produces is the default.
 
 Per-invocation flags — not written to `gh-optivem.yaml`; pass them on each `init` run:
@@ -213,7 +212,7 @@ gh optivem config preflight  # validate + check every declared repo and tier pat
 gh optivem config migrate    # idempotently back-fill required fields (kind:, project.provider, repos:, system.db-migration-path) on a pre-schema-bump file
 ```
 
-`config init` accepts the same YAML-affecting flags as `gh optivem init` (`--owner`, `--repo`, `--system-name`, `--arch`, `--repo-strategy`, `--monolith-lang` / `--backend-lang` / `--frontend-lang`, `--test-lang`, `--project-url`, `--license`, `--deploy`, plus the `--system-path` / `--system-test-path` / `--backend-path` / `--frontend-path` tier-path overrides). On a TTY with no required flags set, it drops into the same interactive prompt the `init` command uses. Extra flags: `--force` (overwrite an existing file) and `--dir <dir>` (target directory; ignored when `--config` is set).
+`config init` accepts the same YAML-affecting flags as `gh optivem init` (`--owner`, `--repo`, `--system-name`, `--arch`, `--repo-strategy`, `--monolith-lang` / `--backend-lang` / `--frontend-lang`, `--test-lang`, `--project-url`, `--license`, plus the `--system-path` / `--system-test-path` / `--backend-path` / `--frontend-path` tier-path overrides). On a TTY with no required flags set, it drops into the same interactive prompt the `init` command uses. Extra flags: `--force` (overwrite an existing file) and `--dir <dir>` (target directory; ignored when `--config` is set).
 
 `config preflight` accepts `--workspace <dir>` to point at a non-default workspace root (default: parent directory of CWD). `config validate` and `config migrate` take no flags beyond the root-level `--config`.
 
@@ -601,8 +600,6 @@ Each run prints a `Mode:` banner showing the resolved scope — `Mode: workspace
 
 `commit --yes` refuses to stage untracked (`??`) files unless `--include-untracked` is also passed — the stray-file foot-gun is opt-in for scripted callers.
 
-`gh optivem lint-history` and `gh optivem stale-branches` are hidden (excluded from `--help` listings) but functional TBD-discipline verbs: the former detects merge commits on `main`, the latter flags stale local branches. Run them directly by name.
-
 ## Cleanup
 
 `gh optivem cleanup <verb>` bulk-deletes remote artifacts. Each subcommand pre-flights `gh api rate_limit` before every destructive call and sleeps `--delay-seconds` (default 10) after each delete to stay under GitHub's 80-mutating-calls/minute secondary limit. Always pass `--dry-run` first to preview.
@@ -663,6 +660,8 @@ gh optivem pr merge                            # squash-merge a PR via `gh pr me
 gh optivem pr merge 123 --rebase               # rebase-merge instead
 gh optivem pr merge --auto --squash --delete-branch
 gh optivem hooks install                       # install a pre-push hook that refuses non-fast-forward pushes to main
+gh optivem lint-history                        # flag merge commits on main in every repo in scope (periodic audit)
+gh optivem stale-branches --age 24h            # list local branches older than the threshold in every repo in scope
 ```
 
 `pr merge` defaults to `--squash`; `--rebase` is opt-in and the two are mutually exclusive. The `--merge` mode is intentionally not exposed because merge commits on `main` break the linear-trunk invariant. Pass any other `gh pr merge` flags directly to the underlying CLI.

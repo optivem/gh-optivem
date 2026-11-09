@@ -25,8 +25,8 @@ const (
 const projectBoardErrFmt = "project board: %v"
 
 // canonicalStatusOptions is the full ATDD-ready Status set written into
-// auto-created project boards (Path A). Replaces GitHub's default
-// Todo / In Progress / Done.
+// auto-created project boards (Path A). Replaces GitHub's three default
+// Status options (the to-do, in-progress and done columns).
 var canonicalStatusOptions = []string{
 	"Backlog", "Ready", statusInProgress, statusInAcceptance, "In QA", "Done",
 }
@@ -435,8 +435,8 @@ func missingOptions(current, required []string) []string {
 
 // setStatusOptions overwrites the Status field's option set with the names
 // given. GitHub's updateProjectV2Field mutation has no per-option ID slot,
-// so this is a wholesale replace — Path A relies on this to drop Todo / In
-// Progress / Done; Path B passes existing names alongside new ones to
+// so this is a wholesale replace — Path A relies on this to drop GitHub's
+// three default options; Path B passes existing names alongside new ones to
 // effectively achieve an additive merge by name.
 //
 // Returns the names that were added relative to the canonical default set,
@@ -564,9 +564,7 @@ func readProjectConfirmation(cfg *config.Config, missing []string) bool {
 		log.Info("Proceeding without confirmation (--yes).")
 		return true
 	}
-	// TODO(non-implement-tiering): placeholder; proper tier assignment
-	// deferred to the follow-up plan. See plan
-	// 20260528-0930-approval-tier-ladder.md §D5.
+	// CategoryHuman by design: --auto tiers only the ATDD ladder; unattended runs are handled by --yes above.
 	ok, err := approval.Confirm(cfg.Approval, approval.CategoryHuman, os.Stdin, os.Stdout, "  Add missing statuses?")
 	if err != nil {
 		return false

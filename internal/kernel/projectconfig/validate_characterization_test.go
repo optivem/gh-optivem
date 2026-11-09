@@ -17,8 +17,6 @@ func TestValidate_ExactMessages(t *testing.T) {
 			c.NodeReplacements = map[string]string{"n": "b.md"}
 		}, `config: node "n" appears in both node-extras and node-replacements (replace supersedes extras)`},
 		{"license", func(c *Config) { c.License = "nope" }, ""},
-		{"deploy", func(c *Config) { c.Deploy = "nope" },
-			`config: deploy "nope" must be one of "docker", "cloud-run"`},
 		{"provider unknown", func(c *Config) { c.Project.Provider = "x" },
 			`config: project.provider "x" must be one of "github", "markdown"`},
 		{"github non-github url", func(c *Config) { c.Project.URL = "https://example.com/x" },

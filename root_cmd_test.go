@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/devworkflow/workspace"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 )
 
 // TestRootCmd_CrossRepoVerbsRegistered confirms the new root surface from
@@ -24,7 +24,6 @@ func TestRootCmd_CrossRepoVerbsRegistered(t *testing.T) {
 		"sync",
 		"actions",
 		"rate-limit",
-		// Hidden but still registered — see plan "Deferred follow-ups".
 		"lint-history",
 		"stale-branches",
 	}
@@ -64,19 +63,17 @@ func TestRootCmd_WorkspaceNounRemoved(t *testing.T) {
 	}
 }
 
-// TestRootCmd_HiddenTBDVerbs pins lint-history and stale-branches to the
-// hidden state until their final placement is decided (plan "Deferred
-// follow-ups"). They must remain findable / invokable — only --help output
-// is suppressed.
-func TestRootCmd_HiddenTBDVerbs(t *testing.T) {
+// TestRootCmd_TBDVerbsListed pins lint-history and stale-branches as public
+// root verbs: registered and shown in --help (placement decided 2026-11-09).
+func TestRootCmd_TBDVerbsListed(t *testing.T) {
 	root := newRootCmd()
 	for _, name := range []string{"lint-history", "stale-branches"} {
 		found, _, err := root.Find([]string{name})
 		if err != nil || found == nil || found.Name() != name {
 			t.Fatalf("%s not registered: %v", name, err)
 		}
-		if !found.Hidden {
-			t.Errorf("%s should be Hidden=true while placement is deferred", name)
+		if found.Hidden {
+			t.Errorf("%s should be listed in --help (Hidden=false)", name)
 		}
 	}
 }

@@ -38,7 +38,6 @@ func TestLoadProjectConfigForInit_DefaultPathFlagsMissingFileBuildsInMemory(t *t
 		TestLang:     "java",
 		ProjectURL:   "https://github.com/orgs/acme/projects/1",
 		License:      projectconfig.LicenseMIT,
-		Deploy:       projectconfig.DeployDocker,
 	}
 
 	pc, sourcePath, err := loadProjectConfigForInit("", f)

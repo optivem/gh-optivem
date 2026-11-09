@@ -163,13 +163,13 @@ func assertStrEq(t *testing.T, field, got, want string) {
 
 func TestMultitierRepoNames(t *testing.T) {
 	tests := []struct {
-		name              string
-		owner             string
-		repo              string
-		wantFrontendRepo  string
-		wantBackendRepo   string
-		wantFrontendFull  string
-		wantBackendFull   string
+		name             string
+		owner            string
+		repo             string
+		wantFrontendRepo string
+		wantBackendRepo  string
+		wantFrontendFull string
+		wantBackendFull  string
 	}{
 		{
 			name:             "standard multitier",

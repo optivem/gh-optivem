@@ -224,7 +224,7 @@ func newRootCmd() *cobra.Command {
 
 // newInitCmd builds the `init` subcommand. Project-stable values
 // (owner, repo, system-name, arch, repo-strategy, langs, paths,
-// project-url, license, deploy) come from gh-optivem.yaml. When the file
+// project-url, license) come from gh-optivem.yaml. When the file
 // is missing on a TTY, init drops into the same interactive prompt as
 // `gh optivem config init` and writes the file in place. The init
 // command surface itself is per-invocation flags only.
@@ -447,14 +447,10 @@ func buildSteps(cfg *config.Config, pc *projectconfig.Config, gh *shell.GitHub, 
 		// Validation is grouped into the Apply template phase but runs last —
 		// i.e. after Commit and push — so broken output is already visible in
 		// the remote repo for troubleshooting.
-		// TODO: re-enable after the template-name rewrite lands. The current rule sets flag
-		// patterns (e.g. "system/monolith/" in docker-compose.local.monolith.*.yml) that the
-		// upcoming rename will eliminate at the source, making these checks either trivially
-		// satisfied or redundant. Rewriting the validators before the rename risks baking in
-		// rules against names that are about to change.
-		// {name: "Validate no leftover system names", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverSystemNames(cfg) }},
-		// {name: "Validate no leftover shop template refs", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverShopRefs(cfg) }},
-		// {name: "Validate no leftover template references", phase: phaseApplyTemplate, fn: func() { steps.ValidateNoLeftoverTemplateRefs(cfg) }},
+		// steps.ValidateNoLeftoverTemplateRefs is deliberately not run here: over the
+		// whole repo it still flags pre-existing shop-path comments in source and test
+		// READMEs, so it would fail every scaffold. TestScaffoldAgainstShopCheckout
+		// enforces the same forbidden refs on .github/ instead.
 	}
 
 	// ATDD assets no longer install per-repo — they live in gh-optivem's
@@ -932,9 +928,7 @@ func confirmBugReport(cfg *config.Config) bool {
 		return true
 	}
 
-	// TODO(non-implement-tiering): placeholder; proper tier assignment
-	// deferred to the follow-up plan. See plan
-	// 20260528-0930-approval-tier-ladder.md §D5.
+	// CategoryHuman by design: --auto tiers only the ATDD ladder; unattended runs are handled by --yes above.
 	ok, err := approval.Confirm(cfg.Approval, approval.CategoryHuman, os.Stdin, os.Stdout, "  Proceed?")
 	if err != nil {
 		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
@@ -968,9 +962,7 @@ func offerBugReport(cfg *config.Config) bool {
 	fmt.Printf("  - Linking to your repo: https://github.com/%s\n", cfg.FullRepo)
 	fmt.Printf("  - Log file: %s\n", cfg.LogFile)
 	fmt.Println()
-	// TODO(non-implement-tiering): placeholder; proper tier assignment
-	// deferred to the follow-up plan. See plan
-	// 20260528-0930-approval-tier-ladder.md §D5.
+	// CategoryHuman by design: --auto tiers only the ATDD ladder; unattended runs are handled by --yes above.
 	ok, err := approval.Confirm(cfg.Approval, approval.CategoryHuman, os.Stdin, os.Stdout, "  File a bug report?")
 	if err != nil {
 		log.Warnf("Could not read confirmation: %v. Skipping bug report.", err)
@@ -1100,7 +1092,6 @@ func printBanner(cfg *config.Config, pc *projectconfig.Config) {
 	log.Infof("system.frontend.lang: %s", cfg.FrontendLang)
 	log.Infof("system-test.lang:  %s", cfg.TestLang)
 	log.Infof("license:           %s", cfg.License)
-	log.Infof("deploy:            %s", cfg.Deploy)
 
 	fmt.Println()
 	fmt.Println("  Per-invocation flags")

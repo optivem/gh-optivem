@@ -189,9 +189,9 @@ var infraPatterns = []infraPattern{
 	},
 }
 
-// systemDriverStub matches a `TODO: System Driver` prototype reached at
-// runtime — the marker the system-driver-adapter-implementer leaves for an
-// unimplemented System Driver method (internal/atdd/assets/runtime/agents/
+// systemDriverStub matches an unimplemented System Driver prototype reached
+// at runtime — the stub marker the system-driver-adapter-implementer leaves
+// for an unimplemented System Driver method (internal/atdd/assets/runtime/agents/
 // atdd/system-driver-adapter-implementer.md). The literal is identical across
 // the Java / .NET / TypeScript stacks; only the throwing exception type
 // varies, so a single literal match suffices. classifyShellErr consults it
@@ -219,7 +219,7 @@ func classifyShellErr(stderr string, err error, isContractSuite bool) (failureCl
 	if stderr == "" {
 		return classRed, ""
 	}
-	// A contract suite that reached a `TODO: System Driver` prototype is an
+	// A contract suite that reached a System Driver stub (systemDriverStub) is an
 	// authoring violation, not a fixable red: the contract test routed
 	// through the system-under-test driver (the application's own driver)
 	// instead of the external-system driver port. No contract-phase agent is

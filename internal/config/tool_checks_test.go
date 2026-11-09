@@ -68,4 +68,3 @@ func namesOf(cs []check) []string {
 	}
 	return out
 }
-

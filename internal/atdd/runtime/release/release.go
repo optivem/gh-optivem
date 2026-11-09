@@ -31,8 +31,8 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/outlog"
+	"github.com/optivem/gh-optivem/internal/kernel/approval"
 	"github.com/optivem/gh-optivem/internal/kernel/promptio"
 )
 
@@ -200,9 +200,8 @@ func ApprovalConfirmer(r approval.Resolved, stdin io.Reader, stdout io.Writer) C
 		stdout = os.Stdout
 	}
 	return func(prompt string) (bool, error) {
-		// TODO(non-implement-tiering): placeholder; proper tier assignment
-		// deferred to the follow-up plan. See plan
-		// 20260528-0930-approval-tier-ladder.md §D5.
+		// CategoryHuman by design: a release is the highest-stakes prompt, and
+		// --auto tiers only the ATDD ladder.
 		return approval.Confirm(r, approval.CategoryHuman, stdin, stdout, prompt)
 	}
 }

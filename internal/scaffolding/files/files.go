@@ -208,10 +208,6 @@ var skipDirs = map[string]bool{
 	"obj":          true,
 }
 
-// TODO: When ATDD support is added, generate project-specific CLAUDE.md files
-// for scaffolded repos instead of skipping them.
-var skipFiles = map[string]bool{}
-
 func CopyDir(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -220,10 +216,6 @@ func CopyDir(src, dst string) error {
 
 		if info.IsDir() && skipDirs[info.Name()] {
 			return filepath.SkipDir
-		}
-
-		if !info.IsDir() && skipFiles[info.Name()] {
-			return nil
 		}
 
 		rel, _ := filepath.Rel(src, path)

@@ -99,7 +99,7 @@ Tier 3 is why this plan does not delete the README's setup section — it shorte
 
 > Steps 1-7 shipped 2026-11-03 (commits `95f1bb46`..`39e245d9`) with unit tests only. Step 8 is blocked on a green clean-room VM run of `gh optivem environment setup`, which was not available to the executing agent; the Verification section below is still the gate.
 
-*(Blocked on the Open questions above. Written against the recommended answers.)*
+Prerequisite done 2026-11-09: `setup_local_environment_setup` in `scripts/readme-steps.sh` now calls `gh optivem environment setup --lang java,dotnet,typescript` before the `ensure_*` calls, so the next guest run exercises the command (until then the loop never ran it). The `ensure_*` calls stay as the fallback until that run is green.
 
 - [ ] **Step 8 — Collapse `scripts/readme-steps.sh` onto the new command.** *(Only after a green guest run — see Verification.)*
   Replace the `ensure_<tool>_installed` family and `winget_install` with a call to `gh optivem environment setup`, keeping the script's logging and its closing inventory so a guest run still reports what ended up installed. The script's job becomes proving the command works on a clean machine, not performing the setup itself.

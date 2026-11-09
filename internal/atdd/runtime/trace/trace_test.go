@@ -555,7 +555,7 @@ func TestStateDelta_LongValuesSortLast(t *testing.T) {
 	// splits two short scalars on the OK line.
 	pre := map[string]string{}
 	post := map[string]string{
-		"phase-changed-files":             "a/long/path/one.java\na/long/path/two.java",
+		"phase-changed-files":          "a/long/path/one.java\na/long/path/two.java",
 		"external-driver-port-changed": "false",
 		"system-driver-port-changed":   "true",
 	}

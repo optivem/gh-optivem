@@ -4,6 +4,7 @@ package projectconfig
 // scaffolded system. The fields populated depend on architecture:
 //   - monolith:  System + SystemTest.
 //   - multitier: Backend + Frontend + SystemTest.
+//
 // SystemTest is always populated when architecture is set, regardless of
 // repo strategy or test language.
 type DerivedSonar struct {

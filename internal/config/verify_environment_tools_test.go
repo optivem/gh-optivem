@@ -406,11 +406,10 @@ func runCompilerMissingSubtest(t *testing.T, lang, missingTool, hintSubstr strin
 }
 
 // TestVerifyEnvironment_DockerMissing pins the docker check as
-// unconditional: no --deploy flag exists and no lang is passed, yet docker
-// absent from PATH must still fail. The local system runs on
-// `docker compose` whatever the project deploys to, so gating this behind a
-// deploy target would let a cloud-run scaffold pass verification and then
-// fail at `gh optivem system start`.
+// unconditional: no lang is passed, yet docker absent from PATH must still
+// fail. The local system runs on `docker compose` whatever the project
+// deploys to, so gating this behind a deploy target would let a Cloud Run
+// project pass verification and then fail at `gh optivem system start`.
 func TestVerifyEnvironment_DockerMissing(t *testing.T) {
 	dir := mkPathDir(t)
 	writeGhStub(t, dir, "echo Logged in to github.com\nexit 0")

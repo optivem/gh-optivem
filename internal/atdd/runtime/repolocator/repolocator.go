@@ -13,8 +13,8 @@
 //  2. multi-repo (everything else: multi-repo strategy, empty strategy,
 //     or any strategy with an explicit --workspace):
 //
-//	workspace        = --workspace flag value, or parent(CWD) if unset
-//	clone_path(slug) = <workspace>/<repo-name(slug)>
+//     workspace        = --workspace flag value, or parent(CWD) if unset
+//     clone_path(slug) = <workspace>/<repo-name(slug)>
 //
 //     The clone directory's name must match the repo-name component of
 //     the slug — the sibling-dir convention. Operators with outlier

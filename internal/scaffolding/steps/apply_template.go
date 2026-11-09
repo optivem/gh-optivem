@@ -15,8 +15,6 @@ import (
 )
 
 const (
-	deployCloudRun = "cloud-run"
-
 	// Substring fragments still consumed by the content-replacement helpers
 	// (monolithContentReplacements, multitierContentReplacements, etc.).
 	// Filename and folder-path templates live in Names; see names.go.
@@ -1239,9 +1237,8 @@ func copyDocs(shop, repoDir, arch string) {
 // source or tests is just as much a bug as one in a workflow — it means a
 // user's clone will reference paths or names that don't exist.
 //
-// Runs after commit+push, following the convention of
-// ValidateNoLeftoverSystemNames (broken output visible in the remote for
-// troubleshooting).
+// Meant to run after commit+push, so broken output stays visible in the
+// remote for troubleshooting.
 func ValidateNoLeftoverTemplateRefs(cfg *config.Config) {
 	log.Info("Validating no leftover template references...")
 

@@ -207,7 +207,6 @@ bash ../gh-optivem/scripts/atdd-rehearsal.sh 81 --config gh-optivem-monolith-jav
 - [Init flags for development and CI](#init-flags-for-development-and-ci)
   - [Local cleanup](#local-cleanup)
   - [Unattended runs (CI)](#unattended-runs-ci)
-  - [Deployment target](#deployment-target)
 - [Install from source](#install-from-source)
 - [Tests](#tests)
   - [Windows: keep `go test ./...` fast](#windows-keep-go-test--fast)
@@ -272,10 +271,6 @@ Pass `--yes` (or `-y`) to skip all interactive confirmations — the existing-re
 ```bash
 gh optivem init ... --yes
 ```
-
-### Deployment target
-
-Only `--deploy docker` is currently supported (the default). `--deploy cloud-run` is in development and may be available in a future release.
 
 ### Auto-filed bug report (opt-in)
 

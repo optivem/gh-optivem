@@ -26,9 +26,9 @@ func newBranchCmd() *cobra.Command {
 
 func newBranchStartCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "start <name>",
-		Short: "Start a new feature branch off latest origin/main",
-		Long: `git checkout main && git pull --rebase && git checkout -b <name>. Encapsulates the Scaled-TBD branch-start ritual from docs/tbd.md — one command instead of three. Refuses if the name is empty.`,
+		Use:     "start <name>",
+		Short:   "Start a new feature branch off latest origin/main",
+		Long:    `git checkout main && git pull --rebase && git checkout -b <name>. Encapsulates the Scaled-TBD branch-start ritual from docs/tbd.md — one command instead of three. Refuses if the name is empty.`,
 		Example: `  gh optivem branch start feature/payments`,
 		Args:    cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {

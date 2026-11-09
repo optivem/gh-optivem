@@ -81,10 +81,10 @@ func testCommonFlagsRejectsBadFormat(t *testing.T) {
 func TestNewCleanupCmdSubcommands(t *testing.T) {
 	cmd := newCleanupCmd()
 	want := map[string]bool{
-		"releases":        false,
-		"packages":        false,
-		"repos":           false,
-		"sonar-projects":  false,
+		"releases":       false,
+		"packages":       false,
+		"repos":          false,
+		"sonar-projects": false,
 	}
 	for _, sub := range cmd.Commands() {
 		// Cobra's Name() strips the args portion of Use.

@@ -112,7 +112,6 @@ const (
 //   - external-systems: optional name-keyed map of external-system stand-ins.
 //   - system-name:      human-readable system label for templating.
 //   - license:          license key for the scaffolded LICENSE file.
-//   - deploy:           deployment target (docker | cloud-run).
 type Config struct {
 	// Kind discriminates a whole-system project from a component-only
 	// one. Empty means KindSystem (see the Kind* constants); read it
@@ -180,11 +179,6 @@ type Config struct {
 	// the GNU family, MPL, EPL, BSL, CC0, Unlicense) ignores it — those
 	// documents ship verbatim.
 	CopyrightHolder string `yaml:"copyright-holder,omitempty"`
-
-	// Deploy is the deployment target the scaffolded repo's workflows
-	// target (docker | cloud-run). Today only docker is production-ready;
-	// cloud-run is reserved for the in-development path.
-	Deploy string `yaml:"deploy,omitempty"`
 
 	// Channels declares the project's delivery channels — the subset of the
 	// supported channel set (api, ui) this project exposes and its
@@ -1078,13 +1072,6 @@ func (c *Config) validateIdentityEnums() error {
 	// scaffolded LICENSE file isn't silently wrong.
 	if c.License != "" && !IsValidLicense(c.License) {
 		return fmt.Errorf("config: license %q must be one of %s", c.License, LicenseKeyList())
-	}
-
-	// Rule 16: deploy enum. Empty is accepted (init layers `docker` as
-	// the default); a non-empty value must be `docker` or `cloud-run`.
-	if c.Deploy != "" && !IsValidDeploy(c.Deploy) {
-		return fmt.Errorf("config: deploy %q must be one of %q, %q",
-			c.Deploy, DeployDocker, DeployCloudRun)
 	}
 	return nil
 }

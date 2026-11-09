@@ -51,14 +51,3 @@ func LicenseSPDXID(key string) string {
 func IsValidLicense(key string) bool {
 	return license.IsValid(key)
 }
-
-// Deploy enum values.
-const (
-	DeployDocker   = "docker"
-	DeployCloudRun = "cloud-run"
-)
-
-// IsValidDeploy reports whether v is a known deploy target.
-func IsValidDeploy(v string) bool {
-	return v == DeployDocker || v == DeployCloudRun
-}

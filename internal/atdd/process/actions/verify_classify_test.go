@@ -235,7 +235,7 @@ func TestClassifyShellErr(t *testing.T) {
 		// ---- infra: contract test escaped into the system-under-test ------
 		{
 			// run #65: a contract test drove the system-under-test driver and
-			// hit its unimplemented `TODO: System Driver` stub. No contract-phase
+			// hit its unimplemented System Driver stub. No contract-phase
 			// agent can implement that stub, so this is an authoring violation,
 			// not a fixable red — route it to the infra halt.
 			name:            "contract suite hitting System Driver stub is infra",

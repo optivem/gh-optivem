@@ -53,8 +53,8 @@ func plantHappyTools(t *testing.T) {
 // aggregated error, and the HTTP layer must NOT fire.
 func TestVerifyEnvironment_MissingEnvVar(t *testing.T) {
 	cases := []struct {
-		envVar      string
-		hintSubstr  string // additional substring expected in the error for PAT vars
+		envVar     string
+		hintSubstr string // additional substring expected in the error for PAT vars
 	}{
 		{envVar: "DOCKERHUB_USERNAME"},
 		{envVar: "DOCKERHUB_TOKEN"},

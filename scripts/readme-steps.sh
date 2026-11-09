@@ -561,6 +561,13 @@ setup_local_environment_setup() {
     # re-run in setup_environment_variables is the one that must pass.
     gh optivem environment verify || true
 
+    # docs/setup.md's install step. It still reports Docker and credentials
+    # as outstanding on a fresh guest (they stay manual), so a non-zero exit
+    # is expected; the ensure_* calls below then probe first and only act
+    # where the command did not. Once a guest run proves the command, they
+    # go (plan 20260812-1705 Step 8).
+    gh optivem environment setup --lang java,dotnet,typescript || true
+
     ensure_bash_installed
     ensure_go_installed
     ensure_actionlint_installed

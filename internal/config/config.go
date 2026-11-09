@@ -74,7 +74,6 @@ type Config struct {
 	BackendPath    string
 	FrontendPath   string
 
-	Deploy  string // "docker" (default) or "cloud-run"
 	License string
 
 	// CopyrightHolder names the legal entity in the scaffolded LICENSE's
@@ -535,7 +534,6 @@ type RawFlags struct {
 	License         string
 	CopyrightHolder string
 	VerifyLevel     string
-	Deploy          string
 	WorkDir         string
 	ShopRef         string
 	LogFile         string
@@ -577,10 +575,10 @@ type RawFlags struct {
 // so adding a new YAML-affecting flag (e.g. another scope axis) flows to both
 // the `init` and `config init` surfaces in lockstep.
 //
-// Project-stable scalars (--system-name, --license, --deploy) live here too:
+// Project-stable scalars (--system-name, --license) live here too:
 // the YAML now carries the templating inputs `init` needs to scaffold, not
 // just the scope axes the ATDD runtime reads. See the corresponding
-// system_name / license / deploy YAML fields on projectconfig.Config.
+// system_name / license YAML fields on projectconfig.Config.
 func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.Owner, "owner", "", "GitHub username or org (required)")
 	fs.StringVar(&f.Repo, "repo", "", "Repository name, e.g. page-turner (required, or pass positionally)")
@@ -593,7 +591,6 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 	fs.StringVar(&f.FrontendLang, "frontend-lang", "", "Frontend language: typescript (multitier)")
 	fs.StringVar(&f.License, "license", "mit", "License: "+projectconfig.LicenseKeyList())
 	fs.StringVar(&f.CopyrightHolder, "copyright-holder", "", "Copyright holder named in the LICENSE notice (optional; defaults to --owner)")
-	fs.StringVar(&f.Deploy, "deploy", "docker", "Deployment target: docker or cloud-run")
 	fs.StringVar(&f.ProjectURL, "project-url", "", "GitHub Project URL to bake into gh-optivem.yaml (optional — init auto-creates a board and writes the URL back when omitted; e.g. https://github.com/orgs/<org>/projects/<n>)")
 	// Tier paths default to the flat scaffold layout — the same layout
 	// `gh optivem init` itself produces. Pass these flags only to point
@@ -611,7 +608,7 @@ func bindYAMLAffectingFlags(fs *pflag.FlagSet, f *RawFlags) {
 // Two flag groups land here:
 //   - YAML-affecting flags (--owner, --repo, --system-name, --arch,
 //     --repo-strategy, --monolith-lang / --backend-lang / --frontend-lang,
-//     --test-lang, --project-url, --license, --deploy, tier-path overrides)
+//     --test-lang, --project-url, --license, tier-path overrides)
 //     bound via bindYAMLAffectingFlags — same set lives on `config init`.
 //   - Per-invocation flags (--keep-local, --verify-level, --no-*, --workdir,
 //     --shop-ref, logging flags, --yes) bound directly below.
@@ -658,19 +655,7 @@ func resolveVerifyLevel(level string) string {
 	return level
 }
 
-func validateCommonFlags(deploy, arch, repoStrategy string) {
-	if deploy != "docker" && deploy != "cloud-run" {
-		log.FatalExit("--deploy must be 'docker' or 'cloud-run'")
-	}
-	// TODO: --deploy cloud-run is in development. The scaffolded cloud
-	// workflows still carry shop-prefixed service/endpoint identifiers
-	// ("service: monolith-<lang>-acceptance", "endpoints: [{\"name\": ...}]")
-	// that aren't rewritten during template application. Enable once
-	// apply_template.go strips these prefixes the same way env names were
-	// stripped (see monolithContentReplacements / multitierContentReplacements).
-	if deploy == "cloud-run" {
-		log.FatalExit("--deploy cloud-run is in development and may be available in a future release. Use --deploy docker for now.")
-	}
+func validateCommonFlags(arch, repoStrategy string) {
 	// ParseAndValidate is the scaffold path — its arch may have arrived from a
 	// loaded gh-optivem.yaml (FillRawFlagsFromYAML), so microservices is a
 	// legitimate value here even though the --arch FLAG path (ValidateArch,
@@ -1253,7 +1238,7 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 	}
 
 	resolvedLevel := resolveVerifyLevel(f.VerifyLevel)
-	validateCommonFlags(f.Deploy, f.Arch, f.RepoStrategy)
+	validateCommonFlags(f.Arch, f.RepoStrategy)
 	lc := resolveLangs(f)
 
 	repoName := f.Repo
@@ -1350,7 +1335,6 @@ func ParseAndValidate(cmd *cobra.Command, f *RawFlags) *Config {
 		BackendServices:  f.BackendServices,
 		FrontendRepoSlug: f.FrontendRepoSlug,
 
-		Deploy:          f.Deploy,
 		License:         f.License,
 		CopyrightHolder: f.CopyrightHolder,
 		ProjectURL:      f.ProjectURL,
@@ -1496,18 +1480,12 @@ func (c *Config) EffectiveLang() string {
 	return c.BackendLang
 }
 
-func applyLicenseAndDeployDefaults(f *RawFlags) error {
+func applyLicenseDefault(f *RawFlags) error {
 	if f.License == "" {
 		f.License = projectconfig.LicenseMIT
 	}
 	if !projectconfig.IsValidLicense(f.License) {
 		return fmt.Errorf("--license %q must be one of %s", f.License, projectconfig.LicenseKeyList())
-	}
-	if f.Deploy == "" {
-		f.Deploy = projectconfig.DeployDocker
-	}
-	if !projectconfig.IsValidDeploy(f.Deploy) {
-		return fmt.Errorf("--deploy %q must be 'docker' or 'cloud-run'", f.Deploy)
 	}
 	return nil
 }
@@ -1540,11 +1518,11 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 	if msg := ValidateRepoStrategy(f.RepoStrategy); msg != "" {
 		return nil, fmt.Errorf("--repo-strategy %s", msg)
 	}
-	// License/Deploy default to the same values bindYAMLAffectingFlags
+	// License defaults to the same value bindYAMLAffectingFlags
 	// uses when the operator doesn't pass the flag. Defaulting here too
 	// means callers who build RawFlags by hand (tests, library users)
 	// see identical behaviour to flag-driven callers.
-	if err := applyLicenseAndDeployDefaults(f); err != nil {
+	if err := applyLicenseDefault(f); err != nil {
 		return nil, err
 	}
 	if msg := ValidateProjectURLFormat(f.ProjectURL); msg != "" {
@@ -1589,7 +1567,6 @@ func ValidateAndDeriveForYAML(f *RawFlags) (*Config, error) {
 		TestLang:         lc.testLang,
 		License:          f.License,
 		CopyrightHolder:  f.CopyrightHolder,
-		Deploy:           f.Deploy,
 		ProjectURL:       f.ProjectURL,
 		SystemPath:       f.SystemPath,
 		SystemTestPath:   f.SystemTestPath,

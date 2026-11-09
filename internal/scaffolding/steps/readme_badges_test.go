@@ -22,7 +22,7 @@ func TestWriteBadges_EventFilter(t *testing.T) {
 
 func TestPipelineBadges_ScheduleOnly(t *testing.T) {
 	t.Parallel()
-	got := pipelineBadges("base", &config.Config{Deploy: "docker"})
+	got := pipelineBadges("base", &config.Config{})
 	if len(got) != 2 {
 		t.Fatalf("got %d badges, want 2: %v", len(got), got)
 	}
