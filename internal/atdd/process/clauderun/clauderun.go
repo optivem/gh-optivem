@@ -1173,17 +1173,17 @@ func renderExpectedOutputs(specs []statemachine.OutputSpec) string {
 // renderAttemptBlock produces the body of the ${attempt-block}
 // substitution: a one-line loop-level caller note telling a looped agent
 // where it sits in its fix loop (e.g. "Attempt #2 of 2 — the loop halts
-// after this pass."). number is 1-based; max is the loop cap. Only called
-// when max > 0 (renderPrompt gates the registration), so the "last pass"
+// after this pass."). number is 1-based; maxAttempts is the loop cap. Only called
+// when maxAttempts > 0 (renderPrompt gates the registration), so the "last pass"
 // clause is shown on the final attempt and a neutral "more attempts
 // remain" framing otherwise. This is caller context, NOT permission to
 // self-retry — the fixer preamble's "one attempt only" rule still governs
 // the agent's own single pass; see fixer-preamble.md.
-func renderAttemptBlock(number, max int) string {
-	if number >= max {
-		return fmt.Sprintf("Attempt #%d of %d — this is the final pass; the orchestrator's fix loop is exhausted after it and a human is asked to widen scope.", number, max)
+func renderAttemptBlock(number, maxAttempts int) string {
+	if number >= maxAttempts {
+		return fmt.Sprintf("Attempt #%d of %d — this is the final pass; the orchestrator's fix loop is exhausted after it and a human is asked to widen scope.", number, maxAttempts)
 	}
-	return fmt.Sprintf("Attempt #%d of %d — the orchestrator re-validates after you exit and may dispatch one more pass before the loop is exhausted.", number, max)
+	return fmt.Sprintf("Attempt #%d of %d — the orchestrator re-validates after you exit and may dispatch one more pass before the loop is exhausted.", number, maxAttempts)
 }
 
 // renderScopeBlock produces the body of the ${scope-block} substitution:
@@ -2664,15 +2664,15 @@ func primaryToolField(toolName string) string {
 	return ""
 }
 
-// oneLine collapses newlines to spaces and truncates to max characters
+// oneLine collapses newlines to spaces and truncates to maxLen characters
 // with a "…" ellipsis, so multi-line strings (file contents, command
 // bodies) fit on a single transcript line.
-func oneLine(s string, max int) string {
+func oneLine(s string, maxLen int) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\t", " ")
-	if max > 0 && len(s) > max {
-		s = s[:max] + "…"
+	if maxLen > 0 && len(s) > maxLen {
+		s = s[:maxLen] + "…"
 	}
 	return s
 }

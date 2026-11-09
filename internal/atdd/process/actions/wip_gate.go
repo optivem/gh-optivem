@@ -44,77 +44,107 @@ var wipGateExtensions = map[string]string{
 
 // removeWipGate is the REMOVE_WIP_GATE service task.
 func (a actions) removeWipGate(ctx *statemachine.Context) statemachine.Outcome {
-	cfg := a.deps.Config
-	if cfg == nil {
-		return statemachine.Outcome{Err: fmt.Errorf("remove-wip-gate: no gh-optivem config wired (driver bug)")}
-	}
-	names := splitTestNames(ctx.GetString("test-names"))
-	if len(names) == 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("remove-wip-gate: test-names is empty; the acceptance-test writer reports every test it added or modified, so there is nothing to un-gate only if that output was lost")}
-	}
-	lang := cfg.SystemTest.Lang
-	ext, ok := wipGateExtensions[lang]
-	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("remove-wip-gate: unsupported system-test language %q (want java, dotnet or typescript)", lang)}
-	}
-	roots, err := ResolveLayerPaths([]string{"at-test"}, cfg)
+	in, err := a.wipGateInputs(ctx)
 	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("remove-wip-gate: %w", err)}
+		return statemachine.Outcome{Err: err}
 	}
 
 	want := map[string]bool{}
-	for _, n := range names {
+	for _, n := range in.names {
 		want[n] = true
 	}
 	found := map[string]bool{}
 	var stripped []string
-	for _, root := range roots {
+	for _, root := range in.roots {
 		dir := root
 		if !filepath.IsAbs(dir) {
 			dir = filepath.Join(a.deps.RepoPath, dir)
 		}
-		err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if d.IsDir() || filepath.Ext(path) != ext {
-				return nil
-			}
-			src, err := os.ReadFile(path)
-			if err != nil {
-				return err
-			}
-			out, fileStripped, fileFound := StripWipGate(lang, string(src), want)
-			for _, n := range fileFound {
-				found[n] = true
-			}
-			if len(fileStripped) == 0 {
-				return nil
-			}
-			stripped = append(stripped, fileStripped...)
-			return os.WriteFile(path, []byte(out), 0o644)
-		})
-		if err != nil {
+		if err := stripWipGateUnder(dir, in.lang, in.ext, want, found, &stripped); err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("remove-wip-gate: scanning %s: %w", dir, err)}
 		}
 	}
 
+	if missing := missingTestNames(in.names, found); len(missing) > 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("remove-wip-gate: test(s) reported by the acceptance-test writer not found under %s: %s", strings.Join(in.roots, ", "), strings.Join(missing, ", "))}
+	}
+	slices.Sort(stripped)
+	if len(stripped) == 0 {
+		fmt.Fprintf(a.deps.Out.Phase, "No WIP gate to remove (%d ticket test(s) were not gated).\n", len(in.names))
+	} else {
+		fmt.Fprintf(a.deps.Out.Phase, "Removed the WIP gate from %d test(s): %s\n", len(stripped), strings.Join(stripped, ", "))
+	}
+	return statemachine.Outcome{}
+}
+
+// wipGateInput is the validated input of REMOVE_WIP_GATE.
+type wipGateInput struct {
+	names []string
+	lang  string
+	ext   string
+	roots []string
+}
+
+// wipGateInputs validates the wired config and the test-names output, and
+// resolves the system-test language, its file extension and the
+// acceptance-test roots.
+func (a actions) wipGateInputs(ctx *statemachine.Context) (wipGateInput, error) {
+	cfg := a.deps.Config
+	if cfg == nil {
+		return wipGateInput{}, fmt.Errorf("remove-wip-gate: no gh-optivem config wired (driver bug)")
+	}
+	names := splitTestNames(ctx.GetString("test-names"))
+	if len(names) == 0 {
+		return wipGateInput{}, fmt.Errorf("remove-wip-gate: test-names is empty; the acceptance-test writer reports every test it added or modified, so there is nothing to un-gate only if that output was lost")
+	}
+	lang := cfg.SystemTest.Lang
+	ext, ok := wipGateExtensions[lang]
+	if !ok {
+		return wipGateInput{}, fmt.Errorf("remove-wip-gate: unsupported system-test language %q (want java, dotnet or typescript)", lang)
+	}
+	roots, err := ResolveLayerPaths([]string{"at-test"}, cfg)
+	if err != nil {
+		return wipGateInput{}, fmt.Errorf("remove-wip-gate: %w", err)
+	}
+	return wipGateInput{names: names, lang: lang, ext: ext, roots: roots}, nil
+}
+
+// stripWipGateUnder strips the WIP gate of the wanted tests from every
+// ext-file under dir, rewriting only the files that changed. It records every
+// wanted name it sees in found and appends the un-gated names to stripped.
+func stripWipGateUnder(dir, lang, ext string, want, found map[string]bool, stripped *[]string) error {
+	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || filepath.Ext(path) != ext {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		out, fileStripped, fileFound := StripWipGate(lang, string(src), want)
+		for _, n := range fileFound {
+			found[n] = true
+		}
+		if len(fileStripped) == 0 {
+			return nil
+		}
+		*stripped = append(*stripped, fileStripped...)
+		return os.WriteFile(path, []byte(out), 0o644)
+	})
+}
+
+// missingTestNames returns, in order, the names that are not in found.
+func missingTestNames(names []string, found map[string]bool) []string {
 	var missing []string
 	for _, n := range names {
 		if !found[n] {
 			missing = append(missing, n)
 		}
 	}
-	if len(missing) > 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("remove-wip-gate: test(s) reported by the acceptance-test writer not found under %s: %s", strings.Join(roots, ", "), strings.Join(missing, ", "))}
-	}
-	slices.Sort(stripped)
-	if len(stripped) == 0 {
-		fmt.Fprintf(a.deps.Out.Phase, "No WIP gate to remove (%d ticket test(s) were not gated).\n", len(names))
-	} else {
-		fmt.Fprintf(a.deps.Out.Phase, "Removed the WIP gate from %d test(s): %s\n", len(stripped), strings.Join(stripped, ", "))
-	}
-	return statemachine.Outcome{}
+	return missing
 }
 
 // StripWipGate removes the WIP gate from the test methods named in want.
@@ -123,90 +153,135 @@ func (a actions) removeWipGate(ctx *statemachine.Context) statemachine.Outcome {
 // without a gate is left as is: the AT writer gates only the tests it adds,
 // not pre-existing tests it reconciled.
 func StripWipGate(lang, src string, want map[string]bool) (string, []string, []string) {
-	lines := strings.Split(src, "\n")
-	drop := map[int]bool{}
-	var stripped, found []string
-
-	isGateLine := func(i int, marker string) bool {
-		t := strings.TrimSpace(lines[i])
-		return strings.Contains(t, marker) && strings.Contains(t, wipGateEnvVar)
-	}
+	s := &wipGateScan{lines: strings.Split(src, "\n"), want: want, drop: map[int]bool{}}
 
 	switch lang {
 	case projectconfig.LangJava:
-		for i, l := range lines {
-			m := javaMethodRE.FindStringSubmatch(l)
-			if m == nil || !want[m[1]] {
-				continue
-			}
-			found = append(found, m[1])
-			for j := i - 1; j >= 0 && strings.HasPrefix(strings.TrimSpace(lines[j]), "@"); j-- {
-				if isGateLine(j, "@EnabledIfEnvironmentVariable(") {
-					drop[j] = true
-					stripped = append(stripped, m[1])
-					break
-				}
-			}
-		}
+		s.stripJava()
 	case projectconfig.LangDotnet:
-		for i, l := range lines {
-			m := csharpMethodRE.FindStringSubmatch(l)
-			if m == nil || !want[m[1]] {
-				continue
-			}
-			found = append(found, m[1])
-			// The gate is the first statement of the body.
-			k := i
-			for k < len(lines) && !strings.Contains(lines[k], "{") {
-				k++
-			}
-			k++
-			for k < len(lines) && strings.TrimSpace(lines[k]) == "" {
-				k++
-			}
-			if k >= len(lines) || !isGateLine(k, "Skip.IfNot(") {
-				continue
-			}
-			drop[k] = true
-			stripped = append(stripped, m[1])
-			// [SkippableTheory]/[SkippableFact] were only needed for the gate.
-			for j := i - 1; j >= 0 && strings.HasPrefix(strings.TrimSpace(lines[j]), "["); j-- {
-				lines[j] = strings.Replace(lines[j], "[SkippableTheory]", "[Theory]", 1)
-				lines[j] = strings.Replace(lines[j], "[SkippableFact]", "[Fact]", 1)
-			}
-		}
+		s.stripDotnet()
 	case projectconfig.LangTypescript:
-		for i, l := range lines {
-			m := tsTestRE.FindStringSubmatch(l)
-			if m == nil || !want[m[1]] {
-				continue
-			}
-			found = append(found, m[1])
-			k := i + 1
-			for k < len(lines) && strings.TrimSpace(lines[k]) == "" {
-				k++
-			}
-			if k < len(lines) && isGateLine(k, "test.skip(") {
-				drop[k] = true
-				stripped = append(stripped, m[1])
-			}
-		}
+		s.stripTypescript()
 	}
 
-	if len(drop) == 0 {
-		return src, nil, found
+	if len(s.drop) == 0 {
+		return src, nil, s.found
 	}
-	out := make([]string, 0, len(lines))
-	for i, l := range lines {
-		if !drop[i] {
-			out = append(out, l)
-		}
-	}
-	result := strings.Join(out, "\n")
+	result := strings.Join(s.keptLines(), "\n")
 	if lang == projectconfig.LangJava && !strings.Contains(result, "@EnabledIfEnvironmentVariable") {
 		result = removeLine(result, javaWipGateImport)
 	}
-	return result, stripped, found
+	return result, s.stripped, s.found
+}
+
+// wipGateScan is the per-source state of StripWipGate: the source lines, the
+// wanted test names, the gate lines to drop, and the names stripped and found
+// so far.
+type wipGateScan struct {
+	lines    []string
+	want     map[string]bool
+	drop     map[int]bool
+	stripped []string
+	found    []string
+}
+
+// isGateLine reports whether line i carries marker and the WIP env var.
+func (s *wipGateScan) isGateLine(i int, marker string) bool {
+	t := strings.TrimSpace(s.lines[i])
+	return strings.Contains(t, marker) && strings.Contains(t, wipGateEnvVar)
+}
+
+// wantedTest returns the test name re declares on line l when it is wanted,
+// recording it as found.
+func (s *wipGateScan) wantedTest(re *regexp.Regexp, l string) (string, bool) {
+	m := re.FindStringSubmatch(l)
+	if m == nil || !s.want[m[1]] {
+		return "", false
+	}
+	s.found = append(s.found, m[1])
+	return m[1], true
+}
+
+// markGate drops gate line k and records name as stripped.
+func (s *wipGateScan) markGate(k int, name string) {
+	s.drop[k] = true
+	s.stripped = append(s.stripped, name)
+}
+
+// skipBlank returns the first index >= k whose line is not blank.
+func (s *wipGateScan) skipBlank(k int) int {
+	for k < len(s.lines) && strings.TrimSpace(s.lines[k]) == "" {
+		k++
+	}
+	return k
+}
+
+func (s *wipGateScan) stripJava() {
+	for i, l := range s.lines {
+		name, ok := s.wantedTest(javaMethodRE, l)
+		if !ok {
+			continue
+		}
+		for j := i - 1; j >= 0 && strings.HasPrefix(strings.TrimSpace(s.lines[j]), "@"); j-- {
+			if s.isGateLine(j, "@EnabledIfEnvironmentVariable(") {
+				s.markGate(j, name)
+				break
+			}
+		}
+	}
+}
+
+func (s *wipGateScan) stripDotnet() {
+	for i, l := range s.lines {
+		name, ok := s.wantedTest(csharpMethodRE, l)
+		if !ok {
+			continue
+		}
+		// The gate is the first statement of the body.
+		k := i
+		for k < len(s.lines) && !strings.Contains(s.lines[k], "{") {
+			k++
+		}
+		k = s.skipBlank(k + 1)
+		if k >= len(s.lines) || !s.isGateLine(k, "Skip.IfNot(") {
+			continue
+		}
+		s.markGate(k, name)
+		s.unskipAttributes(i)
+	}
+}
+
+// unskipAttributes rewrites the attribute block above the method on line i:
+// [SkippableTheory]/[SkippableFact] were only needed for the gate.
+func (s *wipGateScan) unskipAttributes(i int) {
+	for j := i - 1; j >= 0 && strings.HasPrefix(strings.TrimSpace(s.lines[j]), "["); j-- {
+		s.lines[j] = strings.Replace(s.lines[j], "[SkippableTheory]", "[Theory]", 1)
+		s.lines[j] = strings.Replace(s.lines[j], "[SkippableFact]", "[Fact]", 1)
+	}
+}
+
+func (s *wipGateScan) stripTypescript() {
+	for i, l := range s.lines {
+		name, ok := s.wantedTest(tsTestRE, l)
+		if !ok {
+			continue
+		}
+		k := s.skipBlank(i + 1)
+		if k < len(s.lines) && s.isGateLine(k, "test.skip(") {
+			s.markGate(k, name)
+		}
+	}
+}
+
+// keptLines returns the source lines not marked for dropping.
+func (s *wipGateScan) keptLines() []string {
+	out := make([]string, 0, len(s.lines))
+	for i, l := range s.lines {
+		if !s.drop[i] {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 // removeLine drops every line whose trimmed content equals target.

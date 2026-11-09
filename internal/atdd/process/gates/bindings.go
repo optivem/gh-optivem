@@ -86,6 +86,12 @@ type GitRunner interface {
 	Run(ctx context.Context, args ...string) ([]byte, error)
 }
 
+// Names used both as a registered gate and as the state key it reads.
+const (
+	stateReviewHasBlockingFindings = "review-has-blocking-findings"
+	stateApprovalOutcome           = "approval-outcome"
+)
+
 // withDefaults populates any nil collaborator with its real exec / stdin
 // counterpart. Returns a copy so tests that pass a partial Deps observe the
 // real defaults for unset fields rather than getting silently nil-Run errors.
@@ -178,7 +184,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// GATE_RETURN_ON_POST_REJECTION in execute-agent (plan 20261109-1255):
 	// true iff the caller owns a POST "no" (refine-acceptance-criteria).
 	r.Register("return-on-post-rejection", b.returnOnPostRejection)
-	r.Register("review-has-blocking-findings", b.reviewHasBlockingFindings)
+	r.Register(stateReviewHasBlockingFindings, b.reviewHasBlockingFindings)
 	// Port-changed verdicts: the writing-agent output flags consumed by the
 	// per-test-layer fanout in implement-and-verify-dsl and the parent re-gates.
 	// Both AT and CT cascades run sequentially, so each cascade reads the shared
@@ -232,7 +238,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	// system dispatch targets; resolve-inner-loop stamps the value.
 	r.Register("inner-loop-mode", b.innerLoopMode)
 	r.Register("refactor-type-choice", b.refactorTypeChoice)
-	r.Register("approval-outcome", b.approvalOutcome)
+	r.Register(stateApprovalOutcome, b.approvalOutcome)
 	r.Register("outputs-and-scopes-valid", b.outputsAndScopesValid)
 	// Two-axis implement-ticket gateway (Item 11): ticketKind resolves the
 	// kind (story | bug | task) at GATE_TICKET_KIND; taskSubtype resolves
@@ -504,10 +510,10 @@ func (b bindings) reviewerConfigured(ctx *statemachine.Context) statemachine.Out
 // definite "no review", so route as no blocking findings and let
 // summarize-review say the review was skipped.
 func (b bindings) reviewHasBlockingFindings(ctx *statemachine.Context) statemachine.Outcome {
-	if _, ok := ctx.State["review-has-blocking-findings"]; !ok && ctx.GetString("approval-outcome") == "rejected" {
+	if _, ok := ctx.State[stateReviewHasBlockingFindings]; !ok && ctx.GetString(stateApprovalOutcome) == "rejected" {
 		return statemachine.Outcome{Bool: false}
 	}
-	return boolStateGate(ctx, "review-has-blocking-findings")
+	return boolStateGate(ctx, stateReviewHasBlockingFindings)
 }
 
 // dslPortChanged, systemDriverPortChanged, externalDriverPortChanged are the
@@ -792,7 +798,7 @@ func (b bindings) refactorTypeChoice(ctx *statemachine.Context) statemachine.Out
 // (the dispatcher was not installed for this approve process) — halt
 // rather than route silently.
 func (b bindings) approvalOutcome(ctx *statemachine.Context) statemachine.Outcome {
-	v := ctx.GetString("approval-outcome")
+	v := ctx.GetString(stateApprovalOutcome)
 	switch v {
 	case "approved", "rejected":
 		return statemachine.Outcome{Value: v}

@@ -269,6 +269,13 @@ type Options struct {
 	LogFileLevel outlog.Level
 }
 
+const (
+	// flowFileName is the per-run flow trace written next to summary.md.
+	flowFileName = "flow.txt"
+	// stateTicketID is the state key holding the ticket being run.
+	stateTicketID = "ticket-id"
+)
+
 // Run loads the YAML, wires the registries, applies decorators, optionally
 // pre-resolves an issue, and walks the chosen process.
 //
@@ -614,7 +621,7 @@ func startFlowTree(opts Options, rs *runState, repoPath, runDir string) (*trace.
 		Process:      opts.ProcessName,
 		IssueNum:     opts.IssueNum,
 	})
-	flowPath := filepath.Join(runDir, "flow.txt")
+	flowPath := filepath.Join(runDir, flowFileName)
 	return flowTree, func(runErr error) {
 		flowTree.WriteFooter(trace.TreeFooter{
 			Result:     runErr,
@@ -702,7 +709,7 @@ func resolveRepoPath(explicit string) (string, error) {
 // pick a level via opts.Out instead of writing through opts.Stdout.
 func installLogFileMirror(opts *Options) (func(), error) {
 	sinks := []outlog.Sink{{W: opts.Stdout, MaxLevel: opts.TerminalLevel}}
-	close := func() {
+	closeLog := func() {
 		// no-op: default close when no log file is opened; replaced below
 		// with the file-closing closure when opts.LogFile is set.
 	}
@@ -715,10 +722,10 @@ func installLogFileMirror(opts *Options) (func(), error) {
 		}
 		sinks = append(sinks, outlog.Sink{W: f, MaxLevel: opts.LogFileLevel})
 		opts.Stderr = io.MultiWriter(opts.Stderr, f)
-		close = func() { f.Close() }
+		closeLog = func() { f.Close() }
 	}
 	opts.Out = outlog.New(sinks...)
-	return close, nil
+	return closeLog, nil
 }
 
 // loadDriverConfig returns the parsed config for the run. configPath is
@@ -1044,7 +1051,7 @@ func writeResolvedIssue(sCtx *statemachine.Context, issue tracker.Issue) {
 	sCtx.Set("issue-url", issue.URL)
 	sCtx.Set(ctxKeyIssueTitle, issue.Title)
 	sCtx.Set("issue-handle", issue.Handle)
-	sCtx.Set("ticket-id", issue.ID)
+	sCtx.Set(stateTicketID, issue.ID)
 }
 
 // registerAgentDispatchers registers a no-op base dispatcher for every
@@ -1466,7 +1473,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			NodeDescription:     nodeDescription,
 			IssueNum:            issueNum,
 			IssueTitle:          ctx.GetString(ctxKeyIssueTitle),
-			TicketID:            ctx.GetString("ticket-id"),
+			TicketID:            ctx.GetString(stateTicketID),
 			Architecture:        ctx.GetString("architecture"),
 			Subtype:             ctx.GetString("subtype"),
 			Language:            ctx.GetString("language"),
@@ -1542,7 +1549,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			attemptNumber: attemptNumber,
 			attemptMax:    attemptMax,
 			innerLoopMode: ctx.GetString("inner-loop-mode"),
-			ticketID:      ctx.GetString("ticket-id"),
+			ticketID:      ctx.GetString(stateTicketID),
 		}
 		recordDispatch(opts, rs, record, scopeKey, nodeParams["channel"], elapsed, runErr)
 		if runErr != nil {
@@ -2468,7 +2475,7 @@ func pruneOldRunsExcept(runsDir string, keep int, skip func(dir string) bool) er
 // durable run-history archive. The per-agent NNN-<agent>.* files are
 // deliberately excluded — they are large (100k+ each) and only needed for
 // forensic replay, which the in-repo copy serves while it exists.
-var durableRunArtifacts = []string{"summary.md", "summary.jsonl", "steps.jsonl", "flow.txt"}
+var durableRunArtifacts = []string{"summary.md", "summary.jsonl", "steps.jsonl", flowFileName}
 
 // mirrorRunArtifacts copies each durableRunArtifacts file present in srcDir
 // into dstDir (created if absent). Missing source files are skipped — a run
@@ -2544,7 +2551,7 @@ func openFlowFile(runDir string) (*os.File, error) {
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return nil, err
 	}
-	return os.OpenFile(filepath.Join(runDir, "flow.txt"), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	return os.OpenFile(filepath.Join(runDir, flowFileName), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 }
 
 // headCommitSHA returns the short HEAD sha for the flow.txt footer, or "" on
