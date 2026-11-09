@@ -326,40 +326,64 @@ func RenderPreview(w io.Writer, repos []RepoPreview, remote []RemoteEntry, verbo
 	fmt.Fprintln(w, strings.Repeat("=", 70))
 
 	for _, r := range repos {
-		fmt.Fprintf(w, "\n%s\n", r.FullRepo)
-		fmt.Fprintf(w, "  %d new, %d identical, %d OVERWRITE, %d kept (untouched)\n",
-			r.count(ClassNew), r.count(ClassIdentical), r.count(ClassOverwrite), r.count(ClassKept))
-
-		if n := r.count(ClassOverwrite); n > 0 {
-			fmt.Fprintf(w, "\n  !! %d file(s) will be OVERWRITTEN; git history is the only undo:\n", n)
-			for _, e := range r.Entries {
-				if e.Class == ClassOverwrite {
-					fmt.Fprintf(w, "    OVERWRITE  %s  %s\n", e.Path, overwriteSize(e))
-				}
-			}
-		} else {
-			fmt.Fprintln(w, "  No existing file will be overwritten.")
-		}
-		for _, e := range r.Entries {
-			if e.ExistingPath != "" {
-				fmt.Fprintf(w, "  note: %q is spelled %q in the repo (case-only difference)\n", e.Path, e.ExistingPath)
-			}
-		}
-		if verbose {
-			for _, e := range r.Entries {
-				if e.Class == ClassNew {
-					fmt.Fprintf(w, "    NEW        %s\n", e.Path)
-				}
-			}
-			for _, e := range r.Entries {
-				if e.Class == ClassOverwrite && !e.Binary {
-					fmt.Fprintf(w, "\n  --- diff: %s ---\n%s", e.Path, fileDiff(r, e))
-				}
-			}
-		}
+		renderRepoPreview(w, r, verbose)
 	}
 
 	renderRemote(w, remote)
+}
+
+// renderRepoPreview prints one repository's section of the preview.
+func renderRepoPreview(w io.Writer, r RepoPreview, verbose bool) {
+	fmt.Fprintf(w, "\n%s\n", r.FullRepo)
+	fmt.Fprintf(w, "  %d new, %d identical, %d OVERWRITE, %d kept (untouched)\n",
+		r.count(ClassNew), r.count(ClassIdentical), r.count(ClassOverwrite), r.count(ClassKept))
+
+	renderOverwrites(w, r)
+	renderCaseNotes(w, r)
+	if verbose {
+		renderVerboseDetail(w, r)
+	}
+}
+
+// renderOverwrites prints the OVERWRITE list, or a reassurance line when
+// nothing is overwritten.
+func renderOverwrites(w io.Writer, r RepoPreview) {
+	n := r.count(ClassOverwrite)
+	if n == 0 {
+		fmt.Fprintln(w, "  No existing file will be overwritten.")
+		return
+	}
+	fmt.Fprintf(w, "\n  !! %d file(s) will be OVERWRITTEN; git history is the only undo:\n", n)
+	for _, e := range r.Entries {
+		if e.Class == ClassOverwrite {
+			fmt.Fprintf(w, "    OVERWRITE  %s  %s\n", e.Path, overwriteSize(e))
+		}
+	}
+}
+
+// renderCaseNotes prints a note for every entry whose repo spelling differs
+// only in case.
+func renderCaseNotes(w io.Writer, r RepoPreview) {
+	for _, e := range r.Entries {
+		if e.ExistingPath != "" {
+			fmt.Fprintf(w, "  note: %q is spelled %q in the repo (case-only difference)\n", e.Path, e.ExistingPath)
+		}
+	}
+}
+
+// renderVerboseDetail lists NEW paths and prints the diff of every OVERWRITE
+// text file.
+func renderVerboseDetail(w io.Writer, r RepoPreview) {
+	for _, e := range r.Entries {
+		if e.Class == ClassNew {
+			fmt.Fprintf(w, "    NEW        %s\n", e.Path)
+		}
+	}
+	for _, e := range r.Entries {
+		if e.Class == ClassOverwrite && !e.Binary {
+			fmt.Fprintf(w, "\n  --- diff: %s ---\n%s", e.Path, fileDiff(r, e))
+		}
+	}
 }
 
 func overwriteSize(e PreviewEntry) string {

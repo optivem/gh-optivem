@@ -645,25 +645,12 @@ func runActionsStatus() error {
 
 		repoPassing, repoFailing, repoInProgress, repoFailures := scanRepoWorkflows(repo, workflows, nwo)
 
+		printRepoActionsLine(repo, repoPassing, repoFailing, repoInProgress)
 		if repoFailing > 0 {
 			totalFailing++
-			parts := []string{}
-			if repoPassing > 0 {
-				parts = append(parts, fmt.Sprintf("%d passing", repoPassing))
-			}
-			parts = append(parts, fmt.Sprintf("%d failing", repoFailing))
-			if repoInProgress > 0 {
-				parts = append(parts, fmt.Sprintf("%d in progress", repoInProgress))
-			}
-			fmt.Printf("  ❌ %s — %s\n", relOrSelf(repo), strings.Join(parts, ", "))
 			failures = append(failures, repoFailures...)
 		} else {
 			totalPassing++
-			if repoInProgress > 0 {
-				fmt.Printf("  ✅ %s — %d passing, %d in progress\n", relOrSelf(repo), repoPassing, repoInProgress)
-			} else {
-				fmt.Printf("  ✅ %s — %d passing\n", relOrSelf(repo), repoPassing)
-			}
 		}
 	}
 
@@ -674,6 +661,46 @@ func runActionsStatus() error {
 
 	printWorkflowFailures(failures)
 	return nil
+}
+
+// printRepoActionsLine prints the one-line per-repo result of `actions
+// status`: ❌ with the passing / failing / in-progress breakdown when any
+// workflow is failing, ✅ otherwise.
+func printRepoActionsLine(repo string, repoPassing, repoFailing, repoInProgress int) {
+	if repoFailing > 0 {
+		parts := []string{}
+		if repoPassing > 0 {
+			parts = append(parts, fmt.Sprintf("%d passing", repoPassing))
+		}
+		parts = append(parts, fmt.Sprintf("%d failing", repoFailing))
+		if repoInProgress > 0 {
+			parts = append(parts, fmt.Sprintf("%d in progress", repoInProgress))
+		}
+		fmt.Printf("  ❌ %s — %s\n", relOrSelf(repo), strings.Join(parts, ", "))
+		return
+	}
+	if repoInProgress > 0 {
+		fmt.Printf("  ✅ %s — %d passing, %d in progress\n", relOrSelf(repo), repoPassing, repoInProgress)
+	} else {
+		fmt.Printf("  ✅ %s — %d passing\n", relOrSelf(repo), repoPassing)
+	}
+}
+
+// latestRunColumns returns the tab-separated columns of the latest run of
+// workflow wfID in repo, or ok=false when there is no run or the row is too
+// short to carry a run id.
+func latestRunColumns(repo, wfID string) (cols []string, ok bool) {
+	latest, err := shell.RunWithRetry(fmt.Sprintf(`gh run list --workflow %s --limit 1`, wfID), false, repo)
+	if err != nil || strings.TrimSpace(latest) == "" {
+		return nil, false
+	}
+	firstLine := strings.SplitN(strings.TrimRight(latest, "\n"), "\n", 2)[0]
+	cols = strings.Split(firstLine, "\t")
+	// columns: status, conclusion, title, workflow, branch, event, id, elapsed, date
+	if len(cols) < 7 {
+		return nil, false
+	}
+	return cols, true
 }
 
 // scanRepoWorkflows inspects the latest run of each listed workflow and
@@ -689,14 +716,8 @@ func scanRepoWorkflows(repo, workflows, nwo string) (passing, failing, inProgres
 			continue
 		}
 
-		latest, err := shell.RunWithRetry(fmt.Sprintf(`gh run list --workflow %s --limit 1`, wfID), false, repo)
-		if err != nil || strings.TrimSpace(latest) == "" {
-			continue
-		}
-		firstLine := strings.SplitN(strings.TrimRight(latest, "\n"), "\n", 2)[0]
-		cols := strings.Split(firstLine, "\t")
-		// columns: status, conclusion, title, workflow, branch, event, id, elapsed, date
-		if len(cols) < 7 {
+		cols, ok := latestRunColumns(repo, wfID)
+		if !ok {
 			continue
 		}
 		status, conclusion, title, workflowCol, runID := cols[0], cols[1], cols[2], cols[3], cols[6]

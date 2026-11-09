@@ -232,52 +232,22 @@ func (r *installer) packageInstalled(id string) bool {
 //     that ran it) and re-probe. Success is asserted by a tool that runs,
 //     never inferred from an exit code or a database row.
 func (r *installer) ensure(t installTool) (installOutcome, error) {
-	if r.goos != "windows" {
-		if r.probe(t) == nil {
-			return outcomeAlreadyInstalled, nil
-		}
-		return outcomeManual, nil
-	}
 	if r.probe(t) == nil {
 		return outcomeAlreadyInstalled, nil
 	}
-	// Installed earlier into a directory the installer never put on PATH
-	// (Claude Code's ~/.local/bin, Go's GOPATH/bin): fix PATH rather than
-	// reinstalling. A failure to resolve the directory is not an error here -
-	// the tool may simply be absent, and the install below follows.
-	if dir, derr := r.installDir(t); derr == nil && dirExists(dir) {
-		if err := r.ensurePath(dir); err != nil {
-			return 0, fmt.Errorf("%s: %w", t.label, err)
-		}
-		if r.probe(t) == nil {
-			return outcomeAlreadyInstalled, nil
-		}
+	if r.goos != "windows" {
+		return outcomeManual, nil
 	}
-	if t.kind == installWinget && r.packageInstalled(t.winget) {
-		r.say("%s: in the winget package database (%s) but not runnable from this shell - refreshing PATH and asking again.", t.label, t.winget)
-		if err := r.refreshPath(); err != nil {
-			return 0, fmt.Errorf("%s: could not refresh PATH: %w", t.label, err)
-		}
-		if r.probe(t) == nil {
-			return outcomeAlreadyInstalled, nil
-		}
-		r.say("%s (%s) still does not run after the PATH refresh - installing over it.", t.label, t.winget)
+	found, err := r.recoverExisting(t)
+	if err != nil {
+		return 0, err
+	}
+	if found {
+		return outcomeAlreadyInstalled, nil
 	}
 
 	r.say("%s: installing ...", t.label)
-	var out string
-	var runErr error
-	switch t.kind {
-	case installWinget:
-		// Without the --accept-* flags winget stops on a licence prompt the
-		// first time it sees a source or package - on a fresh machine, always.
-		out, runErr = r.run("winget", "install", "--id", t.winget, "-e", "--source", "winget",
-			"--accept-source-agreements", "--accept-package-agreements")
-	case installPowerShell:
-		out, runErr = r.run("powershell.exe", "-NoProfile", "-Command", t.script)
-	case installGoInstall:
-		out, runErr = r.run("go", "install", t.goPackage)
-	}
+	out, runErr := r.runInstall(t)
 	if runErr != nil {
 		r.say("%s: install command exited with an error (%v); the re-probe decides.", t.label, runErr)
 	}
@@ -287,14 +257,7 @@ func (r *installer) ensure(t installTool) (installOutcome, error) {
 	// Declined-PATH installers: the directory exists now, so put it on PATH
 	// before the re-probe. A failure to resolve it is only fatal if the
 	// re-probe fails too (it then names both causes).
-	var pathErr error
-	if dir, derr := r.installDir(t); derr != nil {
-		if !errors.Is(derr, errNoPathDir) {
-			pathErr = derr
-		}
-	} else if err := r.ensurePath(dir); err != nil {
-		pathErr = err
-	}
+	pathErr := r.fixInstallDirPath(t)
 	if perr := r.probe(t); perr != nil {
 		if pathErr != nil {
 			perr = fmt.Errorf("%v; PATH fix also failed: %v", perr, pathErr)
@@ -303,6 +266,64 @@ func (r *installer) ensure(t installTool) (installOutcome, error) {
 			t.label, perr, runErr, strings.TrimSpace(out), t.docURL)
 	}
 	return outcomeInstalled, nil
+}
+
+// recoverExisting makes an already-installed but unrunnable t runnable without
+// reinstalling it. It returns true when t now runs.
+func (r *installer) recoverExisting(t installTool) (bool, error) {
+	// Installed earlier into a directory the installer never put on PATH
+	// (Claude Code's ~/.local/bin, Go's GOPATH/bin): fix PATH rather than
+	// reinstalling. A failure to resolve the directory is not an error here -
+	// the tool may simply be absent, and the install below follows.
+	if dir, derr := r.installDir(t); derr == nil && dirExists(dir) {
+		if err := r.ensurePath(dir); err != nil {
+			return false, fmt.Errorf("%s: %w", t.label, err)
+		}
+		if r.probe(t) == nil {
+			return true, nil
+		}
+	}
+	if t.kind != installWinget || !r.packageInstalled(t.winget) {
+		return false, nil
+	}
+	r.say("%s: in the winget package database (%s) but not runnable from this shell - refreshing PATH and asking again.", t.label, t.winget)
+	if err := r.refreshPath(); err != nil {
+		return false, fmt.Errorf("%s: could not refresh PATH: %w", t.label, err)
+	}
+	if r.probe(t) == nil {
+		return true, nil
+	}
+	r.say("%s (%s) still does not run after the PATH refresh - installing over it.", t.label, t.winget)
+	return false, nil
+}
+
+// runInstall runs t's install command and returns its output and exit error.
+func (r *installer) runInstall(t installTool) (string, error) {
+	switch t.kind {
+	case installWinget:
+		// Without the --accept-* flags winget stops on a licence prompt the
+		// first time it sees a source or package - on a fresh machine, always.
+		return r.run("winget", "install", "--id", t.winget, "-e", "--source", "winget",
+			"--accept-source-agreements", "--accept-package-agreements")
+	case installPowerShell:
+		return r.run("powershell.exe", "-NoProfile", "-Command", t.script)
+	case installGoInstall:
+		return r.run("go", "install", t.goPackage)
+	}
+	return "", nil
+}
+
+// fixInstallDirPath puts t's install directory on PATH, returning the failure
+// (if any) for the caller to report alongside a failed re-probe.
+func (r *installer) fixInstallDirPath(t installTool) error {
+	dir, derr := r.installDir(t)
+	if derr != nil {
+		if errors.Is(derr, errNoPathDir) {
+			return nil
+		}
+		return derr
+	}
+	return r.ensurePath(dir)
 }
 
 // newInstaller wires the real seams.

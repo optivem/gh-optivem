@@ -61,38 +61,21 @@ type Options struct {
 // at a checkpoint: with a terminal the user answers there, otherwise the
 // command stops and says what to review; either way re-running continues.
 func Run(ctx context.Context, o Options) error {
-	if o.Now == nil {
-		o.Now = time.Now
-	}
-	if o.Stdin == nil {
-		o.Stdin = strings.NewReader("")
-	}
-	o.in = bufio.NewReader(o.Stdin)
+	o = withRunDefaults(o)
 	prog, err := LoadProgress(o.Layout)
 	if err != nil {
 		return err
 	}
 	pendingFeedback := o.Feedback
 	approveBudget := o.Approve
-	forceRegenerate := Phase("")
-	if o.Redo != "" {
-		prog.Invalidate(o.Redo)
-		if err := prog.Save(o.Layout); err != nil {
-			return err
-		}
-		forceRegenerate = o.Redo
-		fmt.Fprintf(o.Stdout, "Reopened %s; later approvals need to be given again.\n", o.Redo)
+	forceRegenerate, err := reopenPhase(o, prog)
+	if err != nil {
+		return err
 	}
 
 	probes := Probes{
-		SampleRemoved: sampleProbe(o),
-		StoriesCreated: func() (bool, error) {
-			if o.Publisher == nil {
-				return false, errors.New("no tracker configured to check created stories")
-			}
-			existing, err := o.Publisher.Existing(ctx)
-			return len(existing) > 0, err
-		},
+		SampleRemoved:  sampleProbe(o),
+		StoriesCreated: storiesCreatedProbe(ctx, o),
 	}
 
 	for step := 0; step < 64; step++ {
@@ -105,49 +88,107 @@ func Run(ctx context.Context, o Options) error {
 		if err != nil {
 			return err
 		}
-		if st.Next == "" || st.Next == PhaseStories {
-			created, err := probes.StoriesCreated()
-			if err != nil {
-				return err
-			}
-			if created {
-				st.Statuses[len(st.Statuses)-1].Done = true
-				return finish(ctx, o, st)
-			}
-			st.Next = PhaseStories
+		done, err := resolveStoriesPhase(probes, &st)
+		if err != nil {
+			return err
 		}
-
-		switch st.Next {
-		case PhaseDescription:
-			if err := runDescription(o); err != nil {
-				return err
-			}
-		case PhasePrototype, PhaseDiagram, PhaseUseCases:
-			stop, err := runApprovalPhase(ctx, o, prog, st, &pendingFeedback, &approveBudget, &forceRegenerate)
-			if err != nil {
-				return err
-			}
-			if stop {
-				return nil
-			}
-		case PhaseRemove:
-			if o.Remove == nil {
-				return errors.New("shop removal is not available")
-			}
-			fmt.Fprintln(o.Stdout, "Removing the shop sample ...")
-			if err := o.Remove(o.Layout); err != nil {
-				return fmt.Errorf("remove shop sample: %w", err)
-			}
-			if gone, err := sampleProbe(o)(o.Layout); err != nil || !gone {
-				return fmt.Errorf("shop removal finished but the sample is still detected (check: %v): this is a bug in the removal step", err)
-			}
-		case PhaseStories:
-			if err := runStories(ctx, o); err != nil {
-				return err
-			}
+		if done {
+			return finish(ctx, o, st)
+		}
+		stop, err := runNextPhase(ctx, o, prog, st, &pendingFeedback, &approveBudget, &forceRegenerate)
+		if err != nil {
+			return err
+		}
+		if stop {
+			return nil
 		}
 	}
 	return errors.New("kickoff did not converge after 64 steps: this is a bug")
+}
+
+// withRunDefaults fills in the clock, stdin and the buffered reader Run uses.
+func withRunDefaults(o Options) Options {
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	if o.Stdin == nil {
+		o.Stdin = strings.NewReader("")
+	}
+	o.in = bufio.NewReader(o.Stdin)
+	return o
+}
+
+// reopenPhase applies --redo: it invalidates the phase (and every later one)
+// and returns the phase whose output must be regenerated.
+func reopenPhase(o Options, prog *Progress) (Phase, error) {
+	if o.Redo == "" {
+		return "", nil
+	}
+	prog.Invalidate(o.Redo)
+	if err := prog.Save(o.Layout); err != nil {
+		return "", err
+	}
+	fmt.Fprintf(o.Stdout, "Reopened %s; later approvals need to be given again.\n", o.Redo)
+	return o.Redo, nil
+}
+
+func storiesCreatedProbe(ctx context.Context, o Options) func() (bool, error) {
+	return func() (bool, error) {
+		if o.Publisher == nil {
+			return false, errors.New("no tracker configured to check created stories")
+		}
+		existing, err := o.Publisher.Existing(ctx)
+		return len(existing) > 0, err
+	}
+}
+
+// resolveStoriesPhase probes the tracker once every earlier phase is done. It
+// returns done=true (and marks the stories phase done) when the stories exist;
+// otherwise it points st at the stories phase.
+func resolveStoriesPhase(probes Probes, st *State) (bool, error) {
+	if st.Next != "" && st.Next != PhaseStories {
+		return false, nil
+	}
+	created, err := probes.StoriesCreated()
+	if err != nil {
+		return false, err
+	}
+	if created {
+		st.Statuses[len(st.Statuses)-1].Done = true
+		return true, nil
+	}
+	st.Next = PhaseStories
+	return false, nil
+}
+
+// runNextPhase runs st.Next. It returns stop=true when the command should end
+// for the user to review.
+func runNextPhase(ctx context.Context, o Options, prog *Progress, st State, feedback *string, approveBudget *bool, force *Phase) (bool, error) {
+	switch st.Next {
+	case PhaseDescription:
+		return false, runDescription(o)
+	case PhasePrototype, PhaseDiagram, PhaseUseCases:
+		return runApprovalPhase(ctx, o, prog, st, feedback, approveBudget, force)
+	case PhaseRemove:
+		return false, runRemove(o)
+	case PhaseStories:
+		return false, runStories(ctx, o)
+	}
+	return false, nil
+}
+
+func runRemove(o Options) error {
+	if o.Remove == nil {
+		return errors.New("shop removal is not available")
+	}
+	fmt.Fprintln(o.Stdout, "Removing the shop sample ...")
+	if err := o.Remove(o.Layout); err != nil {
+		return fmt.Errorf("remove shop sample: %w", err)
+	}
+	if gone, err := sampleProbe(o)(o.Layout); err != nil || !gone {
+		return fmt.Errorf("shop removal finished but the sample is still detected (check: %v): this is a bug in the removal step", err)
+	}
+	return nil
 }
 
 func finish(ctx context.Context, o Options, st State) error {
@@ -210,27 +251,8 @@ func reviewHint(ph Phase) string {
 // to review.
 func runApprovalPhase(ctx context.Context, o Options, prog *Progress, st State, feedback *string, approveBudget *bool, force *Phase) (bool, error) {
 	ph := st.Next
-	status := st.Status(ph)
-	regenerate := !status.Generated || *force == ph || *feedback != ""
-	if regenerate {
-		if ph == PhaseUseCases {
-			if err := removeSampleUseCases(o.Layout); err != nil {
-				return false, err
-			}
-		}
-		fmt.Fprintf(o.Stdout, "Running the %s agent ...\n", agentFor(ph))
-		if err := o.Agents.Run(ctx, agentFor(ph), agentVars(*feedback)); err != nil {
-			return false, err
-		}
-		if ph == PhaseUseCases {
-			if err := ValidateNarratives(o.Layout); err != nil {
-				return false, err
-			}
-		}
-		*feedback = ""
-		*force = ""
-	} else if status.Detail != "" {
-		fmt.Fprintf(o.Stdout, "%s: %s\n", ph, status.Detail)
+	if err := generatePhase(ctx, o, ph, st.Status(ph), feedback, force); err != nil {
+		return false, err
 	}
 
 	for {
@@ -243,12 +265,10 @@ func runApprovalPhase(ctx context.Context, o Options, prog *Progress, st State, 
 			fmt.Fprintf(o.Stdout, "Review it, then run `gh optivem kickoff --approve` to approve %s, or `gh optivem kickoff --feedback \"...\"` to change it.\n", ph)
 			return true, nil
 		}
-		fmt.Fprintf(o.Stdout, "Approve %s? [y] approve, type feedback for the agent, or press Enter to stop and review later: ", ph)
-		line, err := o.in.ReadString('\n')
-		if err != nil && !errors.Is(err, io.EOF) {
-			return false, fmt.Errorf("read answer: %w", err)
+		answer, err := askApproval(o, ph)
+		if err != nil {
+			return false, err
 		}
-		answer := strings.TrimSpace(line)
 		switch strings.ToLower(answer) {
 		case "":
 			fmt.Fprintln(o.Stdout, "Stopped. Re-run `gh optivem kickoff` to continue.")
@@ -257,15 +277,56 @@ func runApprovalPhase(ctx context.Context, o Options, prog *Progress, st State, 
 			return false, approve(o, prog, ph)
 		}
 		fmt.Fprintf(o.Stdout, "Running the %s agent with your feedback ...\n", agentFor(ph))
-		if err := o.Agents.Run(ctx, agentFor(ph), agentVars(answer)); err != nil {
+		if err := runPhaseAgent(ctx, o, ph, answer); err != nil {
 			return false, err
 		}
-		if ph == PhaseUseCases {
-			if err := ValidateNarratives(o.Layout); err != nil {
-				return false, err
-			}
+	}
+}
+
+// generatePhase runs the phase agent when the output is missing, was reopened,
+// or has pending feedback; otherwise it reports the phase's status detail.
+func generatePhase(ctx context.Context, o Options, ph Phase, status PhaseStatus, feedback *string, force *Phase) error {
+	regenerate := !status.Generated || *force == ph || *feedback != ""
+	if !regenerate {
+		if status.Detail != "" {
+			fmt.Fprintf(o.Stdout, "%s: %s\n", ph, status.Detail)
+		}
+		return nil
+	}
+	if ph == PhaseUseCases {
+		if err := removeSampleUseCases(o.Layout); err != nil {
+			return err
 		}
 	}
+	fmt.Fprintf(o.Stdout, "Running the %s agent ...\n", agentFor(ph))
+	if err := runPhaseAgent(ctx, o, ph, *feedback); err != nil {
+		return err
+	}
+	*feedback = ""
+	*force = ""
+	return nil
+}
+
+// runPhaseAgent runs the phase's agent with feedback and, for use cases,
+// validates the narratives it wrote.
+func runPhaseAgent(ctx context.Context, o Options, ph Phase, feedback string) error {
+	if err := o.Agents.Run(ctx, agentFor(ph), agentVars(feedback)); err != nil {
+		return err
+	}
+	if ph == PhaseUseCases {
+		return ValidateNarratives(o.Layout)
+	}
+	return nil
+}
+
+// askApproval prompts at the checkpoint and returns the trimmed answer.
+func askApproval(o Options, ph Phase) (string, error) {
+	fmt.Fprintf(o.Stdout, "Approve %s? [y] approve, type feedback for the agent, or press Enter to stop and review later: ", ph)
+	line, err := o.in.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("read answer: %w", err)
+	}
+	return strings.TrimSpace(line), nil
 }
 
 func approve(o Options, prog *Progress, ph Phase) error {

@@ -65,44 +65,70 @@ func copySharedPipeline(shop, repoDir string) error {
 		if err != nil {
 			return err
 		}
-		for _, m := range sharedWorkflowUseRe.FindAllStringSubmatch(string(data), -1) {
-			name := m[1]
-			if seenWf[name] {
-				continue
-			}
-			seenWf[name] = true
-			src := filepath.Join(wfSrc, name)
-			if _, err := os.Stat(src); err != nil {
-				return fmt.Errorf("%s calls shared workflow %s, which shop does not have", filepath.Base(path), name)
-			}
-			dst := filepath.Join(wfDst, name)
-			if err := files.CopyFile(src, dst); err != nil {
-				return err
-			}
-			queue = append(queue, dst)
+		caller := filepath.Base(path)
+		added, err := copyReferencedWorkflows(string(data), caller, wfSrc, wfDst, seenWf)
+		if err != nil {
+			return err
 		}
-		for _, m := range localActionUseRe.FindAllStringSubmatch(string(data), -1) {
-			name := m[1]
-			if seenAct[name] {
-				continue
-			}
-			seenAct[name] = true
-			src := filepath.Join(actSrc, name)
-			if !dirExists(src) {
-				return fmt.Errorf("%s uses local action ./.github/actions/%s, which shop does not have", filepath.Base(path), name)
-			}
-			dst := filepath.Join(actDst, name)
-			if err := files.CopyDir(src, dst); err != nil {
-				return err
-			}
-			for _, meta := range []string{"action.yml", "action.yaml"} {
-				if p := filepath.Join(dst, meta); fileExists(p) {
-					queue = append(queue, p)
-				}
+		queue = append(queue, added...)
+		added, err = copyReferencedActions(string(data), caller, actSrc, actDst, seenAct)
+		if err != nil {
+			return err
+		}
+		queue = append(queue, added...)
+	}
+	return nil
+}
+
+// copyReferencedWorkflows copies every not-yet-seen shared workflow that data
+// calls from wfSrc to wfDst and returns the copied paths for scanning.
+func copyReferencedWorkflows(data, caller, wfSrc, wfDst string, seen map[string]bool) ([]string, error) {
+	var added []string
+	for _, m := range sharedWorkflowUseRe.FindAllStringSubmatch(data, -1) {
+		name := m[1]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		src := filepath.Join(wfSrc, name)
+		if _, err := os.Stat(src); err != nil {
+			return nil, fmt.Errorf("%s calls shared workflow %s, which shop does not have", caller, name)
+		}
+		dst := filepath.Join(wfDst, name)
+		if err := files.CopyFile(src, dst); err != nil {
+			return nil, err
+		}
+		added = append(added, dst)
+	}
+	return added, nil
+}
+
+// copyReferencedActions copies every not-yet-seen local composite action that
+// data uses from actSrc to actDst and returns the copied action metadata files
+// for scanning.
+func copyReferencedActions(data, caller, actSrc, actDst string, seen map[string]bool) ([]string, error) {
+	var added []string
+	for _, m := range localActionUseRe.FindAllStringSubmatch(data, -1) {
+		name := m[1]
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		src := filepath.Join(actSrc, name)
+		if !dirExists(src) {
+			return nil, fmt.Errorf("%s uses local action ./.github/actions/%s, which shop does not have", caller, name)
+		}
+		dst := filepath.Join(actDst, name)
+		if err := files.CopyDir(src, dst); err != nil {
+			return nil, err
+		}
+		for _, meta := range []string{"action.yml", "action.yaml"} {
+			if p := filepath.Join(dst, meta); fileExists(p) {
+				added = append(added, p)
 			}
 		}
 	}
-	return nil
+	return added, nil
 }
 
 func listFilesWithExt(dir, ext string) ([]string, error) {
@@ -289,24 +315,37 @@ func pruneForeignCaseArms(s string) string {
 			out = append(out, lines[i])
 			continue
 		}
-		var kept []string
-		for _, p := range strings.Split(m[2], "|") {
-			if !isForeignProject(p) {
-				kept = append(kept, p)
-			}
-		}
-		if len(kept) > 0 {
+		if kept := scaffoldPatterns(m[2]); len(kept) > 0 {
 			out = append(out, m[1]+strings.Join(kept, "|")+")"+m[3])
 			continue
 		}
 		// Skip the whole arm.
-		for ; i < len(lines); i++ {
-			if strings.Contains(lines[i], ";;") {
-				break
-			}
-		}
+		i = armEnd(lines, i)
 	}
 	return strings.Join(out, "\n")
+}
+
+// scaffoldPatterns returns the |-separated case patterns that are not
+// shop-only project paths.
+func scaffoldPatterns(patterns string) []string {
+	var kept []string
+	for _, p := range strings.Split(patterns, "|") {
+		if !isForeignProject(p) {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// armEnd returns the index of the ";;" line terminating the case arm that
+// starts at i, or len(lines) when there is none.
+func armEnd(lines []string, i int) int {
+	for ; i < len(lines); i++ {
+		if strings.Contains(lines[i], ";;") {
+			break
+		}
+	}
+	return i
 }
 
 // legacyCronAnchor is the trigger block of shop's legacy Docker Compose

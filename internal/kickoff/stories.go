@@ -41,22 +41,9 @@ type StoryDraft struct {
 // exist.
 func LoadStoryDrafts(l Layout) ([]StoryDraft, error) {
 	dir := l.Abs(StoriesDraft)
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, fmt.Errorf("no story drafts in %s", StoriesDraft)
-	}
+	names, err := draftFileNames(dir)
 	if err != nil {
 		return nil, err
-	}
-	var names []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			names = append(names, e.Name())
-		}
-	}
-	sort.Strings(names)
-	if len(names) == 0 {
-		return nil, fmt.Errorf("no story drafts in %s", StoriesDraft)
 	}
 	known, err := criterionIDs(l)
 	if err != nil {
@@ -79,15 +66,57 @@ func LoadStoryDrafts(l Layout) ([]StoryDraft, error) {
 			problems = append(problems, fmt.Sprintf("%s: %v", name, err))
 			continue
 		}
-		for _, id := range d.Covers {
-			if !known[id] {
-				problems = append(problems, fmt.Sprintf("%s: cites %s, which is not a criterion of any use case", name, id))
-				continue
-			}
-			covered[id] = true
-		}
+		problems = append(problems, recordCovers(name, d.Covers, known, covered)...)
 		drafts = append(drafts, d)
 	}
+	if missing := uncoveredCriteria(known, covered); len(missing) > 0 {
+		problems = append(problems, "criteria not covered by any story: "+strings.Join(missing, ", "))
+	}
+	if len(problems) > 0 {
+		return nil, fmt.Errorf("story drafts are invalid:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+	return drafts, nil
+}
+
+// draftFileNames lists the non-directory entries of dir in file name order,
+// failing when there are none.
+func draftFileNames(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("no story drafts in %s", StoriesDraft)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no story drafts in %s", StoriesDraft)
+	}
+	return names, nil
+}
+
+// recordCovers marks each known criterion the draft cites as covered and
+// returns a problem for each cited criterion that does not exist.
+func recordCovers(name string, covers []string, known, covered map[string]bool) []string {
+	var problems []string
+	for _, id := range covers {
+		if !known[id] {
+			problems = append(problems, fmt.Sprintf("%s: cites %s, which is not a criterion of any use case", name, id))
+			continue
+		}
+		covered[id] = true
+	}
+	return problems
+}
+
+// uncoveredCriteria returns the known criteria no story covers, sorted.
+func uncoveredCriteria(known, covered map[string]bool) []string {
 	var missing []string
 	for id := range known {
 		if !covered[id] {
@@ -95,13 +124,7 @@ func LoadStoryDrafts(l Layout) ([]StoryDraft, error) {
 		}
 	}
 	sort.Strings(missing)
-	if len(missing) > 0 {
-		problems = append(problems, "criteria not covered by any story: "+strings.Join(missing, ", "))
-	}
-	if len(problems) > 0 {
-		return nil, fmt.Errorf("story drafts are invalid:\n  - %s", strings.Join(problems, "\n  - "))
-	}
-	return drafts, nil
+	return missing
 }
 
 func parseDraft(file, content string) (StoryDraft, error) {

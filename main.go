@@ -647,21 +647,7 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	// (gh optivem system build / test setup / system start / test run /
 	// system stop / system clean) so each phase line maps to one verb.
 	if !cfg.NoLocalTests {
-		s = append(s,
-			stepDef{name: "Build system", phase: phaseVerifyLocal, fn: func() { steps.VerifyBuildSystem(cfg) }},
-			stepDef{name: "Setup tests", phase: phaseVerifyLocal, fn: func() { steps.VerifySetupTests(cfg) }},
-			stepDef{name: "Start system", phase: phaseVerifyLocal, fn: func() { steps.VerifyStartSystem(cfg) }},
-			stepDef{name: "Run tests (latest)", phase: phaseVerifyLocal, fn: func() { steps.VerifyRunTests(cfg, "tests.yaml") }},
-		)
-		if !cfg.NoLegacy {
-			s = append(s,
-				stepDef{name: "Run tests (legacy)", phase: phaseVerifyLocal, fn: func() { steps.VerifyRunTests(cfg, "tests.legacy.yaml") }},
-			)
-		}
-		s = append(s,
-			stepDef{name: "Stop system", phase: phaseVerifyLocal, fn: func() { steps.VerifyStopSystem(cfg) }},
-			stepDef{name: "Clean system", phase: phaseVerifyLocal, fn: func() { steps.VerifyCleanSystem(cfg) }},
-		)
+		s = append(s, localLifecycleSteps(cfg)...)
 	}
 
 	// Step 3: Local SonarCloud scan — per-component run-sonar.sh against the
@@ -727,6 +713,28 @@ func buildVerifySteps(cfg *config.Config, gh *shell.GitHub) []stepDef {
 	}
 
 	return s
+}
+
+// localLifecycleSteps returns the Step 2 local system lifecycle steps of
+// buildVerifySteps (build → setup tests → start → run tests latest, then
+// legacy unless --no-legacy → stop → clean). The caller gates on
+// --no-local-tests.
+func localLifecycleSteps(cfg *config.Config) []stepDef {
+	s := []stepDef{
+		{name: "Build system", phase: phaseVerifyLocal, fn: func() { steps.VerifyBuildSystem(cfg) }},
+		{name: "Setup tests", phase: phaseVerifyLocal, fn: func() { steps.VerifySetupTests(cfg) }},
+		{name: "Start system", phase: phaseVerifyLocal, fn: func() { steps.VerifyStartSystem(cfg) }},
+		{name: "Run tests (latest)", phase: phaseVerifyLocal, fn: func() { steps.VerifyRunTests(cfg, "tests.yaml") }},
+	}
+	if !cfg.NoLegacy {
+		s = append(s,
+			stepDef{name: "Run tests (legacy)", phase: phaseVerifyLocal, fn: func() { steps.VerifyRunTests(cfg, "tests.legacy.yaml") }},
+		)
+	}
+	return append(s,
+		stepDef{name: "Stop system", phase: phaseVerifyLocal, fn: func() { steps.VerifyStopSystem(cfg) }},
+		stepDef{name: "Clean system", phase: phaseVerifyLocal, fn: func() { steps.VerifyCleanSystem(cfg) }},
+	)
 }
 
 func executeSteps(allSteps []stepDef, failureNote *string) (int, time.Duration) {

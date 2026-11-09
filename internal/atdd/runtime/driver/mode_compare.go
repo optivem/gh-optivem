@@ -46,6 +46,17 @@ func CompareModes(w io.Writer, repoPath string) error {
 	if err != nil {
 		return fmt.Errorf("read runs dir %s: %w", root, err)
 	}
+	byMode := statsByMode(root, entries)
+	if len(byMode) == 0 {
+		return fmt.Errorf("no runs under %s have a summary.jsonl sidecar", root)
+	}
+	renderModeComparison(w, byMode)
+	return nil
+}
+
+// statsByMode loads each run directory's summary sidecar and accumulates its
+// records into the stats for the run's inner-loop mode.
+func statsByMode(root string, entries []os.DirEntry) map[string]*modeStats {
 	byMode := map[string]*modeStats{}
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -61,23 +72,31 @@ func CompareModes(w io.Writer, repoPath string) error {
 			st = &modeStats{}
 			byMode[mode] = st
 		}
-		st.runs++
-		for _, r := range records {
-			st.dispatches++
-			if r.attemptMax > 0 {
-				st.fixAttempts++
-			}
-			st.elapsed += r.elapsed
-			if r.usage != nil {
-				st.freshTokens += r.usage.InputTokens + r.usage.OutputTokens + r.usage.CacheCreationInputTokens
-				st.cachedTokens += r.usage.CacheReadInputTokens
-				st.cost += r.usage.TotalCostUSD
-			}
+		st.addRun(records)
+	}
+	return byMode
+}
+
+// addRun folds one run's dispatch records into the mode's totals.
+func (st *modeStats) addRun(records []dispatchRecord) {
+	st.runs++
+	for _, r := range records {
+		st.dispatches++
+		if r.attemptMax > 0 {
+			st.fixAttempts++
+		}
+		st.elapsed += r.elapsed
+		if r.usage != nil {
+			st.freshTokens += r.usage.InputTokens + r.usage.OutputTokens + r.usage.CacheCreationInputTokens
+			st.cachedTokens += r.usage.CacheReadInputTokens
+			st.cost += r.usage.TotalCostUSD
 		}
 	}
-	if len(byMode) == 0 {
-		return fmt.Errorf("no runs under %s have a summary.jsonl sidecar", root)
-	}
+}
+
+// renderModeComparison writes the per-mode table of per-run averages, one row
+// per mode in sorted order.
+func renderModeComparison(w io.Writer, byMode map[string]*modeStats) {
 	modes := make([]string, 0, len(byMode))
 	for m := range byMode {
 		modes = append(modes, m)
@@ -100,5 +119,4 @@ func CompareModes(w io.Writer, repoPath string) error {
 			(s.elapsed / time.Duration(s.runs)).Round(time.Second),
 		)
 	}
-	return nil
 }

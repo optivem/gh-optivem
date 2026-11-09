@@ -456,12 +456,7 @@ func matchGlobPath(p, filePath string) bool {
 func matchDoublestar(pat, fil []string) bool {
 	for len(pat) > 0 && len(fil) > 0 {
 		if pat[0] == "**" {
-			for i := 0; i <= len(fil); i++ {
-				if matchDoublestar(pat[1:], fil[i:]) {
-					return true
-				}
-			}
-			return false
+			return matchAnySuffix(pat[1:], fil)
 		}
 		if m, _ := path.Match(pat[0], fil[0]); !m {
 			return false
@@ -472,6 +467,17 @@ func matchDoublestar(pat, fil []string) bool {
 		pat = pat[1:]
 	}
 	return len(pat) == 0 && len(fil) == 0
+}
+
+// matchAnySuffix reports whether pat matches fil with zero or more leading
+// segments of fil consumed (the expansion of a ** segment).
+func matchAnySuffix(pat, fil []string) bool {
+	for i := 0; i <= len(fil); i++ {
+		if matchDoublestar(pat, fil[i:]) {
+			return true
+		}
+	}
+	return false
 }
 
 // VerifyCommitStage waits for commit stage workflow to pass.

@@ -151,17 +151,26 @@ func validateSuites(path string, suites []Suite) error {
 		if !s.Pending && s.Command == "" {
 			return fmt.Errorf("component-tests config %s: suites[%d] (%s) missing command (set `pending: true` if the level has no tests yet)", path, i, s.ID)
 		}
-		// Reject non-portable path separators in the fields the runner resolves
-		// with filepath.Join: a Windows-authored `build\reports` silently fails
-		// to resolve on a Linux runner. Command is not checked — it is a shell
-		// invocation that legitimately carries `.\` (e.g. `.\gradlew.bat`).
-		for _, pf := range []struct{ key, val string }{
-			{"path", s.Path},
-			{"testReportPath", s.TestReportPath},
-		} {
-			if strings.Contains(pf.val, "\\") {
-				return fmt.Errorf("component-tests config %s: suites[%d] (%s) %s %q uses a backslash separator — use forward slashes so the path resolves on every OS", path, i, s.ID, pf.key, pf.val)
-			}
+		if err := validateSuitePathSeparators(path, i, s); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateSuitePathSeparators rejects backslash separators in a suite's
+// filepath.Join-resolved fields.
+func validateSuitePathSeparators(path string, i int, s Suite) error {
+	// Reject non-portable path separators in the fields the runner resolves
+	// with filepath.Join: a Windows-authored `build\reports` silently fails
+	// to resolve on a Linux runner. Command is not checked — it is a shell
+	// invocation that legitimately carries `.\` (e.g. `.\gradlew.bat`).
+	for _, pf := range []struct{ key, val string }{
+		{"path", s.Path},
+		{"testReportPath", s.TestReportPath},
+	} {
+		if strings.Contains(pf.val, "\\") {
+			return fmt.Errorf("component-tests config %s: suites[%d] (%s) %s %q uses a backslash separator — use forward slashes so the path resolves on every OS", path, i, s.ID, pf.key, pf.val)
 		}
 	}
 	return nil

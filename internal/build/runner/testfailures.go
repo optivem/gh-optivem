@@ -270,35 +270,48 @@ func playwrightFailures(data []byte) ([]FailedTestCase, []string, error) {
 		return nil, nil, err
 	}
 	var out []FailedTestCase
-	var walk func(s pwFailSuite)
-	walk = func(s pwFailSuite) {
-		for _, spec := range s.Specs {
-			for _, t := range spec.Tests {
-				for _, res := range t.Results {
-					if res.Status != "failed" && res.Status != "timedOut" && res.Status != "interrupted" {
-						continue
-					}
-					parts := []string{res.Status}
-					if res.Error != nil {
-						parts = append(parts, res.Error.Message, res.Error.Stack)
-					}
-					for _, e := range res.Errors {
-						parts = append(parts, e.Message)
-					}
-					out = append(out, FailedTestCase{Name: spec.Title, Detail: joinDetail(parts...)})
-				}
-			}
-		}
-		for _, child := range s.Suites {
-			walk(child)
-		}
-	}
 	for _, s := range r.Suites {
-		walk(s)
+		out = appendPlaywrightSuiteFailures(out, s)
 	}
 	var globals []string
 	for _, e := range r.Errors {
 		globals = append(globals, joinDetail(e.Message, e.Stack))
 	}
 	return out, globals, nil
+}
+
+// appendPlaywrightSuiteFailures walks one suite (its specs, then its nested
+// suites recursively) and appends a FailedTestCase per failing result.
+func appendPlaywrightSuiteFailures(out []FailedTestCase, s pwFailSuite) []FailedTestCase {
+	for _, spec := range s.Specs {
+		for _, t := range spec.Tests {
+			for _, res := range t.Results {
+				if !pwResultFailed(res.Status) {
+					continue
+				}
+				out = append(out, FailedTestCase{Name: spec.Title, Detail: pwResultDetail(res)})
+			}
+		}
+	}
+	for _, child := range s.Suites {
+		out = appendPlaywrightSuiteFailures(out, child)
+	}
+	return out
+}
+
+// pwResultFailed reports whether a Playwright result status counts as a failure.
+func pwResultFailed(status string) bool {
+	return status == "failed" || status == "timedOut" || status == "interrupted"
+}
+
+// pwResultDetail joins a failing result's status, error and errors into one detail string.
+func pwResultDetail(res pwFailResult) string {
+	parts := []string{res.Status}
+	if res.Error != nil {
+		parts = append(parts, res.Error.Message, res.Error.Stack)
+	}
+	for _, e := range res.Errors {
+		parts = append(parts, e.Message)
+	}
+	return joinDetail(parts...)
 }

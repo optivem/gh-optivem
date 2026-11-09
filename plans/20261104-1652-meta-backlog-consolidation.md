@@ -82,7 +82,7 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 
 
 - **Item 22 (#20) Step 8:** collapse `scripts/readme-steps.sh` after a green clean-room VM run. Plan: `plans/backlog/p2-atdd-quality/20260812-1705-environment-setup-command.md`.
-- **Item 24 (Sonar S3776): test-file part done 2026-11-09** (36 test-file S3776 + canary S8545 marked Accepted through the API). 19 production S3776 findings remain open, so `plans/backlog/p4-maintenance/20260625-0944-sonar-deferred.md` stays.
+- **Item 24 (Sonar S3776): test-file part done 2026-11-09** (36 test-file S3776 + canary S8545 marked Accepted through the API). Production part done the same day: the remaining 19 production S3776 functions were split by helper extraction (CC <= 15 by estimate; SonarCloud re-scan after the push confirms). The Sonar plan was deleted.
 - **Items 20 (#13) and 21 (#16):** live in `shop/plans/20261103-1049-gh-optivem-driven-shop-changes.md` (#13 Option A, Java only; #16 `/users` directory, monolith-java only, refine deferred); gh-optivem plans: `plans/backlog/p2-atdd-quality/20260613-1950-view-product-list-erp-list-gap.md`, `plans/backlog/p3-tooling-cost/20260617-1001-rehearsal-corpus-testinstance-and-refine.md`. Not part of this run.
 
 - **C2c (Item 15 / #21 Step 6), user approved 2026-11-09:** #68's criterion restored. Remaining: rehearse #68 to confirm the absence-shaped ticket goes green by copying the shop reference (waits on Docker). See `plans/backlog/p2-atdd-quality/20260620-0806-no-order-persisted-fanout-prevention.md`.

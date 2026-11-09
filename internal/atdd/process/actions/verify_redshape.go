@@ -75,32 +75,51 @@ const (
 // fallback path.
 func classifyRedShape(ev runner.ReportFailures, output string) (failureClass, string) {
 	if len(ev.GlobalErrors) > 0 {
-		for _, g := range ev.GlobalErrors {
-			if label, ok := matchCrash(g); ok {
-				return classInfra, label
-			}
+		if label, ok := firstCrash(ev.GlobalErrors); ok {
+			return classInfra, label
 		}
 		return classInfra, labelGlobalErr
 	}
 	if len(ev.Failures) > 0 {
-		// Conservative: one crashed case taints the run. A crashed channel
-		// (e.g. UI) would otherwise hide behind a legitimate red on another
-		// (e.g. API), leaving that channel's red unverified.
-		for _, f := range ev.Failures {
-			if label, ok := matchCrash(f.Detail); ok {
-				return classInfra, label
-			}
-		}
-		return classRed, ""
+		return classifyFailures(ev.Failures)
 	}
 	if ev.Complete {
-		if ev.FreshReports == 0 {
-			return classInfra, labelNoReport
-		}
-		return classInfra, labelNoFailure
+		return classInfra, completeNoFailureLabel(ev)
 	}
 	if label, ok := matchCrash(output); ok {
 		return classInfra, label
 	}
 	return classRed, ""
+}
+
+// firstCrash returns the label of the first string matching a crash pattern.
+func firstCrash(details []string) (string, bool) {
+	for _, d := range details {
+		if label, ok := matchCrash(d); ok {
+			return label, true
+		}
+	}
+	return "", false
+}
+
+// classifyFailures judges a run whose report records failing tests.
+func classifyFailures(failures []runner.FailedTestCase) (failureClass, string) {
+	// Conservative: one crashed case taints the run. A crashed channel
+	// (e.g. UI) would otherwise hide behind a legitimate red on another
+	// (e.g. API), leaving that channel's red unverified.
+	for _, f := range failures {
+		if label, ok := matchCrash(f.Detail); ok {
+			return classInfra, label
+		}
+	}
+	return classRed, ""
+}
+
+// completeNoFailureLabel labels a complete report set that records no failing
+// test: no fresh report at all, or reports with no failure in them.
+func completeNoFailureLabel(ev runner.ReportFailures) string {
+	if ev.FreshReports == 0 {
+		return labelNoReport
+	}
+	return labelNoFailure
 }
