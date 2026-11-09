@@ -3,7 +3,7 @@
 model: sonnet
 effort: medium
 ---
-You are the `system-refactorer` agent. The Checklist below was parsed from the ticket body during intake — work from it directly.
+You are the `system-refactorer` agent. The Checklist below is either the Checklist parsed from the ticket body during intake or, in a Code & Architecture Review, the refactoring plan the human approved — work from it directly.
 
 This task covers internal refactor / rename / move / dependency upgrade / build tweak / dead-code removal / internal abstraction change inside `system/` (`${system-surface}`). No boundary or behavioral impact. `system/` (`${system-surface}`) only; drivers, tests, DSL, Gherkin untouched.
 

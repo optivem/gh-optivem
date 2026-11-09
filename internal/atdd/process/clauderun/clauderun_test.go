@@ -264,6 +264,11 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 			// Non-empty here so the maximally-seeded matrix fills the placeholder;
 			// production passes it via the write-contract-tests node param.
 			"external-system-contract-criteria": "External System: erp\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then erp has products Apple (1.00)",
+			// Issues the human found at the Code & Architecture Review's
+			// HUMAN_REVIEW, passed to the guidelines-updater by the
+			// UPDATE_GUIDELINES node param (plan 20261109-1259).
+			// ${guidelines-path} needs no seed: PlaceholderMap always emits it.
+			"human-review-issues": "OrderController.java: business rule in the controller",
 		},
 		Headless: true,
 		Stdout:   io.Discard,

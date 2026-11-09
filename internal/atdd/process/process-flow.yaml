@@ -2961,6 +2961,82 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: REFACTOR_SYS_END}
 
+  # Code & Architecture Review's reviewer (plan 20261109-1259). Read-only
+  # (write: []); reads the guidelines and every code layer the refactorers may
+  # change. Outputs, strings one item per line (the `output write` CLI
+  # comma-splits lists, and plan steps are prose with commas):
+  #   refactoring-needed       required: false means no plan, straight to the
+  #                            human review. Required so a reviewer that emits
+  #                            nothing fails validation instead of reading as
+  #                            "nothing to refactor".
+  #   system-refactoring-plan  steps for system-refactorer (system only).
+  #   test-refactoring-plan    steps for test-refactorer (test code only).
+  #   findings                 what the reviewer found, shown at APPROVE_PLAN.
+  review-code-architecture:
+    name: "Review Code & Architecture"
+    start: EXECUTE_AGENT
+    outputs:
+      - key: refactoring-needed
+        type: bool
+      - key: system-refactoring-plan
+        type: string
+        optional: true
+      - key: test-refactoring-plan
+        type: string
+        optional: true
+      - key: findings
+        type: string
+        optional: true
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: review-code-architecture
+          agent: code-architecture-reviewer
+          # Command tier: read-only; the human approves the plan at the
+          # caller's APPROVE_PLAN instead.
+          category: command
+          reviewer: ""
+        read:  [guidelines-path, system-path, system-db-migration-path, at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, common, common-domain]
+        write: []
+
+      - id: REVIEW_CODE_ARCHITECTURE_END
+        type: end-event
+        name: "Code & Architecture Reviewed"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: REVIEW_CODE_ARCHITECTURE_END}
+
+  # Guidelines feedback step of the Code & Architecture Review (plan
+  # 20261109-1259): fix each issue the human found, record it in the
+  # guidelines, fix other occurrences. Writes the guidelines plus every code
+  # layer an occurrence can be in (the system and the test code); schema
+  # migrations stay read-only, as on refactor-system.
+  update-guidelines:
+    name: "Update Guidelines"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: update-guidelines
+          agent: guidelines-updater
+          # system-agent tier: writes production code.
+          category: system-agent
+        read:  [guidelines-path, system-path, system-db-migration-path, at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, common, common-domain]
+        write: [guidelines-path, system-path, at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, common, common-domain]
+
+      - id: UPDATE_GUIDELINES_END
+        type: end-event
+        name: "Guidelines Updated"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: UPDATE_GUIDELINES_END}
+
   # Artifact-only: rewrites the ticket's parsed acceptance criteria in the
   # tracker, never the repo working tree. `scope: none` is the doctrinal
   # exemption from inline read/write (see runtime/shared/scope.md and

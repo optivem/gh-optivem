@@ -161,6 +161,26 @@ unaffected.
 > template (reconciled per plan 20260526-1430). The channel members track
 > only the System Driver adapter root and do not split externals by channel.
 
+### Optional key: `guidelines-path`
+
+`guidelines-path` names the folder of per-area review guideline files
+(`architecture.md`, `naming.md`, `testing.md`, …) that the Code & Architecture
+Review reads and grows (plan 20261109-1259): `code-architecture-reviewer`
+reads it, `guidelines-updater` writes it. It is the one exception to the
+explicit-only rule above:
+
+- It is **accepted** under `system-test.paths:` but **not required** (not in
+  `CanonicalPathKeys()`, so Rule 22a does not ask for it and preflight does
+  not stat it). The folder starts empty and is created by the first guideline
+  a review records.
+- When unset it resolves to the deterministic default `docs/guidelines`
+  (`projectconfig.DefaultGuidelinesPath`, via `Config.GuidelinesPath()`), for
+  both the `${guidelines-path}` placeholder and the scope key
+  (`GuidelinesPathKeysInScope` in `internal/atdd/phase_scopes.go`).
+
+Why optional: a new required key is a breaking config-schema change (see
+"Release ordering" below), and nothing outside the review needs the folder.
+
 ### Ownership: scaffold-authoritative at `init`, operator-owned afterwards
 
 `gh optivem init` writes the `system-test.paths:` block as the
@@ -275,8 +295,9 @@ doctrine literal — always present, not project-customizable.
   `system-test-path`, `sut-namespace`.
 - **Non-canonical `system-test.paths.<name>` keys are rejected** (per
   plan 20260518-1530 item 5). The validator enumerates
-  `system-test.paths:` keys against `CanonicalPathKeys()` and
-  hard-errors on any unknown name. Catches typos and stale keys.
+  `system-test.paths:` keys against `CanonicalPathKeys()` plus the optional
+  `guidelines-path` and hard-errors on any unknown name. Catches typos and
+  stale keys.
 - **`${...}` markers in `system-test.paths:` values are rejected** (per
   plan 20260518-1530 item 5). Under SSoT, paths must be fully resolved
   at scaffold time; runtime substitution is retired.

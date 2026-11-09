@@ -139,4 +139,10 @@ func RegisterAll(r *Registry, deps Deps) {
 	// them when the round cap halts the loop. See refinement.go.
 	r.Register("record-refinement-feedback", a.recordRefinementFeedback)
 	r.Register("report-unresolved-refinement", a.reportUnresolvedRefinement)
+	// Code & Architecture Review (plan 20261109-1259): reset the previous
+	// review's outputs, render the plan for APPROVE_PLAN, and capture the
+	// issues the human still finds. See code_review.go.
+	r.Register("reset-code-review", a.resetCodeReview)
+	r.Register("summarize-refactoring-plan", a.summarizeRefactoringPlan)
+	r.Register("record-human-review-issues", a.recordHumanReviewIssues)
 }

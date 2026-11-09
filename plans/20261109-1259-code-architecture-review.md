@@ -1,5 +1,7 @@
 # 2026-11-09 11:59 UTC — Refactor & Review: code and architecture review, review-first
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-09T15:35:52Z`
+
 ## TL;DR
 
 **Why:** Today the `refactor` menu runs `system-refactorer` / `test-refactorer` directly. Nothing reviews the code first, the human never approves a plan, and nothing captures the issues a human finds. The executor/reviewer/approver article and the Circle session describe a review-first Refactor:
@@ -25,18 +27,15 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md` ("Refactor" and "Rev
 
 ## ▶ Next executable step (resume here)
 
-User to OK the proposed decisions below. Then Step 1 (`${guidelines-path}` placeholder, default `docs/guidelines/`) can run via `/execute-plan`.
+Step 4. Blocked only on `internal/atdd/process/gates/bindings.go` being free: another session had it uncommitted, so the gateway registration (`registerCodeReview(r, b)` in `RegisterAll`) and the `review-code-and-architecture` menu value in `refactorTypeChoice` could not be added. Everything else for Step 4 is written (the cycle YAML, `gates/code_review.go`, `code_review_loop_test.go`, the `bindings_test.go` / `transitions_test.go` additions); the executing agent kept a copy and re-applies it.
 
 ## Steps
 
-- [ ] Step 1: Decide where the guidelines live (see open questions) and add a `${...}` placeholder for them in gh-optivem.yaml.
-- [ ] Step 2: Write `code-architecture-reviewer.md` (reuse the adversarial-review shared chunk from `plans/20261109-1257-red-reviewer-agents.md`) and pin its read-only scope.
-- [ ] Step 3: Decide whether `EXECUTE_PLAN` reuses `system-refactorer` / `test-refactorer` with the approved plan as input, or uses a new executor. Recommended: reuse, passing the plan through a placeholder.
-- [ ] Step 4: Add the `review-code-and-architecture` process and the menu option in `process-flow.yaml`. Cap the human-issue loop with `max-visits`, and audit the loop for statemachine deadlocks before running tests.
-- [ ] Step 5: Add the guidelines-update step (agent) with write scope limited to the guidelines files plus the occurrences it fixes.
-- [ ] Step 6: Tests. Run with `-p 2`.
+Done (first commit): `${guidelines-path}` (optional `system-test.paths.guidelines-path`, default `docs/guidelines`), `code-architecture-reviewer` and `guidelines-updater` agents with their MIDs and scopes (`review-code-architecture`, `update-guidelines`), the generic/Red split of the adversarial-review chunk, the refactorers' Checklist now also carrying an approved plan, and the review's three actions.
 
-## Decisions (proposed 2026-11-09, pending user OK — override any line)
+- [ ] Step 4: Add the `review-code-and-architecture` process (RESET_CODE_REVIEW → RUN_REVIEWER → SUMMARIZE_REFACTORING_PLAN → GATE_REFACTORING_NEEDED → APPROVE_PLAN → EXECUTE_SYSTEM_PLAN / EXECUTE_TEST_PLAN as `checklist:` → HUMAN_REVIEW → UPDATE_GUIDELINES (max-visits 3) → compile/build/start/full suite/commit → HUMAN_REVIEW) and the menu option; register the four gates; add the back-edges to `TestBackEdgesAreAudited`; run the loop tests with `-timeout 300s`.
+
+## Decisions (accepted by the user 2026-11-09)
 
 - **Guidelines live in per-area files under `docs/guidelines/`** in the scaffolded repo (e.g. `architecture.md`, `naming.md`, `testing.md`), addressed by one `${guidelines-path}` placeholder. Not `CLAUDE.md`: it is loaded into every agent and grows unbounded, which is exactly the degradation the article warns about. Per-area files keep each one small and prunable, and the reviewer reads only the folder.
 - **Offered through the `refactor` menu only** (opportunistic-inside-change and ad-hoc operator entry). The `task/system-refactor` subtype bypasses the menu (`GATE_TASK_SUBTYPE` → `REFACTOR_SYSTEM_STRUCTURE` directly), and a ticket subtype for review can be added later if teams ask; the review loop needs the human present anyway, which fits the interactive menu.

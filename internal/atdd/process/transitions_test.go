@@ -68,6 +68,8 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"fix-unexpected-failing-tests",
 		"refactor-tests",
 		"refactor-system",
+		"review-code-architecture",
+		"update-guidelines",
 		"refine-acceptance-criteria",
 		"merge-story-into-use-cases",
 		"merge-use-cases",

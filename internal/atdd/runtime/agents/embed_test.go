@@ -220,9 +220,11 @@ func TestPrompt_FixerPreamble(t *testing.T) {
 }
 
 func TestPrompt_AdversarialReview(t *testing.T) {
-	// The Red reviewers (plan 20261109-1257) share the adversarial-review
-	// chunk, prepended between scope.md and the body; no other agent carries
-	// it. Exactly three reviewers exist — one per Red writer.
+	// Every *-reviewer shares the adversarial-review chunk, prepended between
+	// scope.md and the body; no other agent carries it. The three Red
+	// reviewers (plan 20261109-1257, one per Red writer) also carry the
+	// red-review-verdict chunk; the code-architecture-reviewer (plan
+	// 20261109-1259) does not.
 	reviewers := 0
 	for _, name := range DefaultAgentSet().Names() {
 		t.Run(name, func(t *testing.T) {
@@ -235,13 +237,18 @@ func TestPrompt_AdversarialReview(t *testing.T) {
 			if got != want {
 				t.Errorf("adversarial-review present = %v, want %v", got, want)
 			}
+			gotVerdict := strings.Contains(body, redReviewVerdict)
+			wantVerdict := want && name != "code-architecture-reviewer"
+			if gotVerdict != wantVerdict {
+				t.Errorf("red-review-verdict present = %v, want %v", gotVerdict, wantVerdict)
+			}
 		})
 		if strings.HasSuffix(name, "-reviewer") {
 			reviewers++
 		}
 	}
-	if reviewers != 3 {
-		t.Errorf("found %d *-reviewer agents, want 3 (acceptance-test, dsl, system-driver-adapter)", reviewers)
+	if reviewers != 4 {
+		t.Errorf("found %d *-reviewer agents, want 4 (acceptance-test, dsl, system-driver-adapter, code-architecture)", reviewers)
 	}
 }
 

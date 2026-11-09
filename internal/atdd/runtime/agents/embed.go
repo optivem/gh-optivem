@@ -16,6 +16,7 @@ const (
 	scopePath             = "runtime/shared/scope.md"
 	fixerPreamblePath     = "runtime/shared/fixer-preamble.md"
 	adversarialReviewPath = "runtime/shared/adversarial-review.md"
+	redReviewVerdictPath  = "runtime/shared/red-review-verdict.md"
 	interactiveSuffixPath = "runtime/shared/interactive-suffix.md"
 	headlessSuffixPath    = "runtime/shared/headless-no-ask.md"
 	touchListPath         = "runtime/shared/green-touch-list.md"
@@ -33,6 +34,10 @@ const (
 // agents' shared stance (compare against the spec, try to find what is wrong,
 // change nothing, classify findings) — inserted between scope and the body for
 // `*-reviewer` agents only (see isReviewer), mirroring fixerPreamble.
+// redReviewVerdict follows it for the three Red reviewers only (redReviewers):
+// what they review (the writer's ${changed-files}) and their blocking /
+// non-blocking verdict contract. The code-architecture-reviewer (plan
+// 20261109-1259) shares the stance but reviews the codebase and emits a plan.
 // interactiveSuffix is the operator-facing
 // /exit + redirect hint appended only when the dispatcher invokes the agent
 // interactively (see InteractiveSuffix). headlessSuffix is the symmetric
@@ -45,6 +50,7 @@ var (
 	sharedScope       = mustReadAsset(scopePath)
 	fixerPreamble     = mustReadAsset(fixerPreamblePath)
 	adversarialReview = mustReadAsset(adversarialReviewPath)
+	redReviewVerdict  = mustReadAsset(redReviewVerdictPath)
 	interactiveSuffix = mustReadAsset(interactiveSuffixPath)
 	headlessSuffix    = mustReadAsset(headlessSuffixPath)
 	touchList         = mustReadAsset(touchListPath)
@@ -61,6 +67,15 @@ var greenImplementers = map[string]bool{
 	"external-system-driver-adapter-implementer": true,
 	"external-system-stub-implementer":           true,
 	"external-system-real-simulator-implementer": true,
+}
+
+// redReviewers are the Red writers' paired reviewers (plan 20261109-1257),
+// dispatched by execute-agent's RUN_REVIEWER. They get redReviewVerdict after
+// adversarialReview.
+var redReviewers = map[string]bool{
+	"acceptance-test-reviewer":       true,
+	"dsl-reviewer":                   true,
+	"system-driver-adapter-reviewer": true,
 }
 
 func mustReadAsset(path string) string {
@@ -185,6 +200,9 @@ func (s *AgentSet) Prompt(name string) (string, error) {
 	}
 	if isReviewer(name) {
 		prompt += adversarialReview + "\n\n"
+	}
+	if redReviewers[name] {
+		prompt += redReviewVerdict + "\n\n"
 	}
 	if greenImplementers[name] {
 		prompt += touchList + "\n\n"

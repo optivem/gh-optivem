@@ -77,3 +77,12 @@ var ExternalRegistryPathKeysInScope = map[string]bool{
 var TierPathKeysInScope = map[string]bool{
 	projectconfig.ComponentTestPathKey: true,
 }
+
+// GuidelinesPathKeysInScope lists the optional, defaulted guidelines folder
+// key (projectconfig.GuidelinesPathKey, plan 20261109-1259). It is accepted
+// under system-test.paths: but not required there: an unset key resolves to
+// projectconfig.DefaultGuidelinesPath. Scoped by the Code & Architecture
+// Review agents only (the reviewer reads it, the guidelines updater writes it).
+var GuidelinesPathKeysInScope = map[string]bool{
+	projectconfig.GuidelinesPathKey: true,
+}
