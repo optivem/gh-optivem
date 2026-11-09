@@ -143,17 +143,20 @@ flowchart TD
     REFACTOR_TEST_STRUCTURE[Refactor Test Structure]
     REDESIGN_SYSTEM_STRUCTURE[Redesign System Structure]
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE[Redesign External System Structure]
+    REVIEW_CODE_AND_ARCHITECTURE["Code & Architecture Review"]
     REFACTOR_TOP_END(( ))
 
     GATE_REFACTOR_TYPE_CHOICE -- Refactor System Structure --> REFACTOR_SYSTEM_STRUCTURE
     GATE_REFACTOR_TYPE_CHOICE -- Refactor Test Structure --> REFACTOR_TEST_STRUCTURE
     GATE_REFACTOR_TYPE_CHOICE -- Redesign System Structure --> REDESIGN_SYSTEM_STRUCTURE
     GATE_REFACTOR_TYPE_CHOICE -- Redesign External System Structure --> REDESIGN_EXTERNAL_SYSTEM_STRUCTURE
+    GATE_REFACTOR_TYPE_CHOICE -- Review Code and Architecture --> REVIEW_CODE_AND_ARCHITECTURE
     GATE_REFACTOR_TYPE_CHOICE -- None --> REFACTOR_TOP_END
     REFACTOR_SYSTEM_STRUCTURE --> GATE_REFACTOR_TYPE_CHOICE
     REFACTOR_TEST_STRUCTURE --> GATE_REFACTOR_TYPE_CHOICE
     REDESIGN_SYSTEM_STRUCTURE --> GATE_REFACTOR_TYPE_CHOICE
     REDESIGN_EXTERNAL_SYSTEM_STRUCTURE --> GATE_REFACTOR_TYPE_CHOICE
+    REVIEW_CODE_AND_ARCHITECTURE --> GATE_REFACTOR_TYPE_CHOICE
 ```
 
 ## Refine Backlog Item
@@ -1100,6 +1103,63 @@ flowchart TD
 
     classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
     class REVIEW-ACCEPTANCE-TESTS_OUTPUTS outputNode
+```
+
+## Code & Architecture Review
+
+```mermaid
+flowchart TD
+    RESET_CODE_REVIEW[[Reset Review State]]
+    RUN_REVIEWER["Review Code & Architecture"]
+    SUMMARIZE_REFACTORING_PLAN[[Summarize the Refactoring Plan]]
+    GATE_REFACTORING_NEEDED{Refactoring Needed?}
+    APPROVE_PLAN["Approve the Refactoring Plan — see § approve<br/>category = human"]
+    HUMAN_REVIEW[[Human Review]]
+    GATE_PLAN_APPROVED{Plan Approved?}
+    GATE_HUMAN_ISSUES{Issues Found?}
+    GATE_SYSTEM_PLAN_PRESENT{System Refactoring Planned?}
+    REFACTORING_PLAN_DECLINED_END(( ))
+    UPDATE_GUIDELINES[Fix Issues and Update Guidelines — see § update-guidelines]
+    REVIEW_CODE_AND_ARCHITECTURE_END(( ))
+    EXECUTE_SYSTEM_PLAN[Execute the System Refactoring Plan — see § refactor-system-structure]
+    GATE_TEST_PLAN_PRESENT{Test Refactoring Planned?}
+    COMPILE_TESTS["Compile Tests<br/>task-name = update-guidelines"]
+    EXECUTE_TEST_PLAN[Execute the Test Refactoring Plan — see § refactor-test-structure]
+    BUILD_SYSTEM[Build the System — see § build-system]
+    START_SYSTEM[Start the System — see § start-system-restart]
+    VERIFY_TESTS_PASS["Verify Tests Pass<br/>suite = <br/>test-names = "]
+    COMMIT_GUIDELINES["Commit Fixes and Guidelines — see § commit<br/>category = system-commit<br/>layer = GUIDELINES"]
+    GUIDELINES_LOOP_EXHAUSTED((⚡))
+
+    RESET_CODE_REVIEW --> RUN_REVIEWER
+    RUN_REVIEWER --> SUMMARIZE_REFACTORING_PLAN
+    SUMMARIZE_REFACTORING_PLAN --> GATE_REFACTORING_NEEDED
+    GATE_REFACTORING_NEEDED -- Yes --> APPROVE_PLAN
+    GATE_REFACTORING_NEEDED -- No --> HUMAN_REVIEW
+    APPROVE_PLAN --> GATE_PLAN_APPROVED
+    GATE_PLAN_APPROVED -- Approved --> GATE_SYSTEM_PLAN_PRESENT
+    GATE_PLAN_APPROVED -- Rejected --> REFACTORING_PLAN_DECLINED_END
+    GATE_SYSTEM_PLAN_PRESENT -- Yes --> EXECUTE_SYSTEM_PLAN
+    GATE_SYSTEM_PLAN_PRESENT -- No --> GATE_TEST_PLAN_PRESENT
+    EXECUTE_SYSTEM_PLAN --> GATE_TEST_PLAN_PRESENT
+    GATE_TEST_PLAN_PRESENT -- Yes --> EXECUTE_TEST_PLAN
+    GATE_TEST_PLAN_PRESENT -- No --> HUMAN_REVIEW
+    EXECUTE_TEST_PLAN --> HUMAN_REVIEW
+    HUMAN_REVIEW --> GATE_HUMAN_ISSUES
+    GATE_HUMAN_ISSUES -- Yes --> UPDATE_GUIDELINES
+    GATE_HUMAN_ISSUES -- No --> REVIEW_CODE_AND_ARCHITECTURE_END
+    UPDATE_GUIDELINES --> COMPILE_TESTS
+    COMPILE_TESTS --> BUILD_SYSTEM
+    BUILD_SYSTEM --> START_SYSTEM
+    START_SYSTEM --> VERIFY_TESTS_PASS
+    VERIFY_TESTS_PASS --> COMMIT_GUIDELINES
+    COMMIT_GUIDELINES --> HUMAN_REVIEW
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class HUMAN_REVIEW,RESET_CODE_REVIEW,SUMMARIZE_REFACTORING_PLAN serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class GUIDELINES_LOOP_EXHAUSTED errorEndNode
 ```
 
 ## Review Code & Architecture
