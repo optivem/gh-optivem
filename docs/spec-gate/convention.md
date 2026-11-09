@@ -257,3 +257,52 @@ Result `status` is one of `passed`, `failed`, `error`, `skipped`. State strings 
 ## 11. Outputs
 
 Terminal report; `--json`; GitHub job summary (`GITHUB_STEP_SUMMARY`); sticky pull-request comment markdown starting with the marker `<!-- gh-optivem-spec -->` (printed, not posted); a self-contained HTML report readable by a product owner. No commit-status posting in v1.
+
+## 12. Generating readable criteria
+
+`gh optivem spec generate` turns the tagged acceptance tests back into readable Gherkin. A product owner or customer can then read the criteria after a story's own criteria text has been deleted. The command reads the test sources (`.java`, `.cs`, `*.spec.ts` / `*.test.ts`), not the JUnit XML, because only the sources have both the tag and the steps. It prints one `Feature` per use case. The output is generated, so do not commit it.
+
+```
+gh optivem spec generate                                  # tests from system-test.paths.at-test in gh-optivem.yaml
+gh optivem spec generate --tests <dir> --use-case UC-001 --out criteria.feature
+```
+
+Mapping rules:
+
+- `.given()` / `.when()` / `.then()` open a `Given` / `When` / `Then` line. `.and()` opens an `And` line.
+- Identifiers are split into lowercase words. Acronyms keep their case.
+- A Given or When line is the subject followed by its comma-joined modifiers. A one-word Given subject gets "a" or "an".
+- Every assertion after `.then()` is its own `And` line. An assertion on an entity is prefixed by that entity.
+- Strings are rendered in double quotes. Numbers lose type suffixes. `null` becomes `none`. Enums keep their last segment.
+- Parameterised tests become `Scenario Outline` with `Examples`. A provider class or method is named in a comment.
+- Each scenario carries one `@UC-NNN.M` tag, so a test with several IDs appears under each. Wip tests also carry `@wip`. Untagged tests go in a trailing `Feature: Untagged acceptance tests` block.
+- Channels and isolation are not rendered.
+
+Before:
+
+```java
+@Tag("UC-001.2")
+@TestTemplate
+void shouldCalculateBasePriceAsProductOfUnitPriceAndQuantity() {
+    scenario
+            .given().product().withUnitPrice("20.00")
+            .when().placeOrder().withQuantity(5)
+            .then().shouldSucceed()
+            .and().order().hasBasePrice("100.00");
+}
+```
+
+After:
+
+```gherkin
+Feature: UC-001 Place Order
+
+  @UC-001.2
+  Scenario: Should calculate base price as product of unit price and quantity
+    Given a product with unit price "20.00"
+    When place order with quantity 5
+    Then should succeed
+    And order has base price "100.00"
+```
+
+It is all or nothing. A test the grammar cannot read fails the run with `file:line test-name: reason`, and so does a criterion whose use case is not in `specDir`. On such a failure nothing is printed or written. Exit codes: 0 ok, 1 unparseable tests or unknown IDs, 2 usage or configuration error.

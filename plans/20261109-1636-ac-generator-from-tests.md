@@ -1,7 +1,5 @@
 # 2026-11-09 16:36 local — Acceptance-criteria generator: Gherkin from tagged acceptance tests
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-09T16:19:43Z`
-
 ## TL;DR
 
 **Why:** Plan `plans/20261109-1258-ac-delete-and-generate.md` deletes a story's acceptance criteria once its tests are green. After that, the tagged acceptance tests are the only copy of the criteria. A PO or customer still needs to read them, and nobody can do that without a generator. 1258 says to ship the generator first.
@@ -18,19 +16,18 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md` (Q4, "Change System 
 
 ## ▶ Next executable step (resume here)
 
-Step 10 (CLI wiring). Steps 1–9 are done: the package `internal/spec/generate` exists with the model, the renderer, the three front-ends, golden tests, the round-trip test and the fail-loud tests. Check `git status spec_commands.go` first. If another session has uncommitted edits there, wait.
+Step 10 (remaining): the two-line registration in `spec_commands.go`. Check `git status spec_commands.go` first; if another session still has uncommitted edits there, wait. Everything else is done:
+- the package `internal/spec/generate`
+- the command in `spec_generate_commands.go`, with its tests
+- the docs in `docs/spec-gate/convention.md` §12
 
 ## Steps
 
-- [ ] Step 10: Add the command `newSpecGenerateCmd` in a new file `spec_generate_commands.go`, plus one `AddCommand` entry and an `Example` line in `spec_commands.go`. Flags:
-  - `--config`: the existing spec.yaml flag, for `specDir`, `exclude` and use-case titles
-  - `--tests` (repeatable; default `system-test.paths.at-test` from the project's `gh-optivem.yaml`)
-  - `--use-case` (repeatable filter)
-  - `--out`
+- [ ] Step 10 (remaining): register the command in `spec_commands.go` — ⏳ Deferred: spec_commands.go has another session's uncommitted edits (2026-11-09). `newSpecGenerateCmd` already exists in `spec_generate_commands.go`, with tests in `spec_generate_commands_test.go`. The wiring is two edits in `newSpecCmd()`:
+  - `cmd.AddCommand(newSpecCheckCmd(), newSpecStatusCmd(), newSpecValidateCmd(), newSpecAdoptCmd(), newSpecRecordCmd())` → append `, newSpecGenerateCmd()` inside the call.
+  - In its `Example` string, add the line `  gh optivem spec generate --use-case UC-001` after the line `  gh optivem spec record`. The closing backtick of the raw string moves to the new line.
 
-  Exit codes follow the spec family: 0 ok, 1 tests that cannot be parsed or have unknown IDs, 2 usage or config error. On exit 1, nothing is written to stdout or `--out`.
-- [ ] Step 11: Docs. Add a short "Generating readable criteria" section to `docs/spec-gate/convention.md` with the command, the mapping rules and one before/after example. Update the `--help` text.
-- [ ] Step 12: Run `go test -p 2 ./internal/spec/generate/... .` (never unbounded `go test ./...` on Windows) and `go vet`.
+  Then run `go build . && go vet . && go test -p 2 -timeout 300s -run 'TestSpecGenerate' .`.
 
 ## Survey results (Step 6, 2026-11-09)
 
@@ -102,3 +99,8 @@ The first run failed on 10 tests: 4 Java, 4 .NET, 2 TS. Every failure was an arg
 ## Open questions
 
 None.
+
+## Verification
+
+- After the wiring, run `gh optivem spec generate --config ../shop/spec.yaml --tests <lang at-test dir>` on shop and read the output. Shop has no plain `gh-optivem.yaml`, only the per-variant files, so `--tests` is required there. An in-process run on 2026-11-09 gave the same result for each of Java, .NET and TS: exit 0, 96 scenarios, 7 features, and 11 untagged tests reported.
+- Judge whether the plain When voice and the Given article rule read well to a PO. If they do not, write a separate vocabulary plan.
