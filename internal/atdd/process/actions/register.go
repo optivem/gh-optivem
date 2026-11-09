@@ -122,4 +122,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	// CONTRADICTORY_TESTS_HALT) instead of the generic STOP_SCOPE_VIOLATION.
 	// See scope_exception.go.
 	r.Register("categorize-scope-exception", a.categorizeScopeException)
+	// WIP-gate removal at Green (plan 20261109-1300). Strips the
+	// GH_OPTIVEM_RUN_WIP_TESTS gate from the ticket's acceptance tests once they
+	// pass on every touched channel, so CI runs them from then on. See wip_gate.go.
+	r.Register("remove-wip-gate", a.removeWipGate)
 }
