@@ -12,7 +12,7 @@ Together they describe a sharper process than `internal/atdd/process/process-flo
 - **Reviewer agents.** The articles have an adversarial reviewer in Red and review-first in Refactor. The BPMN has neither.
 - **Align.** The articles describe an Align loop that checks the story against the use cases.
 - **Acceptance criteria after green.** The articles delete the acceptance criteria once their tests pass. The BPMN keeps them and fingerprints them.
-- **Refactor verification.** The articles run only the acceptance tests for the touched use case locally and leave the full suite to the pipeline.
+- **Refactor verification.** The articles run only the acceptance tests for the touched use case locally and leave the full suite to the pipeline. Parked for a later discussion (Q5).
 
 **End result:** `gh optivem` runs one coherent flow, **Align → Update Use Case → Red → Green → Refactor & Review → Done**, with an explicit executor/reviewer/approver at every step. Students who read the articles or saw the talk recognise the same process when they run the tool.
 
@@ -24,7 +24,7 @@ Together they describe a sharper process than `internal/atdd/process/process-flo
 - **Green runs without review or approval.** The Acceptance Tests are the check.
 - **Refactor is review-first.** The reviewer produces findings and a plan, a human approves, then the agent executes. Issues a human finds feed back into the guidelines.
 - **Acceptance criteria don't drift from the tests.** Policy is set by Q4.
-- **A story's status follows its tests.** A story is done when the tests tagged with its criterion IDs pass in the pipeline.
+- **Statuses stay as today.** gh-optivem ends at IN ACCEPTANCE, and humans (manual QA review) move a story to DONE (Q9).
 
 ## Proposed process flow
 
@@ -61,7 +61,7 @@ flowchart TD
     AC_POLICY[Acceptance-criteria policy<br/>replaces spec fingerprints]
     REFACTOR[Refactor &amp; Review]
     EXEC_AGENT[execute-agent<br/>+ optional reviewer step]
-    PIPE[Pipeline: full AT suite →<br/>story DONE when its tagged tests pass]
+    PIPE[Pipeline: full AT suite<br/>· manual QA quick functional test<br/>→ human sets DONE]
     OTHER[Bug / Task cycles<br/>cover · redesign · refactor]
 
     REFINE_TICKET --> IMPLEMENT_TICKET
@@ -77,7 +77,7 @@ flowchart TD
     classDef new fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
     class IMPLEMENT_TICKET,CSB,OTHER unchanged
     class REFINE_TICKET,MERGE,RED,GREEN,REFACTOR,EXEC_AGENT,AC_POLICY changed
-    class PIPE new
+    class PIPE unchanged
 ```
 
 ### Refine Backlog Item (Align): single pass → loop until the PO agrees
@@ -137,8 +137,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED[Implement External Drivers If Needed]
-    WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS["Write Failing Acceptance Tests<br/>(Red: reviewer on, tests committed disabled)"]
-    IMPLEMENT_AND_VERIFY_SYSTEM["Implement System<br/>(Green: unattended, API before UI)"]
+    WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS["Write Failing Acceptance Tests<br/>(Red: reviewer on, WIP gate as today)"]
+    IMPLEMENT_AND_VERIFY_SYSTEM["Implement System<br/>(Green: API before UI;<br/>WIP gate removed when green)"]
     GATE_STORY_SPEC_RECORD{Story?}
     RECORD_SPEC_FINGERPRINTS[Record Spec Fingerprints]
     COMMIT_SPEC_FINGERPRINTS[Commit Spec Fingerprints]
@@ -220,17 +220,16 @@ flowchart TD
 
 The scope-exception branch (`GATE_SCOPE_EXCEPTION_REQUESTED` → ESCC / contradictory-tests / scope-violation halts) and the PRE-rejected end are omitted for readability and are unchanged.
 
-### Write and Verify Acceptance Test Code: Red tests committed disabled with a ticket marker (Q7)
+### Write and Verify Acceptance Test Code: reviewer only (WIP gate already exists)
 
 ```mermaid
 flowchart TD
-    WRITE_ACCEPTANCE_TESTS["Write Acceptance Tests<br/>(reviewer = red-reviewer)"]
+    WRITE_ACCEPTANCE_TESTS["Write Acceptance Tests<br/>(reviewer = matching *-reviewer;<br/>adds WIP gate as today)"]
     COMPILE_TESTS[Compile Tests]
     START_SYSTEM[Start System]
     GATE_EXPECTED_TEST_RESULT{Expected Test Result?}
     VERIFY_TESTS_PASS_ACCEPTANCE[Verify Acceptance Tests Pass]
     VERIFY_TESTS_FAIL_ACCEPTANCE[Verify Acceptance Tests Fail]
-    DISABLE_RED_TESTS[["Disable new/changed ATs<br/>marker: ticket ID<br/>(changed ATs: old version stays enabled, Q8)"]]
     COMMIT_TEST_CODE[Commit Test Code]
     WAV_AT_CODE_END(( ))
 
@@ -240,8 +239,7 @@ flowchart TD
     GATE_EXPECTED_TEST_RESULT -- Success --> VERIFY_TESTS_PASS_ACCEPTANCE
     GATE_EXPECTED_TEST_RESULT -- Failure --> VERIFY_TESTS_FAIL_ACCEPTANCE
     VERIFY_TESTS_PASS_ACCEPTANCE --> COMMIT_TEST_CODE
-    VERIFY_TESTS_FAIL_ACCEPTANCE --> DISABLE_RED_TESTS
-    DISABLE_RED_TESTS --> COMMIT_TEST_CODE
+    VERIFY_TESTS_FAIL_ACCEPTANCE --> COMMIT_TEST_CODE
     COMMIT_TEST_CODE --> WAV_AT_CODE_END
 
     classDef unchanged fill:#eeeeee,stroke:#9e9e9e,color:#000
@@ -249,12 +247,11 @@ flowchart TD
     classDef new fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
     class COMPILE_TESTS,START_SYSTEM,GATE_EXPECTED_TEST_RESULT,VERIFY_TESTS_PASS_ACCEPTANCE,VERIFY_TESTS_FAIL_ACCEPTANCE,COMMIT_TEST_CODE,WAV_AT_CODE_END unchanged
     class WRITE_ACCEPTANCE_TESTS changed
-    class DISABLE_RED_TESTS new
 ```
 
-`implement-test-layer` (DSL, system driver adapters) gets the same change: its `RUN_ACTION` passes `reviewer = red-reviewer`, and its Failure branch disables the tests before `COMMIT_LAYER`. Open point: whether the verify steps run disabled tests explicitly by marker.
+`implement-test-layer` (DSL, system driver adapters) gets the same change: its `RUN_ACTION` passes the matching `*-reviewer`. Red tests already stay out of regular CI through the existing permanent WIP gate (`@EnabledIfEnvironmentVariable(named = "GH_OPTIVEM_RUN_WIP_TESTS", ...)`, lifted only by the orchestrator's own verify runs; see `internal/atdd/process/actions/command.go`). Nothing new is needed in Red.
 
-### Implement and Verify System (Green): re-enable by marker, API before UI, unattended
+### Implement and Verify System (Green): API before UI; WIP gate removed once green
 
 ```mermaid
 flowchart TD
@@ -262,11 +259,10 @@ flowchart TD
     GATE_CHANNEL_TOUCHED{Channel Touched?}
     RESOLVE_INNER_LOOP[[Resolve Inner Loop]]
     CHANNEL_SKIPPED(( ))
-    ENABLE_STORY_TESTS[["Enable ATs marked with ticket ID<br/>(first channel only)"]]
-    RUN_ACTION["Run the Configured Agent<br/>(Green: no approval gates by default, Q3)"]
+    RUN_ACTION["Run the Configured Agent — see § ${action}"]
     BUILD_SYSTEM[Build the System]
     START_SYSTEM[Start the System]
-    VERIFY_TESTS_PASS["Verify Tests Pass<br/>(only the story's tests, by marker)"]
+    VERIFY_TESTS_PASS[Verify Tests Pass]
     GATE_INNER_LOOP{Inner Loop Mode?}
     VERIFY_INNER_LOOP[Verify Inner Loop]
     COMMIT_SYSTEM[Commit System Changes]
@@ -275,8 +271,7 @@ flowchart TD
     RESOLVE_CHANNEL --> GATE_CHANNEL_TOUCHED
     GATE_CHANNEL_TOUCHED -- Yes --> RESOLVE_INNER_LOOP
     GATE_CHANNEL_TOUCHED -- No --> CHANNEL_SKIPPED
-    RESOLVE_INNER_LOOP --> ENABLE_STORY_TESTS
-    ENABLE_STORY_TESTS --> RUN_ACTION
+    RESOLVE_INNER_LOOP --> RUN_ACTION
     RUN_ACTION --> BUILD_SYSTEM
     BUILD_SYSTEM --> START_SYSTEM
     START_SYSTEM --> VERIFY_TESTS_PASS
@@ -284,14 +279,20 @@ flowchart TD
     GATE_INNER_LOOP -- None --> COMMIT_SYSTEM
     GATE_INNER_LOOP -- Test After --> VERIFY_INNER_LOOP
     VERIFY_INNER_LOOP --> COMMIT_SYSTEM
-    COMMIT_SYSTEM --> IMPL_AND_VERIFY_SYSTEM_END
+    COMMIT_SYSTEM --> GATE_LAST_CHANNEL
+    GATE_LAST_CHANNEL{Last touched channel?}
+    GATE_LAST_CHANNEL -- No --> IMPL_AND_VERIFY_SYSTEM_END
+    GATE_LAST_CHANNEL -- Yes --> REMOVE_WIP_GATE[["Remove WIP gate line from<br/>the story's now-green ATs"]]
+    REMOVE_WIP_GATE --> COMMIT_WIP_GATE_REMOVAL["Commit<br/>category = test-commit"]
+    COMMIT_WIP_GATE_REMOVAL --> IMPL_AND_VERIFY_SYSTEM_END
 
     classDef unchanged fill:#eeeeee,stroke:#9e9e9e,color:#000
     classDef changed fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000
     classDef new fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
     class GATE_CHANNEL_TOUCHED,RESOLVE_INNER_LOOP,CHANNEL_SKIPPED,BUILD_SYSTEM,START_SYSTEM,GATE_INNER_LOOP,VERIFY_INNER_LOOP,COMMIT_SYSTEM,IMPL_AND_VERIFY_SYSTEM_END unchanged
-    class RESOLVE_CHANNEL,RUN_ACTION,VERIFY_TESTS_PASS changed
-    class ENABLE_STORY_TESTS new
+    class RUN_ACTION,VERIFY_TESTS_PASS unchanged
+    class RESOLVE_CHANNEL changed
+    class GATE_LAST_CHANNEL,REMOVE_WIP_GATE,COMMIT_WIP_GATE_REMOVAL new
 ```
 
 The `TDD → INNER_LOOP_TDD_UNSUPPORTED` halt is omitted and unchanged.
@@ -327,11 +328,12 @@ flowchart TD
     classDef changed fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px,color:#000
     classDef new fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px,color:#000
     class REFACTOR_SYSTEM_STRUCTURE,REDESIGN_SYSTEM_STRUCTURE,REDESIGN_EXTERNAL_SYSTEM_STRUCTURE,REFACTOR_TOP_END unchanged
-    class GATE_REFACTOR_TYPE_CHOICE,REFACTOR_TEST_STRUCTURE changed
+    class REFACTOR_TEST_STRUCTURE unchanged
+    class GATE_REFACTOR_TYPE_CHOICE changed
     class REVIEW_CODE_AND_ARCHITECTURE,REVIEW_UX_UI new
 ```
 
-`REFACTOR_TEST_STRUCTURE` changes because its `VERIFY_TESTS_PASS` (`suite = ""`, i.e. the whole suite today) narrows to the touched use case's ATs (Q5). `refactor-system-structure` gets the same narrowing.
+Refactor verification keeps running the whole suite, as today (Q5). Narrowing it is parked in a follow-up plan.
 
 ### Review Code & Architecture (new process)
 
@@ -341,7 +343,7 @@ flowchart TD
     APPROVE_PLAN{Human approves plan?}
     EXECUTE_PLAN[Run system-refactorer / test-refactorer on the plan]
     COMPILE_AND_START[Build, start system]
-    VERIFY_TOUCHED["Verify: unit tests +<br/>ATs of touched use case(s)"]
+    VERIFY_TOUCHED["Verify: unit tests +<br/>full acceptance suite (as today)"]
     COMMIT_REFACTOR[Commit refactoring]
     HUMAN_REVIEW{Human review: issues<br/>the reviewer missed?}
     UPDATE_GUIDELINES["Agent: fix issue · update guidelines ·<br/>fix other occurrences"]
@@ -359,7 +361,7 @@ flowchart TD
     class RUN_REVIEWER,APPROVE_PLAN,EXECUTE_PLAN,COMPILE_AND_START,VERIFY_TOUCHED,COMMIT_REFACTOR,HUMAN_REVIEW,UPDATE_GUIDELINES,REVIEW_END new
 ```
 
-### Review UX / UI (new process; may be deferred, Q6)
+### Review UX / UI (new process; deferred to its own plan, Q6)
 
 ```mermaid
 flowchart TD
@@ -383,7 +385,7 @@ flowchart TD
 
 ### Implement Ticket: status after the run
 
-The CLI flow is unchanged and still ends at `MARK_IN_ACCEPTANCE`. New, outside the CLI: the pipeline runs the full AT suite and moves the story to **DONE** when every test tagged with its criterion IDs passes (Q9).
+The CLI flow is unchanged and still ends at `MARK_IN_ACCEPTANCE`. The pipeline runs the full AT suite, and a human (manual QA review) moves the story to **DONE** (Q9: no automatic status transition).
 
 ### Not changed by this plan
 
@@ -406,10 +408,10 @@ The legacy **Baseline** (Q-Step 10) is not drawn yet. Whether it extends `cover-
 | 3. Red: AT | Agent (`acceptance-test-writer`) | **Adversarial agent** (AT vs criterion) | QA and/or Developers | Writer + `execute-agent` PRE/POST approval, **no reviewer**; approval prompt doesn't name a role. Commit order (AT + DSL port stubs → DSL → adapters per channel → system per channel) already matches the talk. |
 | 3. Red: DSL | Agent (`dsl-implementer`) | **Adversarial agent** (business vocabulary) | Developers | Same, no reviewer |
 | 3. Red: drivers | Agent (`system-driver-adapter-implementer`) | **Adversarial agent** (port shape, API design) | Developers | Same, no reviewer |
-| 4. Green | Agent (`system-implementer`) | The Acceptance Tests | The Acceptance Tests | Matches, apart from approval tiers (Q3) |
+| 4. Green | Agent (`system-implementer`) | The Acceptance Tests | The Acceptance Tests | Matches; approvals kept as today (Q3). **Gap:** the WIP gate is never removed, so the tests skip in regular CI forever |
 | 5a. Refactor: code/arch | Agent | **Adversarial agent, then human** | Human approves the plan, then reviews the result | `refactor` runs the refactorer directly, **no review-first** |
 | 5b. Refactor: UX/UI | Agent | **Adversarial agent and human, app running** | Human | **Missing** |
-| 6. Done | Pipeline | — | — | Status set to IN ACCEPTANCE by the CLI, not tied to tagged tests |
+| 6. Done | Pipeline runs full suite | Manual QA | Human | Matches. CLI ends at IN ACCEPTANCE; humans set DONE (Q9). |
 
 ### Step details
 
@@ -437,7 +439,7 @@ The legacy **Baseline** (Q-Step 10) is not drawn yet. Whether it extends `cover-
 | 2 | DSL | Developers |
 | 3…n | Drivers, one commit per channel | Developers |
 
-After each writer, before the human gate, a **red-reviewer** agent runs in adversarial mode. Per layer it checks:
+After each writer, before the human gate, that layer's **reviewer agent** (`acceptance-test-reviewer`, `dsl-reviewer`, `system-driver-adapter-reviewer`) runs in adversarial mode. They check:
 - **AT:** every Given/When/Then has a line in the test, every value matches, the tag points at the right criterion, and nothing is in the test that isn't in the criterion (e.g. a dropped `shouldSucceed()`).
 - **DSL:** words are in the business language and match the use case ("coupon", not "voucher").
 - **Driver port:** one method per use case, request/response shape, no loose parameters.
@@ -447,18 +449,18 @@ Findings go to the writer for a fix pass (capped), then to the human approver wi
 
 Circle 2026-10-30 additions to Red:
 - **Only write red tests for the scenarios about to be implemented.** Don't start Red unless Green follows immediately.
-- **Red commits keep the pipeline green.** The new tests are committed **disabled**, with a comment carrying the ticket ID (e.g. `in progress, SHOP-123`). Green re-enables exactly those tests, found by the ticket ID, and runs only them locally. The ID also feeds dashboards. See Q7.
-- **A changed test** must not silently replace a passing old version while it is disabled. See Q8.
+- **Red commits keep the pipeline green.** Already true today through the permanent WIP gate (env var `GH_OPTIVEM_RUN_WIP_TESTS`). **Gap:** the gate is never removed, so after Green the pipeline still skips those tests. **Decision:** Green removes the gate line from the story's tests once they pass (Q7).
+- **A changed test** is edited in place and gated like a new one until Green (Q8).
 - **Feature flags only for months-long epics** (old and new ATs both active). Never one flag per story.
 
-**4. Green.** System, one commit per channel, API before UI. The executor only: no reviewer and no human gate by default. The pipeline decides. **Changes:** per-channel order pinned (API first), Green approval tier (Q3).
+**4. Green.** System, one commit per channel, API before UI. No reviewer agent; the Acceptance Tests are the check. Human approvals stay as today (Q3). **Changes:** per-channel order pinned (API first), and once the story's tests are green the WIP-gate line is removed from them so the pipeline runs them (Q7, Step 9b).
 
 **5. Refactor & Review (optional, loopable, explicit skip).**
 - **5a. Code/architecture review:**
   1. The reviewer agent writes findings and a plan, with no changes, reading the guidelines files.
   2. The human approves the plan.
   3. The agent executes the plan.
-  4. **Run only the Acceptance Tests for the touched use case(s)** (by `@UC-NNN` tag or use-case test class) plus all unit tests. The full acceptance suite runs in the pipeline.
+  4. Run unit tests and the full acceptance suite (as today, Q5).
   5. The human reviews the result.
 - **5b. UX/UI review:**
   1. Start the app.
@@ -470,49 +472,47 @@ Circle 2026-10-30 additions to Red:
 
 **6. Done.**
 - The pipeline runs the full acceptance suite.
-- A story is done when every test tagged with its criterion IDs passes.
-- Ticket status transitions follow pipeline results, not the CLI's end-of-run.
+- Manual QA does a quick functional test of the story in IN ACCEPTANCE, then a human moves it to DONE (Q9, as today).
 - Acceptance criteria are deleted, generated or kept after green, per Q4.
 
 ## ▶ Next executable step (resume here)
 
-Design only. Run `/refine-plan plans/20261109-1219-improved-atdd-process-flow.md` to settle `## Open questions` (Q1–Q10). Once settled, Step 1 is a docs edit that `/execute-plan` can run. Steps 2–9 are big enough that each should become its own plan (see Q1).
+All open questions are decided (Q1–Q10), and the work is split into per-stage plans (see the table under `## Steps`). Next: review each stage plan with `/refine-plan <file>`. The only step executable right now without review is Step 1 of `plans/20261109-1300-remove-wip-gate-at-green.md` (read-only: confirm the gap). Step 1 here (docs) can run via `/execute-plan`.
 
 ## Steps
 
-- [ ] Step 1: Promote `## Proposed process flow` into the process docs as the target design. Use the architecture/process docs location the BPMN doc-blocks reference, with a "today vs target" column. Do not regenerate the diagram (CI does it).
-- [ ] Step 2: **Align loop.** Reshape `refine-backlog-item` / `refine-acceptance-criteria` into draft → refine (loop, "Agreed?" gateway) → PO approve. Extend `acceptance-criteria-refiner.md` with three checks: concrete examples per rule, contradiction vs use cases, main-success-scenario shortest path. Audit the new loop-back edge for test deadlocks first.
-- [ ] Step 3: **Use case format.** Teach `use-case-merger` the business-rules file and the `@narrative-Xy` tags. Record story → criterion IDs on the ticket. Align with the shop plan 20261106-1533.
-- [ ] Step 4: **Red reviewer.** Add a `red-reviewer` agent (one prompt, per-layer mode: AT / DSL / driver port / API driver). Add it **once**, inside `execute-agent`: an optional `reviewer` param, plus a review → capped fix → `APPROVE_POST`-with-findings sequence (see the Execute Agent diagram). Set the param only at the three Red call sites (`write-acceptance-tests`, `implement-dsl`, `implement-system-driver-adapters`). Label `APPROVE_POST` with the approver role. Pin `phase-scopes.yaml` (reviewer is read-only).
-- [ ] Step 5: **Red/Green commit shape.** The BPMN already produces AT + DSL port stubs → DSL → adapters per channel → system per channel. The only change is to pin the channel order to API before UI in `RESOLVE_CHANNEL`.
-- [ ] Step 6: **Green unattended** (per Q3). Drop or relax Green approval tiers.
-- [ ] Step 7: **Acceptance criteria after green** (per Q4). Replace or extend `RECORD_SPEC_FINGERPRINTS` with the chosen policy, plus a `spec generate`-style command if generation is chosen.
-- [ ] Step 8: **Refactor & Review.** Restructure `refactor`:
-  - review-first: reviewer agent → plan → approve → execute
-  - touched-use-case AT subset in place of the whole suite (`VERIFY_TESTS_PASS` with `suite: ""` today)
-  - human review of the result
-  - guidelines feedback loop
-  - a new UX/UI review option (app running)
-- [ ] Step 9: **Done = tests pass.** Tie ticket status to pipeline results for the story's criterion IDs (Circle: pipeline auto-transitioning statuses).
-- [ ] Step 9b: **Disabled red tests** (per Q7/Q8). Red writers commit new ATs disabled with a ticket-ID marker. Green re-enables exactly those tests by marker and runs them locally. For changed ATs, the old version stays enabled until Green.
-- [ ] Step 10: **Baseline.** Decide whether the legacy baseline (diagram → narratives → criteria → characterization ATs, one use case per commit) becomes a kickoff mode or stays as `cover-system-behavior` per ticket. Close the gap either way.
-- [ ] Step 11: Update statemachine/process tests and the BPMN audits (`bpmn-logic-audit`) for every reshaped process. Run tests with `-p 2`.
+This file is the umbrella design (Q1). The work is split into one plan per stage. Review and execute each one separately:
+
+| Stage | Plan | State |
+|---|---|---|
+| Docs | Step 1 below (this file) | ready |
+| 1. Align | `plans/20261109-1255-align-refinement-loop.md` | to review |
+| 2. Use case format | `plans/20261109-1256-use-case-format-and-story-link.md` | to review (coordinate with shop plan 20261106-1533) |
+| 3. Red reviewers | `plans/20261109-1257-red-reviewer-agents.md` | to review |
+| 4/6. AC policy | `plans/20261109-1258-ac-delete-and-generate.md` | to review (ordering vs. use-case format plan) |
+| 5a. Code & Architecture Review | `plans/20261109-1259-code-architecture-review.md` | to review |
+| 4. Green: WIP gate removal | `plans/20261109-1300-remove-wip-gate-at-green.md` | Step 1 (confirm the gap) is executable now |
+| 0. Legacy baseline | `plans/20261109-1301-legacy-baseline-mode.md` | discussion |
+| 5b. UX/UI Review | `plans/20261109-1302-ux-ui-review.md` | deferred until 5a ships |
+| Refactor test scope | `plans/20261109-1250-refactor-touched-use-case-tests.md` | discussion (parked Q5) |
+
+- [ ] Step 1: Promote `## Proposed process flow` into the process docs as the target design. Use the location the BPMN doc-blocks reference, with a "today vs target" column. Do not regenerate `docs/process-diagram.md` (CI does it).
+- [ ] Step 2: When every stage plan is executed or dropped, delete this umbrella plan.
 
 ## Verification
 
 - Operator: gift-wrap rehearsal on shop. Commits and approve prompts match the talk's "Gift-Wrap Commits" slide, and the Red reviewer catches a planted dropped `shouldSucceed()`.
-- Operator: refactor rehearsal runs only the touched use case's ATs locally.
 
 ## Open questions
 
-- **Q1. One plan or split?** Recommended: keep this file as the umbrella design and spin out one plan per stage (Align, Red reviewer, AC policy, Refactor & Review, Done/status). Each is a multi-session BPMN change, and this mirrors how earlier BPMN efforts were sliced.
-- **Q2. Red reviewer: one agent or three?** Recommended: one `red-reviewer` with a per-layer mode. Fewer prompts to maintain, and the checks share the "compare against the spec, try to find what's wrong" stance.
-- **Q3. Green approval.** The articles say no human approval in Green. Today system-agent tier approvals exist (skipped under `--auto`). Recommended: Green runs unattended by default, and the approve tier stays available as a flag for teaching mode.
-- **Q4. Acceptance criteria after green.** The articles say delete them, or generate them from the tests if business readers need them. Today spec fingerprints keep both and report drift. Options: (a) delete on green, (b) delete + `generate` command, (c) keep fingerprints. Recommended: (b). It matches every article, and generation covers the "customer signs the criteria" case.
-- **Q5. Refactor verification scope.** Run only the touched use case's ATs locally (the article) instead of the whole suite. This requires mapping changed files to use cases. Is tag-based selection from the story's criterion IDs enough, or do we need a file → use case map?
-- **Q6. UX/UI review in scope now?** It needs a running app and a visual check, which is new ground for the CLI. Recommended: defer it to its own plan after 5a ships.
-- **Q7. Disabled-red-tests convention (Circle).** Red commits push tests disabled with a ticket-ID comment so trunk stays green, and Green re-enables them by ID. Does gh-optivem adopt this? Today the Red commits are separate commits in one run, and Green follows in the same run. Recommended: adopt it. Runs can halt between Red and Green (human gates, fix-loop exhaustion), and a pushed red commit would break the pipeline for everyone.
-- **Q8. Changed ATs between Red and Green (Circle, left open).** Options: (a) keep the old test enabled and the new one disabled, delete the old one at Green; (b) version the suite; (c) rely on a short Red→Green window. Recommended: (a). It is the only option that keeps the old behaviour guarded throughout.
-- **Q9. Statuses after READY (Circle, left open).** Which statuses exist (e.g. IN PROGRESS → RED COMMITTED → IN ACCEPTANCE → DONE), and which are set by a human, by the CLI or by the pipeline? Recommended: humans set only READY, the CLI sets IN PROGRESS, and the pipeline sets DONE from tagged-test results.
-- **Q10. Later QA / exploratory / usability phase (Circle, left open).** Is it a step after 5, or out of the CLI's scope? Recommended: out of scope. The talk lists it as a human activity the tool doesn't automate.
+- ~~Q1~~ **Decided:** this file is the umbrella design, with one plan per stage spun out.
+- ~~Q2~~ **Decided:** three reviewers (`acceptance-test-reviewer`, `dsl-reviewer`, `system-driver-adapter-reviewer`), one paired with each Red writer, sharing one `runtime/shared/` chunk for the adversarial stance. Each run loads only its own checks (fewer tokens), and focused prompts are more accurate.
+- ~~Q3~~ **Decided:** Green keeps today's approvals (PRE/POST, skipped under `--auto`).
+- ~~Q4~~ **Decided:** delete the acceptance criteria on green, and add a `generate` command for POs/customers. Spec fingerprints are retired.
+- ~~Q5~~ **Decided:** keep running the whole acceptance suite after a refactoring for now. Running only the touched use case's tests is parked in a follow-up discussion plan (`plans/*-refactor-touched-use-case-tests.md`).
+- ~~Q6~~ **Decided:** UX/UI review comes later, in its own plan, after the Code & Architecture Review ships. Its diagram stays here as the target design.
+- ~~Q7~~ **Decided:** red tests are already gated today (permanent WIP gate, env var). New: Green removes the gate line from the story's tests once they pass, so the pipeline runs them from then on (Step 9b).
+- ~~Q8~~ **Decided:** a story that changes an existing acceptance test edits it **in place**. Red adds the WIP gate to the edited test, and Green removes it, the same path as new tests. No duplicate "old + new" tests. This matches the "Use cases stay, user stories go" article. Accepted risk: if a run halts between Red and Green, that behaviour is unchecked until the story is finished.
+- ~~Q9~~ **Decided:** keep statuses as today. gh-optivem ends at IN ACCEPTANCE; manual QA does a quick functional test, then a human moves the story to DONE. No pipeline-driven status transition.
+- ~~Q10~~ **Decided:** exploratory and usability testing stay outside gh-optivem. They are human QA work at IN ACCEPTANCE, alongside the quick functional test.
 - **Out of scope (pipeline, not process flow):** scheduled AT runs (hourly default config, other platform variants at lower frequency, conditional on the default passing). If wanted, it belongs to a shop/pipeline plan.
