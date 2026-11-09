@@ -24,7 +24,7 @@ What we get out of this:
 
 Remaining (both need ATDD agent runs):
 1. **Fixer rehearsal check** - unattended part done 2026-11-05 (meta-plan unit C2b): an induced compile break after the writer routes `compile-tests` → `FIX` → `APPROVE_PRE category=human` → yield rc=2, with `scope-task-name=write-acceptance-tests` on FIX/APPROVE_PRE/ASK_HUMAN. Remaining (Human-only): an attended run that approves the `fix-*` dispatch and confirms the fixer runs with the writer's scope.
-2. **Step 6** (Human-only, user decision 2026-11-05: don't edit #68 autonomously) - reinstate #68's criterion once an absence-shaped ticket goes green by copying the shop reference. Gate not met yet: no absence-shaped ticket is in the rehearsal corpus (#68's criterion is dropped, #69 has none).
+2. **Step 6** - criterion restored to `optivem/shop#68` on 2026-11-09 (user approved). Remaining: rehearse #68 and confirm it goes green by copying the shop reference (waits until the user allows Docker use again).
 
 ## Steps
 
