@@ -120,7 +120,7 @@ flowchart TD
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__EXTERNAL_SYSTEM_SKIPPED(( ))
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__WRITE_STUB_FIDELITY_TESTS["Write External System Stub-Fidelity Tests — see § write-stub-fidelity-tests<br/>expected-test-result = success"]
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__GATE_DSL_PORT_CHANGED{DSL Port Changed?}
-    IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL — see § implement-and-verify-dsl<br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
+    IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL — see § implement-and-verify-dsl<br/>dsl-reviewer = <br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External System Driver Adapters — see § implement-external-system-driver-adapters]
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__RECONCILE_EXTERNAL_CONTRACT_PRODUCER[Reconcile External Contract Producer — see § reconcile-external-contract-producer]
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__IMPL_EXT_DRIVER_CT_END(( ))
@@ -133,7 +133,7 @@ flowchart TD
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code — see § write-and-verify-acceptance-test-code<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__VALIDATE_CHANNELS_REGISTERED[[Validate Touched Channels Are Configured]]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__GATE_DSL_PORT_CHANGED{DSL Port Changed?}
-    WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL — see § implement-and-verify-dsl<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = system-drivers"]
+    WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL — see § implement-and-verify-dsl<br/>dsl-reviewer = review-dsl<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = system-drivers"]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__WRITE_ACCEPTANCE_TESTS_AND_DSL_END(( ))
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__GATE_EXTERNAL_DRIVER_PORT_CHANGED{DSL Touched External Driver Port Files?}
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__EXTERNAL_DRIVER_PORT_CHANGED_HALT((⚡))
@@ -349,7 +349,7 @@ flowchart TD
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__EXTERNAL_SYSTEM_SKIPPED(( ))
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__WRITE_STUB_FIDELITY_TESTS["Write External System Stub-Fidelity Tests — see § write-stub-fidelity-tests<br/>expected-test-result = success"]
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__GATE_DSL_PORT_CHANGED{DSL Port Changed?}
-    IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL — see § implement-and-verify-dsl<br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
+    IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL — see § implement-and-verify-dsl<br/>dsl-reviewer = <br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External System Driver Adapters — see § implement-external-system-driver-adapters]
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__RECONCILE_EXTERNAL_CONTRACT_PRODUCER[Reconcile External Contract Producer — see § reconcile-external-contract-producer]
     IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED__IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS__IMPL_EXT_DRIVER_CT_END(( ))
@@ -362,7 +362,7 @@ flowchart TD
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code — see § write-and-verify-acceptance-test-code<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__VALIDATE_CHANNELS_REGISTERED[[Validate Touched Channels Are Configured]]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__GATE_DSL_PORT_CHANGED{DSL Port Changed?}
-    WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL — see § implement-and-verify-dsl<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = system-drivers"]
+    WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL — see § implement-and-verify-dsl<br/>dsl-reviewer = review-dsl<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = system-drivers"]
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__WRITE_ACCEPTANCE_TESTS_AND_DSL_END(( ))
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__GATE_EXTERNAL_DRIVER_PORT_CHANGED{DSL Touched External Driver Port Files?}
     WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS__WRITE_ACCEPTANCE_TESTS_AND_DSL__EXTERNAL_DRIVER_PORT_CHANGED_HALT((⚡))

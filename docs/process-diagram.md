@@ -311,7 +311,7 @@ flowchart TD
     WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
     VALIDATE_CHANNELS_REGISTERED[[Validate Touched Channels Are Configured]]
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
-    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = system-drivers"]
+    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>dsl-reviewer = review-dsl<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = system-drivers"]
     WRITE_ACCEPTANCE_TESTS_AND_DSL_END(( ))
     GATE_EXTERNAL_DRIVER_PORT_CHANGED{DSL Touched External Driver Port Files?}
     EXTERNAL_DRIVER_PORT_CHANGED_HALT((⚡))
@@ -398,7 +398,7 @@ flowchart TD
     EXTERNAL_SYSTEM_SKIPPED(( ))
     WRITE_STUB_FIDELITY_TESTS["Write External System Stub-Fidelity Tests<br/>expected-test-result = success"]
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
-    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
+    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>dsl-reviewer = <br/>expected-test-result = success<br/>suite = contract-real<br/>task-name = implement-dsl<br/>test-category = contract<br/>verify-mode = none"]
     IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS[Implement External System Driver Adapters]
     RECONCILE_EXTERNAL_CONTRACT_PRODUCER[Reconcile External Contract Producer]
     IMPL_EXT_DRIVER_CT_END(( ))
@@ -571,7 +571,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-test-writer<br/>category = test-agent<br/>task-name = write-acceptance-tests"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-test-writer<br/>approver-role = QA and/or Developers<br/>category = test-agent<br/>reviewer = review-acceptance-tests<br/>task-name = write-acceptance-tests"]
     WAT_END(( ))
 
     EXECUTE_AGENT --> WAT_END
@@ -601,7 +601,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = dsl-implementer<br/>category = system-agent<br/>task-name = implement-dsl"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = dsl-implementer<br/>approver-role = Developers<br/>category = system-agent<br/>task-name = implement-dsl"]
     IMPL_DSL_END(( ))
 
     EXECUTE_AGENT --> IMPL_DSL_END
@@ -626,7 +626,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-implementer<br/>category = system-agent<br/>task-name = implement-system-driver-adapters"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-implementer<br/>approver-role = Developers<br/>category = system-agent<br/>reviewer = review-system-driver-adapters<br/>task-name = implement-system-driver-adapters"]
     IMPL_SYS_DA_END(( ))
 
     EXECUTE_AGENT --> IMPL_SYS_DA_END
@@ -793,15 +793,21 @@ flowchart TD
     CATEGORIZE_SCOPE_EXCEPTION[[Categorize Scope Exception]]
     GATE_OUTPUTS_AND_SCOPES_VALID{Outputs and Scopes Valid?}
     GATE_SCOPE_EXCEPTION_NEEDS_ESCC{Scope Exception Kind?}
-    APPROVE_POST[Confirm Approval — see § approve]
+    GATE_REVIEWER_CONFIGURED{Reviewer Configured?}
     GATE_FIX_ON_FAILURE{Fix on Failure Enabled?}
     ESCC_UNDECLARED_HALT((⚡))
     CONTRADICTORY_TESTS_HALT((⚡))
     STOP_SCOPE_VIOLATION((⚡))
-    GATE_APPROVED_POST{Approval Outcome?}
+    RUN_REVIEWER["Review the Agent Output — see § ${reviewer}"]
+    APPROVE_POST[Confirm Approval — see § approve]
     FIX[Fix the Failure — see § fix]
+    GATE_REVIEW_FINDINGS{Blocking Review Findings?}
+    GATE_APPROVED_POST{Approval Outcome?}
+    REQUEST_REVISION[[Send Blocking Findings to the Agent]]
+    SUMMARIZE_REVIEW[[Summarize Review Findings]]
     EXECUTE_AGENT_END(( ))
     EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡))
+    APPROVE_POST_REVIEWED["Confirm Approval (Reviewed) — see § approve"]
     AGENT_FIX_EXHAUSTED((⚡))
 
     APPROVE_PRE --> GATE_APPROVED_PRE
@@ -816,17 +822,25 @@ flowchart TD
     GATE_SCOPE_EXCEPTION_NEEDS_ESCC -- Escc Undeclared --> ESCC_UNDECLARED_HALT
     GATE_SCOPE_EXCEPTION_NEEDS_ESCC -- Contradictory Tests --> CONTRADICTORY_TESTS_HALT
     GATE_SCOPE_EXCEPTION_NEEDS_ESCC -- Other --> STOP_SCOPE_VIOLATION
-    GATE_OUTPUTS_AND_SCOPES_VALID -- Yes --> APPROVE_POST
+    GATE_OUTPUTS_AND_SCOPES_VALID -- Yes --> GATE_REVIEWER_CONFIGURED
     GATE_OUTPUTS_AND_SCOPES_VALID -- No --> GATE_FIX_ON_FAILURE
     GATE_FIX_ON_FAILURE -- Yes --> FIX
     GATE_FIX_ON_FAILURE -- No --> APPROVE_POST
     FIX --> RUN_AGENT
+    GATE_REVIEWER_CONFIGURED -- Yes --> RUN_REVIEWER
+    GATE_REVIEWER_CONFIGURED -- No --> APPROVE_POST
+    RUN_REVIEWER --> GATE_REVIEW_FINDINGS
+    GATE_REVIEW_FINDINGS -- Yes --> REQUEST_REVISION
+    GATE_REVIEW_FINDINGS -- No --> SUMMARIZE_REVIEW
+    REQUEST_REVISION --> RUN_AGENT
+    SUMMARIZE_REVIEW --> APPROVE_POST_REVIEWED
     APPROVE_POST --> GATE_APPROVED_POST
+    APPROVE_POST_REVIEWED --> GATE_APPROVED_POST
     GATE_APPROVED_POST -- Approved --> EXECUTE_AGENT_END
     GATE_APPROVED_POST -- Rejected --> EXECUTE_AGENT_OUTPUT_REJECTED_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class CATEGORIZE_SCOPE_EXCEPTION,SNAPSHOT_WORKING_TREE,VALIDATE_OUTPUTS_AND_SCOPES serviceNode
+    class CATEGORIZE_SCOPE_EXCEPTION,REQUEST_REVISION,SNAPSHOT_WORKING_TREE,SUMMARIZE_REVIEW,VALIDATE_OUTPUTS_AND_SCOPES serviceNode
 
     classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
     class RUN_AGENT agentNode
@@ -872,7 +886,7 @@ flowchart TD
 flowchart TD
     APPROVE_PRE["Request Approval — see § approve<br/>category = human"]
     GATE_APPROVED_PRE{Approval Outcome?}
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>category = human<br/>fix-on-failure = false"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>category = human<br/>fix-on-failure = false<br/>reviewer = "]
     FIX_REJECTED_END((⚡))
     FIX_END(( ))
 
