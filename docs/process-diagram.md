@@ -161,9 +161,23 @@ flowchart TD
 ```mermaid
 flowchart TD
     REFINE_ACCEPTANCE_CRITERIA[Refine Acceptance Criteria]
+    GATE_AC_AGREED{Three Amigos Agreed?}
     REFINE_BACKLOG_ITEM_END(( ))
+    RECORD_REFINEMENT_FEEDBACK[[Record the Three Amigos' Feedback]]
+    AC_REFINEMENT_EXHAUSTED((⚡))
+    REPORT_UNRESOLVED_REFINEMENT[[Report Unresolved Questions]]
 
-    REFINE_ACCEPTANCE_CRITERIA --> REFINE_BACKLOG_ITEM_END
+    REFINE_ACCEPTANCE_CRITERIA --> GATE_AC_AGREED
+    GATE_AC_AGREED -- Approved --> REFINE_BACKLOG_ITEM_END
+    GATE_AC_AGREED -- Rejected --> RECORD_REFINEMENT_FEEDBACK
+    RECORD_REFINEMENT_FEEDBACK --> REFINE_ACCEPTANCE_CRITERIA
+    REPORT_UNRESOLVED_REFINEMENT --> AC_REFINEMENT_EXHAUSTED
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class RECORD_REFINEMENT_FEEDBACK,REPORT_UNRESOLVED_REFINEMENT serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class AC_REFINEMENT_EXHAUSTED errorEndNode
 ```
 
 ## Change System Behavior
@@ -696,10 +710,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-criteria-refiner<br/>category = human<br/>task-name = refine-acceptance-criteria"]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-criteria-refiner<br/>category = human<br/>return-on-post-rejection = true<br/>task-name = refine-acceptance-criteria"]
     REFINE_AC_END(( ))
 
     EXECUTE_AGENT --> REFINE_AC_END
+    REFINE-ACCEPTANCE-CRITERIA_OUTPUTS[/open-questions?: string/]
+    REFINE_AC_END -. produces .-> REFINE-ACCEPTANCE-CRITERIA_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class REFINE-ACCEPTANCE-CRITERIA_OUTPUTS outputNode
 ```
 
 ## Compile Tests
@@ -806,8 +825,10 @@ flowchart TD
     REQUEST_REVISION[[Send Blocking Findings to the Agent]]
     SUMMARIZE_REVIEW[[Summarize Review Findings]]
     EXECUTE_AGENT_END(( ))
-    EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡))
+    GATE_RETURN_ON_POST_REJECTION{Caller Handles Rejection?}
     APPROVE_POST_REVIEWED["Confirm Approval (Reviewed) — see § approve"]
+    EXECUTE_AGENT_OUTPUT_DECLINED_END(( ))
+    EXECUTE_AGENT_OUTPUT_REJECTED_END((⚡))
     AGENT_FIX_EXHAUSTED((⚡))
 
     APPROVE_PRE --> GATE_APPROVED_PRE
@@ -837,7 +858,9 @@ flowchart TD
     APPROVE_POST --> GATE_APPROVED_POST
     APPROVE_POST_REVIEWED --> GATE_APPROVED_POST
     GATE_APPROVED_POST -- Approved --> EXECUTE_AGENT_END
-    GATE_APPROVED_POST -- Rejected --> EXECUTE_AGENT_OUTPUT_REJECTED_END
+    GATE_APPROVED_POST -- Rejected --> GATE_RETURN_ON_POST_REJECTION
+    GATE_RETURN_ON_POST_REJECTION -- Yes --> EXECUTE_AGENT_OUTPUT_DECLINED_END
+    GATE_RETURN_ON_POST_REJECTION -- No --> EXECUTE_AGENT_OUTPUT_REJECTED_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
     class CATEGORIZE_SCOPE_EXCEPTION,REQUEST_REVISION,SNAPSHOT_WORKING_TREE,SUMMARIZE_REVIEW,VALIDATE_OUTPUTS_AND_SCOPES serviceNode
@@ -886,7 +909,7 @@ flowchart TD
 flowchart TD
     APPROVE_PRE["Request Approval — see § approve<br/>category = human"]
     GATE_APPROVED_PRE{Approval Outcome?}
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>category = human<br/>fix-on-failure = false<br/>reviewer = "]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>category = human<br/>fix-on-failure = false<br/>return-on-post-rejection = false<br/>reviewer = "]
     FIX_REJECTED_END((⚡))
     FIX_END(( ))
 
