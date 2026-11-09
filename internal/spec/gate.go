@@ -25,7 +25,9 @@ const (
 // on every in-scope criterion that is not Verified, and on coverage below the
 // threshold. In scope means the flag is on (or absent) and the criterion is
 // not waived. Failing always blocks. Strict coverage is Verified over flag-on
-// criteria.
+// criteria. Delivered criteria (deleted from the use case on green, known from
+// their tests) are gated like any other: they have no flag, so they are always
+// in scope.
 func ApplyGate(rep *Report) error {
 	if rep.Mode != ModeLenient && rep.Mode != ModeStrict {
 		return fmt.Errorf("unknown mode %q (expected lenient or strict)", rep.Mode)

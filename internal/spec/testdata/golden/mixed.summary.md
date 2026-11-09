@@ -1,14 +1,14 @@
 ## Spec coverage
 
-Spec coverage: 0 of 14 acceptance criteria verified (0.0%)
+Spec coverage: 1 of 16 acceptance criteria verified (6.3%)
 
 **Gate failed** (mode strict, threshold 80.0%)
 
 | State | Criteria |
 |---|---:|
-| Verified | 0 |
+| Verified | 1 |
 | In progress | 1 |
-| Failing | 2 |
+| Failing | 3 |
 | Planned | 10 |
 | Waived | 1 |
 
@@ -30,6 +30,8 @@ Spec coverage: 0 of 14 acceptance criteria verified (0.0%)
 | UC-001.12 | Planned | Admin cannot place an order. |  |
 | UC-001.13 | Planned | Order rejected at year end. |  |
 | UC-001.14 | Planned | ERP unavailable message (narrative 5a). |  |
+| UC-001.20 | Failing |  _(delivered: text deleted on green, see `gh optivem spec generate`)_ | shouldNotBreakDeliveredBehaviour |
+| UC-001.21 | Verified |  _(delivered: text deleted on green, see `gh optivem spec generate`)_ | shouldKeepDeliveredBehaviour |
 
 ### Gate reasons
 
@@ -47,7 +49,8 @@ Spec coverage: 0 of 14 acceptance criteria verified (0.0%)
 - UC-001.12 is Planned (strict requires Verified)
 - UC-001.13 is Planned (strict requires Verified)
 - UC-001.14 is Planned (strict requires Verified)
-- coverage 0.0% is below threshold 80.0%
+- UC-001.20 is Failing
+- coverage 7.7% is below threshold 80.0%
 
 ### Spec validation errors
 

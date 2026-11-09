@@ -163,7 +163,8 @@ It warns (without failing) on a Gherkin scenario with no criterion tag and on a 
 
 The report also lists:
 
-- **unknown IDs**: a test references an ID that is not in any spec (this includes the tests of built criteria, whose text was deleted on green; section 12);
+- **delivered criteria**: a test references an ID `UC-NNN.M` that is not in the use case but whose use case `UC-NNN` exists. It is a built criterion whose text was deleted on green (section 12): IDs are never renumbered or reused, so no other reading is possible. It is listed under its use case after the spec criteria, marked delivered, with no text, and gets Verified / Failing from its tests like any other criterion (it has no flag, and waivers apply by ID);
+- **unknown IDs**: a test references an ID whose use case does not exist (a typo or a deleted use case);
 - **orphan tests**: tagged tests whose IDs are all unknown, or results that cannot be linked to a spec.
 
 ## 8. `spec.yaml`
@@ -189,7 +190,7 @@ The mode is chosen by the **pipeline stage**, never by branch. `--mode lenient|s
 | Acceptance stage | lenient | validate errors, Failing | Planned, In progress, Waived |
 | Release / promotion | strict | validate errors, Failing, any in-scope criterion not Verified, coverage below `--threshold` | Waived (until expiry) |
 
-In strict mode, in-scope means: not excluded by an off flag and not waived (unexpired).
+In strict mode, in-scope means: not excluded by an off flag and not waived (unexpired). Delivered criteria (section 7) are in scope and count in coverage, so coverage stays meaningful as criteria are deleted on green.
 
 ### Exit codes
 
@@ -219,7 +220,7 @@ In strict mode, in-scope means: not excluded by an off flag and not waived (unex
           "tests": [
             { "name": "shouldPlaceOrder", "results": [ { "name": "shouldPlaceOrder [Channel: UI]", "status": "passed" } ], "wip": false }
           ],
-          "waiver": null
+          "waiver": null, "delivered": false
         }
       ]
     }
@@ -293,3 +294,4 @@ A criterion and its acceptance test say the same thing, and only the test is gua
 - `gh optivem spec generate` renders the criteria of built behaviour back as Gherkin per use case, from the tagged tests (stdout, or `--out <file>`). Its output is for reading (review, PO or customer sign-off) and is never committed: committing it would re-create the second copy.
 - A later story that modifies a built criterion adds it back to the use case under the same ID, and the acceptance-test writer edits the test that carries the tag. A new criterion takes an ID above every ID of the use case, including the built ones the generator shows, so a deleted ID is never reused.
 - There is no criterion fingerprint or spec state file: with the text deleted, nothing can drift from the test.
+- `spec check` / `spec status` keep gating a deleted criterion as **delivered** (section 7): Verified while its tests pass, Failing (blocking) when one fails.

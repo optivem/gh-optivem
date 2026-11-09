@@ -1,9 +1,12 @@
 package spec
 
 import (
+	"cmp"
 	"encoding/json"
 	"math"
+	"regexp"
 	"slices"
+	"strconv"
 	"time"
 )
 
@@ -52,6 +55,10 @@ type ReportCriterion struct {
 	FlagOn bool         `json:"flagOn"`
 	Tests  []ReportTest `json:"tests"`
 	Waiver *Waiver      `json:"waiver"`
+	// Delivered marks a criterion whose text was deleted from the use case on
+	// green: it is known only from the tests that carry its ID, so Text is
+	// empty (`gh optivem spec generate` renders it from the tests).
+	Delivered bool `json:"delivered"`
 }
 
 // ReportUseCase is a use case with its derived state.
@@ -79,7 +86,9 @@ type Orphan struct {
 	Reason string `json:"reason"`
 }
 
-// UnknownID is a test referencing a criterion ID that is absent from the spec.
+// UnknownID is a test referencing a criterion ID that is absent from the spec
+// and whose use case does not exist either (a typo or a deleted use case); an
+// absent ID of an existing use case is a delivered criterion instead.
 type UnknownID struct {
 	ID   string `json:"id"`
 	Test string `json:"test"`
@@ -149,6 +158,7 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 			known[c.ID] = true
 		}
 	}
+	delivered := deliveredCriteria(useCases, tests, known)
 	rep := Report{
 		SchemaVersion:   SchemaVersion,
 		Mode:            mode,
@@ -167,16 +177,52 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 	for _, uc := range useCases {
 		if uc.Planned() {
 			var notGated Summary
-			rep.PlannedUseCases = append(rep.PlannedUseCases, buildUseCase(uc, linked, waivers, flagsOn, &notGated))
+			rep.PlannedUseCases = append(rep.PlannedUseCases, buildUseCase(uc, delivered[uc.ID], linked, waivers, flagsOn, &notGated))
 			continue
 		}
-		rep.UseCases = append(rep.UseCases, buildUseCase(uc, linked, waivers, flagsOn, &rep.Summary))
+		rep.UseCases = append(rep.UseCases, buildUseCase(uc, delivered[uc.ID], linked, waivers, flagsOn, &rep.Summary))
 	}
 	if rep.Summary.Total > 0 {
 		pct := float64(rep.Summary.Verified) * 100 / float64(rep.Summary.Total)
 		rep.Summary.CoveragePercent = math.Round(pct*10) / 10
 	}
 	return rep
+}
+
+// testCriterionIDPattern splits a test's criterion ID into its use case ID and
+// criterion number.
+var testCriterionIDPattern = regexp.MustCompile(`^(UC-\d+)\.(\d+)$`)
+
+// deliveredCriteria finds the criterion IDs that tests carry but no use case
+// lists, whose UC-NNN prefix names a parsed use case. IDs are never renumbered
+// or reused, so such an ID is a criterion delivered and deleted on green. It
+// marks each one known and returns them per use case ID, sorted by number.
+func deliveredCriteria(useCases []UseCase, tests []Test, known map[string]bool) map[string][]string {
+	ucIDs := map[string]bool{}
+	for _, uc := range useCases {
+		ucIDs[uc.ID] = true
+	}
+	delivered := map[string][]string{}
+	for _, t := range tests {
+		for _, id := range t.IDs {
+			m := testCriterionIDPattern.FindStringSubmatch(id)
+			if known[id] || m == nil || !ucIDs[m[1]] {
+				continue
+			}
+			known[id] = true
+			delivered[m[1]] = append(delivered[m[1]], id)
+		}
+	}
+	for _, ids := range delivered {
+		slices.SortFunc(ids, func(a, b string) int { return cmp.Compare(criterionNumber(a), criterionNumber(b)) })
+	}
+	return delivered
+}
+
+// criterionNumber is the M of a UC-NNN.M criterion ID.
+func criterionNumber(id string) int {
+	n, _ := strconv.Atoi(testCriterionIDPattern.FindStringSubmatch(id)[2])
+	return n
 }
 
 // activeWaivers indexes the waivers that have not expired at now.
@@ -236,16 +282,22 @@ func (s *Summary) count(state State) {
 	}
 }
 
-// buildUseCase builds one use case's report entry and tallies its criteria into sum.
-func buildUseCase(uc UseCase, linked map[string][]Test, waivers map[string]Waiver, flagsOn []string, sum *Summary) ReportUseCase {
+// buildUseCase builds one use case's report entry and tallies its criteria into
+// sum. The delivered criteria follow the spec criteria, so they never split a
+// spec group; they have no flag (it was in the deleted text) and no text.
+func buildUseCase(uc UseCase, delivered []string, linked map[string][]Test, waivers map[string]Waiver, flagsOn []string, sum *Summary) ReportUseCase {
 	ruc := ReportUseCase{ID: uc.ID, Title: uc.Title, Criteria: []ReportCriterion{}}
 	anyTests := false
-	// An implemented use case with no criteria left has had every criterion
-	// verified and deleted on green (the acceptance-criteria policy), so it is
-	// Verified; a planned one with none is still Planned.
+	// An implemented use case with no criteria left (neither in its text nor
+	// delivered on tests) is Verified; a planned one with none is still Planned.
 	allVerified := !uc.Planned()
-	for _, c := range uc.Criteria {
+	criteria := slices.Clone(uc.Criteria)
+	for _, id := range delivered {
+		criteria = append(criteria, Criterion{ID: id})
+	}
+	for i, c := range criteria {
 		rc := buildCriterion(c, linked[c.ID], waivers, flagsOn)
+		rc.Delivered = i >= len(uc.Criteria)
 		ruc.Criteria = append(ruc.Criteria, rc)
 		sum.count(rc.State)
 		if len(rc.Tests) > 0 {

@@ -76,6 +76,9 @@ func useCasesVerified(rep Report) (verified int) {
 // criterionNotes returns the short annotations shown next to a criterion.
 func criterionNotes(c ReportCriterion) []string {
 	var notes []string
+	if c.Delivered {
+		notes = append(notes, "delivered: text deleted on green, see `gh optivem spec generate`")
+	}
 	if c.Flag != nil {
 		if c.FlagOn {
 			notes = append(notes, "flag "+*c.Flag+" on")
@@ -115,8 +118,12 @@ func RenderText(rep Report) string {
 		fmt.Fprintf(&b, "\n%s %s [%s]\n", uc.ID, uc.Title, uc.State)
 		group := "\x00"
 		for _, c := range uc.Criteria {
-			if c.Group != group {
-				group = c.Group
+			g := c.Group
+			if c.Delivered {
+				g = "Delivered (text deleted on green)"
+			}
+			if g != group {
+				group = g
 				if group != "" {
 					fmt.Fprintf(&b, "  %s\n", group)
 				}

@@ -676,7 +676,7 @@ gh optivem stale-branches --age 24h            # list local branches older than 
 |---|---|
 | `spec validate` | Parse the use-case markdown only; fail on duplicate IDs, prefix mismatches, malformed front matter. No test results needed. |
 | `spec status` | Same report as `check`, but a failing gate verdict is shown, not enforced (exit `0`). |
-| `spec check` | Evaluate the gate for `--mode` and exit non-zero when it fails. |
+| `spec check` | Evaluate the gate for `--mode` and exit non-zero when it fails. A test ID `UC-NNN.M` absent from an existing use case `UC-NNN` is a **delivered** criterion (its text was deleted on green): gated and counted in coverage like the rest, listed under its use case with no text. Only IDs of a missing use case are reported as unknown. |
 | `spec generate` | Render readable Gherkin per use case from the `UC-NNN.M`-tagged acceptance tests (`--tests <dir>`, default `system-test.paths.at-test` from `gh-optivem.yaml`; `--use-case UC-NNN`; `--out <file>`, default stdout). The criteria of built behaviour live only in the tests: `gh optivem implement` deletes a story's criteria from the use cases once its acceptance tests are green. |
 
 Flags (`check` and `status`): `--config <path>` (default `spec.yaml`), `--mode lenient|strict` (default `lenient`), `--threshold <0-100>` (strict only; overrides `spec.yaml`, default 100), `--json` (versioned report, `schemaVersion: 1`), `--html <path>` (self-contained report for product owners), `--pr-comment` (print the sticky PR-comment markdown, marker `<!-- gh-optivem-spec -->`; never posted), `--flag <name>` (repeatable; feature flag considered on). `validate` takes `--config`. When `GITHUB_STEP_SUMMARY` is set, `check` also appends a Markdown summary to it.

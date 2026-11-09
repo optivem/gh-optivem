@@ -3,6 +3,7 @@ package spec
 import (
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -245,5 +246,95 @@ func TestThresholdOverride(t *testing.T) {
 	r := BuildReport(nil, nil, Config{}, Options{Now: testNow, Threshold: &th, Mode: "strict"})
 	if r.Threshold != 80 || r.Mode != "strict" {
 		t.Fatalf("%+v", r)
+	}
+}
+
+func reportCriterion(r Report, id string) *ReportCriterion {
+	for _, uc := range r.AllUseCases() {
+		for i := range uc.Criteria {
+			if uc.Criteria[i].ID == id {
+				return &uc.Criteria[i]
+			}
+		}
+	}
+	return nil
+}
+
+func TestDeliveredCriteria(t *testing.T) {
+	r := fixtureReport(t, Config{}, "junit-delivered.xml", "junit-unknown-id.xml")
+	if len(r.UnknownIDs) != 1 || r.UnknownIDs[0].ID != "UC-999.1" {
+		t.Fatalf("only the ID of a missing use case is unknown: %+v", r.UnknownIDs)
+	}
+	if len(r.Orphans) != 1 || r.Orphans[0].Name != "com.shop.PlaceOrderTest.shouldDoGhost" {
+		t.Fatalf("orphans: %+v", r.Orphans)
+	}
+	cs := r.UseCases[0].Criteria
+	// Delivered criteria follow the spec ones, sorted by number.
+	if n := len(cs); n != 16 || cs[14].ID != "UC-001.20" || cs[15].ID != "UC-001.21" {
+		t.Fatalf("criteria order: %d %+v", n, cs[len(cs)-2:])
+	}
+	if !cs[14].Delivered || cs[14].Text != "" || cs[14].State != StateFailing || cs[14].Flag != nil || !cs[14].FlagOn {
+		t.Fatalf("failing delivered: %+v", cs[14])
+	}
+	if !cs[15].Delivered || cs[15].State != StateVerified || cs[0].Delivered {
+		t.Fatalf("verified delivered: %+v / %+v", cs[15], cs[0])
+	}
+	if r.Summary.Total != 16 || r.Summary.Verified != 1 || r.Summary.Failing != 1 {
+		t.Fatalf("summary: %+v", r.Summary)
+	}
+	if err := ApplyGate(&r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Gate.Passed || !slices.Contains(r.Gate.Reasons, "UC-001.20 is Failing") {
+		t.Fatalf("a failing delivered criterion must block: %+v", r.Gate)
+	}
+	data, _ := r.JSON()
+	if !strings.Contains(string(data), `"delivered": true`) {
+		t.Fatal("delivered must be in the JSON report")
+	}
+}
+
+func TestDeliveredStrictCoverage(t *testing.T) {
+	// Every criterion was deleted on green: coverage is over the delivered ones.
+	uc := Parse("UC-002-x.md", "---\nid: UC-002\ntitle: T\n---\nNarrative.\n")
+	pass := []Result{{"x", StatusPassed}}
+	tests := []Test{
+		{Method: "a", IDs: []string{"UC-002.1"}, Results: pass},
+		{Method: "b", IDs: []string{"UC-002.2"}, Results: pass},
+	}
+	r := BuildReport([]UseCase{uc}, tests, Config{}, Options{Now: testNow, Mode: ModeStrict})
+	if err := ApplyGate(&r); err != nil {
+		t.Fatal(err)
+	}
+	if !r.Gate.Passed || r.Summary.CoveragePercent != 100 || r.UseCases[0].State != StateVerified {
+		t.Fatalf("all delivered verified: %+v %+v %s", r.Gate, r.Summary, r.UseCases[0].State)
+	}
+	// A skipped delivered test leaves it Planned: strict blocks, coverage 50%.
+	tests[1].Results = []Result{{"x", StatusSkipped}}
+	r = BuildReport([]UseCase{uc}, tests, Config{}, Options{Now: testNow, Mode: ModeStrict})
+	if err := ApplyGate(&r); err != nil {
+		t.Fatal(err)
+	}
+	if r.Gate.Passed || r.Summary.CoveragePercent != 50 || r.UseCases[0].State != StateInProgress {
+		t.Fatalf("half delivered verified: %+v %+v %s", r.Gate, r.Summary, r.UseCases[0].State)
+	}
+	// Waivers apply by ID to delivered criteria too.
+	half := 50.0
+	cfg := Config{Waivers: []Waiver{{"UC-002.2", "r", "a", "2026-12-31"}}}
+	r = BuildReport([]UseCase{uc}, tests, cfg, Options{Now: testNow, Mode: ModeStrict, Threshold: &half})
+	if err := ApplyGate(&r); err != nil {
+		t.Fatal(err)
+	}
+	if c := reportCriterion(r, "UC-002.2"); c == nil || c.State != StateWaived || !r.Gate.Passed {
+		t.Fatalf("waived delivered: %+v %+v", c, r.Gate)
+	}
+}
+
+func TestDeliveredOnPlannedUseCaseIsNotGated(t *testing.T) {
+	uc := Parse("UC-003-x.md", "---\nid: UC-003\ntitle: T\nstatus: planned\n---\n- UC-003.1: x\n")
+	tests := []Test{{Method: "a", IDs: []string{"UC-003.2"}, Results: []Result{{"x", StatusFailed}}}}
+	r := BuildReport([]UseCase{uc}, tests, Config{}, Options{Now: testNow})
+	if c := reportCriterion(r, "UC-003.2"); c == nil || !c.Delivered || len(r.UnknownIDs) != 0 || r.Summary.Total != 0 {
+		t.Fatalf("planned: %+v %+v %+v", c, r.UnknownIDs, r.Summary)
 	}
 }

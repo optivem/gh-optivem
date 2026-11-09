@@ -31,12 +31,12 @@ func golden(t *testing.T, name, got string) {
 	}
 }
 
-// mixedReport has a failing, a wip and a waived criterion plus an
-// orphan, an unknown ID and a validation error, gated strictly.
+// mixedReport has a failing, a wip and a waived criterion, a verified and a
+// failing delivered criterion, plus an orphan, an unknown ID and a validation error, gated strictly.
 func mixedReport(t *testing.T) Report {
 	t.Helper()
 	cfg := Config{Waivers: []Waiver{{ID: "UC-001.5", Reason: "Payment <sandbox> down | later", Approver: "vj", Until: "2026-12-31"}}}
-	rep := fixtureReport(t, cfg, "junit-templated.xml", "junit-one-red.xml", "junit-orphan.xml", "junit-unknown-id.xml")
+	rep := fixtureReport(t, cfg, "junit-templated.xml", "junit-one-red.xml", "junit-orphan.xml", "junit-unknown-id.xml", "junit-delivered.xml")
 	rep.Mode = ModeStrict
 	rep.Threshold = 80
 	rep.Validation.Errors = append(rep.Validation.Errors, ValidationError{"duplicate-id", "UC-001.9 is defined twice"})
