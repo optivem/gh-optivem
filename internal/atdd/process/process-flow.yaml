@@ -609,13 +609,34 @@ processes:
           verify-mode: green-when-complete
         tdd-stage: green
 
+      # Remove the WIP gate (plan 20261109-1300). Covered tests pass against the
+      # existing system, but the AT writer still gated them with
+      # GH_OPTIVEM_RUN_WIP_TESTS, so CI would skip them forever. Strip the gate
+      # from the AT writer's `test-names` once the passing verify is done.
+      - id: REMOVE_WIP_GATE
+        type: service-task
+        action: remove-wip-gate
+        name: "Remove WIP Gate From Green Tests"
+        tdd-stage: green
+
+      - id: COMMIT_WIP_GATE_REMOVAL
+        type: call-activity
+        process: commit
+        name: "Commit WIP Gate Removal"
+        params:
+          category: test-commit
+          layer: "WIP GATE REMOVAL"
+        tdd-stage: green
+
       - id: COVER_END
         type: end-event
         name: "System Behavior Covered"
 
     sequence-flows:
       - {from: IMPLEMENT_EXTERNAL_DRIVERS_IF_NEEDED,       to: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS}
-      - {from: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS, to: COVER_END}
+      - {from: WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS, to: REMOVE_WIP_GATE}
+      - {from: REMOVE_WIP_GATE,                            to: COMMIT_WIP_GATE_REMOVAL}
+      - {from: COMMIT_WIP_GATE_REMOVAL,                    to: COVER_END}
 
   # System-side structure redesign. Step 1 calls MID
   # `update-system-driver-adapters` (reshape adapter layer to absorb the

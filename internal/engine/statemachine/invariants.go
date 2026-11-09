@@ -162,7 +162,8 @@ func isVerifiedSpecRecord(proc *Process, pn Node) bool {
 // remove-wip-gate service task (plan 20261109-1300). Each runs once every
 // channel's implement-and-verify-system clone is green, so it is accepted iff
 // every dispatching predecessor is an implement-and-verify-system call-activity,
-// or a commit whose own predecessor is another accepted post-green step (the
+// a write-acceptance-tests-and-system-adapters call with expected-test-result
+// success (cover path: the cascade verified the tests pass), or a commit whose own predecessor is another accepted post-green step (the
 // steps chain: WIP-gate removal is committed, then the spec record runs).
 func isVerifiedPostGreenStep(proc *Process, pn Node, depth int) bool {
 	if depth > 8 {
@@ -178,6 +179,10 @@ func isVerifiedPostGreenStep(proc *Process, pn Node, depth int) bool {
 	for _, p := range preds {
 		n := proc.Nodes[p]
 		if isCallTo(n, "implement-and-verify-system") {
+			continue
+		}
+		// Cover path: the AT cascade itself verified the tests PASS.
+		if isCallTo(n, "write-acceptance-tests-and-system-adapters") && strings.TrimSpace(n.Raw.Params["expected-test-result"]) == "success" {
 			continue
 		}
 		if !isCallTo(n, "commit") {

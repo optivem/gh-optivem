@@ -920,8 +920,8 @@ func renderPrompt(opts Options) (string, error) {
 	// non-empty so an absent value surfaces via findUnfilledPlaceholders
 	// rather than silently substituting "" when the prompt references it.
 	registerIfNonEmpty(params, "ticket-id", opts.TicketID)
-	// WIP-gate marker (acceptance-test-writer). The gate is permanent
-	// and ticket-independent — it keys on the GH_OPTIVEM_RUN_WIP_TESTS
+	// WIP-gate marker (acceptance-test-writer). The gate is
+	// ticket-independent — it keys on the GH_OPTIVEM_RUN_WIP_TESTS
 	// env var, not a per-ticket reason — so the renderer takes only the
 	// language. Same load-bearing pattern as Language: register only
 	// when the helper returns a non-empty string (language recognised);
@@ -1332,14 +1332,16 @@ func RenderScopeBlock(read, write []string, paths map[string]string, rationale s
 // the snippet inlined the agent reads the target test file once and
 // edits it.
 //
-// The gate is PERMANENT and ticket-independent: it stays in the
-// committed code for the test's whole lifetime, so it carries no
-// per-ticket reason string (unlike the disable marker it replaces).
+// The gate is ticket-independent, so it carries no per-ticket reason
+// string (unlike the disable marker it replaces). It stays in the
+// committed code while the test is work in progress; once the ticket's
+// tests are green, the remove-wip-gate service task strips it from the
+// ticket's test-names (actions/wip_gate.go, plan 20261109-1300).
 // The gate keys on the GH_OPTIVEM_RUN_WIP_TESTS env var, which only
 // the ATDD orchestrator sets (=1) when it runs verify steps; regular
 // CI, local `mvn test` / `dotnet test` / `npx playwright test`, and
-// IDE runs leave it unset, so the AT is silently skipped. No enabler
-// re-runs it, no disabler re-applies it.
+// IDE runs leave it unset, so the AT is skipped until remove-wip-gate
+// strips the gate at Green.
 //
 // Returns "" when `lang` is empty, unrecognised, or its asset is
 // missing; the caller registers the placeholder only when non-empty so

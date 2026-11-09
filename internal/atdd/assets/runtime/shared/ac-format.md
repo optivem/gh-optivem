@@ -69,7 +69,7 @@ matches the repo's flat house style. Structural nesting is a possible **v2**,
 gated on first proving each language's nesting composes with the channel wrapper.
 
 The grouping is additive: it sits *alongside* the test's existing
-channel-parameterization annotations/wrapper and the permanent WIP gate — it
+channel-parameterization annotations/wrapper and the WIP gate — it
 never replaces them.
 
 ### Java (`@TestTemplate` + `@Channel`)

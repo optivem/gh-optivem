@@ -15,9 +15,10 @@
 // stripping `@Disabled` markers from test files at the end of the AT cycle.
 // The disable/enable apparatus (deterministic, then the test-disabler /
 // test-enabler agents) was removed entirely once WIP acceptance tests
-// gained a permanent env-var gate (GH_OPTIVEM_RUN_WIP_TESTS) the
-// orchestrator lifts only at verify time — no marker is ever applied or
-// stripped. See clauderun.renderGateMarkerExample and actions.runCommand.
+// gained an env-var gate (GH_OPTIVEM_RUN_WIP_TESTS) the orchestrator lifts
+// at verify time and strips deterministically once the ticket's tests are
+// green (actions.removeWipGate, plan 20261109-1300). See
+// clauderun.renderGateMarkerExample and actions.runCommand.
 package release
 
 import (

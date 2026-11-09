@@ -113,7 +113,7 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	if err != nil {
 		return statemachine.Outcome{Err: fmt.Errorf("run-command: %w", err)}
 	}
-	// Lift the permanent WIP gate on the acceptance tests for the
+	// Lift the WIP gate on the acceptance tests for the
 	// orchestrator's own verify runs only. The gated AT methods key on
 	// GH_OPTIVEM_RUN_WIP_TESTS (see clauderun.renderGateMarkerExample);
 	// we set it to "1" here — and nowhere else — so the child

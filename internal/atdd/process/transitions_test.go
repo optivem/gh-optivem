@@ -1383,6 +1383,16 @@ func TestChangeSystemBehavior_RemovesWipGateAfterGreen(t *testing.T) {
 	}
 }
 
+func TestCoverSystemBehavior_RemovesWipGateAfterPassingTests(t *testing.T) {
+	eng := loadSnapshot(t)
+	cover := eng.Processes["cover-system-behavior"]
+
+	wantEdge(t, cover, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "REMOVE_WIP_GATE", "")
+	wantEdge(t, cover, "REMOVE_WIP_GATE", "COMMIT_WIP_GATE_REMOVAL", "")
+	wantEdge(t, cover, "COMMIT_WIP_GATE_REMOVAL", "COVER_END", "")
+	notEdge(t, cover, "WRITE_ACCEPTANCE_TESTS_AND_SYSTEM_ADAPTERS", "COVER_END")
+}
+
 func TestChangeSystemBehavior_StoryRecordsSpecFingerprints(t *testing.T) {
 	eng := loadSnapshot(t)
 	csb := eng.Processes["change-system-behavior"]
