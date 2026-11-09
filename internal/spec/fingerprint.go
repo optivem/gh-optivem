@@ -53,42 +53,13 @@ type FingerprintRecording struct {
 // verified); every other stored fingerprint is kept as is.
 func RecordFingerprints(rep Report, existing map[string]string, refresh, scope []string) FingerprintRecording {
 	out := FingerprintRecording{Fingerprints: map[string]string{}}
-	refreshSet := map[string]bool{}
-	for _, id := range refresh {
-		refreshSet[id] = true
-	}
-	scopeSet := map[string]bool{}
-	for _, id := range scope {
-		scopeSet[id] = true
-	}
+	refreshSet := toSet(refresh)
+	scopeSet := toSet(scope)
 	exists := map[string]bool{}
-	for _, uc := range rep.UseCases {
+	for _, uc := range rep.AllUseCases() {
 		for _, c := range uc.Criteria {
 			exists[c.ID] = true
-			stored, has := existing[c.ID]
-			if has {
-				out.Fingerprints[c.ID] = stored
-			}
-			if len(scopeSet) > 0 && !scopeSet[c.ID] {
-				continue
-			}
-			if c.State != StateVerified {
-				if len(scopeSet) > 0 {
-					out.NotVerified = append(out.NotVerified, c.ID)
-				}
-				continue
-			}
-			cur := Fingerprint(c.Text)
-			switch {
-			case !has:
-				out.Fingerprints[c.ID] = cur
-				out.Added = append(out.Added, c.ID)
-			case stored != cur && refreshSet[c.ID]:
-				out.Fingerprints[c.ID] = cur
-				out.Refreshed = append(out.Refreshed, c.ID)
-			case stored != cur:
-				out.StillChanged = append(out.StillChanged, c.ID)
-			}
+			out.record(c, existing, refreshSet, scopeSet)
 		}
 	}
 	for id := range existing {
@@ -102,4 +73,42 @@ func RecordFingerprints(rep Report, existing map[string]string, refresh, scope [
 	slices.Sort(out.Pruned)
 	slices.Sort(out.NotVerified)
 	return out
+}
+
+// record applies RecordFingerprints' rules to one criterion: keep its stored
+// fingerprint, then (if in scope and Verified) add, refresh or flag it.
+func (out *FingerprintRecording) record(c ReportCriterion, existing map[string]string, refreshSet, scopeSet map[string]bool) {
+	stored, has := existing[c.ID]
+	if has {
+		out.Fingerprints[c.ID] = stored
+	}
+	scoped := len(scopeSet) > 0
+	if scoped && !scopeSet[c.ID] {
+		return
+	}
+	if c.State != StateVerified {
+		if scoped {
+			out.NotVerified = append(out.NotVerified, c.ID)
+		}
+		return
+	}
+	cur := Fingerprint(c.Text)
+	switch {
+	case !has:
+		out.Fingerprints[c.ID] = cur
+		out.Added = append(out.Added, c.ID)
+	case stored != cur && refreshSet[c.ID]:
+		out.Fingerprints[c.ID] = cur
+		out.Refreshed = append(out.Refreshed, c.ID)
+	case stored != cur:
+		out.StillChanged = append(out.StillChanged, c.ID)
+	}
+}
+
+func toSet(ids []string) map[string]bool {
+	set := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		set[id] = true
+	}
+	return set
 }

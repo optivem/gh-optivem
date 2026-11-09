@@ -189,7 +189,7 @@ func TestLoadDir_FolderPerUseCase(t *testing.T) {
 	if rep.Summary.Total != 3 {
 		t.Errorf("gated criteria = %d, want 3 (UC-001.1, UC-004.1, UC-005.1)", rep.Summary.Total)
 	}
-	if len(rep.PlannedUseCases) != 1 || rep.PlannedUseCases[0].ID != "UC-002" || rep.PlannedUseCases[0].Criteria != 2 {
+	if len(rep.PlannedUseCases) != 1 || rep.PlannedUseCases[0].ID != "UC-002" || len(rep.PlannedUseCases[0].Criteria) != 2 {
 		t.Errorf("planned = %+v, want UC-002 with 2 criteria", rep.PlannedUseCases)
 	}
 	for _, uc := range rep.UseCases {
@@ -210,5 +210,24 @@ func TestBuildReport_PlannedCriterionTagIsNotUnknown(t *testing.T) {
 	rep := BuildReport([]UseCase{planned}, tests, Config{}, Options{})
 	if len(rep.UnknownIDs) != 0 {
 		t.Errorf("unknown IDs = %v, want none", rep.UnknownIDs)
+	}
+}
+
+// TestRecordFingerprints_PlannedUseCase: a story built test-first on a use
+// case that is still `status: planned` must be able to record fingerprints
+// for its verified criteria, and existing ones must not be pruned.
+func TestRecordFingerprints_PlannedUseCase(t *testing.T) {
+	planned := Parse("p.md", "---\nid: UC-010\ntitle: Later\nstatus: planned\n---\n- UC-010.1: a\n- UC-010.2: b\n")
+	tests := []Test{{Class: "C", Method: "m", IDs: []string{"UC-010.1"}, Results: []Result{{Name: "m", Status: StatusPassed}}}}
+	rep := BuildReport([]UseCase{planned}, tests, Config{}, Options{})
+	if rep.Summary.Total != 0 {
+		t.Fatalf("planned criteria counted in summary: %+v", rep.Summary)
+	}
+	rec := RecordFingerprints(rep, map[string]string{"UC-010.2": "old"}, nil, []string{"UC-010.1"})
+	if _, ok := rec.Fingerprints["UC-010.1"]; !ok || len(rec.Added) != 1 {
+		t.Errorf("UC-010.1 not recorded: %+v", rec)
+	}
+	if rec.Fingerprints["UC-010.2"] != "old" || len(rec.Pruned) != 0 {
+		t.Errorf("planned UC-010.2 fingerprint pruned: %+v", rec)
 	}
 }

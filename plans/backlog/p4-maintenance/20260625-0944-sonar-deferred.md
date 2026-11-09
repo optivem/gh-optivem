@@ -2,7 +2,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Test-file findings done 2026-11-09: all 36 open test-file S3776 findings were marked Accepted in SonarCloud through the API. **19 production S3776 findings are still open** (re-pulled 2026-11-09), even though the Production items list below is empty: re-pull them from SonarCloud, list them here, and refactor one function at a time (see How to execute).
+Test-file findings done 2026-11-09: all 36 open test-file S3776 findings were marked Accepted in SonarCloud through the API. **16 production S3776 findings are open** (re-pulled 2026-11-09, listed below by complexity, highest first; `RecordFingerprints`, `ApplyGate` and `runSpecRecord` were split the same day, CC not yet re-confirmed in Sonar). Refactor one function at a time (see How to execute). Line numbers are SonarCloud's last analysed revision and may be a few lines off.
 
 ## TL;DR
 
@@ -27,3 +27,20 @@ Done (2026-11-03 autonomous pass, behaviour-preserving helper extraction, packag
 For each production function: read it and its tests, extract cohesive helpers / guard clauses with no behavior change, run the package tests (scoped, `-p 2`) plus `go build ./...` and `go vet ./...`, commit, and delete the item from this file. Delete the file when empty.
 
 ## Production items
+
+- `internal/scaffolding/steps/preview_confirm.go` — L322 (CC 33)
+- `internal/build/runner/testfailures.go` — L267 (CC 29)
+- `internal/kickoff/run.go` — L63 (CC 24)
+- `internal/scaffolding/steps/shared_pipeline.go` — L49 (CC 21)
+- `internal/engine/statemachine/run.go` — L268 (CC 20)
+- `internal/atdd/runtime/driver/mode_compare.go` — L43 (CC 19)
+- `internal/kickoff/stories.go` — L42 (CC 18)
+- `main.go` — L629 (CC 17)
+- `internal/kickoff/run.go` — L211 (CC 17)
+- `internal/config/tool_install.go` — L234 (CC 17)
+- `cross_repo_commands.go` — L617 (CC 17)
+- `internal/scaffolding/steps/shared_pipeline.go` — L283 (CC 16)
+- `internal/atdd/process/actions/verify_redshape.go` — L76 (CC 16)
+- `cross_repo_commands.go` — L681 (CC 16)
+- `internal/build/componenttest/config.go` — L133 (CC 16)
+- `internal/scaffolding/steps/verify.go` — L456 (CC 16)

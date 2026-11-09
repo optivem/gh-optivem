@@ -102,14 +102,6 @@ type Validation struct {
 	Warnings []string          `json:"warnings"`
 }
 
-// PlannedUseCase is a use case whose front matter says `status: planned`: it
-// is specified but not built yet, so it is listed but not gated.
-type PlannedUseCase struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	Criteria int    `json:"criteria"`
-}
-
 // Gate is the gating verdict, filled in by the gating step.
 type Gate struct {
 	Passed  bool     `json:"passed"`
@@ -123,12 +115,22 @@ type Report struct {
 	Threshold     float64         `json:"threshold"`
 	Summary       Summary         `json:"summary"`
 	UseCases      []ReportUseCase `json:"useCases"`
-	// PlannedUseCases are left out of Summary, coverage and the threshold.
-	PlannedUseCases []PlannedUseCase `json:"plannedUseCases"`
-	Orphans         []Orphan         `json:"orphans"`
-	UnknownIDs      []UnknownID      `json:"unknownIds"`
-	Validation      Validation       `json:"validation"`
-	Gate            *Gate            `json:"gate,omitempty"`
+	// PlannedUseCases are use cases whose front matter says `status:
+	// planned` (specified, not built yet). Their criteria get states like any
+	// other, so fingerprints can be recorded for them, but they are left out
+	// of Summary, coverage and the gate.
+	PlannedUseCases []ReportUseCase `json:"plannedUseCases"`
+	Orphans         []Orphan        `json:"orphans"`
+	UnknownIDs      []UnknownID     `json:"unknownIds"`
+	Validation      Validation      `json:"validation"`
+	Gate            *Gate           `json:"gate,omitempty"`
+}
+
+// AllUseCases returns the gated use cases followed by the planned ones, for
+// callers that work on every known criterion (fingerprints, id lookups)
+// rather than on what is gated.
+func (r Report) AllUseCases() []ReportUseCase {
+	return append(slices.Clone(r.UseCases), r.PlannedUseCases...)
 }
 
 // JSON renders the report as indented JSON.
@@ -163,7 +165,7 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 		Mode:            mode,
 		Threshold:       threshold,
 		UseCases:        []ReportUseCase{},
-		PlannedUseCases: []PlannedUseCase{},
+		PlannedUseCases: []ReportUseCase{},
 		Orphans:         []Orphan{},
 		UnknownIDs:      []UnknownID{},
 		Validation:      Validation{Errors: []ValidationError{}, Warnings: []string{}},
@@ -175,7 +177,8 @@ func BuildReport(useCases []UseCase, tests []Test, cfg Config, opts Options) Rep
 
 	for _, uc := range useCases {
 		if uc.Planned() {
-			rep.PlannedUseCases = append(rep.PlannedUseCases, PlannedUseCase{ID: uc.ID, Title: uc.Title, Criteria: len(uc.Criteria)})
+			var notGated Summary
+			rep.PlannedUseCases = append(rep.PlannedUseCases, buildUseCase(uc, linked, waivers, flagsOn, opts.Fingerprints, &notGated))
 			continue
 		}
 		rep.UseCases = append(rep.UseCases, buildUseCase(uc, linked, waivers, flagsOn, opts.Fingerprints, &rep.Summary))

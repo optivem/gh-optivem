@@ -109,7 +109,24 @@ func ApplyGate(rep *Report, b *Baseline) error {
 	for _, e := range rep.Validation.Errors {
 		reasons = append(reasons, fmt.Sprintf("validation error (%s): %s", e.Code, e.Message))
 	}
-	verified, denom := 0, 0
+	criterionReasons, verified, denom := gateCriteria(rep, b)
+	reasons = append(reasons, criterionReasons...)
+	if rep.Mode == ModeStrict {
+		pct := 100.0
+		if denom > 0 {
+			pct = math.Round(float64(verified)*1000/float64(denom)) / 10
+		}
+		if pct < rep.Threshold {
+			reasons = append(reasons, fmt.Sprintf("coverage %.1f%% is below threshold %.1f%%", pct, rep.Threshold))
+		}
+	}
+	rep.Gate = &Gate{Passed: len(reasons) == 0, Reasons: reasons}
+	return nil
+}
+
+// gateCriteria marks each gated criterion's Baselined flag and collects the
+// blocking reasons plus the strict coverage numerator and denominator.
+func gateCriteria(rep *Report, b *Baseline) (reasons []string, verified, denom int) {
 	for i := range rep.UseCases {
 		for j := range rep.UseCases[i].Criteria {
 			c := &rep.UseCases[i].Criteria[j]
@@ -126,17 +143,7 @@ func ApplyGate(rep *Report, b *Baseline) error {
 			}
 		}
 	}
-	if rep.Mode == ModeStrict {
-		pct := 100.0
-		if denom > 0 {
-			pct = math.Round(float64(verified)*1000/float64(denom)) / 10
-		}
-		if pct < rep.Threshold {
-			reasons = append(reasons, fmt.Sprintf("coverage %.1f%% is below threshold %.1f%%", pct, rep.Threshold))
-		}
-	}
-	rep.Gate = &Gate{Passed: len(reasons) == 0, Reasons: reasons}
-	return nil
+	return reasons, verified, denom
 }
 
 // gateCriterion evaluates one criterion (Baselined already set) for the mode.

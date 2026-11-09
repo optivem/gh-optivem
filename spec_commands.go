@@ -409,43 +409,17 @@ func runSpecRecord(opts specOptions, out io.Writer) (int, error) {
 		return 0, err
 	}
 	file := resolveUnder(in.base, in.cfg.Baseline)
-	b, err := spec.LoadBaseline(file)
+	b, err := loadRecordBaseline(file, opts.Create)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			return 0, err
-		}
-		if !opts.Create {
-			return 0, fmt.Errorf("no spec state file at %s; run 'gh optivem spec adopt' first (or pass --create)", file)
-		}
-		b = spec.Baseline{SchemaVersion: spec.BaselineSchemaVersion, Unverified: []string{}}
+		return 0, err
 	}
 	rep := spec.BuildReport(in.useCases, in.tests, in.cfg, spec.Options{Mode: spec.ModeLenient, Flags: opts.Flags, Now: time.Now()})
 	if n := len(rep.Validation.Errors); n > 0 {
 		return 0, fmt.Errorf("cannot record: %d validation error(s); run 'gh optivem spec validate' and fix them first", n)
 	}
-	known := map[string]bool{}
-	for _, uc := range rep.UseCases {
-		for _, c := range uc.Criteria {
-			known[c.ID] = true
-		}
-	}
-	for _, id := range opts.Refresh {
-		if !known[id] {
-			return 0, fmt.Errorf("--refresh %s: no such criterion in %s", id, in.cfg.SpecDir)
-		}
-	}
-	var scope []string
-	for _, id := range opts.Criteria {
-		if id = strings.TrimSpace(id); id == "" {
-			continue
-		}
-		if !known[id] {
-			return 0, fmt.Errorf("--criteria %s: no such criterion in %s", id, in.cfg.SpecDir)
-		}
-		scope = append(scope, id)
-	}
-	if len(opts.Criteria) > 0 && len(scope) == 0 {
-		return 0, errors.New("--criteria names no criterion id")
+	scope, err := recordScope(rep, opts, in.cfg.SpecDir)
+	if err != nil {
+		return 0, err
 	}
 	rec := spec.RecordFingerprints(rep, b.Fingerprints, opts.Refresh, scope)
 	b.Fingerprints = rec.Fingerprints
@@ -460,6 +434,52 @@ func runSpecRecord(opts specOptions, out io.Writer) (int, error) {
 		fmt.Fprintf(out, "  %s is not Verified by the test results; no fingerprint recorded\n", id)
 	}
 	return 0, nil
+}
+
+// loadRecordBaseline loads the spec state file for 'spec record'. A missing
+// file is an error unless create is set, in which case it starts empty.
+func loadRecordBaseline(file string, create bool) (spec.Baseline, error) {
+	b, err := spec.LoadBaseline(file)
+	if err == nil {
+		return b, nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return spec.Baseline{}, err
+	}
+	if !create {
+		return spec.Baseline{}, fmt.Errorf("no spec state file at %s; run 'gh optivem spec adopt' first (or pass --create)", file)
+	}
+	return spec.Baseline{SchemaVersion: spec.BaselineSchemaVersion, Unverified: []string{}}, nil
+}
+
+// recordScope checks that every --refresh and --criteria id names a known
+// criterion (gated or planned) and returns the trimmed --criteria scope.
+func recordScope(rep spec.Report, opts specOptions, specDir string) ([]string, error) {
+	known := map[string]bool{}
+	for _, uc := range rep.AllUseCases() {
+		for _, c := range uc.Criteria {
+			known[c.ID] = true
+		}
+	}
+	for _, id := range opts.Refresh {
+		if !known[id] {
+			return nil, fmt.Errorf("--refresh %s: no such criterion in %s", id, specDir)
+		}
+	}
+	var scope []string
+	for _, id := range opts.Criteria {
+		if id = strings.TrimSpace(id); id == "" {
+			continue
+		}
+		if !known[id] {
+			return nil, fmt.Errorf("--criteria %s: no such criterion in %s", id, specDir)
+		}
+		scope = append(scope, id)
+	}
+	if len(opts.Criteria) > 0 && len(scope) == 0 {
+		return nil, errors.New("--criteria names no criterion id")
+	}
+	return scope, nil
 }
 
 // expandResultGlobs resolves glob patterns (with ** for any number of

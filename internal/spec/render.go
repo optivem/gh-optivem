@@ -136,7 +136,7 @@ func RenderText(rep Report) string {
 	}
 	writeTextList(&b, "Planned use cases (not gated)", len(rep.PlannedUseCases), func(i int) string {
 		p := rep.PlannedUseCases[i]
-		return fmt.Sprintf("%s %s: planned, %d criteria, not gated", p.ID, p.Title, p.Criteria)
+		return fmt.Sprintf("%s %s: planned, %d criteria, not gated", p.ID, p.Title, len(p.Criteria))
 	})
 	writeTextList(&b, "Orphan tests (not linked to any criterion)", len(rep.Orphans), func(i int) string {
 		return fmt.Sprintf("%s: %s", rep.Orphans[i].Name, rep.Orphans[i].Reason)
@@ -213,7 +213,7 @@ func writeMDProblems(b *strings.Builder, rep Report) {
 	if len(rep.PlannedUseCases) > 0 {
 		b.WriteString("\n### Planned use cases (not gated)\n\n")
 		for _, p := range rep.PlannedUseCases {
-			fmt.Fprintf(b, "- %s %s: %d criteria\n", mdText(p.ID), mdText(p.Title), p.Criteria)
+			fmt.Fprintf(b, "- %s %s: %d criteria\n", mdText(p.ID), mdText(p.Title), len(p.Criteria))
 		}
 	}
 	if len(rep.Orphans) > 0 {

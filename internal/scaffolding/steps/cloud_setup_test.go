@@ -3,6 +3,7 @@ package steps
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -72,7 +73,7 @@ func TestCopyCloudSetup_Monolith(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if info.Mode().Perm()&0o100 == 0 {
+		if !isExecutable(info) {
 			t.Errorf("%s is not executable: %v", exe, info.Mode())
 		}
 	}
@@ -96,7 +97,7 @@ func TestCopyCloudSetup_MultitierCustomDomains(t *testing.T) {
 				t.Fatalf("setup-custom-domains.sh not scaffolded: %v", err)
 			}
 			// Shop has it at 0644, but setup-gcp.sh executes it directly.
-			if info.Mode().Perm()&0o100 == 0 {
+			if !isExecutable(info) {
 				t.Errorf("setup-custom-domains.sh is not executable: %v", info.Mode())
 			}
 			data, _ := os.ReadFile(path)
@@ -219,4 +220,11 @@ func TestScaffoldEnvironmentRefs(t *testing.T) {
 	if len(bad) != 2 {
 		t.Errorf("want 2 unknown refs, got %v", bad)
 	}
+}
+
+// isExecutable reports the owner-execute bit. Windows has no such bit (Go
+// reports 0666 for any regular file), so there the check always passes: on a
+// Windows scaffold the bit is set in git's index by fixExecBits instead.
+func isExecutable(info os.FileInfo) bool {
+	return runtime.GOOS == "windows" || info.Mode().Perm()&0o100 != 0
 }
