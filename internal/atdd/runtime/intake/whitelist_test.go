@@ -136,3 +136,45 @@ func TestParse_ChecklistContinuationLines_Tolerated(t *testing.T) {
 		t.Fatalf("indented continuation under an item should be tolerated, got: %v", err)
 	}
 }
+
+// --- Use Case Criteria (written by LINK_STORY_CRITERIA) ------------------------
+
+func TestParse_UseCaseCriteriaSection_Accepted(t *testing.T) {
+	// LINK_STORY_CRITERIA appends this section; a re-run of the same ticket
+	// must still parse.
+	body := "## Acceptance Criteria\n\nScenario: x\n  Given a\n  When b\n  Then c\n\n" +
+		"## " + SectionUseCaseCriteria + "\n\n- UC-001.1\n- UC-001.2\n"
+	if _, err := Parse(body); err != nil {
+		t.Fatalf("body with %q should parse, got: %v", SectionUseCaseCriteria, err)
+	}
+}
+
+func TestReplaceSection_AppendsWhenMissing(t *testing.T) {
+	body := "## Description\n\nProse.\n"
+	got := ReplaceSection(body, SectionUseCaseCriteria, "- UC-001.1\n")
+	want := "## Description\n\nProse.\n\n## Use Case Criteria\n\n- UC-001.1\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestReplaceSection_ReplacesExistingAndKeepsLaterSections(t *testing.T) {
+	body := "## Use Case Criteria\n\n- UC-009.9\n\n## Description\n\nProse.\n"
+	got := ReplaceSection(body, SectionUseCaseCriteria, "- UC-001.1")
+	want := "## Use Case Criteria\n\n- UC-001.1\n\n## Description\n\nProse.\n"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestReplaceSection_Idempotent(t *testing.T) {
+	body := "# Title\n\n## Acceptance Criteria\n\nScenario: x\n  Given a\n  When b\n  Then c\n"
+	once := ReplaceSection(body, SectionUseCaseCriteria, "- UC-001.1\n- UC-001.2")
+	twice := ReplaceSection(once, SectionUseCaseCriteria, "- UC-001.1\n- UC-001.2")
+	if once != twice {
+		t.Fatalf("second replace changed the body:\nonce:  %q\ntwice: %q", once, twice)
+	}
+	if got := ExtractSection(twice, SectionUseCaseCriteria).Body; got != "- UC-001.1\n- UC-001.2" {
+		t.Fatalf("section body = %q", got)
+	}
+}

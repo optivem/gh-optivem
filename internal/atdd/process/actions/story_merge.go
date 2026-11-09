@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -8,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/spec"
 )
@@ -132,6 +134,40 @@ func (a actions) verifyStoryMerge(ctx *statemachine.Context) statemachine.Outcom
 	}
 	ctx.Set(CtxKeyScenarioCriteria, scenarioCriteriaLines(scenarios, byScenario))
 	fmt.Fprintf(a.deps.Out.Phase, "Story merged into the use cases (%s).\n", strings.Join(covered, ", "))
+	return statemachine.Outcome{}
+}
+
+// linkStoryCriteria is LINK_STORY_CRITERIA: it records the use case criteria
+// the story touched (the merged-criteria VERIFY_STORY_MERGE stamped) in the
+// ticket's "Use Case Criteria" section, one id per line. An existing section
+// is replaced, so a re-run writes the same body; an unchanged body is not
+// written back at all. Reading or writing the ticket failing fails the run.
+func (a actions) linkStoryCriteria(ctx *statemachine.Context) statemachine.Outcome {
+	var ids []string
+	for id := range strings.SplitSeq(ctx.GetString(CtxKeyMergedCriteria), ",") {
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("link-story-criteria: %s is empty; verify-story-merge stamps it, so this node must run after VERIFY_STORY_MERGE", CtxKeyMergedCriteria)}
+	}
+	issue, err := issueFromContext(ctx)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("link-story-criteria: %w", err)}
+	}
+	body, err := a.deps.Tracker.ReadBody(context.Background(), issue)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("link-story-criteria: read the ticket body: %w", err)}
+	}
+	updated := intake.ReplaceSection(body, intake.SectionUseCaseCriteria, "- "+strings.Join(ids, "\n- "))
+	if updated == body {
+		return statemachine.Outcome{}
+	}
+	if err := a.deps.Tracker.WriteBody(context.Background(), issue, updated); err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("link-story-criteria: write the ticket body: %w", err)}
+	}
+	fmt.Fprintf(a.deps.Out.Phase, "Recorded the story's use case criteria on the ticket (%s).\n", strings.Join(ids, ", "))
 	return statemachine.Outcome{}
 }
 

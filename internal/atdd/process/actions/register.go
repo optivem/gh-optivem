@@ -107,6 +107,9 @@ func RegisterAll(r *Registry, deps Deps) {
 	// the merge agent. See story_merge.go.
 	r.Register("check-story-merge-needed", a.checkStoryMergeNeeded)
 	r.Register("verify-story-merge", a.verifyStoryMerge)
+	// LINK_STORY_CRITERIA writes merged-criteria into the ticket's Use Case
+	// Criteria section (plan 20261109-1256).
+	r.Register("link-story-criteria", a.linkStoryCriteria)
 	// verify-tests-pass no-progress guard (plan 20260615-1845 Step 4). Runs
 	// on the gateway's fail branch before re-dispatching the fixer; stamps
 	// fix-loop-progressing from a per-pass failure fingerprint so

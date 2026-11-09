@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -667,4 +668,41 @@ func mustNew(t *testing.T, projectURL string, gh GhRunner) *Tracker {
 		t.Fatalf("New(%q): %v", projectURL, err)
 	}
 	return tr
+}
+
+func TestWriteBody_RunsIssueEditWithBodyFile(t *testing.T) {
+	gh := newFakeRunner(t)
+	var gotBody string
+	gh.fallback = func(args []string) ([]byte, error) {
+		if len(args) != 7 || args[0] != "issue" || args[1] != "edit" || args[2] != "42" ||
+			args[3] != "--body-file" || args[5] != "--repo" || args[6] != "optivem/shop" {
+			t.Fatalf("unexpected argv %v", args)
+		}
+		b, err := os.ReadFile(args[4])
+		if err != nil {
+			t.Fatalf("read body file: %v", err)
+		}
+		gotBody = string(b)
+		return nil, nil
+	}
+	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
+	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
+	body := "## Description\n\nx\n\n## Use Case Criteria\n\n- UC-001.1\n"
+	if err := tr.WriteBody(context.Background(), issue, body); err != nil {
+		t.Fatalf("WriteBody: %v", err)
+	}
+	if gotBody != body {
+		t.Errorf("body file = %q, want %q", gotBody, body)
+	}
+}
+
+func TestWriteBody_GhFailureFailsLoudly(t *testing.T) {
+	gh := newFakeRunner(t)
+	gh.fallback = func([]string) ([]byte, error) { return nil, fmt.Errorf("HTTP 403: Resource not accessible") }
+	tr := mustNew(t, "https://github.com/orgs/optivem/projects/20", gh)
+	issue := tracker.Issue{ID: "42", URL: "https://github.com/optivem/shop/issues/42"}
+	err := tr.WriteBody(context.Background(), issue, "x")
+	if err == nil || !strings.Contains(err.Error(), "403") {
+		t.Fatalf("err = %v, want the gh failure", err)
+	}
 }

@@ -1348,7 +1348,8 @@ func TestImplementTicket_StoryMergesIntoUseCasesFirst(t *testing.T) {
 	wantEdge(t, m, "GATE_STORY_MERGE_NEEDED", "MERGE_USE_CASES", "story-merge-needed == true")
 	wantEdge(t, m, "GATE_STORY_MERGE_NEEDED", "MERGE_STORY_END", "story-merge-needed == false")
 	wantEdge(t, m, "MERGE_USE_CASES", "VERIFY_STORY_MERGE", "")
-	wantEdge(t, m, "VERIFY_STORY_MERGE", "MERGE_STORY_END", "")
+	wantEdge(t, m, "VERIFY_STORY_MERGE", "LINK_STORY_CRITERIA", "")
+	wantEdge(t, m, "LINK_STORY_CRITERIA", "MERGE_STORY_END", "")
 	// The no-op branch must bypass the agent entirely: it is the only way an
 	// unattended run gets past an already-merged story without an approval.
 	notEdge(t, m, "GATE_STORY_MERGE_NEEDED", "VERIFY_STORY_MERGE")

@@ -382,6 +382,9 @@ func (f fakeTracker) Subtypes(_ context.Context, _ tracker.Issue) ([]string, err
 func (f fakeTracker) ReadBody(context.Context, tracker.Issue) (string, error) {
 	panic("fakeTracker.ReadBody: not implemented")
 }
+func (f fakeTracker) WriteBody(context.Context, tracker.Issue, string) error {
+	panic("fakeTracker.WriteBody: not implemented")
+}
 
 // assertGateErr checks a gate outcome's error state. Returns true when the
 // caller should continue to value-checking (no error expected, none received).

@@ -5,7 +5,8 @@
 // The Tracker interface is the union of every tracker-shaped operation
 // the runtime issues — resolving a ticket by ID/URL, moving it through
 // status columns, inspecting its body for classification and section
-// content. Each backend implements the same six methods; the runtime
+// content, and writing a body section back. Each backend implements the same
+// seven methods; the runtime
 // never branches on backend type.
 //
 // Construction goes through the sibling factory package
@@ -47,11 +48,12 @@ type Issue struct {
 	Handle string
 }
 
-// Tracker is the six-method interface every backend implements. The
-// methods divide into two groups:
+// Tracker is the seven-method interface every backend implements. The
+// methods divide into three groups:
 //
 //   - Workflow:   FindIssue, SetStatus, Verify
 //   - Inspection: Classify, Subtypes, ReadBody
+//   - Update:     WriteBody
 //
 // Adapters are constructed via Open (or directly via package
 // constructors in tests). All methods accept a context.Context and
@@ -101,4 +103,11 @@ type Tracker interface {
 	// PARSE_TICKET service task reads the body here and hands it to
 	// intake.Parse.
 	ReadBody(ctx context.Context, i Issue) (string, error)
+
+	// WriteBody replaces the issue's body (its description, on GitHub and
+	// Jira) with body, verbatim. Callers read the body with ReadBody,
+	// change one section and write the whole body back, so every other
+	// section is preserved. The github adapter runs `gh issue edit
+	// --body-file`; the markdown adapter rewrites the file.
+	WriteBody(ctx context.Context, i Issue, body string) error
 }

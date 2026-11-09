@@ -3284,6 +3284,11 @@ processes:
   #                             a criterion that now exists. Fails loudly on any
   #                             gap; stamps `merged-criteria` for traceability
   #                             and for record-spec-fingerprints' scope.
+  #   LINK_STORY_CRITERIA       writes `merged-criteria` into the ticket's
+  #                             "Use Case Criteria" body section through the
+  #                             tracker (replacing the section if present, so
+  #                             re-runs are idempotent); a tracker read/write
+  #                             failure fails the run. Plan 20261109-1256.
   #
   # No loop-back edges: the only cycle reachable from here is execute-agent's
   # own capped FIX -> RUN_AGENT loop (max-visits 2).
@@ -3311,6 +3316,11 @@ processes:
         action: verify-story-merge
         name: "Verify Story Merge"
 
+      - id: LINK_STORY_CRITERIA
+        type: service-task
+        action: link-story-criteria
+        name: "Link Story to Use Case Criteria"
+
       - id: MERGE_STORY_END
         type: end-event
         name: "Story Merged"
@@ -3320,7 +3330,8 @@ processes:
       - {from: GATE_STORY_MERGE_NEEDED,  to: MERGE_USE_CASES,  when: "story-merge-needed == true"}
       - {from: GATE_STORY_MERGE_NEEDED,  to: MERGE_STORY_END,  when: "story-merge-needed == false"}
       - {from: MERGE_USE_CASES,          to: VERIFY_STORY_MERGE}
-      - {from: VERIFY_STORY_MERGE,       to: MERGE_STORY_END}
+      - {from: VERIFY_STORY_MERGE,       to: LINK_STORY_CRITERIA}
+      - {from: LINK_STORY_CRITERIA,      to: MERGE_STORY_END}
 
   # Artifact-only in the doctrinal sense of `scope: none`: the agent edits the
   # use case markdown (spec, not code), which no code-layer scope key covers;

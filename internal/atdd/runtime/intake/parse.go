@@ -84,6 +84,7 @@ var CanonicalHeadings = []string{
 	SectionStepsToReproduce,
 	SectionChecklist,
 	SectionExternalSystemContractCriteria,
+	SectionUseCaseCriteria,
 }
 
 // Parse extracts canonical sections from issue-body markdown and runs
@@ -204,35 +205,65 @@ func ParseSections(sections map[string]string) (*Result, error) {
 // after trimming. An empty section is reported the same as a missing one
 // because a downstream consumer cannot do anything with an empty body.
 func ExtractSection(body, name string) Section {
-	lines := strings.Split(body, "\n")
-	startIdx, startDepth := -1, 0
-	for i, line := range lines {
-		depth, text, ok := headingDepthAndText(line)
-		if !ok || depth < 2 {
-			continue
-		}
-		if strings.EqualFold(text, name) {
-			startIdx = i + 1
-			startDepth = depth
-			break
-		}
-	}
-	if startIdx < 0 {
+	start, end, _ := sectionBounds(body, name)
+	if start < 0 {
 		return Section{Heading: name}
 	}
-	endIdx := len(lines)
-	for i := startIdx; i < len(lines); i++ {
-		depth, _, ok := headingDepthAndText(lines[i])
-		if !ok {
-			continue
-		}
-		if depth <= startDepth {
-			endIdx = i
+	lines := strings.Split(body, "\n")
+	body2 := strings.Trim(strings.Join(lines[start:end], "\n"), "\n")
+	return Section{Heading: name, Body: body2, Found: body2 != ""}
+}
+
+// sectionBounds locates the first H2-or-deeper heading matching name
+// (case-insensitively) and returns the line range [start, end) of its body.
+// start is -1 when the heading is absent. The body runs until the next
+// heading at the same or a shallower depth.
+func sectionBounds(body, name string) (start, end, depth int) {
+	lines := strings.Split(body, "\n")
+	start = -1
+	for i, line := range lines {
+		d, text, ok := headingDepthAndText(line)
+		if ok && d >= 2 && strings.EqualFold(text, name) {
+			start, depth = i+1, d
 			break
 		}
 	}
-	body2 := strings.Trim(strings.Join(lines[startIdx:endIdx], "\n"), "\n")
-	return Section{Heading: name, Body: body2, Found: body2 != ""}
+	if start < 0 {
+		return -1, -1, 0
+	}
+	end = len(lines)
+	for i := start; i < len(lines); i++ {
+		if d, _, ok := headingDepthAndText(lines[i]); ok && d <= depth {
+			end = i
+			break
+		}
+	}
+	return start, end, depth
+}
+
+// ReplaceSection returns body with the section named name holding content.
+// An existing section keeps its heading line and gets its body replaced; a
+// missing one is appended as a `## name` section at the end. Running it twice
+// with the same content gives the same body, so a caller that writes the
+// result back to the tracker stays idempotent across re-runs.
+func ReplaceSection(body, name, content string) string {
+	content = strings.Trim(content, "\n")
+	start, end, _ := sectionBounds(body, name)
+	if start < 0 {
+		trimmed := strings.TrimRight(body, "\n")
+		if trimmed == "" {
+			return "## " + name + "\n\n" + content + "\n"
+		}
+		return trimmed + "\n\n## " + name + "\n\n" + content + "\n"
+	}
+	lines := strings.Split(body, "\n")
+	var b strings.Builder
+	b.WriteString(strings.Join(lines[:start], "\n"))
+	b.WriteString("\n\n" + content + "\n")
+	if end < len(lines) {
+		b.WriteString("\n" + strings.Join(lines[end:], "\n"))
+	}
+	return b.String()
 }
 
 // ExtractChecklist extracts the Checklist section and pre-parses every

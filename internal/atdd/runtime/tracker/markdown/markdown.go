@@ -291,6 +291,20 @@ func (t *Tracker) ReadBody(_ context.Context, i tracker.Issue) (string, error) {
 	return string(body), nil
 }
 
+// WriteBody rewrites the item's file with body, keeping the file's mode.
+// The body is the whole file (ReadBody's counterpart), so the H1 title and
+// any frontmatter the caller read back are preserved.
+func (t *Tracker) WriteBody(_ context.Context, i tracker.Issue, body string) error {
+	info, err := os.Stat(i.Handle)
+	if err != nil {
+		return fmt.Errorf("markdown: write %q: %w", i.Handle, err)
+	}
+	if err := os.WriteFile(i.Handle, []byte(body), info.Mode().Perm()); err != nil {
+		return fmt.Errorf("markdown: write %q: %w", i.Handle, err)
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

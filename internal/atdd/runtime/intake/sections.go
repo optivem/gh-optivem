@@ -31,4 +31,10 @@ const (
 	// syntax-validate the bodies as Gherkin at intake — see gherkin.go and
 	// internal/atdd/assets/runtime/shared/escc-format.md.
 	SectionExternalSystemContractCriteria = "External System Contract Criteria"
+	// SectionUseCaseCriteria lists the UC-NNN.M use case criteria a story
+	// introduced or changed, one per line. No Issue Form declares it: the
+	// LINK_STORY_CRITERIA service task writes it after the story is merged
+	// into the use cases (plan 20261109-1256). It is on the whitelist so a
+	// re-run of the same ticket still parses; nothing reads it back.
+	SectionUseCaseCriteria = "Use Case Criteria"
 )

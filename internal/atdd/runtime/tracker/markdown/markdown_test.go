@@ -460,3 +460,28 @@ func TestFrontmatterType(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteBody_RewritesFile(t *testing.T) {
+	root := newBoard(t, map[string]string{"ready/x.md": "# Title\n\n## Description\n\nd\n"})
+	tr, _ := New(root, newFakeGit(t, root))
+	issue, err := tr.FindIssue(context.Background(), "x")
+	if err != nil {
+		t.Fatalf("FindIssue: %v", err)
+	}
+	body := "# Title\n\n## Description\n\nd\n\n## Use Case Criteria\n\n- UC-001.1\n"
+	if err := tr.WriteBody(context.Background(), issue, body); err != nil {
+		t.Fatalf("WriteBody: %v", err)
+	}
+	got, err := tr.ReadBody(context.Background(), issue)
+	if err != nil || got != body {
+		t.Fatalf("ReadBody after WriteBody = %q, %v; want %q", got, err, body)
+	}
+}
+
+func TestWriteBody_MissingFileFailsLoudly(t *testing.T) {
+	root := newBoard(t, map[string]string{})
+	tr, _ := New(root, newFakeGit(t, root))
+	if err := tr.WriteBody(context.Background(), tracker.Issue{Handle: root + "/ready/missing.md"}, "x"); err == nil {
+		t.Fatal("WriteBody on a missing file: want an error")
+	}
+}

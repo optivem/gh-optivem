@@ -139,6 +139,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"parse-ticket",
 		"check-story-merge-needed",
 		"verify-story-merge",
+		"link-story-criteria",
 		"check-fix-progress",
 		"categorize-scope-exception",
 	}
@@ -2328,11 +2329,14 @@ func TestValidateOutputsAndScopes_JSONL_OptionalAbsenceTolerated(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // fakeTracker is a test-side tracker.Tracker that returns a canned raw body
-// from ReadBody. Other methods panic — only parseTicket exercises ReadBody.
+// from ReadBody and records WriteBody. Other methods panic — only parseTicket
+// and link-story-criteria use the body methods.
 type fakeTracker struct {
 	body       string
 	readErr    error
 	readCalled bool
+	writeErr   error
+	written    []string // every body WriteBody received, in order
 }
 
 func (f *fakeTracker) FindIssue(context.Context, string) (tracker.Issue, error) {
@@ -2353,6 +2357,14 @@ func (f *fakeTracker) Subtypes(context.Context, tracker.Issue) ([]string, error)
 func (f *fakeTracker) ReadBody(_ context.Context, _ tracker.Issue) (string, error) {
 	f.readCalled = true
 	return f.body, f.readErr
+}
+func (f *fakeTracker) WriteBody(_ context.Context, _ tracker.Issue, body string) error {
+	if f.writeErr != nil {
+		return f.writeErr
+	}
+	f.written = append(f.written, body)
+	f.body = body
+	return nil
 }
 
 func seedIssue(ctx *statemachine.Context) {

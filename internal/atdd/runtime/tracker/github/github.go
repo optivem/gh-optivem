@@ -13,7 +13,7 @@
 // projectItemsQuery / projectFieldsQuery comments for the per-call
 // rationale.
 //
-// All six Tracker methods are implemented against the projectV2 path
+// All seven Tracker methods are implemented against the projectV2 path
 // (workflow methods) and against the issue-body REST path (inspection).
 // ReadBody returns the raw issue body; section extraction + validation
 // then lives in the intake package, not the adapter.
@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -294,6 +295,37 @@ func (t *Tracker) ReadBody(ctx context.Context, i tracker.Issue) (string, error)
 		return "", err
 	}
 	return t.fetchIssueBody(ctx, owner, repo, num)
+}
+
+// WriteBody replaces the issue body via `gh issue edit <num> --body-file
+// <tmp> --repo <owner>/<repo>`. The body goes through a temp file rather than
+// --body so a long body never hits the OS argv limit and no shell quoting is
+// involved.
+func (t *Tracker) WriteBody(ctx context.Context, i tracker.Issue, body string) error {
+	owner, repo, num, err := parseIssueURL(i.URL)
+	if err != nil {
+		return err
+	}
+	f, err := os.CreateTemp("", "gh-optivem-issue-body-*.md")
+	if err != nil {
+		return fmt.Errorf("github: write issue body: create temp file: %w", err)
+	}
+	path := f.Name()
+	defer os.Remove(path)
+	if _, err := f.WriteString(body); err != nil {
+		f.Close()
+		return fmt.Errorf("github: write issue body: write temp file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("github: write issue body: close temp file: %w", err)
+	}
+	if _, err := t.gh.Run(ctx, "issue", "edit", strconv.Itoa(num),
+		"--body-file", path,
+		"--repo", owner+"/"+repo,
+	); err != nil {
+		return fmt.Errorf("github: gh issue edit %s/%s#%d: %w", owner, repo, num, err)
+	}
+	return nil
 }
 
 // fetchIssueBody runs `gh issue view <num> --json body --repo <owner>/<repo>`

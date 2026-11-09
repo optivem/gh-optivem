@@ -26,6 +26,7 @@ func (fakeTracker) Subtypes(context.Context, tracker.Issue) ([]string, error) {
 func (fakeTracker) ReadBody(context.Context, tracker.Issue) (string, error) {
 	return "", nil
 }
+func (fakeTracker) WriteBody(context.Context, tracker.Issue, string) error { return nil }
 
 // TestTrackerInterfaceContract is a compile-time assertion that
 // fakeTracker satisfies tracker.Tracker. The runtime body never
