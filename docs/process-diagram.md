@@ -1102,6 +1102,21 @@ flowchart TD
     class REVIEW-ACCEPTANCE-TESTS_OUTPUTS outputNode
 ```
 
+## Review Code & Architecture
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = code-architecture-reviewer<br/>category = command<br/>reviewer = <br/>task-name = review-code-architecture"]
+    REVIEW_CODE_ARCHITECTURE_END(( ))
+
+    EXECUTE_AGENT --> REVIEW_CODE_ARCHITECTURE_END
+    REVIEW-CODE-ARCHITECTURE_OUTPUTS[/"refactoring-needed: bool<br/>system-refactoring-plan?: string<br/>test-refactoring-plan?: string<br/>findings?: string"/]
+    REVIEW_CODE_ARCHITECTURE_END -. produces .-> REVIEW-CODE-ARCHITECTURE_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class REVIEW-CODE-ARCHITECTURE_OUTPUTS outputNode
+```
+
 ## Review DSL
 
 ```mermaid
@@ -1160,6 +1175,16 @@ flowchart TD
     UPDATE_EXT_DA_END(( ))
 
     EXECUTE_AGENT --> UPDATE_EXT_DA_END
+```
+
+## Update Guidelines
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = guidelines-updater<br/>category = system-agent<br/>task-name = update-guidelines"]
+    UPDATE_GUIDELINES_END(( ))
+
+    EXECUTE_AGENT --> UPDATE_GUIDELINES_END
 ```
 
 ## Update System
