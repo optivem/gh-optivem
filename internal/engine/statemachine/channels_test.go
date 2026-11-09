@@ -282,11 +282,11 @@ func TestUnrollBothChannels_BindsEndToEnd(t *testing.T) {
 // INSIDE the cycle, not here.
 
 const (
-	extAdapterAnchorERP             = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_ERP"
-	extAdapterAnchorCLOCK           = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_CLOCK"
-	extValidateNode                 = "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"
-	extAdapterSuccessor             = "IMPLEMENT_EXTERNAL_DRIVERS_END"
-	writeAcceptanceTestsAndDslProc  = "write-acceptance-tests-and-dsl"
+	extAdapterAnchorERP            = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_ERP"
+	extAdapterAnchorCLOCK          = "IMPLEMENT_AND_VERIFY_EXTERNAL_DRIVER_ADAPTERS_CLOCK"
+	extValidateNode                = "VALIDATE_EXTERNAL_SYSTEMS_REGISTERED"
+	extAdapterSuccessor            = "IMPLEMENT_EXTERNAL_DRIVERS_END"
+	writeAcceptanceTestsAndDslProc = "write-acceptance-tests-and-dsl"
 )
 
 func TestUnrollExternalSystems_TwoSystems(t *testing.T) {

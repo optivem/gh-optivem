@@ -98,8 +98,8 @@ func (r realShell) Run(ctx context.Context, commandLine string) (ShellResult, er
 	// shift from the pre-outlog behaviour where realShell wrote straight
 	// to os.Stdout, bypassing the log-file mirror entirely. Zero-value
 	// stdout falls back to os.Stdout and stderr to the stdout sink (stderr is
-		// Detail-level too; failures surface via the HALT banner's
-		// command-stderr-tail) for direct-construction
+	// Detail-level too; failures surface via the HALT banner's
+	// command-stderr-tail) for direct-construction
 	// callers.
 	stdoutSink, stderrSink := r.stdout, r.stderr
 	if stdoutSink == nil {
