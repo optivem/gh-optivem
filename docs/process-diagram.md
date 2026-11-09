@@ -1050,6 +1050,51 @@ flowchart TD
     class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
 ```
 
+## Review Acceptance Tests
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = acceptance-test-reviewer<br/>category = test-agent<br/>reviewer = <br/>task-name = review-acceptance-tests"]
+    REVIEW_AT_END(( ))
+
+    EXECUTE_AGENT --> REVIEW_AT_END
+    REVIEW-ACCEPTANCE-TESTS_OUTPUTS[/"review-has-blocking-findings: bool<br/>blocking-findings?: string<br/>non-blocking-findings?: string"/]
+    REVIEW_AT_END -. produces .-> REVIEW-ACCEPTANCE-TESTS_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class REVIEW-ACCEPTANCE-TESTS_OUTPUTS outputNode
+```
+
+## Review DSL
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = dsl-reviewer<br/>category = system-agent<br/>reviewer = <br/>task-name = review-dsl"]
+    REVIEW_DSL_END(( ))
+
+    EXECUTE_AGENT --> REVIEW_DSL_END
+    REVIEW-DSL_OUTPUTS[/"review-has-blocking-findings: bool<br/>blocking-findings?: string<br/>non-blocking-findings?: string"/]
+    REVIEW_DSL_END -. produces .-> REVIEW-DSL_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class REVIEW-DSL_OUTPUTS outputNode
+```
+
+## Review System Driver Adapters
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = system-driver-adapter-reviewer<br/>category = system-agent<br/>reviewer = <br/>task-name = review-system-driver-adapters"]
+    REVIEW_SYS_DA_END(( ))
+
+    EXECUTE_AGENT --> REVIEW_SYS_DA_END
+    REVIEW-SYSTEM-DRIVER-ADAPTERS_OUTPUTS[/"review-has-blocking-findings: bool<br/>blocking-findings?: string<br/>non-blocking-findings?: string"/]
+    REVIEW_SYS_DA_END -. produces .-> REVIEW-SYSTEM-DRIVER-ADAPTERS_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class REVIEW-SYSTEM-DRIVER-ADAPTERS_OUTPUTS outputNode
+```
+
 ## Setup Tests
 
 ```mermaid
