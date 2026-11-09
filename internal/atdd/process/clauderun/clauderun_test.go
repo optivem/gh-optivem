@@ -3047,6 +3047,22 @@ func TestRenderScopeBlock_UnresolvableKeyErrors(t *testing.T) {
 	}
 }
 
+// TestRenderPrompt_ReadOnlyReviewerScope guards the read-only reviewer scope
+// (plan 20261109-1257): an empty write list still registers ${scope-block}
+// and renders an explicit "change no files" line, not an empty list.
+func TestRenderPrompt_ReadOnlyReviewerScope(t *testing.T) {
+	opts := renderMatrixOpts(projectconfig.ArchMonolith, "system", "api")
+	opts.Agent = "acceptance-test-reviewer"
+	opts.ScopeRead = []string{"at-test"}
+	opts.ScopeWrite = nil
+	got, err := renderPrompt(opts)
+	if err != nil {
+		t.Fatalf("renderPrompt: %v", err)
+	}
+	mustContain(t, got, "You may **modify** files under these paths:\n\n- (none — change no files)")
+	mustContain(t, got, "# Adversarial review")
+}
+
 // TestRenderScopeBlock_CollapsedSurfaceErrors guards that a multitier surface
 // of only blank tier paths (the collapse the #71 postmortem traced) falls
 // through to the unresolved error rather than rendering a bare ", " join.

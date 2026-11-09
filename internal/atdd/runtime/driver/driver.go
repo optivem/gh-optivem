@@ -1816,11 +1816,19 @@ func resolveSystemSurface(cfg *projectconfig.Config, channel string) (string, bo
 // fix-missing-output may fire before any working-tree change exists.
 // Those two always take the live shell-out path.
 //
+// The `*-reviewer` agents (plan 20261109-1257) also take the live
+// shell-out: they review the writer's whole uncommitted output, which
+// the per-phase stash cannot give them — after a review-driven revision
+// the stash holds only the latest pass's edits.
+//
 // On any shell error (no git in PATH, not a repo, …) we return the
 // empty string. The fix-* prompts simply render an empty "Changed
 // files" block; the agent can re-run `git status` itself if it needs
 // the listing. The dispatch is feedback, not load-bearing.
 func fixChangedFiles(ctx *statemachine.Context, agent, repoPath string) string {
+	if strings.HasSuffix(agent, "-reviewer") {
+		return liveGitStatus(repoPath)
+	}
 	switch agent {
 	case "fix-scope-diff",
 		"fix-unexpected-failing-tests",
@@ -1836,6 +1844,12 @@ func fixChangedFiles(ctx *statemachine.Context, agent, repoPath string) string {
 	default:
 		return ""
 	}
+	return liveGitStatus(repoPath)
+}
+
+// liveGitStatus returns `git status --porcelain` for repoPath, or "" on any
+// shell error (see fixChangedFiles).
+func liveGitStatus(repoPath string) string {
 	cmd := exec.Command("git", "status", "--porcelain")
 	if repoPath != "" {
 		cmd.Dir = repoPath

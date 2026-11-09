@@ -1,4 +1,5 @@
 # 2026-11-09 11:57 UTC — Red: adversarial reviewer agents before human approval
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-09T14:25:23Z`
 
 ## TL;DR
 
@@ -23,12 +24,10 @@ Parent: `plans/20261109-1219-improved-atdd-process-flow.md` ("Execute Agent" dia
 
 ## ▶ Next executable step (resume here)
 
-Review this plan with the user. After that, Step 1 (agent prompts + shared chunk) can run via `/execute-plan`.
+Step 3: add the reviewer nodes to `execute-agent`. Steps 1–2 are done: the three `*-reviewer` prompts, the shared `adversarial-review.md` chunk, and the three read-only reviewer MIDs (`review-acceptance-tests`, `review-dsl`, `review-system-driver-adapters`, `write: []`, output contract `review-has-blocking-findings` + `blocking-findings` / `non-blocking-findings`) exist but are not yet called.
 
 ## Steps
 
-- [ ] Step 1: Write the three reviewer prompts under `internal/atdd/assets/runtime/agents/atdd/` and the shared chunk under `runtime/shared/`. Define the reviewer output contract (findings list with blocking/non-blocking) in the agent outputs schema.
-- [ ] Step 2: Pin each reviewer's scope in `phase-scopes.yaml`: read the writer's diff plus the use case, write nothing.
 - [ ] Step 3: Add the reviewer nodes and `reviewer` param to `execute-agent` in `process-flow.yaml`, with a `max-visits` cap on the findings → writer loop. Audit the new loop-back for statemachine deadlocks before running tests.
 - [ ] Step 4: Set `reviewer:` at the three Red call sites (`write-acceptance-tests`, `implement-dsl`, `implement-system-driver-adapters`). Check that the contract-test cascade's DSL dispatch is not affected unless intended.
 - [ ] Step 5: Pass the findings and approver role into the `APPROVE_POST` question text.

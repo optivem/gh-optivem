@@ -2517,6 +2517,120 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: IMPL_SYS_DA_END}
 
+  # Red reviewer MIDs (plan 20261109-1257). Each Red writer MID names one of
+  # these as its `reviewer:` param; execute-agent's RUN_REVIEWER calls it
+  # (process: ${reviewer}) after the writer's output validates. The reviewer is
+  # a read-only agent: `read:` covers the writer's whole read+write scope so it
+  # can see the writer's output, `write:` is empty so any working-tree change
+  # fails validate-outputs-and-scopes. `reviewer: ""` stops the nested
+  # execute-agent from reviewing the reviewer (params inherit down the call
+  # stack). The shared output contract:
+  #   - review-has-blocking-findings (required bool): the verdict
+  #     GATE_REVIEW_FINDINGS routes on; true re-dispatches the writer (capped).
+  #   - blocking-findings / non-blocking-findings (optional strings, one
+  #     finding per line): shown to the writer on re-dispatch (blocking only)
+  #     and to the human at APPROVE_POST_REVIEWED (both).
+  # Strings, not string-lists: the `output write` CLI comma-splits lists, and
+  # findings are prose that contains commas.
+  review-acceptance-tests:
+    name: "Review Acceptance Tests"
+    start: EXECUTE_AGENT
+    outputs:
+      - key: review-has-blocking-findings
+        type: bool
+      - key: blocking-findings
+        type: string
+        optional: true
+      - key: non-blocking-findings
+        type: string
+        optional: true
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: review-acceptance-tests
+          agent: acceptance-test-reviewer
+          # Same tier as the writer it reviews (write-acceptance-tests).
+          category: test-agent
+          reviewer: ""
+        read:  [at-test, dsl-port, dsl-core, common, common-domain]
+        write: []
+
+      - id: REVIEW_AT_END
+        type: end-event
+        name: "Acceptance Tests Reviewed"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: REVIEW_AT_END}
+
+  review-dsl:
+    name: "Review DSL"
+    start: EXECUTE_AGENT
+    outputs:
+      - key: review-has-blocking-findings
+        type: bool
+      - key: blocking-findings
+        type: string
+        optional: true
+      - key: non-blocking-findings
+        type: string
+        optional: true
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: review-dsl
+          agent: dsl-reviewer
+          # Same tier as the writer it reviews (implement-dsl).
+          category: system-agent
+          reviewer: ""
+        read:  [dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, common, common-domain]
+        write: []
+
+      - id: REVIEW_DSL_END
+        type: end-event
+        name: "DSL Reviewed"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: REVIEW_DSL_END}
+
+  review-system-driver-adapters:
+    name: "Review System Driver Adapters"
+    start: EXECUTE_AGENT
+    outputs:
+      - key: review-has-blocking-findings
+        type: bool
+      - key: blocking-findings
+        type: string
+        optional: true
+      - key: non-blocking-findings
+        type: string
+        optional: true
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: review-system-driver-adapters
+          agent: system-driver-adapter-reviewer
+          # Same tier as the writer it reviews (implement-system-driver-adapters).
+          category: system-agent
+          reviewer: ""
+        read:  [system-driver-port, system-driver-adapter, system-driver-adapter-shared, common, common-domain]
+        write: []
+
+      - id: REVIEW_SYS_DA_END
+        type: end-event
+        name: "System Driver Adapters Reviewed"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: REVIEW_SYS_DA_END}
+
   # Reshape variant of implement-system-driver-adapters (plan 20260526-1448
   # Item 10 verb split). Dispatched by redesign-system-structure CYCLE.
   # Same asymmetric scope as the implement variant — system-driver-port is

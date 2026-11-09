@@ -135,7 +135,10 @@ func TestPhaseScopes_NoDuplicateLayersWithinList(t *testing.T) {
 // are non-empty per scoped writing-agent MID. Even placeholder-writing
 // phases like write-acceptance-tests read at-test + dsl-port while
 // writing dsl-core placeholders, so neither list is ever legitimately
-// empty for a node that has scope declared at all.
+// empty for a node that has scope declared at all. The one exception is
+// the read-only `*-reviewer` agents (plan 20261109-1257): they declare
+// an explicit `write: []` because they must change nothing — and every
+// non-reviewer must still write something.
 func TestPhaseScopes_NonEmptyLayerLists(t *testing.T) {
 	eng := loadEngine(t)
 	for processName := range writingAgentMIDs(eng) {
@@ -146,17 +149,34 @@ func TestPhaseScopes_NonEmptyLayerLists(t *testing.T) {
 		if len(read) == 0 {
 			t.Errorf("MID %q has empty read list", processName)
 		}
-		if len(write) == 0 {
+		reviewer := strings.HasSuffix(executeAgentParam(eng, processName, "agent"), "-reviewer")
+		if len(write) == 0 && !reviewer {
 			t.Errorf("MID %q has empty write list", processName)
 		}
+		if len(write) > 0 && reviewer {
+			t.Errorf("reviewer MID %q must be read-only, got write list %v", processName, write)
+		}
 	}
+}
+
+// executeAgentParam returns the named param of processName's EXECUTE_AGENT
+// call-activity ("" when absent).
+func executeAgentParam(eng *statemachine.Engine, processName, key string) string {
+	for _, node := range eng.Processes[processName].Nodes {
+		if node.Kind == statemachine.CallActivity && node.Raw.Process == "execute-agent" {
+			return node.Raw.Params[key]
+		}
+	}
+	return ""
 }
 
 // TestPhaseScopes_ReadWriteShape asserts every writing-agent MID's
 // EXECUTE_AGENT node either carries BOTH read: and write: keys, or
 // neither (paired with a `scope: none` doctrinal exemption). Half-declared
 // scope (only read or only write) is a schema error — the explicit-lists
-// rule requires both keys present even when their values match.
+// rule requires both keys present even when their values match. Presence
+// is the key, not the length: a read-only reviewer declares `write: []`
+// explicitly (decoded as a non-nil empty list).
 func TestPhaseScopes_ReadWriteShape(t *testing.T) {
 	eng := loadEngine(t)
 	for processName := range writingAgentMIDs(eng) {
@@ -166,8 +186,8 @@ func TestPhaseScopes_ReadWriteShape(t *testing.T) {
 				continue
 			}
 			readN, writeN := len(node.Raw.Read), len(node.Raw.Write)
-			bothPresent := readN > 0 && writeN > 0
-			bothAbsent := readN == 0 && writeN == 0
+			bothPresent := node.Raw.Read != nil && node.Raw.Write != nil
+			bothAbsent := node.Raw.Read == nil && node.Raw.Write == nil
 			if !bothPresent && !bothAbsent {
 				t.Errorf("MID %q EXECUTE_AGENT: read (len=%d) and write (len=%d) must both be present or both absent — no half-declared scope", processName, readN, writeN)
 			}

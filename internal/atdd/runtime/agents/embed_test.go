@@ -219,6 +219,32 @@ func TestPrompt_FixerPreamble(t *testing.T) {
 	}
 }
 
+func TestPrompt_AdversarialReview(t *testing.T) {
+	// The Red reviewers (plan 20261109-1257) share the adversarial-review
+	// chunk, prepended between scope.md and the body; no other agent carries
+	// it. Exactly three reviewers exist — one per Red writer.
+	reviewers := 0
+	for _, name := range DefaultAgentSet().Names() {
+		t.Run(name, func(t *testing.T) {
+			body, err := DefaultAgentSet().Prompt(name)
+			if err != nil {
+				t.Fatalf("Prompt: %v", err)
+			}
+			got := strings.Contains(body, adversarialReview)
+			want := strings.HasSuffix(name, "-reviewer")
+			if got != want {
+				t.Errorf("adversarial-review present = %v, want %v", got, want)
+			}
+		})
+		if strings.HasSuffix(name, "-reviewer") {
+			reviewers++
+		}
+	}
+	if reviewers != 3 {
+		t.Errorf("found %d *-reviewer agents, want 3 (acceptance-test, dsl, system-driver-adapter)", reviewers)
+	}
+}
+
 func TestPrompt_GreenTouchList(t *testing.T) {
 	// Only the six GREEN implementers carry the touch-list chunk; RED agents,
 	// fixers and the rest must not.

@@ -15,6 +15,7 @@ const (
 	preamblePath          = "runtime/shared/preamble.md"
 	scopePath             = "runtime/shared/scope.md"
 	fixerPreamblePath     = "runtime/shared/fixer-preamble.md"
+	adversarialReviewPath = "runtime/shared/adversarial-review.md"
 	interactiveSuffixPath = "runtime/shared/interactive-suffix.md"
 	headlessSuffixPath    = "runtime/shared/headless-no-ask.md"
 	touchListPath         = "runtime/shared/green-touch-list.md"
@@ -28,7 +29,11 @@ const (
 // shared contract — the git read-carve-out + one-attempt/approval-gated/
 // stay-in-scope block — inserted between scope and the body for `*-fixer`
 // agents only (see isFixer), so the contract lives in one place instead of
-// being copied into all five bodies. interactiveSuffix is the operator-facing
+// being copied into all five bodies. adversarialReview is the reviewer
+// agents' shared stance (compare against the spec, try to find what is wrong,
+// change nothing, classify findings) — inserted between scope and the body for
+// `*-reviewer` agents only (see isReviewer), mirroring fixerPreamble.
+// interactiveSuffix is the operator-facing
 // /exit + redirect hint appended only when the dispatcher invokes the agent
 // interactively (see InteractiveSuffix). headlessSuffix is the symmetric
 // counterpart appended only when the dispatcher invokes the agent headless
@@ -39,6 +44,7 @@ var (
 	sharedPreamble    = mustReadAsset(preamblePath)
 	sharedScope       = mustReadAsset(scopePath)
 	fixerPreamble     = mustReadAsset(fixerPreamblePath)
+	adversarialReview = mustReadAsset(adversarialReviewPath)
 	interactiveSuffix = mustReadAsset(interactiveSuffixPath)
 	headlessSuffix    = mustReadAsset(headlessSuffixPath)
 	touchList         = mustReadAsset(touchListPath)
@@ -177,6 +183,9 @@ func (s *AgentSet) Prompt(name string) (string, error) {
 	if isFixer(name) {
 		prompt += fixerPreamble + "\n\n"
 	}
+	if isReviewer(name) {
+		prompt += adversarialReview + "\n\n"
+	}
 	if greenImplementers[name] {
 		prompt += touchList + "\n\n"
 	}
@@ -190,6 +199,14 @@ func (s *AgentSet) Prompt(name string) (string, error) {
 // fixerPreamble prepended between scope.md and the body.
 func isFixer(name string) bool {
 	return strings.HasSuffix(name, "-fixer")
+}
+
+// isReviewer reports whether name is one of the adversarial reviewer agents
+// (plan 20261109-1257). Each Red writer's MID pairs it with a `*-reviewer`
+// agent that execute-agent's RUN_REVIEWER dispatches; these agents — and only
+// these — get adversarialReview prepended between scope.md and the body.
+func isReviewer(name string) bool {
+	return strings.HasSuffix(name, "-reviewer")
 }
 
 // InteractiveSuffix returns the operator-facing block the dispatcher

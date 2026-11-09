@@ -115,8 +115,9 @@ type Options struct {
 	// agent sees only what its current phase scope covers — not the
 	// project's full path inventory.
 	//
-	// Load-bearing: when both lists are non-empty the renderer registers
-	// ${scope-block}; when empty (e.g. `scope: none` phases or command-only
+	// Load-bearing: when either list is non-empty the renderer registers
+	// ${scope-block} (a read-only reviewer has an empty write list); when
+	// both are empty (e.g. `scope: none` phases or command-only
 	// MIDs) the placeholder is left unfilled and findUnfilledPlaceholders
 	// fails the dispatch fast if the prompt body references it.
 	ScopeRead  []string
@@ -884,13 +885,14 @@ func renderPrompt(opts Options) (string, error) {
 	// Per-phase scope block (plan 20260526-1448 Item 4). Rendered from the
 	// BPMN node's read: / write: lists joined against the same path map
 	// the inline ${key} annotations resolve through (opts.Placeholders —
-	// produced by cfg.PlaceholderMap() in production). Only registered
-	// when both lists are non-empty — `scope: none` phases and command-
-	// only MIDs leave ${scope-block} unfilled, which
+	// produced by cfg.PlaceholderMap() in production). Registered when
+	// either list is non-empty — a read-only reviewer (plan 20261109-1257)
+	// declares an empty write list. `scope: none` phases and command-only
+	// MIDs declare neither and leave ${scope-block} unfilled, which
 	// findUnfilledPlaceholders converts to a hard error if the prompt
 	// body references the placeholder. Mirrors the Language /
 	// AcceptanceCriteria load-bearing pattern.
-	if len(opts.ScopeRead) > 0 && len(opts.ScopeWrite) > 0 {
+	if len(opts.ScopeRead) > 0 || len(opts.ScopeWrite) > 0 {
 		scopeBlock, err := renderScopeBlock(opts.ScopeRead, opts.ScopeWrite, opts.Placeholders, opts.ScopeRationale, opts.SystemSurfacePaths)
 		if err != nil {
 			return "", fmt.Errorf("render scope block: %w", err)
@@ -1283,6 +1285,11 @@ func resolveScopeKey(key string, paths map[string]string, systemSurface []string
 
 // writeScopeKeyList writes one aligned "- `key`: path" line per key.
 func writeScopeKeyList(b *strings.Builder, keys []string, resolved map[string]string) {
+	if len(keys) == 0 {
+		// Read-only reviewers (plan 20261109-1257) declare `write: []`.
+		b.WriteString("- (none — change no files)\n")
+		return
+	}
 	pad := 0
 	for _, k := range keys {
 		if len(k) > pad {
