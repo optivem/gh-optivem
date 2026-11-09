@@ -63,7 +63,7 @@ Exit codes: 0 pass, 1 gate failed, 2 usage or configuration error.`,
   gh optivem spec adopt
   gh optivem spec record`,
 	}
-	cmd.AddCommand(newSpecCheckCmd(), newSpecStatusCmd(), newSpecValidateCmd(), newSpecAdoptCmd(), newSpecRecordCmd())
+	cmd.AddCommand(newSpecCheckCmd(), newSpecStatusCmd(), newSpecValidateCmd(), newSpecAdoptCmd(), newSpecRecordCmd(), newSpecGenerateCmd())
 	return cmd
 }
 

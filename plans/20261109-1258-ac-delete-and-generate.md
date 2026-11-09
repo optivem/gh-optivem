@@ -31,5 +31,5 @@ Review this plan with the user. Settle the ordering with `plans/20261109-1256-us
 
 - **Generated output goes to stdout, with `--out <file>` as an option; never committed** (committing it re-creates the second copy the deletion removes).
 - **The DSL→Gherkin generator gets its own plan**, written when this one is executed. Start with regex over the DSL chain per language, escalating to tree-sitter only if regex fails on real shop tests (memory `feedback_testselect_parsing_escalation`).
-- **Generator plan drafted:** `plans/20261109-1636-ac-generator-from-tests.md` (`gh optivem spec generate`), covering Step 3.
+- **Generator shipped** (plan 20261109-1636, executed and deleted 2026-11-09): `gh optivem spec generate --config <spec.yaml> --tests <at-test dir>`, covering Step 3. Operator check left: read its output on shop and judge whether the plain When voice and Given article rule read well to a PO; if not, write a vocabulary plan. Shop has 11 acceptance tests with no `@UC` tag (listed on stderr).
 - **Ship the generator before deleting criteria.** Otherwise there is a window where nobody can read the criteria of implemented behaviour. Order: use-case IDs (`20261109-1256`) → generator → delete-on-green.
