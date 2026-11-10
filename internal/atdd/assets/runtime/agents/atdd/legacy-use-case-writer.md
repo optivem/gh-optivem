@@ -78,6 +78,8 @@ In the folder layout (`UC-NNN-<slug>/` with `use-case-narrative.md`, `business-r
 - Write only the use case's file(s) in the use cases directory. Do not edit `docs/use-cases.md`, other use cases, `gh-optivem.yaml`, the system code or tests.
 - Run `gh optivem spec validate` when you finish and fix every error it reports in your files.
 
+${feedback-section}
+
 ## Outputs
 
 ${expected-outputs}

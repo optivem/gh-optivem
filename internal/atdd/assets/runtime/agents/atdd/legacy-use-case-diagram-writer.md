@@ -24,6 +24,8 @@ You are the use case analyst for an existing (legacy) system: derive its use cas
 - Do not invent behaviour the code does not have. Dead code (unreachable from any entry point) is not a use case; list it in your final message instead.
 - Write only `docs/use-cases.md`. Do not edit `gh-optivem.yaml`, the system code, tests or any other file.
 
+${feedback-section}
+
 ## Outputs
 
 ${expected-outputs}

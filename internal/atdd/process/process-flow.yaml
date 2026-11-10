@@ -1182,13 +1182,15 @@ processes:
           category: test-commit
           layer: "USE CASE DIAGRAM"
 
-      # A "no" re-runs the diagram writer (capped).
+      # A "no" asks what should change and re-runs the diagram writer with
+      # that feedback (capped).
       - id: CONFIRM_CORE_USE_CASE
         type: call-activity
         process: approve
         name: "Confirm the Diagram and the Core Use Case"
         params:
           question: "Approve the use case diagram and the core use case ${core-use-case}? ${core-use-case-reasons}"
+          ask-for-changes: "true"
           category: human
         max-visits: 3
         on-max-visits: CORE_USE_CASE_CONFIRMATION_EXHAUSTED
@@ -1413,6 +1415,7 @@ processes:
         name: "Approve the Layer"
         params:
           question: "Approve the ${layer-process} layer for use case ${use-case-id}?"
+          ask-for-changes: "true"
           category: human
         max-visits: 3
         on-max-visits: LAYER_APPROVAL_EXHAUSTED
@@ -4536,6 +4539,13 @@ processes:
   # agent's output is broken, don't accept it," and letting the caller
   # continue would propagate broken artifacts through every downstream
   # phase.
+  #
+  # Feedback (plan 20261110-1130, Step 3a): a call site whose "no" redoes a
+  # step (the rejected edge loops back to the step, not to an end) passes
+  # `ask-for-changes: "true"`. A "no" there asks what should change and
+  # stores it in State as `feedback`, which the redone agents render as
+  # ${feedback-section}; a "yes" there clears it. Sites without the param
+  # (the approvals nested inside a redo) leave `feedback` alone.
   approve:
     name: "Approve"
     start: ASK_HUMAN

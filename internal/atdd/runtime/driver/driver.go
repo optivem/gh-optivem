@@ -22,6 +22,7 @@
 package driver
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -70,6 +71,19 @@ const (
 	ctxKeyIssueTitle  = "issue-title"
 	approvePrompt     = "  Approve?"
 	ctxKeyOutputFile  = "output-file-path"
+)
+
+// Operator feedback at a redo gate (plan 20261110-1130, Step 3a). An approve
+// call site whose "no" redoes a step passes `ask-for-changes: "true"`: a "no"
+// there asks what should change and stores the answer in State as
+// `feedback`, which the redone agents read as ${feedback}; a "yes" there
+// clears it. Approve sites without the param (execute-agent, execute-command,
+// fix: the approvals nested inside a redo) leave `feedback` alone, so the
+// redone agent still sees it.
+const (
+	stateFeedback      = "feedback"
+	paramAskForChanges = "ask-for-changes"
+	feedbackPrompt     = "  What should change? (the step is redone with this feedback): "
 )
 
 // ErrPendingHuman is the sentinel a dispatcher returns when it reaches a
@@ -1247,16 +1261,49 @@ func newApproveDispatcher(opts Options, raw statemachine.RawNode, nodeID string)
 		if out, pend := pendIfUnattendedHuman(cat.String(), nodeID, opts.Stderr); pend {
 			return out
 		}
-		ok, err := approval.Confirm(opts.Approval, cat, opts.Stdin, opts.Out.Phase, approvePrompt)
+		// One buffered reader for the y/n and the feedback line, so the
+		// y/n read cannot swallow the feedback (bufio.NewReader returns
+		// in itself when ConfirmYN wraps it again).
+		in := bufio.NewReader(opts.Stdin)
+		ok, err := approval.Confirm(opts.Approval, cat, in, opts.Out.Phase, approvePrompt)
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("read approve confirmation at %s: %w", nodeID, err)}
 		}
+		asksForChanges := ctx.Params[paramAskForChanges] == "true"
 		if ok {
 			ctx.Set("approval-outcome", "approved")
-		} else {
-			ctx.Set("approval-outcome", "rejected")
+			if asksForChanges {
+				ctx.Unset(stateFeedback)
+			}
+			return statemachine.Outcome{}
+		}
+		ctx.Set("approval-outcome", "rejected")
+		if asksForChanges {
+			feedback, err := readFeedback(in, opts.Out.Phase)
+			if err != nil {
+				return statemachine.Outcome{Err: fmt.Errorf("read feedback at %s: %w", nodeID, err)}
+			}
+			ctx.Set(stateFeedback, feedback)
 		}
 		return statemachine.Outcome{}
+	}
+}
+
+// readFeedback asks what should change after a "no" at a redo gate. A blank
+// answer re-asks; only end of input (no operator left) returns "".
+func readFeedback(in *bufio.Reader, out io.Writer) (string, error) {
+	for {
+		if _, err := fmt.Fprint(out, feedbackPrompt); err != nil {
+			return "", err
+		}
+		line, err := in.ReadString('\n')
+		if err != nil && err != io.EOF {
+			return "", err
+		}
+		if line = strings.TrimSpace(line); line != "" || err == io.EOF {
+			return line, nil
+		}
+		fmt.Fprintln(out, "Please say what should change.")
 	}
 }
 
@@ -1486,6 +1533,7 @@ func newClaudeRunDispatcher(opts Options, raw statemachine.RawNode, eng *statema
 			ScenarioCriteria:    ctx.GetString("scenario-criteria"),
 			ReviewFindings:      ctx.GetString("review-revision-findings"),
 			RefinementFeedback:  ctx.GetString("refinement-feedback"),
+			Feedback:            ctx.GetString(stateFeedback),
 			ParsedConcepts:      ctx.GetString("parsed_concepts"),
 			VerifyFailureOutput: ctx.GetString("verify_failure_output"),
 			ChangedFiles:        fixChangedFiles(ctx, agentName, opts.RepoPath),

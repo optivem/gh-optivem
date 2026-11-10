@@ -200,6 +200,14 @@ type Options struct {
 	// section then renders as nothing.
 	RefinementFeedback string
 
+	// Feedback is what the operator said should change when they answered
+	// "no" at an approve gate that redoes a step (`ask-for-changes: "true"`;
+	// plan 20261110-1130, Step 3a), stamped into ctx.State as "feedback" and
+	// cleared when that gate is approved. Rendered into ${feedback-section}
+	// so the redone agent applies it. Empty on a first pass; the section
+	// then renders as nothing.
+	Feedback string
+
 	// ParsedConcepts is the absolute path to the parsed-concepts artifact
 	// materialize_parsed_concepts writes at the start of the
 	// backlog_refinement sub-process. Substituted into
@@ -983,6 +991,9 @@ func renderPrompt(opts Options) (string, error) {
 	// Always registered: empty (renders nothing) on the refiner's first round
 	// (plan 20261109-1255).
 	params["refinement-feedback-section"] = renderRefinementFeedbackSection(opts.RefinementFeedback)
+	// Always registered: empty (renders nothing) unless the operator answered
+	// "no" at a redo gate and said what should change (plan 20261110-1130).
+	params["feedback-section"] = renderFeedbackSection(opts.Feedback)
 	// Checklist is load-bearing for the four task subtypes whose cycles
 	// consume ${checklist} (system-redesign, external-system-redesign,
 	// system-refactor, test-refactor). Same rationale as
@@ -1460,6 +1471,17 @@ func renderRefinementFeedbackSection(feedback string) string {
 	}
 	return "### Feedback from the previous round\n\n" +
 		"This is a refine round: the Three Amigos reviewed your previous draft and have not agreed yet. Your previous draft is already in the parsed-concepts file. Address this feedback and settle the open questions; change nothing else.\n\n" +
+		strings.TrimSpace(feedback) + "\n"
+}
+
+// renderFeedbackSection renders the operator's feedback from a declined
+// approve gate, or "" when there is none.
+func renderFeedbackSection(feedback string) string {
+	if strings.TrimSpace(feedback) == "" {
+		return ""
+	}
+	return "### Operator feedback\n\n" +
+		"You are redoing this step: the operator reviewed your previous output and asked for changes. Your previous output is already committed. Apply this feedback and change nothing else.\n\n" +
 		strings.TrimSpace(feedback) + "\n"
 }
 

@@ -1138,6 +1138,91 @@ func TestApproveDispatcher_QuestionExpandsParams(t *testing.T) {
 	}
 }
 
+// runApproveWithFeedback answers the approve gate from stdin and returns the
+// context; askForChanges sets the call site's ask-for-changes param, and
+// prior seeds State["feedback"] when non-empty.
+func runApproveWithFeedback(t *testing.T, stdin string, askForChanges bool, prior string) (*statemachine.Context, string) {
+	t.Helper()
+	prevTTY := stdinIsTTYFn
+	stdinIsTTYFn = func() bool { return true }
+	defer func() { stdinIsTTYFn = prevTTY }()
+
+	opts := newDriverOpts(clauderun.Deps{})
+	opts.Stdin = strings.NewReader(stdin)
+	var stdout bytes.Buffer
+	opts.Stdout = &stdout
+	fn := buildEngineFromApprove(t, opts)
+
+	ctx := statemachine.NewContext()
+	if askForChanges {
+		ctx.Params[paramAskForChanges] = "true"
+	}
+	if prior != "" {
+		ctx.Set(stateFeedback, prior)
+	}
+	if out := fn(ctx); out.Err != nil {
+		t.Fatalf("approve: unexpected err: %v", out.Err)
+	}
+	return ctx, stdout.String()
+}
+
+// A "no" at a redo gate asks what should change (a blank answer re-asks) and
+// stores the answer as State["feedback"] for the redone agent.
+func TestApproveDispatcher_NoAtRedoGateStoresFeedback(t *testing.T) {
+	ctx, out := runApproveWithFeedback(t, "n\n\n  name the actor Customer, not User  \n", true, "")
+	if got := ctx.GetString("approval-outcome"); got != "rejected" {
+		t.Fatalf("approval-outcome = %q, want rejected", got)
+	}
+	if got := ctx.GetString(stateFeedback); got != "name the actor Customer, not User" {
+		t.Errorf("feedback = %q", got)
+	}
+	if strings.Count(out, "What should change?") != 2 || !strings.Contains(out, "Please say what should change.") {
+		t.Errorf("a blank answer must re-ask; output:\n%s", out)
+	}
+}
+
+// A "yes" at a redo gate clears the feedback, so a later step does not get
+// a stale value.
+func TestApproveDispatcher_YesAtRedoGateClearsFeedback(t *testing.T) {
+	ctx, out := runApproveWithFeedback(t, "y\n", true, "earlier feedback")
+	if got := ctx.GetString("approval-outcome"); got != "approved" {
+		t.Fatalf("approval-outcome = %q, want approved", got)
+	}
+	if _, ok := ctx.State[stateFeedback]; ok {
+		t.Errorf("feedback must be cleared on approval; got %q", ctx.GetString(stateFeedback))
+	}
+	if strings.Contains(out, "What should change?") {
+		t.Errorf("a yes must not ask for feedback; output:\n%s", out)
+	}
+}
+
+// Approve sites without ask-for-changes (the approvals nested inside a redo:
+// execute-agent, execute-command, fix) neither ask nor touch the feedback,
+// so the redone agent still reads it.
+func TestApproveDispatcher_OtherSitesLeaveFeedback(t *testing.T) {
+	for _, answer := range []string{"y\n", "n\n"} {
+		ctx, out := runApproveWithFeedback(t, answer, false, "keep me")
+		if got := ctx.GetString(stateFeedback); got != "keep me" {
+			t.Errorf("answer %q: feedback = %q, want it untouched", strings.TrimSpace(answer), got)
+		}
+		if strings.Contains(out, "What should change?") {
+			t.Errorf("answer %q: a site without ask-for-changes must not ask; output:\n%s", strings.TrimSpace(answer), out)
+		}
+	}
+}
+
+// End of input after a "no" (no operator left) stores empty feedback rather
+// than failing the run.
+func TestApproveDispatcher_NoAtRedoGateEOFStoresEmpty(t *testing.T) {
+	ctx, _ := runApproveWithFeedback(t, "n\n", true, "stale")
+	if got := ctx.GetString("approval-outcome"); got != "rejected" {
+		t.Fatalf("approval-outcome = %q, want rejected", got)
+	}
+	if v, ok := ctx.State[stateFeedback]; !ok || v != "" {
+		t.Errorf("feedback = %v (set %v), want empty", v, ok)
+	}
+}
+
 func TestApproveDispatcher_YieldsWhenNoTTY(t *testing.T) {
 	// Regression for plan 20260620-1624: the root cause was
 	// newApproveDispatcher lacking the non-TTY guard newClaudeRunDispatcher

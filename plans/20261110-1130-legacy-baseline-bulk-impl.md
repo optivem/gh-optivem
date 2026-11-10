@@ -1,5 +1,7 @@
 # 2026-11-10 11:30 — Legacy baseline: bulk process (implementation)
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-10T17:19:23Z`
+
 ## TL;DR
 
 **Why:** The published article "Acceptance test coverage with AI" (`substack/articles/published/2026-11-06-PAID-ATDD-acceptance-test-coverage-with-ai.md`) describes a legacy on-ramp, but gh-optivem only has the per-ticket `cover-system-behavior` (`task/legacy-coverage`). It writes passing tests for given criteria, but generates no diagram, narratives or criteria, and starts the system again on each ticket, which is too slow for a whole-system baseline.
@@ -7,21 +9,17 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 3, part 3: `gh optivem characterize` entry point (top level, beside `kickoff`) + Step 5 docs. Parts 1, 2 and 2b plus the Step 4 tests are done and committed: Go actions, flow wiring, 3 agents, runtime gaps, transition tests (`internal/atdd/process/characterize_flow_test.go`) and the general agent-node-params check (`clauderun/node_params_test.go`). The full `go test -p 2 ./...` passes.
+Step 3b: split `legacy-use-case-writer` into the narrative writer and the criteria writer (see "Steps"); Step 3a (feedback on `approve`) is done. The flow was redesigned on 2026-11-10 to go use case by use case (see "Revised flow"); parts 1, 2, 2b, Step 3a and Step 4 are committed but wired layer by layer, so Step 3d rewires them. Steps 3b-3e build on each other and all touch `process-flow.yaml`: run them one after another, not in parallel.
 
-The entry point must:
-- Seed `ticket-id` / `issue-title` (or replace them via a preset): commit messages use `#${ticket-id} ${issue-title}`, and the resume probe is keyed by ticket. Keep the `- ${layer}` commit-message suffix, because `use_case_state.go` matches ` - ACCEPTANCE TESTS (<id>)` / ` - DSL (<id>)` labels.
-- Add `characterize` to the driver's `topProcesses` (phase banners) and the diagram's `processOrder`.
+**Execution mode (user, 2026-11-10):** autonomous. The user asked for autonomous work: incremental commits per completed step (after its tests pass, `go test -p 2`) are approved; no per-step gate.
 
-Open question (needs user, before a real rehearsal):
-- **Cross-use-case DSL reuse in bulk.** In the bulk AT layer, use case B's tests may call a DSL port method that use case A's AT added in the same bulk layer; it is not implemented until the bulk DSL layer. B's `dsl-port-changed` is then false, so B's AT verify expects green and hits the TODO stubs (unfixable by the characterization fixer → `FIX_LOOP_EXHAUSTED`). Recommendation: in characterize, derive `dsl-port-changed` for the AT layer as "any DSL port change since `system-test-start-commit` not yet followed by that use case's DSL commit", i.e. pending until the DSL layer has run for the use case. That fits the layer-by-layer decision without loosening the verify.
-- **Declined layer/diagram feedback.** Re-runs get no feedback text (`approve` collects none); redo loops are capped by `max-visits: 3`. Recommendation: accept for v1.
+Known limitations (accepted for now): TS parameterised test names may not match `remove-wip-gate`'s regex (existing); commit labels assume the entry point keeps the `- ${layer}` commit-message suffix (`use_case_state.go` matches ` - ACCEPTANCE TESTS (<id>)` / ` - DSL (<id>)`).
 
-Observation (from Step 4): the external layer makes no commit of its own; its CT/adapters/stubs/simulator are swept into the next commit (normally `ACCEPTANCE TESTS (<id>)`), so in bulk all use cases' external work lands in the first use case's AT commit. The per-ticket flow behaves the same way. It weakens "one commit per (layer, use case)" for the external layer only; revisit if resume granularity matters there.
-
-Known limitations (accepted for now): TS parameterised test names may not match `remove-wip-gate`'s regex (existing); commit labels assume the part-3 entry point keeps the `- ${layer}` commit-message suffix.
+Observation (from Step 4): the external layer makes no commit of its own; its CT/adapters/stubs/simulator are swept into the next commit (normally `ACCEPTANCE TESTS (<id>)`). The per-ticket flow behaves the same way.
 
 Wiring judgment calls (accepted, for the record): the `characterize` binding treats unset as false; new param binding `gated` (strict); new binding `stand-ins-changed` + action `check-stand-ins-changed` (restart only when the fixer touched a stub/simulator); new action `record-use-case-criteria`; new config key `use-cases-path` (default `docs/use-cases`); fixer category `test-agent`; the test-instance contract-real verify is a new node; the `channels.go` adapter-channel unroll also covers `characterize-adapter-layer`; 2 new commit-after-verify invariant exceptions in `invariants.go`.
+
+- Step 3a: feedback is opt-in per approve call site (`ask-for-changes: "true"`), not on every approve: the approvals nested inside a redo (execute-agent / execute-command / fix PRE) would otherwise clear or overwrite it before the redone agent reads it. Pinned by `TestApproveSites_RedoGatesAskForChanges` (a site asks iff its "rejected" edge loops back to a step). A "no" there asks "What should change?" (blank re-asks; end of input stores ""), State `feedback`; a "yes" there unsets it. The dispatcher renders it into the always-registered `${feedback-section}` (empty when unset), so no node params or seeding; only the two legacy writers' prompts include it so far. Step 3d: add `${feedback-section}` to the agents the tests gate (A3) redoes (contract-test, AT, DSL, adapter writers) and pass `ask-for-changes` on the new gates. The refiner's own `refinement-feedback` loop is left as is.
 
 ### Part 1 handoff (done 2026-11-10)
 
@@ -35,6 +33,16 @@ Wiring judgment calls (accepted, for the record): the `characterize` binding tre
   - Shared helper `stampESCC` extracted from `parse-ticket` (behaviour unchanged).
 
 ## Decisions (user, 2026-11-10)
+- **Redesign: use case by use case (user, 2026-11-10 afternoon; aligns the tool with the series article `substack/articles/published/2026-11-10-FREE-ATDD-new-series-acceptance-testing-in-legacy-code-with-ai.md`). Supersedes "Layer by layer, in bulk", "Hand-holding (Q8)" and the cross-use-case DSL reuse open question (it disappears: a later use case sees earlier use cases' DSL already implemented).**
+  - Phase 0: one agent writes two diagrams: the use case diagram (actors + `UC-NNN` use cases) and a **separate dependency diagram** (`A --> B` = B needs data A creates, each arrow with a one-line reason; not UML include/extend), and proposes the most important use case with reasons. Commit. Gate: approve or corrections (feedback).
+  - Pilot = the chosen use case + all its transitive dependencies; order dependencies first, ties by lower UC id; a dependency cycle halts with the cycle named. Computed deterministically (action `order-use-cases`), saved in State.
+  - Per use case, 5 steps: (1) narrative (main + alternative scenarios, **Preconditions** naming the use cases it depends on; may add a newly found dependency to the dependency diagram) -> commit -> safety gate; (2) acceptance criteria (Gherkin with real values + ESCC) -> commit -> safety gate; (3) acceptance tests passing (external -> AT -> DSL -> drivers, unattended, commit + safety gate per layer; characterization fixer); (4) remove WIP gate for this use case -> commit; (5) delete this use case's criteria -> commit.
+  - Pilot use cases: gates after steps 1, 2 and 3. Scaling use cases: no gates.
+  - **No go-ahead gate** between pilot and scaling.
+  - Scaling = all remaining use cases, same ordering rule. A newly found dependency on a not-yet-done use case moves that one ahead (re-order before continuing).
+  - A use case that can't go green halts the flow (existing human halt); never skip, later use cases may depend on it.
+  - End: final safety gate, stop system. Diagrams + narratives are kept (they are the requirements documentation).
+  - **Feedback at gates:** every gate's "changed" answer carries free text, passed to the agent that redoes the step. Added to `approve` generally (other flows get it too). Supersedes the "Declined layer/diagram feedback" open question.
 - **Vendor contract test fails during characterize (user, 2026-11-10):** route the red to `verify-tests-pass` (suite `contract-real`), so the characterization fixer handles it, with the existing human halt when it makes no progress. The per-ticket flow keeps `CONTRACT_REAL_UPSTREAM_GAP_HALT`.
 
 - **Two paths.** A separate **bulk baseline** process (one-off, whole system) plus the existing ad-hoc per-ticket `cover-system-behavior` (unchanged). The bulk flow is its own entry point, **not** a kickoff mode; kickoff stays greenfield-only (nothing in `internal/kickoff/`, which `1121` also waits on).
@@ -66,6 +74,8 @@ Wiring judgment calls (accepted, for the record): the `characterize` binding tre
 4. The core use case's tests pass against the existing system. They are characterization tests: on failure, fix the test, criterion and narrative, never the system, and never weaken an assertion.
 5. Repeat for the other use cases, one commit per layer (bulk).
 6. Delete the criteria.
+
+Updated by the series article (`substack/articles/published/2026-11-10-FREE-ATDD-new-series-acceptance-testing-in-legacy-code-with-ai.md`), which wins where they differ: phase 0 = use case diagram incl. dependencies, pick the most important use case; phase 1 pilot = that use case and the ones it depends on, in order, each through narrative -> acceptance criteria -> acceptance tests passing; phase 2 scaling = all others, one at a time, in dependency order. See "Revised flow".
 
 ## Step 1 findings
 
@@ -125,142 +135,43 @@ The overlay overrides the TDD-stage border. It is for this plan only; the genera
 
 **Restart rule (precise).** While `characterize == true`, the system under test is started once (by `characterize`) and never rebuilt or recreated. Any external-layer step that changes a producer-side stand-in (simulator or stub) is followed by `restart-external-systems` = `gh optivem system start --restart --external-only`, which runs `up -d --build --force-recreate --no-deps` on the stand-in services only, then health-waits. The stand-in services are found deterministically from `docker compose config --format json`: every service whose build context or bind-mount source resolves under a registry `stub.path` / `simulator.path`. Zero matches fails hard (never a silent no-op). With `characterize == false`, `refresh-external-producer` runs `build-system` + `start-system-restart` exactly as today.
 
-### 2a. `characterize` (top level)
+### Revised flow (2026-11-10, supersedes the old layer-by-layer 2a/2b)
 
 ```mermaid
 flowchart TD
-    C_START(( ))
-    RECORD[["NEW record-start-commits<br/>start commit per system repo<br/>+ resolve system paths and stand-in paths"]]
-    GW_SURFACE{"System paths resolved<br/>and disjoint from stand-in paths?"}
-    HALT_SURFACE((⚡))
-    START_SYS["Start System Once<br/>REUSE start-system"]
-    DIAGRAM["NEW legacy-use-case-diagram-writer<br/>diagram from source code<br/>+ proposed core use case + reasons"]
-    COMMIT_DIAGRAM["Commit Diagram<br/>REUSE commit"]
-    CONFIRM_CORE["Confirm Diagram + Core Use Case<br/>REUSE approve"]
-    GW_CORE{"Approved?"}
-
-    subgraph CORE["Core use case: every layer, human gate after each"]
-        CORE_CRIT["Criteria + ESCC layer, gated<br/>NEW characterize-layer"]
-        CORE_EXT["External layer, gated<br/>NEW characterize-layer"]
-        CORE_AT["Acceptance test layer, gated<br/>NEW characterize-layer"]
-        CORE_DSL["DSL layer, gated<br/>NEW characterize-layer"]
-        CORE_ADP["Driver adapter layer, gated<br/>NEW characterize-layer"]
-        CORE_CRIT --> CORE_EXT --> CORE_AT --> CORE_DSL --> CORE_ADP
-    end
-
-    subgraph BULK["Remaining use cases: same layers, unattended"]
-        BULK_CRIT["Criteria + ESCC layer<br/>NEW characterize-layer"]
-        BULK_EXT["External layer<br/>NEW characterize-layer"]
-        BULK_AT["Acceptance test layer<br/>NEW characterize-layer"]
-        BULK_DSL["DSL layer<br/>NEW characterize-layer"]
-        BULK_ADP["Driver adapter layer<br/>NEW characterize-layer"]
-        BULK_CRIT --> BULK_EXT --> BULK_AT --> BULK_DSL --> BULK_ADP
-    end
-
-    REMOVE_WIP[["Remove WIP Gate<br/>REUSE action remove-wip-gate"]]
-    COMMIT_WIP["Commit WIP Gate Removal<br/>REUSE commit"]
-    FINAL_GATE["Final Safety Gate<br/>NEW verify-system-unchanged"]
-    STOP_SYS["Stop System<br/>NEW stop-system"]
-    DELETE_AC[["Delete Criteria<br/>REUSE action apply-ac-policy"]]
-    COMMIT_AC["Commit Criteria Deletion<br/>REUSE commit"]
-    C_END(( ))
-
-    C_START --> RECORD --> GW_SURFACE
-    GW_SURFACE -- "no: microservices, ok=false, or overlap" --> HALT_SURFACE
-    GW_SURFACE -- yes --> START_SYS --> DIAGRAM --> COMMIT_DIAGRAM --> CONFIRM_CORE --> GW_CORE
-    GW_CORE -- "changed: feedback" --> DIAGRAM
-    GW_CORE -- approved --> CORE_CRIT
-    CORE_ADP --> BULK_CRIT
-    BULK_ADP --> REMOVE_WIP --> COMMIT_WIP --> FINAL_GATE --> STOP_SYS --> DELETE_AC --> COMMIT_AC --> C_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    classDef agentNode fill:#004085,stroke:#002752,stroke-width:2px,color:#ffffff
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    classDef newNode stroke:#6f42c1,stroke-width:4px
-    classDef changedNode stroke:#fd7e14,stroke-width:4px
-
-    class RECORD,REMOVE_WIP,DELETE_AC serviceNode
-    class DIAGRAM agentNode
-    class CONFIRM_CORE humanNode
-    class HALT_SURFACE errorEndNode
-    class RECORD,DIAGRAM,CORE_CRIT,CORE_EXT,CORE_AT,CORE_DSL,CORE_ADP,BULK_CRIT,BULK_EXT,BULK_AT,BULK_DSL,BULK_ADP,FINAL_GATE,STOP_SYS newNode
+    START(( )) --> RECORD[["record-start-commits"]] --> START_SYS["start-system (once)"]
+    START_SYS --> DIAGRAMS["legacy-use-case-diagram-writer<br/>use case diagram + dependency diagram<br/>+ proposed most important use case"]
+    DIAGRAMS --> COMMIT_D["commit"] --> GATE_D["approve (with feedback)"]
+    GATE_D -- "changed: feedback" --> DIAGRAMS
+    GATE_D -- approved --> ORDER_P[["order-use-cases: pilot"]]
+    ORDER_P --> PILOT["characterize-use-cases<br/>gated: true"]
+    PILOT --> ORDER_S[["order-use-cases: scaling"]] --> SCALE["characterize-use-cases<br/>gated: false"]
+    SCALE --> FINAL["verify-system-unchanged"] --> STOP["stop-system"] --> END(( ))
 ```
 
-- `record-start-commits` also resolves the stand-in paths (`ExternalRegistryPaths`) and halts if any overlaps a system path, so a stub write can never be excused as "system" and a system write can never be excused as "stub".
-- `apply-ac-policy` reads `merged-criteria` from State; the criteria layer appends every criterion id it wrote.
-- A project with no `external-systems:` registry has no external clones: the external layer is a no-op (`ticket-has-escc` false for every use case).
-
-### 2b. `characterize-layer` (one layer over a list of use cases)
-
-Params: `layer-process` (which wrapper runs the layer), `use-cases` (core only, or the rest), `gated` (`true` for the core use case only).
+`characterize-use-cases` (runtime loop: `select-next-use-case` + gateway) runs `characterize-use-case` per use case:
 
 ```mermaid
 flowchart TD
-    L_START(( ))
-    NEXT_UC[["NEW select-next-use-case<br/>pop next use case, re-derive its State from git<br/>incl. ESCC keys from its criteria file"]]
-    GW_MORE{"Use case left?"}
-    RUN_LAYER["Run the Layer for This Use Case<br/>process: layer-process"]
-    SAFETY["Safety Gate<br/>NEW verify-system-unchanged"]
-    GW_GATED{"gated?"}
-    APPROVE_LAYER["Approve Layer<br/>REUSE approve"]
-    GW_APPROVED{"Approved?"}
-    L_END(( ))
-
-    L_START --> NEXT_UC --> GW_MORE
-    GW_MORE -- yes --> RUN_LAYER --> SAFETY --> NEXT_UC
-    GW_MORE -- no --> GW_GATED
-    GW_GATED -- "false (bulk)" --> L_END
-    GW_GATED -- "true (core)" --> APPROVE_LAYER --> GW_APPROVED
-    GW_APPROVED -- approved --> L_END
-    GW_APPROVED -- "changed: feedback, new commit on top" --> RUN_LAYER
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    classDef humanNode fill:#ffeb3b,stroke:#fbc02d,stroke-width:2px,color:#000000
-    classDef newNode stroke:#6f42c1,stroke-width:4px
-
-    class NEXT_UC serviceNode
-    class APPROVE_LAYER humanNode
-    class NEXT_UC,SAFETY newNode
+    S(( )) --> NARR["legacy-use-case-narrative-writer"] --> C1["commit + verify-system-unchanged"] --> G1{"gated?"}
+    G1 -- true --> A1["approve (feedback)"]
+    A1 -- changed --> NARR
+    A1 -- approved --> REORDER
+    G1 -- false --> REORDER[["order-use-cases: re-order if a new dependency"]]
+    REORDER --> CRIT["legacy-use-case-criteria-writer (+ ESCC)"] --> C2["commit + verify-system-unchanged"] --> G2{"gated?"}
+    G2 -- true --> A2["approve (feedback)"]
+    A2 -- changed --> CRIT
+    A2 -- approved --> TESTS
+    G2 -- false --> TESTS["external -> AT -> DSL -> adapter layers<br/>(existing wrappers, commit + safety gate each)"]
+    TESTS --> G3{"gated?"}
+    G3 -- true --> A3["approve (feedback)"]
+    A3 -- changed --> TESTS
+    A3 -- approved --> WIP
+    G3 -- false --> WIP[["remove-wip-gate (this use case)"]] --> CW["commit"] --> DEL[["delete this use case's criteria"]] --> CD["commit"] --> E(( ))
 ```
 
-`layer-process` per layer:
-
-- Criteria: NEW `write-use-case-criteria` = NEW agent `legacy-use-case-writer` (narrative + business rules + Gherkin `UC-NNN.M` criteria, from source code; plus an `## External System Contract Criteria` section in `escc-format.md` for every external system the use case's code calls) + REUSE `commit`. `select-next-use-case` parses that file with `intake.Parse` and stamps `ticket-has-escc`, `escc-systems`, `external-system-contract-criteria`, as `parse-ticket` does.
-- External: REUSE `implement-external-drivers-if-needed` (validate registered → one unrolled clone per registered system, each self-guarded). Inside it, CHANGED `reconcile-external-contract-producer` (see 2e).
-- Acceptance tests: NEW `characterize-at-layer` = REUSE `write-and-verify-acceptance-test-code` (`task-name: write-acceptance-tests`, `expected-test-result: success`, `verify-mode: green-when-complete`, `verify-pending-on: dsl`) + REUSE action `validate-channels-registered`.
-- DSL: NEW `characterize-dsl-layer` (drawn below).
-- Driver adapters: NEW `characterize-adapter-layer` = REUSE gateway binding `system-driver-port-changed` → REUSE `implement-and-verify-system-driver-adapters` (`verify-pending-on: none`). Channel unroll stays as is.
-
-`characterize-dsl-layer` (replaces `EXTERNAL_DRIVER_PORT_CHANGED_HALT` with a route into the external layer):
-
-```mermaid
-flowchart TD
-    D_START(( ))
-    GW_DSL{"DSL Port Changed?<br/>REUSE binding dsl-port-changed"}
-    DSL["Implement and Verify DSL<br/>REUSE implement-and-verify-dsl<br/>verify-pending-on: drivers"]
-    GW_EXT{"DSL Touched External Driver Port Files?<br/>REUSE binding external-driver-port-changed"}
-    ADD_ESCC["Add ESCC for Discovered Systems<br/>NEW write-use-case-criteria<br/>feedback: names from external-driver-port-changed-paths"]
-    RESTAMP[["Re-stamp ESCC Keys<br/>NEW select-next-use-case, same use case"]]
-    EXT_LAYER["External Layer for This Use Case<br/>REUSE implement-external-drivers-if-needed"]
-    VERIFY_AT["Verify Use Case Tests Pass<br/>REUSE verify-tests-pass<br/>suite: acceptance, this use case"]
-    D_END(( ))
-
-    D_START --> GW_DSL
-    GW_DSL -- "false" --> D_END
-    GW_DSL -- "true" --> DSL --> GW_EXT
-    GW_EXT -- "false" --> D_END
-    GW_EXT -- "true: late discovery, no halt" --> ADD_ESCC --> RESTAMP --> EXT_LAYER --> VERIFY_AT --> D_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    classDef newNode stroke:#6f42c1,stroke-width:4px
-
-    class RESTAMP serviceNode
-    class ADD_ESCC,RESTAMP newNode
-```
-
-- A late external-port change means the criteria layer missed an external call. The route fixes the criteria first (they are the source of truth), then runs the external layer, then verifies the use case's ATs green (the adapter layer may be skipped if no system-driver port changed, so it cannot be relied on for the green check).
-- The DSL layer pins `verify-pending-on: drivers` (cover pins `system-drivers`), so a late external change correctly expects the AT red at this step.
+- If re-ordering puts an unfinished dependency ahead of the current use case, the current one goes back in the list behind it (its narrative commit stays; resume re-derives state from git).
+- The external, AT, DSL and adapter wrappers (`implement-external-drivers-if-needed`, `characterize-at-layer`, `characterize-dsl-layer`, `characterize-adapter-layer`) stay as built; only the outer loop changes. `characterize-layer` is replaced.
 
 ### 2c. `verify-system-unchanged` (hard safety gate)
 
@@ -418,8 +329,11 @@ flowchart TD
 
 ## Steps
 
-- [ ] Step 3: Implement in `internal/atdd/process/process-flow.yaml` (+ Go actions for the safety gate, use case loop and entry point, + runner `--external-only`). Entry point is separate from kickoff and from the per-ticket flow. Resumable: state is in git, one commit per (layer, use case), so a failure resumes at that layer.
-- [ ] Step 5: Docs: `docs/bpmn-process-design.md`, README/CLI reference for the new entry point and `system start --external-only`.
+- [ ] Step 3b: Split `legacy-use-case-writer` into `legacy-use-case-narrative-writer` (narrative + Preconditions naming dependency UC ids; may add a found dependency to the dependency diagram) and `legacy-use-case-criteria-writer` (Gherkin `UC-NNN.M` criteria + ESCC section). Both take `feedback`.
+- [ ] Step 3c: `legacy-use-case-diagram-writer` also writes the dependency diagram (Mermaid, under `use-cases-path`) and takes `feedback`; NEW action `order-use-cases` (modes: pilot = chosen + transitive deps; scaling = the rest; re-order after a narrative adds a dependency): topological, ties by UC id, cycle -> hard error. Unit tests.
+- [ ] Step 3d: Rewire `characterize` in `process-flow.yaml` to the revised flow (use case by use case, gates on pilot only, per-use-case WIP removal + criteria deletion, no go-ahead gate, final safety gate + stop at the end); update `characterize_flow_test.go` and any affected tests.
+- [ ] Step 3e: `gh optivem characterize` entry point (top level, beside `kickoff`): seed `ticket-id` / `issue-title` for commit messages (keep the `- ${layer}` suffix), add `characterize` to the driver's `topProcesses` and the diagram's `processOrder`.
+- [ ] Step 5: Docs: `docs/bpmn-process-design.md`, README/CLI reference for `characterize` and `system start --external-only`.
 
 Edits `process-flow.yaml`: never run in parallel with another plan editing it. Diagrams under `docs/process-diagram*` are regenerated by CI; don't regenerate locally.
 

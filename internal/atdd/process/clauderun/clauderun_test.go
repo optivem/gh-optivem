@@ -249,11 +249,14 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 		// Previous Align round's feedback the acceptance-criteria-refiner
 		// renders into ${refinement-feedback-section} (plan 20261109-1255).
 		RefinementFeedback: "Three Amigos feedback: the fee applies per order, not per item\nOpen questions from the previous round:\n- Is the fee waived for orders over $100?",
-		ScopeRead:          []string{"at-test"},
-		ScopeWrite:         []string{"system-driver-adapter"},
-		AttemptNumber:      1,
-		AttemptMax:         2,
-		Placeholders:       ph,
+		// Operator feedback from a declined redo gate, rendered into
+		// ${feedback-section} (plan 20261110-1130, Step 3a).
+		Feedback:      "name the actor Customer, not User",
+		ScopeRead:     []string{"at-test"},
+		ScopeWrite:    []string{"system-driver-adapter"},
+		AttemptNumber: 1,
+		AttemptMax:    2,
+		Placeholders:  ph,
 		NodeParams: map[string]string{
 			"channel":              channel,
 			"common":               "true",
@@ -3064,6 +3067,31 @@ func TestRenderScopeBlock_UnresolvableKeyErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "system-driver-port") {
 		t.Errorf("error must name the unresolved key, got: %v", err)
+	}
+}
+
+// The redone characterize writers render the operator's feedback from a
+// declined redo gate, and render nothing for it on a first pass (plan
+// 20261110-1130, Step 3a).
+func TestRenderPrompt_FeedbackSection(t *testing.T) {
+	for _, agent := range []string{"legacy-use-case-diagram-writer", "legacy-use-case-writer"} {
+		opts := renderMatrixOpts(projectconfig.ArchMonolith, "system", "")
+		opts.Agent = agent
+		got, err := renderPrompt(opts)
+		if err != nil {
+			t.Fatalf("%s: renderPrompt: %v", agent, err)
+		}
+		mustContain(t, got, "### Operator feedback")
+		mustContain(t, got, "name the actor Customer, not User")
+
+		opts.Feedback = ""
+		got, err = renderPrompt(opts)
+		if err != nil {
+			t.Fatalf("%s: renderPrompt without feedback: %v", agent, err)
+		}
+		if strings.Contains(got, "Operator feedback") {
+			t.Errorf("%s: first pass must render no feedback section", agent)
+		}
 	}
 }
 
