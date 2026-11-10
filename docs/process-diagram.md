@@ -1030,6 +1030,7 @@ flowchart TD
 flowchart TD
     RESTAMP_BEFORE_EXTERNAL[[Re-stamp the Use Case]]
     EXTERNAL_LAYER[External Layer — see § implement-external-drivers-if-needed]
+    COMMIT_EXTERNAL_SYSTEMS["Commit External Systems — see § commit<br/>category = test-commit"]
     SAFETY_GATE_EXTERNAL[Safety Gate — see § verify-system-unchanged]
     RESTAMP_BEFORE_ACCEPTANCE_TESTS[[Re-stamp the Use Case]]
     ACCEPTANCE_TEST_LAYER[Acceptance Test Layer — see § characterize-at-layer]
@@ -1048,7 +1049,8 @@ flowchart TD
     TESTS_APPROVAL_EXHAUSTED((⚡))
 
     RESTAMP_BEFORE_EXTERNAL --> EXTERNAL_LAYER
-    EXTERNAL_LAYER --> SAFETY_GATE_EXTERNAL
+    EXTERNAL_LAYER --> COMMIT_EXTERNAL_SYSTEMS
+    COMMIT_EXTERNAL_SYSTEMS --> SAFETY_GATE_EXTERNAL
     SAFETY_GATE_EXTERNAL --> RESTAMP_BEFORE_ACCEPTANCE_TESTS
     RESTAMP_BEFORE_ACCEPTANCE_TESTS --> ACCEPTANCE_TEST_LAYER
     ACCEPTANCE_TEST_LAYER --> SAFETY_GATE_ACCEPTANCE_TESTS
