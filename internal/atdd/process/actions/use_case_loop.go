@@ -136,3 +136,34 @@ func splitUseCaseIDs(raw string) []string {
 	}
 	return out
 }
+
+// CtxKeyCriterionIDs is the legacy-use-case-writer's `criterion-ids` output:
+// the UC-NNN.M ids of the criteria it wrote this dispatch.
+const CtxKeyCriterionIDs = "criterion-ids"
+
+// recordUseCaseCriteria runs after the legacy-use-case-writer in
+// write-use-case-criteria (plan 20261110-1130). It appends the criterion ids
+// the writer reported to merged-criteria, the list apply-ac-policy deletes at
+// the end of characterize, keeping the order and dropping duplicates (the
+// late-discovery route re-runs the writer on the same use case). It then
+// clears criterion-ids: the output is per dispatch and optional, so a stale
+// list must not be appended again by a later dispatch that reported none.
+func (a actions) recordUseCaseCriteria(ctx *statemachine.Context) statemachine.Outcome {
+	var ids []string
+	seen := map[string]bool{}
+	add := func(raw string) {
+		for _, id := range splitUseCaseIDs(raw) {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	add(ctx.GetString(CtxKeyMergedCriteria))
+	before := len(ids)
+	add(ctx.GetString(CtxKeyCriterionIDs))
+	ctx.Set(CtxKeyMergedCriteria, strings.Join(ids, ", "))
+	ctx.Unset(CtxKeyCriterionIDs)
+	fmt.Fprintf(a.deps.Out.Phase, "Recorded %d new criterion id(s) for deletion at the end (%d in total).\n", len(ids)-before, len(ids))
+	return statemachine.Outcome{}
+}

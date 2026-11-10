@@ -511,3 +511,53 @@ func shortSHA(sha string) string {
 	}
 	return sha
 }
+
+// CtxKeyStandInsChanged is the GATE_STAND_INS_CHANGED signal of the
+// characterization fixer MIDs.
+const CtxKeyStandInsChanged = "stand-ins-changed"
+
+// checkStandInsChanged runs after a characterization fixer dispatch (plan
+// 20261110-1130, 2d). The fixer may edit a stub or simulator; the stand-in
+// containers then run stale code until recreated, so the next test run would
+// judge the old stand-in. It stamps stand-ins-changed = (a path the fixer
+// itself modified, measured against execute-agent's pre-agent snapshot, lies
+// under a stand-in path). A declined dispatch never ran, so it changed
+// nothing; no stand-in paths (no external-systems: registry) means nothing to
+// restart. A missing snapshot on a dispatch that ran is a wiring bug.
+func (a actions) checkStandInsChanged(ctx *statemachine.Context) statemachine.Outcome {
+	standIns := splitNonEmptyLines(ctx.GetString(CtxKeyStandInPaths))
+	if len(standIns) == 0 || ctx.GetString("approval-outcome") == "rejected" {
+		ctx.Set(CtxKeyStandInsChanged, false)
+		return statemachine.Outcome{}
+	}
+	snapshot, ok := ctx.State[CtxKeyPreAgentFingerprint].(WorkingTreeFingerprint)
+	if !ok {
+		return statemachine.Outcome{Err: fmt.Errorf("check-stand-ins-changed: %s not set — the fixer must run through execute-agent (snapshot-working-tree) first", CtxKeyPreAgentFingerprint)}
+	}
+	modified, err := a.modifiedPathsSinceFingerprint(context.Background(), snapshot)
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("check-stand-ins-changed: %w", err)}
+	}
+	var touched []string
+	for _, p := range modified {
+		if pathInScope(cleanRelPath(p), standIns) {
+			touched = append(touched, p)
+		}
+	}
+	ctx.Set(CtxKeyStandInsChanged, len(touched) > 0)
+	if len(touched) > 0 {
+		fmt.Fprintf(a.deps.Out.Phase, "The fixer changed external stand-ins (%s); restarting them.\n", strings.Join(touched, ", "))
+	}
+	return statemachine.Outcome{}
+}
+
+// splitNonEmptyLines splits a newline-joined State value, dropping blanks.
+func splitNonEmptyLines(raw string) []string {
+	var out []string
+	for line := range strings.SplitSeq(raw, "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
+}

@@ -42,6 +42,15 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"refactor-system-structure",
 		"refactor-test-structure",
 		"review-code-and-architecture",
+		// TOP — legacy baseline (plan 20261110-1130)
+		"characterize",
+		"characterize-layer",
+		"write-use-case-criteria",
+		"characterize-at-layer",
+		"characterize-dsl-layer",
+		"characterize-adapter-layer",
+		"verify-system-unchanged",
+		"refresh-external-producer",
 		// HIGH
 		"implement-external-drivers-if-needed",
 		"write-acceptance-tests-and-system-adapters",
@@ -74,7 +83,13 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"refine-acceptance-criteria",
 		"merge-story-into-use-cases",
 		"merge-use-cases",
+		"write-legacy-use-case-diagram",
+		"write-legacy-use-case",
+		"fix-characterization-failing-tests",
+		"fix-characterization-passing-tests",
 		// MID — command tasks
+		"restart-external-systems",
+		"stop-system",
 		"compile-tests",
 		"build-system",
 		"start-system",
@@ -454,7 +469,8 @@ func TestVerifyTestsPass_NoProgressGuardWiring(t *testing.T) {
 
 	// 2. The check feeds the progress gateway, which forks dispatch vs. halt.
 	wantEdge(t, p, "CHECK_FIX_PROGRESS", "GATE_FIX_PROGRESSING", "")
-	wantEdge(t, p, "GATE_FIX_PROGRESSING", "FIX_UNEXPECTED_FAILING_TESTS", "fix-loop-progressing == true")
+	wantEdge(t, p, "GATE_FIX_PROGRESSING", "GATE_CHARACTERIZE", "fix-loop-progressing == true")
+	wantEdge(t, p, "GATE_CHARACTERIZE", "FIX_UNEXPECTED_FAILING_TESTS", "characterize == false")
 	wantEdge(t, p, "GATE_FIX_PROGRESSING", "FIX_LOOP_NO_PROGRESS_EXHAUSTED", "fix-loop-progressing == false")
 
 	// 3. CHECK_FIX_PROGRESS is a service-task bound to the check-fix-progress
@@ -737,7 +753,7 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	}
 	// The driver-adapter impl now flows straight into build/start → probe.
 	wantEdge(t, ct, "IMPLEMENT_EXTERNAL_SYSTEM_DRIVER_ADAPTERS", "RECONCILE_EXTERNAL_CONTRACT_PRODUCER", "")
-	wantEdge(t, recon, "START_SYSTEM_AFTER_DRIVER", "PROBE_CONTRACT_REAL", "")
+	wantEdge(t, recon, "REFRESH_AFTER_DRIVER", "PROBE_CONTRACT_REAL", "")
 
 	// 2. The probe runs the suite via run-tests (no asserted polarity); the
 	//    outcome gateway routes on the stamped test-outcome.
@@ -774,13 +790,14 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	}
 	// simulator: we own it → implement → rebuild/restart → GREEN → stub side.
 	wantEdge(t, recon, "GATE_CONTRACT_REAL_RED_KIND", "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "real-kind == simulator")
-	wantEdge(t, recon, "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "BUILD_SYSTEM_AFTER_SIMULATOR", "")
-	wantEdge(t, recon, "BUILD_SYSTEM_AFTER_SIMULATOR", "START_SYSTEM_AFTER_SIMULATOR", "")
-	wantEdge(t, recon, "START_SYSTEM_AFTER_SIMULATOR", "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "")
+	wantEdge(t, recon, "IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR", "REFRESH_AFTER_SIMULATOR", "")
+	wantEdge(t, recon, "REFRESH_AFTER_SIMULATOR", "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "")
 	wantEdge(t, recon, "VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR", "START_SYSTEM_BEFORE_STUB_PROBE", "")
 	// test-instance: we do NOT own it → upstream contract-gap hard halt (an
-	// error-end-event so it bubbles up, never the code-fixer).
-	wantEdge(t, recon, "GATE_CONTRACT_REAL_RED_KIND", "CONTRACT_REAL_UPSTREAM_GAP_HALT", "real-kind == test-instance")
+	// error-end-event so it bubbles up, never the code-fixer) on per-ticket
+	// flows (characterize == false, plan 20261110-1130).
+	wantEdge(t, recon, "GATE_CONTRACT_REAL_RED_KIND", "GATE_CHARACTERIZE", "real-kind == test-instance")
+	wantEdge(t, recon, "GATE_CHARACTERIZE", "CONTRACT_REAL_UPSTREAM_GAP_HALT", "characterize == false")
 	if n := recon.Nodes["CONTRACT_REAL_UPSTREAM_GAP_HALT"]; n.Kind != statemachine.ErrorEndEvent {
 		t.Errorf("CONTRACT_REAL_UPSTREAM_GAP_HALT kind = %v, want statemachine.ErrorEndEvent", n.Kind)
 	}
@@ -838,9 +855,8 @@ func TestContractTestHIGH_OutcomeDrivenFork(t *testing.T) {
 	wantEdge(t, recon, "PROBE_CONTRACT_STUB_ISOLATED", "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "")
 	wantEdge(t, recon, "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "RECONCILE_PRODUCER_END", "test-outcome == pass")
 	wantEdge(t, recon, "GATE_CONTRACT_STUB_ISOLATED_OUTCOME", "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "test-outcome == fail")
-	wantEdge(t, recon, "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "")
-	wantEdge(t, recon, "BUILD_SYSTEM_AFTER_STUBS_ISOLATED", "START_SYSTEM_AFTER_STUBS_ISOLATED", "")
-	wantEdge(t, recon, "START_SYSTEM_AFTER_STUBS_ISOLATED", "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "")
+	wantEdge(t, recon, "IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED", "REFRESH_AFTER_STUBS_ISOLATED", "")
+	wantEdge(t, recon, "REFRESH_AFTER_STUBS_ISOLATED", "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "")
 	wantEdge(t, recon, "VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED", "RECONCILE_PRODUCER_END", "")
 	if n := recon.Nodes["VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED"]; n.Raw.Params["test-names"] != "${isolated-test-names}" {
 		t.Errorf("isolated verify test-names = %q, want ${isolated-test-names}", n.Raw.Params["test-names"])
@@ -1493,7 +1509,13 @@ func TestBackEdgesAreAudited(t *testing.T) {
 		// UPDATE_GUIDELINES, then GUIDELINES_LOOP_EXHAUSTED.
 		"review-code-and-architecture: COMMIT_GUIDELINES -> HUMAN_REVIEW": true,
 		"verify-tests-fail: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":          true,
-		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":          true,
+		// Characterize (plan 20261110-1130). The use case loop ends when
+		// select-next-use-case's cursor passes the last use case (it only moves
+		// forward); the diagram redo is capped by max-visits 3 on
+		// CONFIRM_CORE_USE_CASE, then CORE_USE_CASE_CONFIRMATION_EXHAUSTED.
+		"characterize-layer: SAFETY_GATE -> SELECT_NEXT_USE_CASE":              true,
+		"characterize: GATE_CORE_USE_CASE_CONFIRMED -> WRITE_USE_CASE_DIAGRAM": true,
+		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":               true,
 	}
 	got := map[string]bool{}
 	for name, p := range eng.Processes {

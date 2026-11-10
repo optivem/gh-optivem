@@ -89,7 +89,7 @@ func TestPhaseScopes_LayersAreCanonical(t *testing.T) {
 	}
 	check := func(processName, list string, layers []string) {
 		for _, layer := range layers {
-			if canonical[layer] || FamilyAPathKeysInScope[layer] || TierPathKeysInScope[layer] || ExternalRegistryPathKeysInScope[layer] || GuidelinesPathKeysInScope[layer] {
+			if canonical[layer] || FamilyAPathKeysInScope[layer] || TierPathKeysInScope[layer] || ExternalRegistryPathKeysInScope[layer] || GuidelinesPathKeysInScope[layer] || UseCasesPathKeysInScope[layer] {
 				continue
 			}
 			t.Errorf("MID %q %s: layer %q not in canonicalPathKeys(), {system-path}, or the external-systems registry family", processName, list, layer)
@@ -341,6 +341,9 @@ func TestPromptInlineScopeKeys_MatchPhaseScope(t *testing.T) {
 		layerKeys[k] = true
 	}
 	for k := range GuidelinesPathKeysInScope {
+		layerKeys[k] = true
+	}
+	for k := range UseCasesPathKeysInScope {
 		layerKeys[k] = true
 	}
 

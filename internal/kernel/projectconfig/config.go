@@ -703,6 +703,7 @@ func (c *Config) PlaceholderMap() map[string]string {
 		out[ComponentTestPathKey] = v
 	}
 	out[GuidelinesPathKey] = c.GuidelinesPath()
+	out[UseCasesPathKey] = c.UseCasesPath()
 	out["architecture"] = c.System.Architecture
 	out["system-path"] = c.System.Path
 	out["system-db-migration-path"] = c.System.DbMigrationPath
@@ -1221,6 +1222,7 @@ func (c *Config) validateSystemTestPaths() error {
 	}
 	// Optional key with a default (see GuidelinesPath): allowed, not required.
 	canonical[GuidelinesPathKey] = struct{}{}
+	canonical[UseCasesPathKey] = struct{}{}
 	// Sorted iteration so errors are deterministic when multiple keys
 	// could trip the rule.
 	for _, k := range sortedKeys(c.SystemTest.Paths) {

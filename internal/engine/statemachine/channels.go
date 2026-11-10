@@ -26,6 +26,10 @@ const (
 	writeAcceptanceTestsAndSystemAdaptersProcess  = "write-acceptance-tests-and-system-adapters"
 	implementSystemDriverAdaptersAnchor           = "IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS"
 	implementAndVerifySystemDriverAdaptersProcess = "implement-and-verify-system-driver-adapters"
+	// The characterize flow's driver adapter layer (plan 20261110-1130, 2b)
+	// carries the same gate → anchor → end shape, so it unrolls per channel
+	// with the identical baking.
+	characterizeAdapterLayerProcess = "characterize-adapter-layer"
 
 	// External System driver-adapter contract cycle —
 	// implement-external-drivers-if-needed's
@@ -158,27 +162,40 @@ func (e *Engine) UnrollSystemChannels(channels []string) error {
 // only when the driver port changed), which keeps the no-arg full run's
 // behaviour intact. The unroll is strictly linear (gate → ch0 → … → chN-1 →
 // WAV_AT_END), no loopback.
+//
+// TWO anchors are unrolled with the identical per-channel baking: the
+// write-acceptance-tests-and-system-adapters anchor and the characterize
+// flow's characterize-adapter-layer anchor (plan 20261110-1130). Like
+// UnrollExternalSystems, a missing or drifted anchor in either errors.
 func (e *Engine) UnrollSystemDriverAdapterChannels(channels []string) error {
-	return e.unrollAnchor(
-		writeAcceptanceTestsAndSystemAdaptersProcess,
-		implementSystemDriverAdaptersAnchor,
-		implementAndVerifySystemDriverAdaptersProcess,
-		channels,
-		func(_ int, ch string, anchorParams map[string]string) map[string]string {
-			params := make(map[string]string, len(anchorParams)+3)
-			maps.Copy(params, anchorParams)
-			params["channel"] = ch
-			params["suite"] = "acceptance-" + ch
-			// Per-channel commit-label discriminator (e.g. " (api)") appended to
-			// the hard-coded "SYSTEM DRIVER ADAPTERS" label, so each channel's
-			// adapter commit reads distinctly. The static anchor binds "".
-			params["layer-suffix"] = fmt.Sprintf(" (%s)", ch)
-			return params
-		},
-		func(ch string) string {
-			return fmt.Sprintf("Implement System Driver Adapters (%s)", strings.ToUpper(ch))
-		},
-	)
+	bake := func(_ int, ch string, anchorParams map[string]string) map[string]string {
+		params := make(map[string]string, len(anchorParams)+3)
+		maps.Copy(params, anchorParams)
+		params["channel"] = ch
+		params["suite"] = "acceptance-" + ch
+		// Per-channel commit-label discriminator (e.g. " (api)") appended to
+		// the hard-coded "SYSTEM DRIVER ADAPTERS" label, so each channel's
+		// adapter commit reads distinctly. It is appended to the anchor's own
+		// suffix: "" on the ticket path, the use case id on characterize.
+		params["layer-suffix"] = anchorParams["layer-suffix"] + fmt.Sprintf(" (%s)", ch)
+		return params
+	}
+	nameFor := func(ch string) string {
+		return fmt.Sprintf("Implement System Driver Adapters (%s)", strings.ToUpper(ch))
+	}
+	for _, procName := range []string{writeAcceptanceTestsAndSystemAdaptersProcess, characterizeAdapterLayerProcess} {
+		if err := e.unrollAnchor(
+			procName,
+			implementSystemDriverAdaptersAnchor,
+			implementAndVerifySystemDriverAdaptersProcess,
+			channels,
+			bake,
+			nameFor,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // UnrollExternalSystems statically unrolls the external-system driver-adapter

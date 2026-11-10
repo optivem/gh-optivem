@@ -213,6 +213,10 @@ func resolveLayer(layer string, cfg *projectconfig.Config) ([]string, error) {
 		// Optional with a deterministic default: never "not present".
 		return []string{cfg.GuidelinesPath()}, nil
 	}
+	if atdd.UseCasesPathKeysInScope[layer] {
+		// Optional with a deterministic default: never "not present".
+		return []string{cfg.UseCasesPath()}, nil
+	}
 	if atdd.FamilyAPathKeysInScope[layer] {
 		v, err := resolveFamilyAPath(layer, cfg)
 		if err != nil {

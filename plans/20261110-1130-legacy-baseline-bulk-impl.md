@@ -1,5 +1,7 @@
 # 2026-11-10 11:30 — Legacy baseline: bulk process (implementation)
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-10T13:51:53Z`
+
 ## TL;DR
 
 **Why:** The published article "Acceptance test coverage with AI" (`substack/articles/published/2026-11-06-PAID-ATDD-acceptance-test-coverage-with-ai.md`) describes a legacy on-ramp, but gh-optivem only has the per-ticket `cover-system-behavior` (`task/legacy-coverage`). It writes passing tests for given criteria, but generates no diagram, narratives or criteria, and starts the system again on each ticket, which is too slow for a whole-system baseline.
@@ -7,18 +9,23 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 3, part 2: `process-flow.yaml` wiring + the 3 new agents + Step 4 process-transition tests. Part 1 (Go code) is done; see `### Part 1 handoff` below for the exact names to wire. All design questions are answered (see `## Decisions`).
+Step 3, part 2b: close the runtime gaps the wiring left (list below), then Step 4 transition tests. Wiring and agents are done (commit `5ddc36f4` agents, then the wiring commit after it). All existing tests pass, but these gaps fail only at runtime; no test catches them. All are covered by existing decisions; no new design questions.
 
-Step 3 work list (never in parallel with another plan that edits `process-flow.yaml`):
+Runtime gaps (fix in this order; mainly `process-flow.yaml` + `internal/atdd/process/actions/use_case_loop.go`):
 
-- `internal/atdd/process/process-flow.yaml`:
-  - NEW processes: `characterize`, `characterize-layer`, `write-use-case-criteria`, `characterize-at-layer`, `characterize-dsl-layer`, `characterize-adapter-layer`, `verify-system-unchanged`, `refresh-external-producer`, `restart-external-systems`, `stop-system`, `fix-characterization-failing-tests`, `fix-characterization-passing-tests`.
-  - CHANGED: `verify-tests-pass`, `verify-tests-fail` (characterize gateway); `reconcile-external-contract-producer` (4 build+restart pairs → `refresh-external-producer`; plus the new-question edge on `GATE_CONTRACT_REAL_RED_KIND`); `main` `preset-state` (`characterize: false`).
-  - REUSE as is: `implement-external-drivers-if-needed` (external layer, already unrolled per system), `write-and-verify-acceptance-test-code`, `implement-and-verify-dsl`, `implement-and-verify-system-driver-adapters`, `start-system`, `approve`, `commit`.
-- Resume: add `system-start-commits`, `stand-in-paths`, `assertion-checked-commit`, `use-case-cursors`, `use-case-id` to the resume config's `ExtraStateKeys` (driver/wiring side), so start commits and cursors survive a resume.
-- Gate binding for the `characterize` State flag (`GW_CHAR` in 2d/2e) is not yet registered in `internal/atdd/process/gates/bindings.go`; add it with the wiring.
-- New agents (`internal/atdd/runtime/agents/` + embed list): `legacy-use-case-diagram-writer`, `legacy-use-case-writer`, `characterization-test-fixer`.
-- Entry point: `gh optivem characterize` command (top level, beside `kickoff`).
+1. Per-use-case State not re-derived in bulk (Decision "Per-use-case State"): `select-next-use-case` stamps only `use-case-id` + ESCC keys, so in the bulk DSL/adapter layers `test-names`, `dsl-port-changed`, `system-driver-port-changed` hold the previous use case's values. Re-derive from git: tests tagged `UC-NNN`, port changes from that use case's commits.
+2. `acceptance-criteria` / `scenario-criteria` never stamped for a use case, so the AT layer's strict `${acceptance-criteria}` fails. Stamp them from the use case file in `select-next-use-case`.
+3. `remove-wip-gate` at the end sees only the last use case's `test-names`; it must cover every use case's tagged tests.
+4. Empty `other-use-cases` (system with only the core use case) hard-errors in `select-next-use-case`; it must give `use-case-left=false`.
+5. Stand-in check edge case: if the fixer's output fails validation and the nested fix re-snapshots, earlier stand-in edits are missed and no restart happens.
+6. Test that every agent's required node params (`use-case-id`, `discovered-external-port-paths`, `verify-failure-output`) are supplied along each call path (with Step 4).
+
+Left for part 3 (entry point), not part 2b:
+- Commit messages use `#${ticket-id} ${issue-title}` and the resume probe is keyed by ticket; the `characterize` entry point must seed these (or a preset).
+- `characterize` is not in the driver's `topProcesses` (phase banners) or the diagram's `processOrder`.
+- Declined layer/diagram re-runs get no feedback text (`approve` collects none); redo loops are capped by `max-visits: 3`. Accept as v1 or add feedback capture.
+
+Wiring judgment calls (accepted, for the record): the `characterize` binding treats unset as false; new param binding `gated` (strict); new binding `stand-ins-changed` + action `check-stand-ins-changed` (restart only when the fixer touched a stub/simulator); new action `record-use-case-criteria`; new config key `use-cases-path` (default `docs/use-cases`); fixer category `test-agent`; the test-instance contract-real verify is a new node; the `channels.go` adapter-channel unroll also covers `characterize-adapter-layer`; 2 new commit-after-verify invariant exceptions in `invariants.go`.
 
 ### Part 1 handoff (done 2026-11-10)
 

@@ -181,6 +181,18 @@ explicit-only rule above:
 Why optional: a new required key is a breaking config-schema change (see
 "Release ordering" below), and nothing outside the review needs the folder.
 
+### Optional key: `use-cases-path`
+
+`use-cases-path` names the use cases folder (narratives, business rules and
+`UC-NNN.M` criteria). The characterize flow's `characterization-test-fixer`
+writes it (plan 20261110-1130): a failing characterization test may mean the
+criterion or the narrative is wrong. Same rules as `guidelines-path`:
+accepted, not required; when unset it resolves to `docs/use-cases`
+(`projectconfig.DefaultUseCasesPath`, via `Config.UseCasesPath()`, equal to
+`spec.yaml`'s default `specDir:`), for both the `${use-cases-path}`
+placeholder and the scope key (`UseCasesPathKeysInScope`). A project that
+moves its use cases sets both `specDir:` and this key.
+
 ### Ownership: scaffold-authoritative at `init`, operator-owned afterwards
 
 `gh optivem init` writes the `system-test.paths:` block as the
@@ -296,7 +308,7 @@ doctrine literal — always present, not project-customizable.
 - **Non-canonical `system-test.paths.<name>` keys are rejected** (per
   plan 20260518-1530 item 5). The validator enumerates
   `system-test.paths:` keys against `CanonicalPathKeys()` plus the optional
-  `guidelines-path` and hard-errors on any unknown name. Catches typos and
+  `guidelines-path` and `use-cases-path` and hard-errors on any unknown name. Catches typos and
   stale keys.
 - **`${...}` markers in `system-test.paths:` values are rejected** (per
   plan 20260518-1530 item 5). Under SSoT, paths must be fully resolved

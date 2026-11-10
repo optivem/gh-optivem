@@ -207,6 +207,14 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("system-unchanged", b.systemUnchanged)
 	r.Register("no-assertion-removed", b.noAssertionRemoved)
 	r.Register("use-case-left", b.useCaseLeft)
+	// characterize (GW_CHAR in 2d/2e): routes the verify fix loops and the
+	// external producer refresh to the characterization variants. gated
+	// (GW_GATED in characterize-layer): the core use case's layers get a
+	// human approval. stand-ins-changed: the characterization fixer edited
+	// a stub/simulator, so the stand-ins are restarted.
+	r.Register("characterize", b.characterize)
+	r.Register("gated", b.gated)
+	r.Register("stand-ins-changed", b.standInsChanged)
 	// Cover-path mode-aware acceptance-test verify gate + its case-D
 	// terminal-verify gate (plan 20260606-1518). The shared verify gate
 	// routes on at-verify-expectation so the cover path expects AT green
@@ -580,6 +588,37 @@ func (b bindings) noAssertionRemoved(ctx *statemachine.Context) statemachine.Out
 // stamps it.
 func (b bindings) useCaseLeft(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "use-case-left")
+}
+
+// characterize is GW_CHAR (plan 20261110-1130, 2d/2e). The characterize
+// process presets characterize=true and main presets false. Unset reads as
+// false, not as an error: verify-tests-pass / verify-tests-fail and
+// reconcile-external-contract-producer are also reached from entry points
+// that run no preset (refine-ticket, refactor, a --target slice), and every
+// one of those is a per-ticket flow, never a characterization.
+func (b bindings) characterize(ctx *statemachine.Context) statemachine.Outcome {
+	if _, ok := ctx.State["characterize"]; !ok {
+		return statemachine.Outcome{Bool: false}
+	}
+	return boolStateGate(ctx, "characterize")
+}
+
+// gated is GW_GATED in characterize-layer: true for the core use case's
+// layers (human approval after each), false for the bulk passes. Every
+// characterize-layer call site passes the param, so unset is a wiring bug.
+func (b bindings) gated(ctx *statemachine.Context) statemachine.Outcome {
+	raw := strings.TrimSpace(ctx.Params["gated"])
+	yes, ok := promptio.ParseYN(raw)
+	if !ok || raw == "" {
+		return statemachine.Outcome{Err: fmt.Errorf("gated: param is %q (expected true|false); every characterize-layer call site must pass gated", raw)}
+	}
+	return statemachine.Outcome{Bool: yes}
+}
+
+// standInsChanged is GATE_STAND_INS_CHANGED in the characterization fixer
+// MIDs; check-stand-ins-changed always stamps it.
+func (b bindings) standInsChanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "stand-ins-changed")
 }
 
 // atVerifyExpectation is the mode-aware acceptance-test verify gate (plan

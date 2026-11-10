@@ -157,6 +157,11 @@ processes:
   main:
     name: "Main"
     diagram-section-order: 1
+    # Per-ticket flows never characterize (plan 20261110-1130): the
+    # `characterize` gateways in verify-tests-pass / verify-tests-fail and
+    # refresh-external-producer keep their existing routes.
+    preset-state:
+      characterize: false
     start: START
     nodes:
       - id: START
@@ -1120,6 +1125,597 @@ processes:
     sequence-flows:
       - {from: REFACTOR_AND_VERIFY_TESTS,      to: REFACTOR_TEST_STRUCTURE_END}
 
+  # Legacy baseline (plan 20261110-1130): `gh optivem characterize` baselines a
+  # whole legacy system, layer by layer, with characterization tests. The
+  # system is the truth and never changes: it is started once and stopped once,
+  # and verify-system-unchanged halts the run if any system code changed.
+  #
+  #   RECORD_START_COMMITS  pins a start commit per system repo and resolves the
+  #                         system and stand-in paths; hard error (no gateway)
+  #                         on microservices, unresolved or overlapping paths.
+  #   WRITE_USE_CASE_DIAGRAM the agent writes the use case diagram from the
+  #                         source code and proposes the core use case; the
+  #                         human confirms both (CONFIRM_CORE).
+  #   CORE_*                the core use case through every layer, with a human
+  #                         approval after each (gated: "true").
+  #   BULK_*                the other use cases, layer by layer, unattended.
+  #   then the WIP gate removal, the final safety gate, the system stop and the
+  #   deletion of the criteria (`gh optivem spec generate` renders them back
+  #   from the tagged tests).
+  #
+  # Layer order per use case: criteria (incl. ESCC) -> external -> acceptance
+  # tests -> DSL -> system driver adapters. The external layer runs before the
+  # acceptance tests so the stubs exist when they run.
+  characterize:
+    name: "Characterize Legacy System"
+    diagram-section-order: 12
+    preset-state:
+      characterize: true
+      # Port-changed flags start false: the adapter layer's gate reads
+      # system-driver-port-changed even when no DSL change set it.
+      system-driver-port-changed: false
+      external-driver-port-changed: false
+    start: RECORD_START_COMMITS
+    nodes:
+      - id: RECORD_START_COMMITS
+        type: service-task
+        action: record-start-commits
+        name: "Record System Start Commits"
+
+      # The only cold start of the run; every inner start-system is a no-op
+      # health probe on the running system.
+      - id: START_SYSTEM
+        type: call-activity
+        process: start-system
+        name: "Start System Once"
+
+      - id: WRITE_USE_CASE_DIAGRAM
+        type: call-activity
+        process: write-legacy-use-case-diagram
+        name: "Write the Use Case Diagram"
+
+      - id: COMMIT_USE_CASE_DIAGRAM
+        type: call-activity
+        process: commit
+        name: "Commit the Use Case Diagram"
+        params:
+          category: test-commit
+          layer: "USE CASE DIAGRAM"
+
+      # A "no" re-runs the diagram writer (capped).
+      - id: CONFIRM_CORE_USE_CASE
+        type: call-activity
+        process: approve
+        name: "Confirm the Diagram and the Core Use Case"
+        params:
+          question: "Approve the use case diagram and the core use case ${core-use-case}? ${core-use-case-reasons}"
+          category: human
+        max-visits: 3
+        on-max-visits: CORE_USE_CASE_CONFIRMATION_EXHAUSTED
+
+      - id: GATE_CORE_USE_CASE_CONFIRMED
+        type: gateway
+        binding: approval-outcome
+        name: "Approved?"
+
+      - id: CORE_CRITERIA
+        type: call-activity
+        process: characterize-layer
+        name: "Core Use Case: Criteria Layer"
+        params:
+          layer-process: write-use-case-criteria
+          use-cases: ${core-use-case}
+          gated: "true"
+          discovered-external-port-paths: ""
+
+      - id: CORE_EXTERNAL
+        type: call-activity
+        process: characterize-layer
+        name: "Core Use Case: External Layer"
+        params:
+          layer-process: implement-external-drivers-if-needed
+          use-cases: ${core-use-case}
+          gated: "true"
+
+      - id: CORE_ACCEPTANCE_TESTS
+        type: call-activity
+        process: characterize-layer
+        name: "Core Use Case: Acceptance Test Layer"
+        params:
+          layer-process: characterize-at-layer
+          use-cases: ${core-use-case}
+          gated: "true"
+
+      - id: CORE_DSL
+        type: call-activity
+        process: characterize-layer
+        name: "Core Use Case: DSL Layer"
+        params:
+          layer-process: characterize-dsl-layer
+          use-cases: ${core-use-case}
+          gated: "true"
+
+      - id: CORE_SYSTEM_DRIVER_ADAPTERS
+        type: call-activity
+        process: characterize-layer
+        name: "Core Use Case: System Driver Adapter Layer"
+        params:
+          layer-process: characterize-adapter-layer
+          use-cases: ${core-use-case}
+          gated: "true"
+
+      - id: BULK_CRITERIA
+        type: call-activity
+        process: characterize-layer
+        name: "Other Use Cases: Criteria Layer"
+        params:
+          layer-process: write-use-case-criteria
+          use-cases: ${other-use-cases}
+          gated: "false"
+          discovered-external-port-paths: ""
+
+      - id: BULK_EXTERNAL
+        type: call-activity
+        process: characterize-layer
+        name: "Other Use Cases: External Layer"
+        params:
+          layer-process: implement-external-drivers-if-needed
+          use-cases: ${other-use-cases}
+          gated: "false"
+
+      - id: BULK_ACCEPTANCE_TESTS
+        type: call-activity
+        process: characterize-layer
+        name: "Other Use Cases: Acceptance Test Layer"
+        params:
+          layer-process: characterize-at-layer
+          use-cases: ${other-use-cases}
+          gated: "false"
+
+      - id: BULK_DSL
+        type: call-activity
+        process: characterize-layer
+        name: "Other Use Cases: DSL Layer"
+        params:
+          layer-process: characterize-dsl-layer
+          use-cases: ${other-use-cases}
+          gated: "false"
+
+      - id: BULK_SYSTEM_DRIVER_ADAPTERS
+        type: call-activity
+        process: characterize-layer
+        name: "Other Use Cases: System Driver Adapter Layer"
+        params:
+          layer-process: characterize-adapter-layer
+          use-cases: ${other-use-cases}
+          gated: "false"
+
+      - id: REMOVE_WIP_GATE
+        type: service-task
+        action: remove-wip-gate
+        name: "Remove WIP Gate From Green Tests"
+
+      - id: COMMIT_WIP_GATE_REMOVAL
+        type: call-activity
+        process: commit
+        name: "Commit WIP Gate Removal"
+        params:
+          category: test-commit
+          layer: "WIP GATE REMOVAL"
+
+      - id: FINAL_SAFETY_GATE
+        type: call-activity
+        process: verify-system-unchanged
+        name: "Final Safety Gate"
+
+      - id: STOP_SYSTEM
+        type: call-activity
+        process: stop-system
+        name: "Stop System"
+
+      - id: APPLY_AC_POLICY
+        type: service-task
+        action: apply-ac-policy
+        name: "Delete the Criteria"
+
+      - id: COMMIT_AC_DELETION
+        type: call-activity
+        process: commit
+        name: "Commit Criteria Deletion"
+        params:
+          category: test-commit
+          layer: "CRITERIA DELETION"
+
+      - id: CHARACTERIZE_END
+        type: end-event
+        name: "Legacy System Characterized"
+
+      # Loop-cap halt. The `_EXHAUSTED` suffix marks it for the
+      # halt-terminals-are-error-end invariant.
+      - id: CORE_USE_CASE_CONFIRMATION_EXHAUSTED
+        type: error-end-event
+        name: "Core Use Case Not Confirmed — the diagram or the core use case was declined 3 times (fix the use case diagram by hand and re-run)"
+
+    sequence-flows:
+      - {from: RECORD_START_COMMITS,          to: START_SYSTEM}
+      - {from: START_SYSTEM,                  to: WRITE_USE_CASE_DIAGRAM}
+      - {from: WRITE_USE_CASE_DIAGRAM,        to: COMMIT_USE_CASE_DIAGRAM}
+      - {from: COMMIT_USE_CASE_DIAGRAM,       to: CONFIRM_CORE_USE_CASE}
+      - {from: CONFIRM_CORE_USE_CASE,         to: GATE_CORE_USE_CASE_CONFIRMED}
+      - {from: GATE_CORE_USE_CASE_CONFIRMED,  to: CORE_CRITERIA,          when: "approval-outcome == approved"}
+      - {from: GATE_CORE_USE_CASE_CONFIRMED,  to: WRITE_USE_CASE_DIAGRAM, when: "approval-outcome == rejected"}
+      - {from: CORE_CRITERIA,                 to: CORE_EXTERNAL}
+      - {from: CORE_EXTERNAL,                 to: CORE_ACCEPTANCE_TESTS}
+      - {from: CORE_ACCEPTANCE_TESTS,         to: CORE_DSL}
+      - {from: CORE_DSL,                      to: CORE_SYSTEM_DRIVER_ADAPTERS}
+      - {from: CORE_SYSTEM_DRIVER_ADAPTERS,   to: BULK_CRITERIA}
+      - {from: BULK_CRITERIA,                 to: BULK_EXTERNAL}
+      - {from: BULK_EXTERNAL,                 to: BULK_ACCEPTANCE_TESTS}
+      - {from: BULK_ACCEPTANCE_TESTS,         to: BULK_DSL}
+      - {from: BULK_DSL,                      to: BULK_SYSTEM_DRIVER_ADAPTERS}
+      - {from: BULK_SYSTEM_DRIVER_ADAPTERS,   to: REMOVE_WIP_GATE}
+      - {from: REMOVE_WIP_GATE,               to: COMMIT_WIP_GATE_REMOVAL}
+      - {from: COMMIT_WIP_GATE_REMOVAL,       to: FINAL_SAFETY_GATE}
+      - {from: FINAL_SAFETY_GATE,             to: STOP_SYSTEM}
+      - {from: STOP_SYSTEM,                   to: APPLY_AC_POLICY}
+      - {from: APPLY_AC_POLICY,               to: COMMIT_AC_DELETION}
+      - {from: COMMIT_AC_DELETION,            to: CHARACTERIZE_END}
+
+  # One characterize layer over a list of use cases (plan 20261110-1130, 2b).
+  # Params: `layer-process` (the layer wrapper), `use-cases` (the core use
+  # case, or the others), `gated` ("true" for the core use case only).
+  #
+  # Use case loop: SELECT_NEXT_USE_CASE pops the next use case and stamps its
+  # State (use-case-id, the ESCC keys); the layer runs for it, then the safety
+  # gate, then the next one. With none left, a gated layer asks the human; a
+  # "no" re-runs the layer on the last use case as a new commit on top
+  # (capped). The loop terminates: the cursor only moves forward.
+  characterize-layer:
+    name: "Characterize Layer"
+    start: SELECT_NEXT_USE_CASE
+    nodes:
+      - id: SELECT_NEXT_USE_CASE
+        type: service-task
+        action: select-next-use-case
+        name: "Select the Next Use Case"
+
+      - id: GATE_USE_CASE_LEFT
+        type: gateway
+        binding: use-case-left
+        name: "Use Case Left?"
+
+      - id: RUN_LAYER
+        type: call-activity
+        process: ${layer-process}
+        name: "Run the Layer for This Use Case"
+
+      - id: SAFETY_GATE
+        type: call-activity
+        process: verify-system-unchanged
+        name: "Safety Gate"
+
+      - id: GATE_GATED
+        type: gateway
+        binding: gated
+        name: "Gated?"
+
+      - id: APPROVE_LAYER
+        type: call-activity
+        process: approve
+        name: "Approve the Layer"
+        params:
+          question: "Approve the ${layer-process} layer for use case ${use-case-id}?"
+          category: human
+        max-visits: 3
+        on-max-visits: LAYER_APPROVAL_EXHAUSTED
+
+      - id: GATE_LAYER_APPROVED
+        type: gateway
+        binding: approval-outcome
+        name: "Approved?"
+
+      - id: CHARACTERIZE_LAYER_END
+        type: end-event
+        name: "Layer Characterized"
+
+      # Loop-cap halt. The `_EXHAUSTED` suffix marks it for the
+      # halt-terminals-are-error-end invariant.
+      - id: LAYER_APPROVAL_EXHAUSTED
+        type: error-end-event
+        name: "Layer Not Approved — the core use case's layer was declined 3 times (fix it by hand, commit, and re-run)"
+
+    sequence-flows:
+      - {from: SELECT_NEXT_USE_CASE, to: GATE_USE_CASE_LEFT}
+      - {from: GATE_USE_CASE_LEFT,   to: RUN_LAYER,              when: "use-case-left == true"}
+      - {from: GATE_USE_CASE_LEFT,   to: GATE_GATED,             when: "use-case-left == false"}
+      - {from: RUN_LAYER,            to: SAFETY_GATE}
+      - {from: SAFETY_GATE,          to: SELECT_NEXT_USE_CASE}
+      - {from: GATE_GATED,           to: APPROVE_LAYER,          when: "gated == true"}
+      - {from: GATE_GATED,           to: CHARACTERIZE_LAYER_END, when: "gated == false"}
+      - {from: APPROVE_LAYER,        to: GATE_LAYER_APPROVED}
+      - {from: GATE_LAYER_APPROVED,  to: CHARACTERIZE_LAYER_END, when: "approval-outcome == approved"}
+      - {from: GATE_LAYER_APPROVED,  to: RUN_LAYER,              when: "approval-outcome == rejected"}
+
+  # Criteria + ESCC layer (plan 20261110-1130, 2b): the use case's narrative,
+  # business rules and Gherkin UC-NNN.M criteria from the source code, plus an
+  # External System Contract Criteria section for every external system its
+  # code calls. Also the DSL layer's late-discovery route, which passes the
+  # external driver port paths the DSL touched as
+  # `discovered-external-port-paths` ("" on the criteria layer). The criterion
+  # ids are recorded for the deletion at the end of characterize.
+  write-use-case-criteria:
+    name: "Write Use Case Criteria"
+    start: WRITE_LEGACY_USE_CASE
+    nodes:
+      - id: WRITE_LEGACY_USE_CASE
+        type: call-activity
+        process: write-legacy-use-case
+        name: "Write the Use Case"
+        params:
+          use-case-id: ${use-case-id}
+          discovered-external-port-paths: ${discovered-external-port-paths}
+
+      - id: COMMIT_USE_CASE
+        type: call-activity
+        process: commit
+        name: "Commit the Use Case"
+        params:
+          category: test-commit
+          layer: "USE CASE (${use-case-id})"
+
+      - id: RECORD_USE_CASE_CRITERIA
+        type: service-task
+        action: record-use-case-criteria
+        name: "Record the Criteria to Delete"
+
+      - id: WRITE_USE_CASE_CRITERIA_END
+        type: end-event
+        name: "Use Case Criteria Written"
+
+    sequence-flows:
+      - {from: WRITE_LEGACY_USE_CASE,    to: COMMIT_USE_CASE}
+      - {from: COMMIT_USE_CASE,          to: RECORD_USE_CASE_CRITERIA}
+      - {from: RECORD_USE_CASE_CRITERIA, to: WRITE_USE_CASE_CRITERIA_END}
+
+  # Acceptance test layer (plan 20261110-1130, 2b): the cover-path test-code
+  # step (tests expected to pass once nothing is pending) plus the channel
+  # registration guard that write-acceptance-tests-and-dsl runs on the ticket
+  # path.
+  characterize-at-layer:
+    name: "Characterize Acceptance Test Layer"
+    start: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
+    nodes:
+      - id: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE
+        type: call-activity
+        process: write-and-verify-acceptance-test-code
+        name: "Write and Verify Acceptance Test Code"
+        params:
+          task-name: write-acceptance-tests
+          acceptance-criteria: ${acceptance-criteria}
+          expected-test-result: success
+          test-category: acceptance
+          verify-mode: green-when-complete
+          verify-pending-on: dsl
+          layer-suffix: " (${use-case-id})"
+
+      - id: VALIDATE_CHANNELS_REGISTERED
+        type: service-task
+        action: validate-channels-registered
+        name: "Validate Touched Channels Are Configured"
+
+      - id: CHARACTERIZE_AT_LAYER_END
+        type: end-event
+        name: "Acceptance Test Layer Characterized"
+
+    sequence-flows:
+      - {from: WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE, to: VALIDATE_CHANNELS_REGISTERED}
+      - {from: VALIDATE_CHANNELS_REGISTERED,          to: CHARACTERIZE_AT_LAYER_END}
+
+  # DSL layer (plan 20261110-1130, 2b). Unlike write-acceptance-tests-and-dsl,
+  # a DSL change to external driver port files does not halt: it means the
+  # criteria layer missed an external call, so the criteria are fixed first
+  # (the ESCC section for the discovered systems), the ESCC keys re-stamped,
+  # the external layer run for this use case, and its acceptance tests
+  # verified green (the adapter layer may skip, so it cannot be relied on).
+  # verify-pending-on: drivers, so a late external change expects the AT red
+  # at this step.
+  characterize-dsl-layer:
+    name: "Characterize DSL Layer"
+    preset-state:
+      # Reset per use case: a skipped DSL change leaves no port change.
+      system-driver-port-changed: false
+      external-driver-port-changed: false
+    start: GATE_DSL_PORT_CHANGED
+    nodes:
+      - id: GATE_DSL_PORT_CHANGED
+        type: gateway
+        binding: dsl-port-changed
+        name: "DSL Port Changed?"
+
+      - id: IMPLEMENT_AND_VERIFY_DSL
+        type: call-activity
+        process: implement-and-verify-dsl
+        name: "Implement and Verify DSL"
+        params:
+          task-name: implement-dsl
+          expected-test-result: success
+          test-category: acceptance
+          suite: acceptance
+          dsl-reviewer: review-dsl
+          test-names: ${test-names}
+          verify-mode: green-when-complete
+          verify-pending-on: drivers
+          layer-suffix: " (${use-case-id})"
+
+      - id: GATE_EXTERNAL_DRIVER_PORT_CHANGED
+        type: gateway
+        binding: external-driver-port-changed
+        name: "DSL Touched External Driver Port Files?"
+
+      - id: ADD_ESCC_FOR_DISCOVERED_SYSTEMS
+        type: call-activity
+        process: write-use-case-criteria
+        name: "Add ESCC for the Discovered Systems"
+        params:
+          discovered-external-port-paths: ${external-driver-port-changed-paths}
+
+      - id: RESTAMP_USE_CASE
+        type: service-task
+        action: restamp-current-use-case
+        name: "Re-stamp the ESCC Keys"
+
+      - id: EXTERNAL_LAYER
+        type: call-activity
+        process: implement-external-drivers-if-needed
+        name: "External Layer for This Use Case"
+
+      - id: VERIFY_TESTS_PASS_ACCEPTANCE
+        type: call-activity
+        process: verify-tests-pass
+        name: "Verify Use Case Acceptance Tests Pass"
+        params:
+          suite: acceptance
+          test-names: ${test-names}
+
+      - id: CHARACTERIZE_DSL_LAYER_END
+        type: end-event
+        name: "DSL Layer Characterized"
+
+    sequence-flows:
+      - {from: GATE_DSL_PORT_CHANGED,             to: IMPLEMENT_AND_VERIFY_DSL,          when: "dsl-port-changed == true"}
+      - {from: GATE_DSL_PORT_CHANGED,             to: CHARACTERIZE_DSL_LAYER_END,        when: "dsl-port-changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_DSL,          to: GATE_EXTERNAL_DRIVER_PORT_CHANGED}
+      - {from: GATE_EXTERNAL_DRIVER_PORT_CHANGED, to: ADD_ESCC_FOR_DISCOVERED_SYSTEMS,   when: "external-driver-port-changed == true"}
+      - {from: GATE_EXTERNAL_DRIVER_PORT_CHANGED, to: CHARACTERIZE_DSL_LAYER_END,        when: "external-driver-port-changed == false"}
+      - {from: ADD_ESCC_FOR_DISCOVERED_SYSTEMS,   to: RESTAMP_USE_CASE}
+      - {from: RESTAMP_USE_CASE,                  to: EXTERNAL_LAYER}
+      - {from: EXTERNAL_LAYER,                    to: VERIFY_TESTS_PASS_ACCEPTANCE}
+      - {from: VERIFY_TESTS_PASS_ACCEPTANCE,      to: CHARACTERIZE_DSL_LAYER_END}
+
+  # System driver adapter layer (plan 20261110-1130, 2b): the adapter tail of
+  # write-acceptance-tests-and-system-adapters, run on its own. UNROLL ANCHOR:
+  # UnrollSystemDriverAdapterChannels (channels.go) replaces
+  # IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS with one clone per channel,
+  # exactly as on the ticket path (gate → anchor TRUE-branch, gate → end
+  # skip-branch, anchor → end).
+  characterize-adapter-layer:
+    name: "Characterize System Driver Adapter Layer"
+    start: GATE_SYSTEM_DRIVER_PORTS_CHANGED
+    nodes:
+      - id: GATE_SYSTEM_DRIVER_PORTS_CHANGED
+        type: gateway
+        binding: system-driver-port-changed
+        name: "System Driver Ports Changed?"
+
+      - id: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS
+        type: call-activity
+        process: implement-and-verify-system-driver-adapters
+        name: "Implement and Verify System Driver Adapters"
+        params:
+          task-name: implement-system-driver-adapters
+          expected-test-result: success
+          test-category: acceptance
+          suite: acceptance
+          test-names: ${test-names}
+          verify-mode: green-when-complete
+          verify-pending-on: none
+          layer-suffix: " (${use-case-id})"
+
+      - id: CHARACTERIZE_ADAPTER_LAYER_END
+        type: end-event
+        name: "System Driver Adapter Layer Characterized"
+
+    sequence-flows:
+      - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED,            to: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, when: "system-driver-port-changed == true"}
+      - {from: GATE_SYSTEM_DRIVER_PORTS_CHANGED,            to: CHARACTERIZE_ADAPTER_LAYER_END,              when: "system-driver-port-changed == false"}
+      - {from: IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS, to: CHARACTERIZE_ADAPTER_LAYER_END}
+
+  # Hard safety gate of characterize (plan 20261110-1130, 2c), after every
+  # layer of every use case and at the end. Both checks halt; there is no fix
+  # agent and no scope-exception branch.
+  verify-system-unchanged:
+    name: "Verify System Unchanged"
+    start: CHECK_SYSTEM_UNCHANGED
+    nodes:
+      - id: CHECK_SYSTEM_UNCHANGED
+        type: service-task
+        action: check-system-unchanged
+        name: "Diff the System Code Against the Start Commit"
+
+      - id: GATE_SYSTEM_UNCHANGED
+        type: gateway
+        binding: system-unchanged
+        name: "System Code Unchanged?"
+
+      - id: CHECK_NO_ASSERTION_REMOVED
+        type: service-task
+        action: check-no-assertion-removed
+        name: "Check No Assertion Was Removed"
+
+      - id: GATE_NO_ASSERTION_REMOVED
+        type: gateway
+        binding: no-assertion-removed
+        name: "No Assertion Removed?"
+
+      - id: VERIFY_SYSTEM_UNCHANGED_END
+        type: end-event
+        name: "System Unchanged Verified"
+
+      - id: SYSTEM_CHANGED_HALT
+        type: error-end-event
+        name: "System Code Changed — characterize never changes the system; revert the listed system files and re-run"
+
+      - id: ASSERTION_REMOVED_HALT
+        type: error-end-event
+        name: "Assertion Removed — a characterization test must never be weakened; restore the listed assertions and re-run"
+
+    sequence-flows:
+      - {from: CHECK_SYSTEM_UNCHANGED,     to: GATE_SYSTEM_UNCHANGED}
+      - {from: GATE_SYSTEM_UNCHANGED,      to: CHECK_NO_ASSERTION_REMOVED,  when: "system-unchanged == true"}
+      - {from: GATE_SYSTEM_UNCHANGED,      to: SYSTEM_CHANGED_HALT,         when: "system-unchanged == false"}
+      - {from: CHECK_NO_ASSERTION_REMOVED, to: GATE_NO_ASSERTION_REMOVED}
+      - {from: GATE_NO_ASSERTION_REMOVED,  to: VERIFY_SYSTEM_UNCHANGED_END, when: "no-assertion-removed == true"}
+      - {from: GATE_NO_ASSERTION_REMOVED,  to: ASSERTION_REMOVED_HALT,      when: "no-assertion-removed == false"}
+
+  # External producer refresh (plan 20261110-1130, 2e), after each external
+  # producer change in reconcile-external-contract-producer. Per-ticket flows
+  # rebuild and restart the whole system as before; while characterizing the
+  # system under test stays up and only the external stand-ins are recreated.
+  refresh-external-producer:
+    name: "Refresh External Producer"
+    start: GATE_CHARACTERIZE
+    nodes:
+      - id: GATE_CHARACTERIZE
+        type: gateway
+        binding: characterize
+        name: "Characterizing?"
+
+      - id: BUILD_SYSTEM
+        type: call-activity
+        process: build-system
+        name: "Build System"
+
+      - id: START_SYSTEM
+        type: call-activity
+        process: start-system-restart
+        name: "Start System"
+
+      - id: RESTART_EXTERNAL_SYSTEMS
+        type: call-activity
+        process: restart-external-systems
+        name: "Restart External Stand-ins Only"
+
+      - id: REFRESH_EXTERNAL_PRODUCER_END
+        type: end-event
+        name: "External Producer Refreshed"
+
+    sequence-flows:
+      - {from: GATE_CHARACTERIZE,        to: BUILD_SYSTEM,             when: "characterize == false"}
+      - {from: GATE_CHARACTERIZE,        to: RESTART_EXTERNAL_SYSTEMS, when: "characterize == true"}
+      - {from: BUILD_SYSTEM,             to: START_SYSTEM}
+      - {from: START_SYSTEM,             to: REFRESH_EXTERNAL_PRODUCER_END}
+      - {from: RESTART_EXTERNAL_SYSTEMS, to: REFRESH_EXTERNAL_PRODUCER_END}
+
   # Implements external system driver adapters (CT-HIGH) when the ticket
   # declares External System Contract Criteria. ESCC is the sole and
   # authoritative signal — no port-changed fallback. The false branch
@@ -1227,6 +1823,9 @@ processes:
           # adapters are already built before this node runs, so plumbing is
           # complete unless the DSL port changed.
           verify-pending-on: dsl
+          # Commit label discriminator; characterize-at-layer passes the use
+          # case id.
+          layer-suffix: ""
 
       # Upfront no-silent-skip guard for the channel unroll (plan 20260619-1139
       # Step 5). Runs ONCE here — after WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE's
@@ -1424,7 +2023,9 @@ processes:
         params:
           # test-commit tier: persists the test contract.
           category: test-commit
-          layer: "ACCEPTANCE TESTS"
+          # layer-suffix: "" on the ticket path; the use case id on
+          # characterize (one commit per layer and use case).
+          layer: "ACCEPTANCE TESTS${layer-suffix}"
 
       - id: WAV_AT_CODE_END
         type: end-event
@@ -1665,9 +2266,17 @@ processes:
   # isolated-test-names, test-outcome, stub-fidelity-tests-present) is shared
   # across the call-activity frame (run.go: state is shared, params merge), so
   # no params are threaded at the call site.
+  #
+  # Characterize (plan 20261110-1130, 2e): each rebuild + restart is one call
+  # to refresh-external-producer, which rebuilds and restarts the whole system
+  # as before on per-ticket flows but restarts only the external stand-ins
+  # while characterizing (the system under test stays up, untouched). A
+  # contract-real red on a vendor test instance halts per-ticket (upstream
+  # gap) but goes to the characterization fix loop while characterizing: the
+  # vendor is the truth, so the contract test is what is wrong.
   reconcile-external-contract-producer:
     name: "Reconcile External Contract Producer"
-    start: BUILD_SYSTEM_AFTER_DRIVER
+    start: REFRESH_AFTER_DRIVER
     nodes:
       # GREEN-shape: impl edited system source → rebuild and restart
       # before verifying. `system start` brings up both real and stub.
@@ -1676,15 +2285,14 @@ processes:
       # baked at load by UnrollExternalSystems and copied into state by
       # RESOLVE_EXTERNAL_SYSTEM at the cycle start, so no per-cycle identity
       # resolution runs between the adapter impl and the build.)
-      - id: BUILD_SYSTEM_AFTER_DRIVER
+      #
+      # While characterizing nothing container-side changed here (the driver
+      # adapter is testkit code); the stand-in restart is kept so the four
+      # refresh sites follow one rule.
+      - id: REFRESH_AFTER_DRIVER
         type: call-activity
-        process: build-system
-        name: "Build System"
-
-      - id: START_SYSTEM_AFTER_DRIVER
-        type: call-activity
-        process: start-system-restart
-        name: "Start System"
+        process: refresh-external-producer
+        name: "Refresh External Producer"
 
       # Outcome-driven contract-real (plan 20260606-1943, supersedes the
       # real-kind polarity-prediction of plan 20260606-1356). Red/green of a
@@ -1724,15 +2332,26 @@ processes:
         name: "Implement External System Real Simulator"
 
       # GREEN-shape: impl edited simulator source → rebuild and restart.
-      - id: BUILD_SYSTEM_AFTER_SIMULATOR
+      - id: REFRESH_AFTER_SIMULATOR
         type: call-activity
-        process: build-system
-        name: "Build System"
+        process: refresh-external-producer
+        name: "Refresh External Producer"
 
-      - id: START_SYSTEM_AFTER_SIMULATOR
+      - id: GATE_CHARACTERIZE
+        type: gateway
+        binding: characterize
+        name: "Characterizing?"
+
+      # Characterize only: a vendor test instance is the truth, so a red
+      # contract-real test is fixed by the characterization fixer (the
+      # verify's fix loop, with its no-progress halt) rather than halted on.
+      - id: VERIFY_TESTS_PASS_CONTRACT_REAL_TEST_INSTANCE
         type: call-activity
-        process: start-system-restart
-        name: "Start System"
+        process: verify-tests-pass
+        name: "Verify External System Contract Tests Pass Against the Test Instance"
+        params:
+          suite: contract-real
+          test-names: ${test-names}
 
       - id: VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR
         type: call-activity
@@ -1776,15 +2395,10 @@ processes:
 
       # GREEN-shape: impl edited system source → rebuild and restart
       # before verifying.
-      - id: BUILD_SYSTEM_AFTER_STUBS
+      - id: REFRESH_AFTER_STUBS
         type: call-activity
-        process: build-system
-        name: "Build System"
-
-      - id: START_SYSTEM_AFTER_STUBS
-        type: call-activity
-        process: start-system-restart
-        name: "Start System"
+        process: refresh-external-producer
+        name: "Refresh External Producer"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_STUB
         type: call-activity
@@ -1833,15 +2447,10 @@ processes:
         process: implement-external-system-stubs
         name: "Implement External System Stubs"
 
-      - id: BUILD_SYSTEM_AFTER_STUBS_ISOLATED
+      - id: REFRESH_AFTER_STUBS_ISOLATED
         type: call-activity
-        process: build-system
-        name: "Build System"
-
-      - id: START_SYSTEM_AFTER_STUBS_ISOLATED
-        type: call-activity
-        process: start-system-restart
-        name: "Start System"
+        process: refresh-external-producer
+        name: "Refresh External Producer"
 
       - id: VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED
         type: call-activity
@@ -1875,8 +2484,7 @@ processes:
         name: "Contract-Real Red on a Real Instance — upstream/provider has not yet shipped this contract; not fixable in this repo"
 
     sequence-flows:
-      - {from: BUILD_SYSTEM_AFTER_DRIVER,                 to: START_SYSTEM_AFTER_DRIVER}
-      - {from: START_SYSTEM_AFTER_DRIVER,                 to: PROBE_CONTRACT_REAL}
+      - {from: REFRESH_AFTER_DRIVER,                      to: PROBE_CONTRACT_REAL}
       # Probe, then branch on the observed outcome — no expected polarity.
       - {from: PROBE_CONTRACT_REAL,                       to: GATE_CONTRACT_REAL_OUTCOME}
       # GREEN: external system already honors the contract → straight to stub side.
@@ -1887,11 +2495,14 @@ processes:
       - {from: GATE_CONTRACT_REAL_OUTCOME,                to: UNKNOWN_TESTS_OUTCOME}
       # simulator: we own it → implement → rebuild/restart → GREEN → stub side.
       - {from: GATE_CONTRACT_REAL_RED_KIND,               to: IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR, when: "real-kind == simulator"}
-      # test-instance: we do not own it → upstream contract gap, hard halt.
-      - {from: GATE_CONTRACT_REAL_RED_KIND,               to: CONTRACT_REAL_UPSTREAM_GAP_HALT,   when: "real-kind == test-instance"}
-      - {from: IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR,  to: BUILD_SYSTEM_AFTER_SIMULATOR}
-      - {from: BUILD_SYSTEM_AFTER_SIMULATOR,              to: START_SYSTEM_AFTER_SIMULATOR}
-      - {from: START_SYSTEM_AFTER_SIMULATOR,              to: VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR}
+      # test-instance: we do not own it → upstream contract gap, hard halt;
+      # while characterizing, the contract test is fixed against it instead.
+      - {from: GATE_CONTRACT_REAL_RED_KIND,               to: GATE_CHARACTERIZE,                 when: "real-kind == test-instance"}
+      - {from: GATE_CHARACTERIZE,                         to: CONTRACT_REAL_UPSTREAM_GAP_HALT,   when: "characterize == false"}
+      - {from: GATE_CHARACTERIZE,                         to: VERIFY_TESTS_PASS_CONTRACT_REAL_TEST_INSTANCE, when: "characterize == true"}
+      - {from: VERIFY_TESTS_PASS_CONTRACT_REAL_TEST_INSTANCE, to: START_SYSTEM_BEFORE_STUB_PROBE}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR,  to: REFRESH_AFTER_SIMULATOR}
+      - {from: REFRESH_AFTER_SIMULATOR,                   to: VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR}
       - {from: VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR, to: START_SYSTEM_BEFORE_STUB_PROBE}
       - {from: START_SYSTEM_BEFORE_STUB_PROBE,            to: PROBE_CONTRACT_STUB}
       # Probe the stub, then branch on the observed outcome.
@@ -1903,9 +2514,8 @@ processes:
       - {from: GATE_CONTRACT_STUB_OUTCOME,                to: IMPLEMENT_EXTERNAL_SYSTEM_STUBS,   when: "test-outcome == fail"}
       - {from: GATE_CONTRACT_STUB_OUTCOME,                to: TESTS_INFRA_HALT,                  when: "test-outcome == infra"}
       - {from: GATE_CONTRACT_STUB_OUTCOME,                to: UNKNOWN_TESTS_OUTCOME}
-      - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS,           to: BUILD_SYSTEM_AFTER_STUBS}
-      - {from: BUILD_SYSTEM_AFTER_STUBS,                  to: START_SYSTEM_AFTER_STUBS}
-      - {from: START_SYSTEM_AFTER_STUBS,                  to: VERIFY_TESTS_PASS_CONTRACT_STUB}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS,           to: REFRESH_AFTER_STUBS}
+      - {from: REFRESH_AFTER_STUBS,                       to: VERIFY_TESTS_PASS_CONTRACT_STUB}
       - {from: VERIFY_TESTS_PASS_CONTRACT_STUB,           to: GATE_STUB_FIDELITY_PRESENT}
       # Stub-only fidelity leg (plan 20260620-2348). Skip it entirely when the
       # ticket declared no `Stub only:` register (the writer authored nothing).
@@ -1918,9 +2528,8 @@ processes:
       - {from: GATE_CONTRACT_STUB_ISOLATED_OUTCOME,      to: IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED, when: "test-outcome == fail"}
       - {from: GATE_CONTRACT_STUB_ISOLATED_OUTCOME,      to: TESTS_INFRA_HALT,                  when: "test-outcome == infra"}
       - {from: GATE_CONTRACT_STUB_ISOLATED_OUTCOME,      to: UNKNOWN_TESTS_OUTCOME}
-      - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED, to: BUILD_SYSTEM_AFTER_STUBS_ISOLATED}
-      - {from: BUILD_SYSTEM_AFTER_STUBS_ISOLATED,        to: START_SYSTEM_AFTER_STUBS_ISOLATED}
-      - {from: START_SYSTEM_AFTER_STUBS_ISOLATED,        to: VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED}
+      - {from: IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED, to: REFRESH_AFTER_STUBS_ISOLATED}
+      - {from: REFRESH_AFTER_STUBS_ISOLATED,             to: VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED}
       - {from: VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED, to: RECONCILE_PRODUCER_END}
 
   # Parameterised system impl: the caller picks the MID agent task by
@@ -2260,6 +2869,13 @@ processes:
   # Run tests under `suite` / `test-names`; on FAIL, dispatch
   # `fix-unexpected-failing-tests`. Caller passes both params (or omits
   # to run all tests).
+  #
+  # Characterization fix loop (plan 20261110-1130, 2d): GATE_CHARACTERIZE
+  # picks the fixer. On characterize the system is the truth, so a failing
+  # test goes to fix-characterization-failing-tests (fixes the test, the
+  # criterion, the narrative or a stand-in; never the system, never weakens an
+  # assertion) instead of fix-unexpected-failing-tests (which writes system
+  # code). Every other flow reads characterize=false and is unchanged.
   verify-tests-pass:
     name: "Verify Tests Pass"
     start: RUN_TESTS
@@ -2287,6 +2903,19 @@ processes:
         # before spending it. The FIX_* -> RUN_TESTS back-edge stays; the
         # cap intercepts on the 3rd arrival, before re-dispatch. Layered
         # under the engine-wide maxDispatchesPerProcess backstop.
+        max-visits: 2
+        on-max-visits: FIX_LOOP_EXHAUSTED
+
+      - id: GATE_CHARACTERIZE
+        type: gateway
+        binding: characterize
+        name: "Characterizing?"
+
+      # Same cap as FIX_UNEXPECTED_FAILING_TESTS.
+      - id: FIX_CHARACTERIZATION_FAILING_TESTS
+        type: call-activity
+        process: fix-characterization-failing-tests
+        name: "Fix Failing Characterization Tests"
         max-visits: 2
         on-max-visits: FIX_LOOP_EXHAUSTED
 
@@ -2373,14 +3002,19 @@ processes:
       - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,   when: "test-outcome == infra"}
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
       - {from: CHECK_FIX_PROGRESS,   to: GATE_FIX_PROGRESSING}
-      - {from: GATE_FIX_PROGRESSING, to: FIX_UNEXPECTED_FAILING_TESTS,   when: "fix-loop-progressing == true"}
+      - {from: GATE_FIX_PROGRESSING, to: GATE_CHARACTERIZE,              when: "fix-loop-progressing == true"}
       - {from: GATE_FIX_PROGRESSING, to: FIX_LOOP_NO_PROGRESS_EXHAUSTED, when: "fix-loop-progressing == false"}
+      - {from: GATE_CHARACTERIZE, to: FIX_UNEXPECTED_FAILING_TESTS,       when: "characterize == false"}
+      - {from: GATE_CHARACTERIZE, to: FIX_CHARACTERIZATION_FAILING_TESTS, when: "characterize == true"}
       - {from: FIX_UNEXPECTED_FAILING_TESTS, to: GATE_FIX_FLOW_APPROVED}
+      - {from: FIX_CHARACTERIZATION_FAILING_TESTS, to: GATE_FIX_FLOW_APPROVED}
       - {from: GATE_FIX_FLOW_APPROVED, to: FIX_FLOW_NOT_APPROVED, when: "approval-outcome == rejected"}
       - {from: GATE_FIX_FLOW_APPROVED, to: RUN_TESTS}
 
   # Inverted: run tests under suite/test-names; on PASS, dispatch
-  # `fix-unexpected-passing-tests`.
+  # `fix-unexpected-passing-tests`. GATE_CHARACTERIZE mirrors
+  # verify-tests-pass (plan 20261110-1130, 2d): on characterize an
+  # unexpectedly passing test goes to fix-characterization-passing-tests.
   verify-tests-fail:
     name: "Verify Tests Fail"
     start: RUN_TESTS
@@ -2406,6 +3040,19 @@ processes:
         # verify-tests-pass loop. After 2 fix passes the must-fail tests
         # are still green; halt for a human before a third opus·high pass.
         # Back-edge stays; cap intercepts on the 3rd arrival.
+        max-visits: 2
+        on-max-visits: FIX_LOOP_EXHAUSTED
+
+      - id: GATE_CHARACTERIZE
+        type: gateway
+        binding: characterize
+        name: "Characterizing?"
+
+      # Same cap as FIX_UNEXPECTED_PASSING_TESTS.
+      - id: FIX_CHARACTERIZATION_PASSING_TESTS
+        type: call-activity
+        process: fix-characterization-passing-tests
+        name: "Fix Passing Characterization Tests"
         max-visits: 2
         on-max-visits: FIX_LOOP_EXHAUSTED
 
@@ -2450,11 +3097,14 @@ processes:
 
     sequence-flows:
       - {from: RUN_TESTS,          to: GATE_TESTS_OUTCOME}
-      - {from: GATE_TESTS_OUTCOME, to: FIX_UNEXPECTED_PASSING_TESTS, when: "test-outcome == pass"}
+      - {from: GATE_TESTS_OUTCOME, to: GATE_CHARACTERIZE,            when: "test-outcome == pass"}
       - {from: GATE_TESTS_OUTCOME, to: VERIFY_FAIL_END,              when: "test-outcome == fail"}
       - {from: GATE_TESTS_OUTCOME, to: TESTS_INFRA_HALT,             when: "test-outcome == infra"}
       - {from: GATE_TESTS_OUTCOME, to: UNKNOWN_TESTS_OUTCOME}
+      - {from: GATE_CHARACTERIZE, to: FIX_UNEXPECTED_PASSING_TESTS,       when: "characterize == false"}
+      - {from: GATE_CHARACTERIZE, to: FIX_CHARACTERIZATION_PASSING_TESTS, when: "characterize == true"}
       - {from: FIX_UNEXPECTED_PASSING_TESTS, to: GATE_FIX_FLOW_APPROVED}
+      - {from: FIX_CHARACTERIZATION_PASSING_TESTS, to: GATE_FIX_FLOW_APPROVED}
       - {from: GATE_FIX_FLOW_APPROVED, to: FIX_FLOW_NOT_APPROVED, when: "approval-outcome == rejected"}
       - {from: GATE_FIX_FLOW_APPROVED, to: RUN_TESTS}
 
@@ -3370,6 +4020,217 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: MERGE_USE_CASES_END}
 
+  # Characterize (plan 20261110-1130): the use case diagram from the source
+  # code, plus the proposed core use case and why. `scope: none` like
+  # merge-use-cases: it writes only the use case spec, no code layer; the
+  # safety gate checks the system code after the commit.
+  write-legacy-use-case-diagram:
+    name: "Write Legacy Use Case Diagram"
+    start: EXECUTE_AGENT
+    outputs:
+      - key: core-use-case
+        type: string
+      - key: other-use-cases
+        type: string-list
+      - key: core-use-case-reasons
+        type: string
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: write-legacy-use-case-diagram
+          agent: legacy-use-case-diagram-writer
+          # test-agent tier: the use cases are the test contract; the human
+          # confirms the diagram at characterize's CONFIRM_CORE_USE_CASE.
+          category: test-agent
+        scope: none
+
+      - id: WRITE_LEGACY_USE_CASE_DIAGRAM_END
+        type: end-event
+        name: "Use Case Diagram Written"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: WRITE_LEGACY_USE_CASE_DIAGRAM_END}
+
+  # Characterize (plan 20261110-1130): one use case's narrative, business rules
+  # and criteria (plus its ESCC section) from the source code. `scope: none`
+  # like merge-use-cases (spec only). `criterion-ids` feeds the deletion of the
+  # criteria at the end (record-use-case-criteria).
+  write-legacy-use-case:
+    name: "Write Legacy Use Case"
+    start: EXECUTE_AGENT
+    outputs:
+      - key: criterion-ids
+        type: string-list
+        optional: true
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: write-legacy-use-case
+          agent: legacy-use-case-writer
+          # test-agent tier: the use case is the test contract.
+          category: test-agent
+        scope: none
+
+      - id: WRITE_LEGACY_USE_CASE_END
+        type: end-event
+        name: "Use Case Written"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: WRITE_LEGACY_USE_CASE_END}
+
+  # Characterization fixers (plan 20261110-1130, 2d), the characterize variant
+  # of fix-unexpected-failing-tests / fix-unexpected-passing-tests. The system
+  # is the truth: the agent fixes the test, the criterion, the narrative or a
+  # stand-in, never the system, and never weakens an assertion. The write scope
+  # therefore has no system-path (so AddSystemSurfaceScope adds no tier paths)
+  # and no system-db-migration-path; it reads the system code. test-agent tier
+  # (not human like the per-ticket fixers): a red characterization test is the
+  # expected routine of the bulk pass, which runs unattended.
+  #
+  # Stand-in tail: when the fixer changed a stub or simulator, the stand-in
+  # containers are recreated before the verify re-runs the tests.
+  fix-characterization-failing-tests:
+    name: "Fix Failing Characterization Tests"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: fix-characterization-failing-tests
+          agent: characterization-test-fixer
+          category: test-agent
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, external-system-stub, external-system-simulator, use-cases-path, system-path, common, common-domain]
+        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, external-system-stub, external-system-simulator, use-cases-path, common, common-domain]
+
+      - id: CHECK_STAND_INS_CHANGED
+        type: service-task
+        action: check-stand-ins-changed
+        name: "Check Whether the Fixer Changed a Stand-in"
+
+      - id: GATE_STAND_INS_CHANGED
+        type: gateway
+        binding: stand-ins-changed
+        name: "Stand-ins Changed?"
+
+      - id: RESTART_EXTERNAL_SYSTEMS
+        type: call-activity
+        process: restart-external-systems
+        name: "Restart External Stand-ins Only"
+
+      - id: FIX_CHAR_FAIL_END
+        type: end-event
+        name: "Failing Characterization Tests Fixed"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT,           to: CHECK_STAND_INS_CHANGED}
+      - {from: CHECK_STAND_INS_CHANGED, to: GATE_STAND_INS_CHANGED}
+      - {from: GATE_STAND_INS_CHANGED,  to: RESTART_EXTERNAL_SYSTEMS, when: "stand-ins-changed == true"}
+      - {from: GATE_STAND_INS_CHANGED,  to: FIX_CHAR_FAIL_END,        when: "stand-ins-changed == false"}
+      - {from: RESTART_EXTERNAL_SYSTEMS, to: FIX_CHAR_FAIL_END}
+
+  # Same agent and scope as fix-characterization-failing-tests, for tests that
+  # pass where they were expected to fail. A passing run leaves no failure
+  # output (run-tests clears it), so the node pins verify-failure-output.
+  fix-characterization-passing-tests:
+    name: "Fix Passing Characterization Tests"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: fix-characterization-passing-tests
+          agent: characterization-test-fixer
+          category: test-agent
+          verify-failure-output: "none: the tests passed"
+        read:  [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, external-system-stub, external-system-simulator, use-cases-path, system-path, common, common-domain]
+        write: [at-test, ct-test, dsl-port, dsl-core, system-driver-port, system-driver-adapter, external-system-driver-port, external-system-driver-adapter, external-system-stub, external-system-simulator, use-cases-path, common, common-domain]
+
+      - id: CHECK_STAND_INS_CHANGED
+        type: service-task
+        action: check-stand-ins-changed
+        name: "Check Whether the Fixer Changed a Stand-in"
+
+      - id: GATE_STAND_INS_CHANGED
+        type: gateway
+        binding: stand-ins-changed
+        name: "Stand-ins Changed?"
+
+      - id: RESTART_EXTERNAL_SYSTEMS
+        type: call-activity
+        process: restart-external-systems
+        name: "Restart External Stand-ins Only"
+
+      - id: FIX_CHAR_PASS_END
+        type: end-event
+        name: "Passing Characterization Tests Fixed"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT,           to: CHECK_STAND_INS_CHANGED}
+      - {from: CHECK_STAND_INS_CHANGED, to: GATE_STAND_INS_CHANGED}
+      - {from: GATE_STAND_INS_CHANGED,  to: RESTART_EXTERNAL_SYSTEMS, when: "stand-ins-changed == true"}
+      - {from: GATE_STAND_INS_CHANGED,  to: FIX_CHAR_PASS_END,        when: "stand-ins-changed == false"}
+      - {from: RESTART_EXTERNAL_SYSTEMS, to: FIX_CHAR_PASS_END}
+
+  # Characterize's stand-in restart (plan 20261110-1130, 2e): rebuilds and
+  # recreates only the external-system stand-ins (the compose services built
+  # from or mounting a registry stub/simulator path); the system under test
+  # keeps running. Zero matched services is a hard error in the runner.
+  restart-external-systems:
+    name: "Restart External Systems"
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call-activity
+        process: execute-command
+        name: "Dispatch the Command"
+        params:
+          command: "gh optivem system start --restart --external-only"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: restart-external-systems
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
+
+      - id: RESTART_EXTERNAL_SYSTEMS_END
+        type: end-event
+        name: "External Stand-ins Restarted"
+
+    sequence-flows:
+      - {from: EXECUTE_COMMAND, to: RESTART_EXTERNAL_SYSTEMS_END}
+
+  # Characterize's single system stop (plan 20261110-1130), after the final
+  # safety gate. On a halt the system is left running.
+  stop-system:
+    name: "Stop System"
+    start: EXECUTE_COMMAND
+    nodes:
+      - id: EXECUTE_COMMAND
+        type: call-activity
+        process: execute-command
+        name: "Dispatch the Command"
+        params:
+          command: "gh optivem system stop"
+          # task-name: see compile-tests — traces the bpmn-step column to the diagram.
+          task-name: stop-system
+          # command tier: cheap, no AI cost, no global state mutation.
+          category: command
+
+      - id: SYSTEM_STOPPED_END
+        type: end-event
+        name: "System Stopped"
+
+    sequence-flows:
+      - {from: EXECUTE_COMMAND, to: SYSTEM_STOPPED_END}
+
   # setup-tests guarantees the test harness's own dependencies are installed
   # before any path can reach the first `run-tests`. It wraps
   # `gh optivem system-test setup`, which resolves the active language's
@@ -3478,10 +4339,9 @@ processes:
   # Current restart-required callers (all dispatch `start-system-restart`):
   #
   #   - `implement-and-verify-system` — `START_SYSTEM` after `BUILD_SYSTEM`.
-  #   - `implement-and-verify-external-system-driver-adapters-contract-tests`
-  #     — `START_SYSTEM_AFTER_DRIVER` after `BUILD_SYSTEM_AFTER_DRIVER`.
-  #   - Same process — `START_SYSTEM_AFTER_SIMULATOR` after `BUILD_SYSTEM_AFTER_SIMULATOR`.
-  #   - Same process — `START_SYSTEM_AFTER_STUBS` after `BUILD_SYSTEM_AFTER_STUBS`.
+  #   - `refresh-external-producer` — `START_SYSTEM` after `BUILD_SYSTEM`
+  #     (per-ticket branch), called by `reconcile-external-contract-producer`
+  #     after the driver adapter, simulator and stub implements.
   start-system:
     name: "Start System"
     start: EXECUTE_COMMAND

@@ -27,7 +27,21 @@ var resumeExcludeParams = []string{"external-system-name"}
 
 // resumeExtraStateKeys are derived state keys (not declared agent outputs)
 // that later steps read and a skipped unit must therefore restore.
-var resumeExtraStateKeys = []string{"external-driver-port-changed-paths", actions.CtxKeyAcceptanceReports}
+//
+// The characterize keys keep the start commits the safety gate diffs against,
+// the stand-in paths, the assertion-check cursor and the use case loop
+// cursors and the criteria to delete at the end across a resume (plan
+// 20261110-1130).
+var resumeExtraStateKeys = []string{
+	"external-driver-port-changed-paths",
+	actions.CtxKeyAcceptanceReports,
+	actions.CtxKeySystemStartCommits,
+	actions.CtxKeyStandInPaths,
+	actions.CtxKeyAssertionCheckedCommit,
+	actions.CtxKeyUseCaseCursors,
+	actions.CtxKeyUseCaseID,
+	actions.CtxKeyMergedCriteria,
+}
 
 // newResumeConfig builds the engine's resume configuration for a full-pipeline
 // walk over the repository at repoPath.

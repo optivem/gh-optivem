@@ -126,7 +126,7 @@ func commitVerifiedViolations(proc *Process, node Node, rule string) []Violation
 	}
 	for _, pred := range preds {
 		pn := proc.Nodes[pred]
-		if isVerifyingPredecessor(pn, compileOnly) || isVerifiedPostGreenStep(proc, pn, 0) {
+		if isVerifyingPredecessor(pn, compileOnly) || isVerifiedPostGreenStep(proc, pn, 0) || isSpecWriter(pn) {
 			continue
 		}
 		out = append(out, Violation{
@@ -148,6 +148,21 @@ func isVerifyingPredecessor(pn Node, compileOnly bool) bool {
 		return true
 	}
 	return compileOnly && (isCallTo(pn, "start-system") || isCallTo(pn, "start-system-restart") || isCallTo(pn, "compile-tests"))
+}
+
+// specWriterProcesses are the writing-agent MIDs that write only the spec (the
+// use case diagram, narratives, business rules and criteria under the use
+// cases dir), never code a test could verify: their commits carry no verify.
+// Both belong to the characterize flow (plan 20261110-1130), whose safety
+// gate checks the system code after every commit instead.
+var specWriterProcesses = map[string]bool{
+	"write-legacy-use-case-diagram": true,
+	"write-legacy-use-case":         true,
+}
+
+// isSpecWriter reports whether pn calls a specWriterProcesses MID.
+func isSpecWriter(pn Node) bool {
+	return pn.Kind == CallActivity && specWriterProcesses[pn.Raw.Process]
 }
 
 // postGreenActions are the service-task actions of the post-green
@@ -194,6 +209,16 @@ func isVerifiedPostGreenPredecessor(proc *Process, n Node, depth int) bool {
 	if isCallTo(n, "write-acceptance-tests-and-system-adapters") && strings.TrimSpace(n.Raw.Params["expected-test-result"]) == "success" {
 		return true
 	}
+	// Characterize (plan 20261110-1130): the bulk driver adapter layer pass is
+	// the last layer; every use case's adapter work in it ran its own verify.
+	if isCallTo(n, "characterize-layer") && strings.TrimSpace(n.Raw.Params["layer-process"]) == "characterize-adapter-layer" {
+		return true
+	}
+	// The safety gate and the system stop change no code: look through them
+	// to what ran before.
+	if isCallTo(n, "verify-system-unchanged") || isCallTo(n, "stop-system") {
+		return allPredecessorsVerifiedPostGreen(proc, n.ID, depth+1)
+	}
 	if !isCallTo(n, "commit") {
 		return false
 	}
@@ -203,6 +228,24 @@ func isVerifiedPostGreenPredecessor(proc *Process, n Node, depth int) bool {
 	}
 	for _, cp := range cps {
 		if !isVerifiedPostGreenStep(proc, proc.Nodes[cp], depth+1) {
+			return false
+		}
+	}
+	return true
+}
+
+// allPredecessorsVerifiedPostGreen reports whether every dispatching
+// predecessor of id is an acceptable post-green predecessor.
+func allPredecessorsVerifiedPostGreen(proc *Process, id string, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	preds := dispatchingPredecessors(proc, id)
+	if len(preds) == 0 {
+		return false
+	}
+	for _, p := range preds {
+		if !isVerifiedPostGreenPredecessor(proc, proc.Nodes[p], depth) {
 			return false
 		}
 	}

@@ -86,3 +86,12 @@ var TierPathKeysInScope = map[string]bool{
 var GuidelinesPathKeysInScope = map[string]bool{
 	projectconfig.GuidelinesPathKey: true,
 }
+
+// UseCasesPathKeysInScope lists the optional, defaulted use cases folder key
+// (projectconfig.UseCasesPathKey, plan 20261110-1130). Accepted under
+// system-test.paths: but not required; an unset key resolves to
+// projectconfig.DefaultUseCasesPath. Written by the characterization test
+// fixer only.
+var UseCasesPathKeysInScope = map[string]bool{
+	projectconfig.UseCasesPathKey: true,
+}

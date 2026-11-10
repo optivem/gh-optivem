@@ -168,4 +168,12 @@ func RegisterAll(r *Registry, deps Deps) {
 	// late-discovery route. See use_case_loop.go.
 	r.Register("select-next-use-case", a.selectNextUseCase)
 	r.Register("restamp-current-use-case", a.restampUseCase)
+	// record-use-case-criteria appends the legacy-use-case-writer's
+	// criterion-ids to merged-criteria, which apply-ac-policy deletes at the
+	// end of characterize.
+	r.Register("record-use-case-criteria", a.recordUseCaseCriteria)
+	// Characterization fixer tail (plan 20261110-1130, 2d): stamps
+	// stand-ins-changed when the fixer's own edits touched a stub/simulator
+	// path, so the next test run does not hit a stale stand-in container.
+	r.Register("check-stand-ins-changed", a.checkStandInsChanged)
 }
