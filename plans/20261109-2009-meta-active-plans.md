@@ -3,11 +3,22 @@
 ## TL;DR
 
 **Why:** 8 top-level plans were open; most waited on user decisions.
-**End result:** all decisions were taken on 2026-11-10 and the agent work is done. What is left is the release check of `1300` and the user-only items under **Verification**.
+**End result:** all decisions were taken on 2026-11-10. What is left, in order: `1130` implementation (3 parts), the `1300` release check, then the shop-dependent items, then the user-only items under **Verification**.
 
 ## ▶ Next executable step (resume here)
 
-Release check for `plans/20261107-1300-spec-parse-gherkin-criteria.md` (its Step 5): the push to `main` made on 2026-11-10 triggers gh-optivem's acceptance pipeline, which cuts the release. As of 2026-11-10 the latest release was still v1.6.107 (2026-11-06) and shop's `main` was failing (another agent is fixing it). Wait for BOTH a new release and a green shop. The user has approved cloning shop into a temp dir (read-only, deleted afterwards) at that point; then run `gh optivem spec validate` and confirm 14 UC-001 criteria, then delete `1300` (shop-side copy is deleted from a shop session), then delete this meta-plan.
+`1130` Step 3, part 1 (Go code): `/execute-plan plans/20261110-1130-legacy-baseline-bulk-impl.md`. Covers `system start --restart --external-only` (`internal/build/runner/system.go` + `system_commands.go`) and the Go actions `record-start-commits`, `select-next-use-case`, `check-system-unchanged`, `check-no-assertion-removed` (registered in `register.go`), with unit tests. No shop, no Docker.
+
+## Order of remaining work
+
+Shop-independent work first; shop-dependent items last (user, 2026-11-10).
+
+1. `1130` Step 3, part 1: Go code (see above).
+2. `1130` Step 3, part 2: `process-flow.yaml` (new/changed processes per the plan's Step 3 work list) + the 3 new agents + Step 4 process transition tests. Never in parallel with another plan that edits `process-flow.yaml`.
+3. `1130` Step 3, part 3: `gh optivem characterize` entry point + Step 5 docs.
+4. `1300` release check (its Step 5). Release run dispatched 2026-11-10 (user-approved): https://github.com/optivem/gh-optivem/actions/runs/42806020020. It tests against shop's latest `meta-v*` release (`meta-v1.0.224`), not shop `main`, so shop's CI state does not block it. A push to `main` does NOT cut a release (`gh-acceptance-stage.yml` is `workflow_dispatch` only). Once a release newer than v1.6.107 exists: clone shop into a temp dir (user-approved, read-only, deleted afterwards), run `gh optivem spec validate`, confirm 14 UC-001 criteria, delete `1300` (the shop-side copy is deleted from a shop session). If the run failed, root-cause it before re-dispatching.
+5. Shop-dependent, last: E2 shop config write (needs the new release) and the Docker rehearsals, both tracked in `plans/20261104-1120-meta-backlog-consolidation.md`.
+6. Delete this meta-plan once 1–4 are done (5 lives in the backlog meta-plan).
 
 ## Decisions taken (2026-11-10)
 
