@@ -49,6 +49,12 @@ type ResumeConfig struct {
 	// scope keeps a call-activity out of the skippable set — used for the
 	// unrolled external-system units, which always re-run whole.
 	ExcludeWhenParams []string
+	// UnitKeyState lists state keys whose non-empty value is appended to the
+	// unit id ("<parent>@<node>@<value>"), so a unit entered once per item in
+	// one walk (characterize's layers, once per use case under
+	// `use-case-id`) is proven done per item: without it the first item's
+	// marker would skip the same unit for every later item.
+	UnitKeyState []string
 	// ExtraStateKeys are state keys persisted besides the declared agent
 	// outputs.
 	ExtraStateKeys []string
@@ -59,7 +65,7 @@ type ResumeConfig struct {
 
 // resumableUnit returns the unit id for a call-activity when it is eligible
 // for resume, or "" when it is not.
-func (e *Engine) resumableUnit(parentProcess string, raw RawNode, calleeProcess string, params map[string]string) string {
+func (e *Engine) resumableUnit(ctx *Context, parentProcess string, raw RawNode, calleeProcess string, params map[string]string) string {
 	cfg := e.Resume
 	if cfg == nil || !cfg.Units[calleeProcess] {
 		return ""
@@ -69,7 +75,13 @@ func (e *Engine) resumableUnit(parentProcess string, raw RawNode, calleeProcess 
 			return ""
 		}
 	}
-	return parentProcess + "@" + raw.ID
+	unit := parentProcess + "@" + raw.ID
+	for _, k := range cfg.UnitKeyState {
+		if v := ctx.GetString(k); v != "" {
+			unit += "@" + v
+		}
+	}
+	return unit
 }
 
 // persistedKeys returns the state keys saved in a unit's trailer, mapped to

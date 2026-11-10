@@ -280,3 +280,19 @@ func TestMermaidLabel_QuotesReservedChars(t *testing.T) {
 		}
 	}
 }
+
+// TestProcessOrder_CharacterizeIsTop: `gh optivem characterize`'s entry
+// process renders with the TOP entry points, before the CYCLE processes.
+func TestProcessOrder_CharacterizeIsTop(t *testing.T) {
+	idx := map[string]int{}
+	for i, name := range processOrder {
+		idx[name] = i
+	}
+	c, ok := idx["characterize"]
+	if !ok {
+		t.Fatal("processOrder is missing characterize")
+	}
+	if c < idx["refactor"] || c > idx["refine-backlog-item"] {
+		t.Errorf("characterize at %d, want between refactor (%d) and refine-backlog-item (%d)", c, idx["refactor"], idx["refine-backlog-item"])
+	}
+}

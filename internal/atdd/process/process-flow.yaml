@@ -1153,6 +1153,12 @@ processes:
     diagram-section-order: 12
     preset-state:
       characterize: true
+      # No ticket: `gh optivem characterize` runs without one, so the commit
+      # process's "#${ticket-id} ${issue-title} - ${layer}" reads
+      # "#characterize Characterize legacy system - <layer>", and the resume
+      # trailers (Atdd-Ticket) scope to this run kind.
+      ticket-id: characterize
+      issue-title: "Characterize legacy system"
       # Port-changed flags start false: the adapter layer's gate reads
       # system-driver-port-changed even when no DSL change set it.
       system-driver-port-changed: false

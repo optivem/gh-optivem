@@ -25,6 +25,12 @@ var resumableUnits = map[string]bool{
 // skippable set: the external-system unit always re-runs whole.
 var resumeExcludeParams = []string{"external-system-name"}
 
+// resumeUnitKeyState scopes characterize's layer units to the current use
+// case: the same call-activity runs once per use case, so its marker must
+// name the use case (ticket flows never set use-case-id; their unit ids are
+// unchanged).
+var resumeUnitKeyState = []string{actions.CtxKeyUseCaseID}
+
 // resumeExtraStateKeys are derived state keys (not declared agent outputs)
 // that later steps read and a skipped unit must therefore restore.
 //
@@ -50,6 +56,7 @@ func newResumeConfig(repoPath string, log io.Writer) *statemachine.ResumeConfig 
 	return &statemachine.ResumeConfig{
 		Units:             resumableUnits,
 		ExcludeWhenParams: resumeExcludeParams,
+		UnitKeyState:      resumeUnitKeyState,
 		ExtraStateKeys:    resumeExtraStateKeys,
 		Probe:             gitResumeProbe{repoPath: repoPath},
 		Log:               log,

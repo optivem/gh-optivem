@@ -51,16 +51,8 @@ func newImplementCmd() *cobra.Command {
 		issueArg             string
 		targetArg            string
 		channelArg           string
-		headless             bool
 		autonomousDeprecated bool
-		manualAgents         bool
-		logFile              string
-		logLevelArg          string
-		verbose              bool
-		workspace            string
-		keepRuns             int
-		keepRunHistory       int
-		showPrompt           bool
+		f                    driverRunFlags
 	)
 	cmd := &cobra.Command{
 		Use:   "implement [issue]",
@@ -144,8 +136,7 @@ kill them.`,
 			if target == driver.TargetUnset && strings.TrimSpace(channelArg) != "" {
 				exitOnError(errors.New("--channel requires --target (channel applies to a scoped slice)"))
 			}
-			exitOnError(validateKeepRuns(keepRuns))
-			exitOnError(validateKeepRunHistory(keepRunHistory))
+			exitOnError(f.validate())
 
 			// --autonomous is a deprecated alias for --auto --headless.
 			// Emit one stderr warning, then turn on headless and (if not
@@ -156,7 +147,7 @@ kill them.`,
 			if autonomousDeprecated {
 				fmt.Fprintln(cmd.ErrOrStderr(),
 					"gh optivem: --autonomous is deprecated; use --auto --headless")
-				headless = true
+				f.headless = true
 				if existing := cmdctx.Approval(cmd); !existing.Auto {
 					r, err := approval.Resolve(true, true, "", false, os.Getenv)
 					exitOnError(err)
@@ -164,69 +155,105 @@ kill them.`,
 				}
 			}
 
-			resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
-			exportConfigForShellOuts(resolvedConfigPath)
-			cfg, err := runImplementPreflight(resolvedConfigPath, workspace, manualAgents)
-			exitOnError(err)
-			hooks, err := overrideHooksFromConfig(cfg)
-			exitOnError(err)
-			promptOverrides, err := taskPromptOverridesFromConfig(cfg)
-			exitOnError(err)
-			logFileLevel, err := outlog.ParseLevel(logLevelArg)
-			exitOnError(err)
-			terminalLevel := outlog.Phase
-			if verbose {
-				terminalLevel = outlog.Detail
-			}
 			var resolved tracker.Issue
-			runErr := driver.Run(context.Background(), driver.Options{
-				IssueNum:            issue,
-				Target:              target,
-				Channel:             strings.TrimSpace(channelArg),
-				ResolvedIssue:       &resolved,
-				Headless:            headless,
-				ManualAgents:        manualAgents,
-				Override:            hooks,
-				YAMLPath:            cfg.ProcessFlow,
-				TaskPromptOverrides: promptOverrides,
-				ConfigPath:          resolvedConfigPath,
-				LogFile:             logFile,
-				KeepRuns:            keepRuns,
-				KeepRunHistory:      keepRunHistory,
-				ShowPrompt:          showPrompt,
-				Approval:            cmdctx.Approval(cmd),
-				TerminalLevel:       terminalLevel,
-				LogFileLevel:        logFileLevel,
+			runDriverCommand(cmd, &f, driver.Options{
+				IssueNum:      issue,
+				Target:        target,
+				Channel:       strings.TrimSpace(channelArg),
+				ResolvedIssue: &resolved,
+			}, func(w io.Writer, cfg *projectconfig.Config) {
+				printRunEndBanner(w, cfg, resolved.URL, resolved.Title)
 			})
-			if runErr == nil {
-				printRunEndBanner(cmd.ErrOrStderr(), cfg, resolved.URL, resolved.Title)
-			}
-			// Pending-human yield (plan 20260615-1845 Step 1): a category:human
-			// node was reached in an unattended run (no operator TTY). This is a
-			// clean pause, not a failure — exit with a distinct code so a
-			// rehearsal / CI harness can tell "paused, awaiting a human" apart
-			// from done (0) and crashed (1), and resume later with an operator.
-			if errors.Is(runErr, driver.ErrPendingHuman) {
-				fmt.Fprintln(cmd.ErrOrStderr(), runErr)
-				os.Exit(driver.ExitCodePendingHuman)
-			}
-			exitOnError(runErr)
 		},
 	}
 	cmd.Flags().StringVar(&issueArg, "issue", "", "GitHub issue number or URL (or pass it positionally)")
 	cmd.Flags().StringVar(&targetArg, "target", "", "Scope the run to one pipeline slice: test | driver-adapter | system (default: walk the whole pipeline)")
 	cmd.Flags().StringVar(&channelArg, "channel", "", "Channel for a channel-split --target (driver-adapter / system); validated against the project's channels:. Rejected for --target test")
-	cmd.Flags().BoolVar(&headless, "headless", false, "Run the claude subprocess in headless `claude -p` mode (no interactive UI; structured JSON envelope captured for the exit banner)")
 	cmd.Flags().BoolVar(&autonomousDeprecated, "autonomous", false, "[Deprecated] Equivalent to --auto --headless. Will be removed in a future release.")
-	cmd.Flags().BoolVar(&manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
-	cmd.Flags().StringVar(&workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
-	cmd.Flags().StringVar(&logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
-	cmd.Flags().StringVar(&logLevelArg, "log-level", "detail", "Verbosity of --log-file: phase (BPMN trace + prompts only) or detail (everything, default)")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Stream the full firehose (subprocess stdout and stderr, agent body, prompt-prep banners) to the terminal. Default: terminal shows only BPMN trace lines, agent enter/exit banners, and prompts")
-	cmd.Flags().IntVar(&keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
-	cmd.Flags().IntVar(&keepRunHistory, "keep-run-history", 100, "Max runs to keep in the durable run-history archive (<user-state-dir>/runs/), which mirrors summary.md, summary.jsonl, steps.jsonl and flow.txt so they survive worktree teardown (0 = disable the archive)")
-	cmd.Flags().BoolVar(&showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
+	f.register(cmd)
 	return cmd
+}
+
+// driverRunFlags are the flags shared by the commands that walk the ATDD
+// driver (`implement`, `characterize`): how agents are dispatched, where the
+// workspace is, and how the run is logged and pruned.
+type driverRunFlags struct {
+	headless       bool
+	manualAgents   bool
+	logFile        string
+	logLevel       string
+	verbose        bool
+	workspace      string
+	keepRuns       int
+	keepRunHistory int
+	showPrompt     bool
+}
+
+func (f *driverRunFlags) register(cmd *cobra.Command) {
+	cmd.Flags().BoolVar(&f.headless, "headless", false, "Run the claude subprocess in headless `claude -p` mode (no interactive UI; structured JSON envelope captured for the exit banner)")
+	cmd.Flags().BoolVar(&f.manualAgents, "manual-agents", false, "Fall back to v1 manual dispatch: pause and let the operator launch each agent in a separate window")
+	cmd.Flags().StringVar(&f.workspace, "workspace", "", "Workspace root containing one clone per repo (default: parent directory of CWD). Each clone dir must be named after the repo-name component of its slug; symlink outliers into place.")
+	cmd.Flags().StringVar(&f.logFile, "log-file", "", "Mirror everything stdout/stderr emit during the run to this file (in addition to streaming live)")
+	cmd.Flags().StringVar(&f.logLevel, "log-level", "detail", "Verbosity of --log-file: phase (BPMN trace + prompts only) or detail (everything, default)")
+	cmd.Flags().BoolVarP(&f.verbose, "verbose", "v", false, "Stream the full firehose (subprocess stdout and stderr, agent body, prompt-prep banners) to the terminal. Default: terminal shows only BPMN trace lines, agent enter/exit banners, and prompts")
+	cmd.Flags().IntVar(&f.keepRuns, "keep-runs", 10, "Max prompt-log run directories to keep under .gh-optivem/runs/ at startup (0 = never prune)")
+	cmd.Flags().IntVar(&f.keepRunHistory, "keep-run-history", 100, "Max runs to keep in the durable run-history archive (<user-state-dir>/runs/), which mirrors summary.md, summary.jsonl, steps.jsonl and flow.txt so they survive worktree teardown (0 = disable the archive)")
+	cmd.Flags().BoolVar(&f.showPrompt, "show-prompt", false, "Dump each agent's full rendered prompt to stdout before dispatch (default: summary banner only)")
+}
+
+func (f *driverRunFlags) validate() error {
+	if err := validateKeepRuns(f.keepRuns); err != nil {
+		return err
+	}
+	return validateKeepRunHistory(f.keepRunHistory)
+}
+
+// runDriverCommand runs the on-disk preflight, fills opts with the shared
+// flags and the project config, walks the driver, calls banner on success,
+// and exits: a pending-human yield exits with driver.ExitCodePendingHuman, any
+// other error through exitOnError.
+func runDriverCommand(cmd *cobra.Command, f *driverRunFlags, opts driver.Options, banner func(io.Writer, *projectconfig.Config)) {
+	resolvedConfigPath, _ := projectconfig.ResolvePath(projectConfigPath)
+	exportConfigForShellOuts(resolvedConfigPath)
+	cfg, err := runImplementPreflight(resolvedConfigPath, f.workspace, f.manualAgents)
+	exitOnError(err)
+	hooks, err := overrideHooksFromConfig(cfg)
+	exitOnError(err)
+	promptOverrides, err := taskPromptOverridesFromConfig(cfg)
+	exitOnError(err)
+	logFileLevel, err := outlog.ParseLevel(f.logLevel)
+	exitOnError(err)
+	terminalLevel := outlog.Phase
+	if f.verbose {
+		terminalLevel = outlog.Detail
+	}
+	opts.Headless = f.headless
+	opts.ManualAgents = f.manualAgents
+	opts.Override = hooks
+	opts.YAMLPath = cfg.ProcessFlow
+	opts.TaskPromptOverrides = promptOverrides
+	opts.ConfigPath = resolvedConfigPath
+	opts.LogFile = f.logFile
+	opts.KeepRuns = f.keepRuns
+	opts.KeepRunHistory = f.keepRunHistory
+	opts.ShowPrompt = f.showPrompt
+	opts.Approval = cmdctx.Approval(cmd)
+	opts.TerminalLevel = terminalLevel
+	opts.LogFileLevel = logFileLevel
+	runErr := driver.Run(context.Background(), opts)
+	if runErr == nil && banner != nil {
+		banner(cmd.ErrOrStderr(), cfg)
+	}
+	// Pending-human yield (plan 20260615-1845 Step 1): a category:human
+	// node was reached in an unattended run (no operator TTY). This is a
+	// clean pause, not a failure — exit with a distinct code so a
+	// rehearsal / CI harness can tell "paused, awaiting a human" apart
+	// from done (0) and crashed (1), and resume later with an operator.
+	if errors.Is(runErr, driver.ErrPendingHuman) {
+		fmt.Fprintln(cmd.ErrOrStderr(), runErr)
+		os.Exit(driver.ExitCodePendingHuman)
+	}
+	exitOnError(runErr)
 }
 
 // printRunEndBanner prints the post-run exit banner: a "Ticket: <url>" line

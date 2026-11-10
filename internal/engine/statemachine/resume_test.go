@@ -3,6 +3,7 @@ package statemachine_test
 import (
 	"bytes"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -306,5 +307,40 @@ func TestParseTrailerLines(t *testing.T) {
 	}
 	if got := statemachine.ParseTrailerLines(msg, "Missing"); len(got) != 0 {
 		t.Errorf("missing key = %q, want none", got)
+	}
+}
+
+// TestResume_UnitKeyStateScopesUnitPerItem: a unit entered once per item
+// (characterize's layers, once per use case) is marked and proven per item, so
+// an earlier item's marker never skips the unit for a later item.
+func TestResume_UnitKeyStateScopesUnitPerItem(t *testing.T) {
+	proof := commitFor(t, "abc1234")
+	newRig := func() (*resumeRig, *statemachine.Context) {
+		rig := newResumeRig(t, true)
+		rig.eng.Resume.UnitKeyState = []string{"use-case-id"}
+		ctx := newResumeCtx()
+		ctx.Set("use-case-id", "UC-002")
+		return rig, ctx
+	}
+
+	rig, ctx := newRig()
+	rig.probe.commits["65|root@FIRST@UC-001"] = proof
+	if err := rig.eng.RunProcess("root", ctx); err != nil {
+		t.Fatalf("RunProcess: %v", err)
+	}
+	if rig.worked[0] != "root@FIRST@UC-002" {
+		t.Fatalf("another use case's marker must not skip FIRST, worked = %q", rig.worked)
+	}
+	if got := trailerValue(rig.trailers["root@FIRST@UC-002"], statemachine.TrailerUnit); got != "root@FIRST@UC-002" {
+		t.Errorf("unit trailer = %q, want root@FIRST@UC-002", got)
+	}
+
+	rig, ctx = newRig()
+	rig.probe.commits["65|root@FIRST@UC-002"] = proof
+	if err := rig.eng.RunProcess("root", ctx); err != nil {
+		t.Fatalf("RunProcess: %v", err)
+	}
+	if slices.Contains(rig.worked, "root@FIRST@UC-002") {
+		t.Fatalf("the same use case's marker must skip FIRST, worked = %q", rig.worked)
 	}
 }

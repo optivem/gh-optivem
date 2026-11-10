@@ -157,7 +157,7 @@ func (e *Engine) wrapCallActivity(parentProcess string, raw RawNode) NodeFn {
 		if err != nil {
 			return Outcome{Err: err}
 		}
-		if unit := e.resumableUnit(parentProcess, raw, processName, merged); unit != "" {
+		if unit := e.resumableUnit(ctx, parentProcess, raw, processName, merged); unit != "" {
 			skip, err := e.trySkipUnit(ctx, unit)
 			if err != nil {
 				return Outcome{Err: err}

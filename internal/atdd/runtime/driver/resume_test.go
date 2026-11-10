@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/optivem/gh-optivem/internal/atdd/process"
 )
 
 func logRecord(sha, subject string, trailers ...string) string {
@@ -107,5 +109,31 @@ func TestGitResumeProbe_HistoryReadErrorPropagates(t *testing.T) {
 	}
 	if _, _, err := (gitResumeProbe{repoPath: "r"}).FindUnitCommit("65", "p@DSL"); err == nil {
 		t.Fatal("git log failure must be surfaced")
+	}
+}
+
+// TestNewResumeConfig_ScopesUnitsToUseCase: characterize runs its layer units
+// once per use case, so the unit id carries use-case-id.
+func TestNewResumeConfig_ScopesUnitsToUseCase(t *testing.T) {
+	cfg := newResumeConfig(t.TempDir(), nil)
+	if len(cfg.UnitKeyState) != 1 || cfg.UnitKeyState[0] != "use-case-id" {
+		t.Errorf("UnitKeyState = %q, want [use-case-id]", cfg.UnitKeyState)
+	}
+}
+
+// TestTopProcesses_CoverCLIEntryProcesses: every process a CLI command enters
+// gets phase banners and exists in the embedded flow.
+func TestTopProcesses_CoverCLIEntryProcesses(t *testing.T) {
+	eng, err := process.Load()
+	if err != nil {
+		t.Fatalf("load embedded flow: %v", err)
+	}
+	for _, name := range []string{DefaultProcessName, CharacterizeProcessName} {
+		if !topProcesses[name] {
+			t.Errorf("topProcesses is missing CLI entry process %q", name)
+		}
+		if _, ok := eng.Processes[name]; !ok {
+			t.Errorf("CLI entry process %q is not in the embedded flow", name)
+		}
 	}
 }

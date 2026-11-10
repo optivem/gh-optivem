@@ -58,6 +58,8 @@ var processOrder = []string{
 	"refine-ticket",
 	"implement-ticket",
 	"refactor",
+	// TOP — legacy baseline (`gh optivem characterize`)
+	"characterize",
 	// CYCLE
 	"refine-backlog-item",
 	"change-system-behavior",

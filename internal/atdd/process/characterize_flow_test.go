@@ -64,7 +64,8 @@ type charScenario struct {
 
 // charRun is the observable trail of one walk.
 type charRun struct {
-	events []string // "action:<n>", "agent:<n>", "cmd:<task-name>", "commit:<layer>", "approve:<question>"
+	messages []string // rendered commit messages, in order
+	events   []string // "action:<n>", "agent:<n>", "cmd:<task-name>", "commit:<layer>", "approve:<question>"
 	// commands is every run-command line, in order.
 	commands []string
 	// agentParams is the ctx.Params each agent dispatch saw, in dispatch order.
@@ -277,6 +278,7 @@ func bindChar(t *testing.T, eng *statemachine.Engine, sc *charScenario, run *cha
 				ctx.Set("command-succeeded", true)
 				switch {
 				case strings.HasPrefix(cmd, "gh optivem commit"):
+					run.messages = append(run.messages, ctx.Params["message"])
 					if err := record("commit:" + ctx.Params["layer"]); err != nil {
 						return statemachine.Outcome{Err: err}
 					}
@@ -1213,6 +1215,37 @@ func TestCharacterize_Wiring(t *testing.T) {
 	wantEdge(t, uc, "GATE_NARRATIVE_APPROVED", "WRITE_NARRATIVE", "approval-outcome == rejected")
 	wantEdge(t, uc, "GATE_CRITERIA_APPROVED", "WRITE_CRITERIA", "approval-outcome == rejected")
 	wantEdge(t, eng.Processes["characterize-test-layers"], "GATE_TESTS_APPROVED", "RESTAMP_BEFORE_EXTERNAL", "approval-outcome == rejected")
+}
+
+// TestCharacterize_CommitMessages: without a ticket, the preset ticket-id /
+// issue-title render every commit as "#characterize Characterize legacy system
+// - <layer>", so use_case_state.go's " - <label> (<use case id>)" grep finds
+// the use case's acceptance-test and DSL commits.
+func TestCharacterize_CommitMessages(t *testing.T) {
+	run := runChar(t, "characterize", happyScenario(), nil)
+	if run.err != nil {
+		t.Fatalf("characterize: %v", run.err)
+	}
+	layers := run.commits()
+	if len(layers) == 0 || len(layers) != len(run.messages) {
+		t.Fatalf("commits = %q, messages = %q", layers, run.messages)
+	}
+	for i, layer := range layers {
+		if want := "#characterize Characterize legacy system - " + layer; run.messages[i] != want {
+			t.Errorf("commit %d message = %q, want %q", i, run.messages[i], want)
+		}
+	}
+	for _, grep := range []string{" - ACCEPTANCE TESTS (UC-001)", " - DSL (UC-001)", " - ACCEPTANCE TESTS (UC-002)", " - DSL (UC-002)"} {
+		n := 0
+		for _, m := range run.messages {
+			if strings.Contains(m, grep) {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("%q matches %d commit messages, want 1 (messages %q)", grep, n, run.messages)
+		}
+	}
 }
 
 // The diagram redo: a declined diagram re-runs the writer; the cap halts.

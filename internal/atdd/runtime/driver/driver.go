@@ -62,6 +62,10 @@ import (
 // DefaultProcessName is the entry process loaded by every public CLI command.
 const DefaultProcessName = "main"
 
+// CharacterizeProcessName is the entry process of `gh optivem characterize`:
+// the legacy baseline, use case by use case, with no ticket.
+const CharacterizeProcessName = "characterize"
+
 // Reused string literals across the driver.
 const (
 	gitRevParse       = "rev-parse"
@@ -2015,6 +2019,8 @@ var topProcesses = map[string]bool{
 	"refine-ticket":    true,
 	"implement-ticket": true,
 	"refactor":         true,
+	// Entered by `gh optivem characterize` (plan 20261110-1130).
+	CharacterizeProcessName: true,
 }
 
 // wrapPhaseBoundaries decorates every call-activity node that lives
