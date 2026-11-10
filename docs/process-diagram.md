@@ -325,7 +325,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
+    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code<br/>layer-suffix = <br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-pending-on = dsl"]
     VALIDATE_CHANNELS_REGISTERED[[Validate Touched Channels Are Configured]]
     GATE_DSL_PORT_CHANGED{DSL Port Changed?}
     IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>dsl-reviewer = review-dsl<br/>layer-suffix = <br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-pending-on = system-drivers"]
@@ -359,7 +359,7 @@ flowchart TD
     VERIFY_TESTS_PASS_ACCEPTANCE["Verify Acceptance Tests Pass — see § verify-tests-pass<br/>suite = acceptance"]
     VERIFY_TESTS_FAIL_ACCEPTANCE["Verify Acceptance Tests Fail — see § verify-tests-fail<br/>suite = acceptance"]
     UNKNOWN_EXPECTED_TEST_RESULT((⚡))
-    COMMIT_TEST_CODE["Commit Test Code — see § commit<br/>category = test-commit<br/>layer = ACCEPTANCE TESTS"]
+    COMMIT_TEST_CODE["Commit Test Code — see § commit<br/>category = test-commit"]
     WAV_AT_CODE_END(( ))
 
     WRITE_ACCEPTANCE_TESTS --> COMPILE_TESTS
@@ -532,8 +532,10 @@ flowchart TD
     TESTS_INFRA_HALT((⚡))
     UNKNOWN_TESTS_OUTCOME((⚡))
     GATE_FIX_PROGRESSING{Fix Loop Progressing?}
-    FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
+    GATE_CHARACTERIZE{Characterizing?}
     FIX_LOOP_NO_PROGRESS_EXHAUSTED((⚡))
+    FIX_UNEXPECTED_FAILING_TESTS[Fix Unexpected Test Failures — see § fix-unexpected-failing-tests]
+    FIX_CHARACTERIZATION_FAILING_TESTS[Fix Failing Characterization Tests]
     GATE_FIX_FLOW_APPROVED{Fixer Dispatch Approved?}
     FIX_FLOW_NOT_APPROVED((⚡))
     FIX_LOOP_EXHAUSTED((⚡))
@@ -544,9 +546,12 @@ flowchart TD
     GATE_TESTS_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_TESTS_OUTCOME --> UNKNOWN_TESTS_OUTCOME
     CHECK_FIX_PROGRESS --> GATE_FIX_PROGRESSING
-    GATE_FIX_PROGRESSING -- Yes --> FIX_UNEXPECTED_FAILING_TESTS
+    GATE_FIX_PROGRESSING -- Yes --> GATE_CHARACTERIZE
     GATE_FIX_PROGRESSING -- No --> FIX_LOOP_NO_PROGRESS_EXHAUSTED
+    GATE_CHARACTERIZE -- No --> FIX_UNEXPECTED_FAILING_TESTS
+    GATE_CHARACTERIZE -- Yes --> FIX_CHARACTERIZATION_FAILING_TESTS
     FIX_UNEXPECTED_FAILING_TESTS --> GATE_FIX_FLOW_APPROVED
+    FIX_CHARACTERIZATION_FAILING_TESTS --> GATE_FIX_FLOW_APPROVED
     GATE_FIX_FLOW_APPROVED -- Rejected --> FIX_FLOW_NOT_APPROVED
     GATE_FIX_FLOW_APPROVED --> RUN_TESTS
 
@@ -563,20 +568,25 @@ flowchart TD
 flowchart TD
     RUN_TESTS[Run Tests]
     GATE_TESTS_OUTCOME{Test Outcome?}
-    FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
+    GATE_CHARACTERIZE{Characterizing?}
     VERIFY_FAIL_END(( ))
     TESTS_INFRA_HALT((⚡))
     UNKNOWN_TESTS_OUTCOME((⚡))
+    FIX_UNEXPECTED_PASSING_TESTS[Fix Unexpectedly Passing Tests — see § fix-unexpected-passing-tests]
+    FIX_CHARACTERIZATION_PASSING_TESTS[Fix Passing Characterization Tests]
     GATE_FIX_FLOW_APPROVED{Fixer Dispatch Approved?}
     FIX_FLOW_NOT_APPROVED((⚡))
     FIX_LOOP_EXHAUSTED((⚡))
 
     RUN_TESTS --> GATE_TESTS_OUTCOME
-    GATE_TESTS_OUTCOME -- Pass --> FIX_UNEXPECTED_PASSING_TESTS
+    GATE_TESTS_OUTCOME -- Pass --> GATE_CHARACTERIZE
     GATE_TESTS_OUTCOME -- Fail --> VERIFY_FAIL_END
     GATE_TESTS_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_TESTS_OUTCOME --> UNKNOWN_TESTS_OUTCOME
+    GATE_CHARACTERIZE -- No --> FIX_UNEXPECTED_PASSING_TESTS
+    GATE_CHARACTERIZE -- Yes --> FIX_CHARACTERIZATION_PASSING_TESTS
     FIX_UNEXPECTED_PASSING_TESTS --> GATE_FIX_FLOW_APPROVED
+    FIX_CHARACTERIZATION_PASSING_TESTS --> GATE_FIX_FLOW_APPROVED
     GATE_FIX_FLOW_APPROVED -- Rejected --> FIX_FLOW_NOT_APPROVED
     GATE_FIX_FLOW_APPROVED --> RUN_TESTS
 
@@ -915,6 +925,201 @@ flowchart TD
     class FIX_REJECTED_END errorEndNode
 ```
 
+## Characterize Legacy System
+
+```mermaid
+flowchart TD
+    RECORD_START_COMMITS[[Record System Start Commits]]
+    START_SYSTEM[Start System Once — see § start-system]
+    WRITE_USE_CASE_DIAGRAM[Write the Use Case Diagram — see § write-legacy-use-case-diagram]
+    COMMIT_USE_CASE_DIAGRAM["Commit the Use Case Diagram — see § commit<br/>category = test-commit<br/>layer = USE CASE DIAGRAM"]
+    CONFIRM_CORE_USE_CASE["Confirm the Diagram and the Core Use Case — see § approve<br/>category = human"]
+    GATE_CORE_USE_CASE_CONFIRMED{Approved?}
+    CORE_CRITERIA["Core Use Case: Criteria Layer — see § characterize-layer<br/>discovered-external-port-paths = <br/>gated = true<br/>layer-process = write-use-case-criteria"]
+    CORE_EXTERNAL["Core Use Case: External Layer — see § characterize-layer<br/>gated = true<br/>layer-process = implement-external-drivers-if-needed"]
+    CORE_ACCEPTANCE_TESTS["Core Use Case: Acceptance Test Layer — see § characterize-layer<br/>gated = true<br/>layer-process = characterize-at-layer"]
+    CORE_DSL["Core Use Case: DSL Layer — see § characterize-layer<br/>gated = true<br/>layer-process = characterize-dsl-layer"]
+    CORE_SYSTEM_DRIVER_ADAPTERS["Core Use Case: System Driver Adapter Layer — see § characterize-layer<br/>gated = true<br/>layer-process = characterize-adapter-layer"]
+    BULK_CRITERIA["Other Use Cases: Criteria Layer — see § characterize-layer<br/>discovered-external-port-paths = <br/>gated = false<br/>layer-process = write-use-case-criteria"]
+    BULK_EXTERNAL["Other Use Cases: External Layer — see § characterize-layer<br/>gated = false<br/>layer-process = implement-external-drivers-if-needed"]
+    BULK_ACCEPTANCE_TESTS["Other Use Cases: Acceptance Test Layer — see § characterize-layer<br/>gated = false<br/>layer-process = characterize-at-layer"]
+    BULK_DSL["Other Use Cases: DSL Layer — see § characterize-layer<br/>gated = false<br/>layer-process = characterize-dsl-layer"]
+    BULK_SYSTEM_DRIVER_ADAPTERS["Other Use Cases: System Driver Adapter Layer — see § characterize-layer<br/>gated = false<br/>layer-process = characterize-adapter-layer"]
+    STAMP_CHARACTERIZED_TEST_NAMES[[Collect Every Use Case's Tests]]
+    REMOVE_WIP_GATE[[Remove WIP Gate From Green Tests]]
+    COMMIT_WIP_GATE_REMOVAL["Commit WIP Gate Removal — see § commit<br/>category = test-commit<br/>layer = WIP GATE REMOVAL"]
+    FINAL_SAFETY_GATE[Final Safety Gate — see § verify-system-unchanged]
+    STOP_SYSTEM[Stop System]
+    APPLY_AC_POLICY[[Delete the Criteria]]
+    COMMIT_AC_DELETION["Commit Criteria Deletion — see § commit<br/>category = test-commit<br/>layer = CRITERIA DELETION"]
+    CHARACTERIZE_END(( ))
+    CORE_USE_CASE_CONFIRMATION_EXHAUSTED((⚡))
+
+    RECORD_START_COMMITS --> START_SYSTEM
+    START_SYSTEM --> WRITE_USE_CASE_DIAGRAM
+    WRITE_USE_CASE_DIAGRAM --> COMMIT_USE_CASE_DIAGRAM
+    COMMIT_USE_CASE_DIAGRAM --> CONFIRM_CORE_USE_CASE
+    CONFIRM_CORE_USE_CASE --> GATE_CORE_USE_CASE_CONFIRMED
+    GATE_CORE_USE_CASE_CONFIRMED -- Approved --> CORE_CRITERIA
+    GATE_CORE_USE_CASE_CONFIRMED -- Rejected --> WRITE_USE_CASE_DIAGRAM
+    CORE_CRITERIA --> CORE_EXTERNAL
+    CORE_EXTERNAL --> CORE_ACCEPTANCE_TESTS
+    CORE_ACCEPTANCE_TESTS --> CORE_DSL
+    CORE_DSL --> CORE_SYSTEM_DRIVER_ADAPTERS
+    CORE_SYSTEM_DRIVER_ADAPTERS --> BULK_CRITERIA
+    BULK_CRITERIA --> BULK_EXTERNAL
+    BULK_EXTERNAL --> BULK_ACCEPTANCE_TESTS
+    BULK_ACCEPTANCE_TESTS --> BULK_DSL
+    BULK_DSL --> BULK_SYSTEM_DRIVER_ADAPTERS
+    BULK_SYSTEM_DRIVER_ADAPTERS --> STAMP_CHARACTERIZED_TEST_NAMES
+    STAMP_CHARACTERIZED_TEST_NAMES --> REMOVE_WIP_GATE
+    REMOVE_WIP_GATE --> COMMIT_WIP_GATE_REMOVAL
+    COMMIT_WIP_GATE_REMOVAL --> FINAL_SAFETY_GATE
+    FINAL_SAFETY_GATE --> STOP_SYSTEM
+    STOP_SYSTEM --> APPLY_AC_POLICY
+    APPLY_AC_POLICY --> COMMIT_AC_DELETION
+    COMMIT_AC_DELETION --> CHARACTERIZE_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class APPLY_AC_POLICY,RECORD_START_COMMITS,REMOVE_WIP_GATE,STAMP_CHARACTERIZED_TEST_NAMES serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class CORE_USE_CASE_CONFIRMATION_EXHAUSTED errorEndNode
+```
+
+## Characterize System Driver Adapter Layer
+
+```mermaid
+flowchart TD
+    GATE_SYSTEM_DRIVER_PORTS_CHANGED{System Driver Ports Changed?}
+    IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS["Implement and Verify System Driver Adapters<br/>expected-test-result = success<br/>suite = acceptance<br/>task-name = implement-system-driver-adapters<br/>test-category = acceptance<br/>verify-mode = green-when-complete<br/>verify-pending-on = none"]
+    CHARACTERIZE_ADAPTER_LAYER_END(( ))
+
+    GATE_SYSTEM_DRIVER_PORTS_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS
+    GATE_SYSTEM_DRIVER_PORTS_CHANGED -- No --> CHARACTERIZE_ADAPTER_LAYER_END
+    IMPLEMENT_AND_VERIFY_SYSTEM_DRIVER_ADAPTERS --> CHARACTERIZE_ADAPTER_LAYER_END
+```
+
+## Characterize Acceptance Test Layer
+
+```mermaid
+flowchart TD
+    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE["Write and Verify Acceptance Test Code<br/>expected-test-result = success<br/>task-name = write-acceptance-tests<br/>test-category = acceptance<br/>verify-mode = green-when-complete<br/>verify-pending-on = dsl"]
+    VALIDATE_CHANNELS_REGISTERED[[Validate Touched Channels Are Configured]]
+    CHARACTERIZE_AT_LAYER_END(( ))
+
+    WRITE_AND_VERIFY_ACCEPTANCE_TEST_CODE --> VALIDATE_CHANNELS_REGISTERED
+    VALIDATE_CHANNELS_REGISTERED --> CHARACTERIZE_AT_LAYER_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class VALIDATE_CHANNELS_REGISTERED serviceNode
+```
+
+## Characterize DSL Layer
+
+```mermaid
+flowchart TD
+    GATE_DSL_PORT_CHANGED{DSL Port Changed?}
+    IMPLEMENT_AND_VERIFY_DSL["Implement and Verify DSL<br/>dsl-reviewer = review-dsl<br/>expected-test-result = success<br/>suite = acceptance<br/>task-name = implement-dsl<br/>test-category = acceptance<br/>verify-mode = green-when-complete<br/>verify-pending-on = drivers"]
+    CHARACTERIZE_DSL_LAYER_END(( ))
+    GATE_EXTERNAL_DRIVER_PORT_CHANGED{DSL Touched External Driver Port Files?}
+    ADD_ESCC_FOR_DISCOVERED_SYSTEMS[Add ESCC for the Discovered Systems — see § write-use-case-criteria]
+    RESTAMP_USE_CASE[[Re-stamp the ESCC Keys]]
+    EXTERNAL_LAYER[External Layer for This Use Case — see § implement-external-drivers-if-needed]
+    RESTAMP_USE_CASE_AFTER_EXTERNAL[[Re-stamp the Use Case Acceptance Tests]]
+    VERIFY_TESTS_PASS_ACCEPTANCE["Verify Use Case Acceptance Tests Pass — see § verify-tests-pass<br/>suite = acceptance"]
+
+    GATE_DSL_PORT_CHANGED -- Yes --> IMPLEMENT_AND_VERIFY_DSL
+    GATE_DSL_PORT_CHANGED -- No --> CHARACTERIZE_DSL_LAYER_END
+    IMPLEMENT_AND_VERIFY_DSL --> GATE_EXTERNAL_DRIVER_PORT_CHANGED
+    GATE_EXTERNAL_DRIVER_PORT_CHANGED -- Yes --> ADD_ESCC_FOR_DISCOVERED_SYSTEMS
+    GATE_EXTERNAL_DRIVER_PORT_CHANGED -- No --> CHARACTERIZE_DSL_LAYER_END
+    ADD_ESCC_FOR_DISCOVERED_SYSTEMS --> RESTAMP_USE_CASE
+    RESTAMP_USE_CASE --> EXTERNAL_LAYER
+    EXTERNAL_LAYER --> RESTAMP_USE_CASE_AFTER_EXTERNAL
+    RESTAMP_USE_CASE_AFTER_EXTERNAL --> VERIFY_TESTS_PASS_ACCEPTANCE
+    VERIFY_TESTS_PASS_ACCEPTANCE --> CHARACTERIZE_DSL_LAYER_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class RESTAMP_USE_CASE,RESTAMP_USE_CASE_AFTER_EXTERNAL serviceNode
+```
+
+## Characterize Layer
+
+```mermaid
+flowchart TD
+    SELECT_NEXT_USE_CASE[[Select the Next Use Case]]
+    GATE_USE_CASE_LEFT{Use Case Left?}
+    RUN_LAYER["Run the Layer for This Use Case — see § ${layer-process}"]
+    GATE_GATED{Gated?}
+    SAFETY_GATE[Safety Gate — see § verify-system-unchanged]
+    APPROVE_LAYER["Approve the Layer — see § approve<br/>category = human"]
+    CHARACTERIZE_LAYER_END(( ))
+    GATE_LAYER_APPROVED{Approved?}
+    LAYER_APPROVAL_EXHAUSTED((⚡))
+
+    SELECT_NEXT_USE_CASE --> GATE_USE_CASE_LEFT
+    GATE_USE_CASE_LEFT -- Yes --> RUN_LAYER
+    GATE_USE_CASE_LEFT -- No --> GATE_GATED
+    RUN_LAYER --> SAFETY_GATE
+    SAFETY_GATE --> SELECT_NEXT_USE_CASE
+    GATE_GATED -- Yes --> APPROVE_LAYER
+    GATE_GATED -- No --> CHARACTERIZE_LAYER_END
+    APPROVE_LAYER --> GATE_LAYER_APPROVED
+    GATE_LAYER_APPROVED -- Approved --> CHARACTERIZE_LAYER_END
+    GATE_LAYER_APPROVED -- Rejected --> RUN_LAYER
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class SELECT_NEXT_USE_CASE serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class LAYER_APPROVAL_EXHAUSTED errorEndNode
+```
+
+## Fix Failing Characterization Tests
+
+```mermaid
+flowchart TD
+    SNAPSHOT_STAND_INS[[Snapshot the Working Tree for the Stand-in Check]]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = characterization-test-fixer<br/>category = test-agent<br/>task-name = fix-characterization-failing-tests"]
+    CHECK_STAND_INS_CHANGED[[Check Whether the Fixer Changed a Stand-in]]
+    GATE_STAND_INS_CHANGED{Stand-ins Changed?}
+    RESTART_EXTERNAL_SYSTEMS[Restart External Stand-ins Only — see § restart-external-systems]
+    FIX_CHAR_FAIL_END(( ))
+
+    SNAPSHOT_STAND_INS --> EXECUTE_AGENT
+    EXECUTE_AGENT --> CHECK_STAND_INS_CHANGED
+    CHECK_STAND_INS_CHANGED --> GATE_STAND_INS_CHANGED
+    GATE_STAND_INS_CHANGED -- Yes --> RESTART_EXTERNAL_SYSTEMS
+    GATE_STAND_INS_CHANGED -- No --> FIX_CHAR_FAIL_END
+    RESTART_EXTERNAL_SYSTEMS --> FIX_CHAR_FAIL_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class CHECK_STAND_INS_CHANGED,SNAPSHOT_STAND_INS serviceNode
+```
+
+## Fix Passing Characterization Tests
+
+```mermaid
+flowchart TD
+    SNAPSHOT_STAND_INS[[Snapshot the Working Tree for the Stand-in Check]]
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = characterization-test-fixer<br/>category = test-agent<br/>task-name = fix-characterization-passing-tests<br/>verify-failure-output = none: the tests passed"]
+    CHECK_STAND_INS_CHANGED[[Check Whether the Fixer Changed a Stand-in]]
+    GATE_STAND_INS_CHANGED{Stand-ins Changed?}
+    RESTART_EXTERNAL_SYSTEMS[Restart External Stand-ins Only — see § restart-external-systems]
+    FIX_CHAR_PASS_END(( ))
+
+    SNAPSHOT_STAND_INS --> EXECUTE_AGENT
+    EXECUTE_AGENT --> CHECK_STAND_INS_CHANGED
+    CHECK_STAND_INS_CHANGED --> GATE_STAND_INS_CHANGED
+    GATE_STAND_INS_CHANGED -- Yes --> RESTART_EXTERNAL_SYSTEMS
+    GATE_STAND_INS_CHANGED -- No --> FIX_CHAR_PASS_END
+    RESTART_EXTERNAL_SYSTEMS --> FIX_CHAR_PASS_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class CHECK_STAND_INS_CHANGED,SNAPSHOT_STAND_INS serviceNode
+```
+
 ## Implement External System Real Simulator
 
 ```mermaid
@@ -966,8 +1171,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    BUILD_SYSTEM_AFTER_DRIVER[Build System]
-    START_SYSTEM_AFTER_DRIVER[Start System — see § start-system-restart]
+    REFRESH_AFTER_DRIVER[Refresh External Producer]
     PROBE_CONTRACT_REAL["Probe External System Contract Tests Against the Real System — see § run-tests<br/>suite = contract-real"]
     GATE_CONTRACT_REAL_OUTCOME{Contract-Real Outcome?}
     START_SYSTEM_BEFORE_STUB_PROBE[Start System]
@@ -976,36 +1180,36 @@ flowchart TD
     UNKNOWN_TESTS_OUTCOME((⚡))
     PROBE_CONTRACT_STUB["Probe External System Contract Tests Against the Stub — see § run-tests<br/>suite = contract-stub"]
     IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR[Implement External System Real Simulator]
-    CONTRACT_REAL_UPSTREAM_GAP_HALT((⚡))
+    GATE_CHARACTERIZE{Characterizing?}
     GATE_CONTRACT_STUB_OUTCOME{Contract-Stub Outcome?}
-    BUILD_SYSTEM_AFTER_SIMULATOR[Build System]
+    REFRESH_AFTER_SIMULATOR[Refresh External Producer]
+    CONTRACT_REAL_UPSTREAM_GAP_HALT((⚡))
+    VERIFY_TESTS_PASS_CONTRACT_REAL_TEST_INSTANCE["Verify External System Contract Tests Pass Against the Test Instance — see § verify-tests-pass<br/>suite = contract-real"]
     GATE_STUB_FIDELITY_PRESENT{Stub-Fidelity Tests Authored?}
     IMPLEMENT_EXTERNAL_SYSTEM_STUBS[Implement External System Stubs]
-    START_SYSTEM_AFTER_SIMULATOR[Start System — see § start-system-restart]
+    VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR["Verify External System Contract Tests Pass Against the Real Simulator — see § verify-tests-pass<br/>suite = contract-real"]
     PROBE_CONTRACT_STUB_ISOLATED["Probe Stub-Fidelity Tests Against the Stub — see § run-tests<br/>suite = contract-stub"]
     RECONCILE_PRODUCER_END(( ))
-    BUILD_SYSTEM_AFTER_STUBS[Build System]
-    VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR["Verify External System Contract Tests Pass Against the Real Simulator — see § verify-tests-pass<br/>suite = contract-real"]
+    REFRESH_AFTER_STUBS[Refresh External Producer]
     GATE_CONTRACT_STUB_ISOLATED_OUTCOME{Stub-Fidelity Outcome?}
-    START_SYSTEM_AFTER_STUBS[Start System — see § start-system-restart]
-    IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED[Implement External System Stubs]
     VERIFY_TESTS_PASS_CONTRACT_STUB["Verify External System Contract Tests Pass Against the Stub — see § verify-tests-pass<br/>suite = contract-stub"]
-    BUILD_SYSTEM_AFTER_STUBS_ISOLATED[Build System]
-    START_SYSTEM_AFTER_STUBS_ISOLATED[Start System — see § start-system-restart]
+    IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED[Implement External System Stubs]
+    REFRESH_AFTER_STUBS_ISOLATED[Refresh External Producer]
     VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED["Verify Stub-Fidelity Tests Pass Against the Stub — see § verify-tests-pass<br/>suite = contract-stub"]
 
-    BUILD_SYSTEM_AFTER_DRIVER --> START_SYSTEM_AFTER_DRIVER
-    START_SYSTEM_AFTER_DRIVER --> PROBE_CONTRACT_REAL
+    REFRESH_AFTER_DRIVER --> PROBE_CONTRACT_REAL
     PROBE_CONTRACT_REAL --> GATE_CONTRACT_REAL_OUTCOME
     GATE_CONTRACT_REAL_OUTCOME -- Pass --> START_SYSTEM_BEFORE_STUB_PROBE
     GATE_CONTRACT_REAL_OUTCOME -- Fail --> GATE_CONTRACT_REAL_RED_KIND
     GATE_CONTRACT_REAL_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_CONTRACT_REAL_OUTCOME --> UNKNOWN_TESTS_OUTCOME
     GATE_CONTRACT_REAL_RED_KIND -- Simulator --> IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR
-    GATE_CONTRACT_REAL_RED_KIND -- Test Instance --> CONTRACT_REAL_UPSTREAM_GAP_HALT
-    IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR --> BUILD_SYSTEM_AFTER_SIMULATOR
-    BUILD_SYSTEM_AFTER_SIMULATOR --> START_SYSTEM_AFTER_SIMULATOR
-    START_SYSTEM_AFTER_SIMULATOR --> VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR
+    GATE_CONTRACT_REAL_RED_KIND -- Test Instance --> GATE_CHARACTERIZE
+    GATE_CHARACTERIZE -- No --> CONTRACT_REAL_UPSTREAM_GAP_HALT
+    GATE_CHARACTERIZE -- Yes --> VERIFY_TESTS_PASS_CONTRACT_REAL_TEST_INSTANCE
+    VERIFY_TESTS_PASS_CONTRACT_REAL_TEST_INSTANCE --> START_SYSTEM_BEFORE_STUB_PROBE
+    IMPLEMENT_EXTERNAL_SYSTEM_REAL_SIMULATOR --> REFRESH_AFTER_SIMULATOR
+    REFRESH_AFTER_SIMULATOR --> VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR
     VERIFY_TESTS_PASS_CONTRACT_REAL_AFTER_SIMULATOR --> START_SYSTEM_BEFORE_STUB_PROBE
     START_SYSTEM_BEFORE_STUB_PROBE --> PROBE_CONTRACT_STUB
     PROBE_CONTRACT_STUB --> GATE_CONTRACT_STUB_OUTCOME
@@ -1013,9 +1217,8 @@ flowchart TD
     GATE_CONTRACT_STUB_OUTCOME -- Fail --> IMPLEMENT_EXTERNAL_SYSTEM_STUBS
     GATE_CONTRACT_STUB_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_CONTRACT_STUB_OUTCOME --> UNKNOWN_TESTS_OUTCOME
-    IMPLEMENT_EXTERNAL_SYSTEM_STUBS --> BUILD_SYSTEM_AFTER_STUBS
-    BUILD_SYSTEM_AFTER_STUBS --> START_SYSTEM_AFTER_STUBS
-    START_SYSTEM_AFTER_STUBS --> VERIFY_TESTS_PASS_CONTRACT_STUB
+    IMPLEMENT_EXTERNAL_SYSTEM_STUBS --> REFRESH_AFTER_STUBS
+    REFRESH_AFTER_STUBS --> VERIFY_TESTS_PASS_CONTRACT_STUB
     VERIFY_TESTS_PASS_CONTRACT_STUB --> GATE_STUB_FIDELITY_PRESENT
     GATE_STUB_FIDELITY_PRESENT -- Yes --> PROBE_CONTRACT_STUB_ISOLATED
     GATE_STUB_FIDELITY_PRESENT -- No --> RECONCILE_PRODUCER_END
@@ -1024,9 +1227,8 @@ flowchart TD
     GATE_CONTRACT_STUB_ISOLATED_OUTCOME -- Fail --> IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED
     GATE_CONTRACT_STUB_ISOLATED_OUTCOME -- Infra --> TESTS_INFRA_HALT
     GATE_CONTRACT_STUB_ISOLATED_OUTCOME --> UNKNOWN_TESTS_OUTCOME
-    IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED --> BUILD_SYSTEM_AFTER_STUBS_ISOLATED
-    BUILD_SYSTEM_AFTER_STUBS_ISOLATED --> START_SYSTEM_AFTER_STUBS_ISOLATED
-    START_SYSTEM_AFTER_STUBS_ISOLATED --> VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED
+    IMPLEMENT_EXTERNAL_SYSTEM_STUBS_ISOLATED --> REFRESH_AFTER_STUBS_ISOLATED
+    REFRESH_AFTER_STUBS_ISOLATED --> VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED
     VERIFY_TESTS_PASS_CONTRACT_STUB_ISOLATED --> RECONCILE_PRODUCER_END
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
@@ -1080,6 +1282,33 @@ flowchart TD
 
     classDef tddGreenNode stroke:#28a745,stroke-width:3px
     class IMPLEMENT_AND_VERIFY_SYSTEM tddGreenNode
+```
+
+## Refresh External Producer
+
+```mermaid
+flowchart TD
+    GATE_CHARACTERIZE{Characterizing?}
+    BUILD_SYSTEM[Build System]
+    RESTART_EXTERNAL_SYSTEMS[Restart External Stand-ins Only — see § restart-external-systems]
+    START_SYSTEM[Start System — see § start-system-restart]
+    REFRESH_EXTERNAL_PRODUCER_END(( ))
+
+    GATE_CHARACTERIZE -- No --> BUILD_SYSTEM
+    GATE_CHARACTERIZE -- Yes --> RESTART_EXTERNAL_SYSTEMS
+    BUILD_SYSTEM --> START_SYSTEM
+    START_SYSTEM --> REFRESH_EXTERNAL_PRODUCER_END
+    RESTART_EXTERNAL_SYSTEMS --> REFRESH_EXTERNAL_PRODUCER_END
+```
+
+## Restart External Systems
+
+```mermaid
+flowchart TD
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system start --restart --external-only<br/>task-name = restart-external-systems"]
+    RESTART_EXTERNAL_SYSTEMS_END(( ))
+
+    EXECUTE_COMMAND --> RESTART_EXTERNAL_SYSTEMS_END
 ```
 
 ## Review Acceptance Tests
@@ -1219,6 +1448,16 @@ flowchart TD
     EXECUTE_COMMAND --> START_SYS_RESTART_END
 ```
 
+## Stop System
+
+```mermaid
+flowchart TD
+    EXECUTE_COMMAND["Dispatch the Command — see § execute-command<br/>category = command<br/>command = gh optivem system stop<br/>task-name = stop-system"]
+    SYSTEM_STOPPED_END(( ))
+
+    EXECUTE_COMMAND --> SYSTEM_STOPPED_END
+```
+
 ## Update External System Driver Adapters
 
 ```mermaid
@@ -1271,6 +1510,62 @@ flowchart TD
     RUN_MUTATION_GATE --> VERIFY_INNER_LOOP_END
 ```
 
+## Verify System Unchanged
+
+```mermaid
+flowchart TD
+    CHECK_SYSTEM_UNCHANGED[[Diff the System Code Against the Start Commit]]
+    GATE_SYSTEM_UNCHANGED{System Code Unchanged?}
+    CHECK_NO_ASSERTION_REMOVED[[Check No Assertion Was Removed]]
+    SYSTEM_CHANGED_HALT((⚡))
+    GATE_NO_ASSERTION_REMOVED{No Assertion Removed?}
+    VERIFY_SYSTEM_UNCHANGED_END(( ))
+    ASSERTION_REMOVED_HALT((⚡))
+
+    CHECK_SYSTEM_UNCHANGED --> GATE_SYSTEM_UNCHANGED
+    GATE_SYSTEM_UNCHANGED -- Yes --> CHECK_NO_ASSERTION_REMOVED
+    GATE_SYSTEM_UNCHANGED -- No --> SYSTEM_CHANGED_HALT
+    CHECK_NO_ASSERTION_REMOVED --> GATE_NO_ASSERTION_REMOVED
+    GATE_NO_ASSERTION_REMOVED -- Yes --> VERIFY_SYSTEM_UNCHANGED_END
+    GATE_NO_ASSERTION_REMOVED -- No --> ASSERTION_REMOVED_HALT
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class CHECK_NO_ASSERTION_REMOVED,CHECK_SYSTEM_UNCHANGED serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class ASSERTION_REMOVED_HALT,SYSTEM_CHANGED_HALT errorEndNode
+```
+
+## Write Legacy Use Case
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = legacy-use-case-writer<br/>category = test-agent<br/>task-name = write-legacy-use-case"]
+    WRITE_LEGACY_USE_CASE_END(( ))
+
+    EXECUTE_AGENT --> WRITE_LEGACY_USE_CASE_END
+    WRITE-LEGACY-USE-CASE_OUTPUTS[/criterion-ids?: string-list/]
+    WRITE_LEGACY_USE_CASE_END -. produces .-> WRITE-LEGACY-USE-CASE_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class WRITE-LEGACY-USE-CASE_OUTPUTS outputNode
+```
+
+## Write Legacy Use Case Diagram
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = legacy-use-case-diagram-writer<br/>category = test-agent<br/>task-name = write-legacy-use-case-diagram"]
+    WRITE_LEGACY_USE_CASE_DIAGRAM_END(( ))
+
+    EXECUTE_AGENT --> WRITE_LEGACY_USE_CASE_DIAGRAM_END
+    WRITE-LEGACY-USE-CASE-DIAGRAM_OUTPUTS[/"core-use-case: string<br/>other-use-cases: string-list<br/>core-use-case-reasons: string"/]
+    WRITE_LEGACY_USE_CASE_DIAGRAM_END -. produces .-> WRITE-LEGACY-USE-CASE-DIAGRAM_OUTPUTS
+
+    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
+    class WRITE-LEGACY-USE-CASE-DIAGRAM_OUTPUTS outputNode
+```
+
 ## Write External System Stub-Fidelity Tests
 
 ```mermaid
@@ -1284,5 +1579,22 @@ flowchart TD
 
     classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
     class WRITE-STUB-FIDELITY-TESTS_OUTPUTS outputNode
+```
+
+## Write Use Case Criteria
+
+```mermaid
+flowchart TD
+    WRITE_LEGACY_USE_CASE[Write the Use Case — see § write-legacy-use-case]
+    COMMIT_USE_CASE["Commit the Use Case — see § commit<br/>category = test-commit"]
+    RECORD_USE_CASE_CRITERIA[[Record the Criteria to Delete]]
+    WRITE_USE_CASE_CRITERIA_END(( ))
+
+    WRITE_LEGACY_USE_CASE --> COMMIT_USE_CASE
+    COMMIT_USE_CASE --> RECORD_USE_CASE_CRITERIA
+    RECORD_USE_CASE_CRITERIA --> WRITE_USE_CASE_CRITERIA_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class RECORD_USE_CASE_CRITERIA serviceNode
 ```
 
