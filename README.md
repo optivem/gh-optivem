@@ -97,6 +97,16 @@ Then build the stories one at a time with `gh optivem implement <issue>`, or pas
 
 **Status:** the shop-sample removal phase (deleting the shop code while keeping the test architecture) is not implemented yet and fails with an explicit error, so kickoff does not yet run end to end. The phases before it (description, prototype, use case diagram, use cases) work. Phases, flags and files are in [docs/cli-reference.md](docs/cli-reference.md#your-own-product-kickoff).
 
+# Baseline a legacy system (characterize)
+
+For an existing system with few or no acceptance tests, `gh optivem characterize` writes a baseline before you change anything: tests that pin what the system does today, use case by use case, without touching the system code.
+
+```bash
+gh optivem characterize
+```
+
+An agent first writes the use case diagram and a use case dependency diagram and proposes the most important use case. That use case and the ones it depends on (the pilot) are done with your approval at each step: narrative, acceptance criteria, then tests that pass against the running system. The remaining use cases follow unattended, in dependency order. After every commit the run checks that no system code changed and no test assertion was removed, and halts if either did. Re-run the command to resume. Details in [docs/cli-reference.md](docs/cli-reference.md#legacy-baseline-characterize).
+
 # ATDD AI Implementation
 
 Setup and creating your project are one-offs. From here on, `gh optivem implement` is the day-to-day verb: it takes one GitHub issue — a User Story with Acceptance Criteria — and walks it through the ATDD pipeline, dispatching an AI agent at each step and running the real build, system, and test commands in between.

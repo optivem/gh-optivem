@@ -21,6 +21,7 @@ gh optivem implement 42      # walk ticket #42 through the ATDD pipeline, agent 
 - [Managing `gh-optivem.yaml`](#managing-gh-optivemyaml)
 - [Project kind (`kind:`)](#project-kind-kind)
 - [Implement a ticket](#implement-a-ticket)
+- [Legacy baseline (`characterize`)](#legacy-baseline-characterize)
 - [System verbs](#system-verbs)
 - [Tests](#tests)
 - [Auto-approve](#auto-approve)
@@ -419,6 +420,31 @@ The default floor is `human`, so BPMN STOP nodes and fix-agent dispatch always p
 
 Project-stable overrides (`process_flow:`, `task_prompts:`, `node_extras:`, `node_replacements:`) live in `gh-optivem.yaml` and are read at startup.
 
+## Legacy baseline (`characterize`)
+
+`gh optivem characterize` writes a baseline of acceptance tests for an existing (legacy) system: tests that pin how the system behaves today, use case by use case, without changing the system code. It is a one-off run with no ticket; for a later gap in coverage, use a `task/cover-legacy` ticket with `implement`.
+
+```bash
+gh optivem characterize
+gh optivem characterize --log-file characterize.log
+gh optivem --auto characterize --headless       # auto-approve below the --confirm tier (see Auto-approve)
+gh optivem -c ./myrepo-multitier.yaml characterize
+```
+
+The system starts once and stops at the end. The run then goes:
+
+1. **Diagrams**: an agent writes the use case diagram and the use case dependency diagram (`dependencies.md` under `use-cases-path`, default `docs/use-cases`) and proposes the most important use case. You approve, or answer "no" and say what should change.
+2. **Pilot**: the proposed use case and the use cases it depends on, in dependency order. Per use case: narrative, acceptance criteria, then the tests (external systems, acceptance tests, DSL, drivers) until they pass against the running system. You approve after each of the three steps; a "no" asks "What should change?" and redoes the step with your answer.
+3. **Scaling**: every other use case, the same steps, unattended. A use case that turns out to need one not done yet is deferred behind it.
+
+Each use case then gets its WIP gate removed and its acceptance criteria deleted (the tagged tests are the spec; `gh optivem spec generate` renders them readable). Every step commits, e.g. `#characterize Characterize legacy system - ACCEPTANCE TESTS (UC-001)`.
+
+- **Safety gate**: after every commit, and once at the end, the run checks that no system code changed since it started (committed, uncommitted or new files under the system paths) and that no test assertion was removed. Either one halts the run; there is no fix agent for it. Failing tests are fixed by a characterization fixer that may edit tests, DSL, drivers, stubs and simulators, never system code.
+- **External stand-ins**: stubs and simulators may change; when they do, the run restarts only them with `gh optivem system start --restart --external-only` (see [Start system](#start-system)).
+- **Resume**: run the same command again on the same branch. Done use cases are read back from the committed files, done layers from their commits.
+- **Flags**: the `implement` run flags (`--headless`, `--manual-agents`, `--workspace`, `--log-file`, `--log-level`, `--verbose`, `--keep-runs`, `--keep-run-history`, `--show-prompt`; see [Flags](#flags)). No `--target`, `--channel` or `--autonomous`; `--auto` is the root flag.
+- `kind: system` projects only (monolith and multitier); refused on `kind: component`.
+
 ## System verbs
 
 Every `system` verb below is `kind: system` only: on a `kind: component` project they are refused by name, since there is no system to build, boot, probe, or compile. See [Project kind (`kind:`)](#project-kind-kind).
@@ -450,9 +476,12 @@ gh optivem system build --rebuild         # force full rebuild (no layer cache r
 ```bash
 gh optivem system start
 gh optivem system start --restart         # recreate changed services (keeps the database running — no full down/up)
+gh optivem system start --restart --external-only   # recreate only the external-system stubs/simulators; the system under test keeps running
 gh optivem system start --log-lines 200   # lines of compose logs to dump on health-probe failure (default 50)
 gh optivem system start --up-timeout 10m  # per-attempt timeout for `docker compose up -d` (default 5m)
 ```
+
+`--external-only` (requires `--restart`) narrows the recreate to the external-system stand-ins: the compose services whose build context or bind-mount source lies under a `stub.path` / `simulator.path` of the `external-systems:` registry in `gh-optivem.yaml`. The system under test and the database are not rebuilt or recreated (`--no-deps`). It is an error when `--restart` is missing, when the registry declares no stand-in paths, or when no compose service matches them. `characterize` uses it after a stub or simulator changes.
 
 ### Probe system status
 

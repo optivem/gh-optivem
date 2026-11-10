@@ -137,6 +137,57 @@ registered external system:
    whole system via `implement-and-verify-system` (`action: update-system`), because
    either side of the boundary can shift the system's port surface.
 
+## Legacy baseline (`characterize`)
+
+`characterize` is a TOP process for a one-off baseline of a legacy system: it writes
+acceptance tests (and the external layer: contract tests, external drivers, stubs,
+simulators) that pin what the system does today, use case by use case, with no ticket
+and no system code change. `cover-system-behavior` stays the per-ticket cycle for later
+gaps. Entry point: `gh optivem characterize`.
+
+1. **Started once, stopped once.** `record-start-commits` records each system repo's
+   start commit and the protected system paths, then the system starts; it is stopped
+   only at the very end. Inner `START_SYSTEM` nodes are no-op probes.
+2. **Phase 0, diagrams.** `legacy-use-case-diagram-writer` writes the use case diagram,
+   the dependency diagram (`${use-cases-path}/dependencies.md`: a `flowchart LR` whose
+   `UC-A --> UC-B` edges mean B needs data A creates) and proposes the most important
+   use case. The human approves it or gives feedback.
+3. **Pilot, gated.** `order-pilot-use-cases`: the proposed use case plus its transitive
+   dependencies, in dependency order. Every step of every pilot use case is approved.
+4. **Scaling, ungated.** `order-scaling-use-cases`: every use case not done yet, same
+   steps, no approvals. Order is topological (ties by lower UC number); a cycle, an
+   edge to an undeclared id or a missing diagram is a hard error.
+5. **Per use case** (`characterize-use-case`): narrative (`legacy-use-case-narrative-writer`)
+   → `reorder-use-cases` (a newly found dependency that is not done yet goes first and
+   the current use case is deferred behind it) → criteria with ESCC
+   (`legacy-use-case-criteria-writer`) → `characterize-test-layers` (external → AT →
+   DSL → driver adapter, the existing wrappers, each run against the running system)
+   → `remove-wip-gate` → `delete-use-case-criteria`. Every step commits
+   (`USE CASE NARRATIVE (<id>)`, `USE CASE CRITERIA (<id>)`, layer commits,
+   `WIP GATE REMOVAL (<id>)`, `CRITERIA DELETION (<id>)`). The diagrams and narratives
+   stay as requirements documentation; the tagged tests become the spec.
+6. **Safety gate after every commit, and once at the end.** `verify-system-unchanged`
+   runs `check-system-unchanged` (diff plus untracked files under the system paths
+   since the start commit) and `check-no-assertion-removed` (test paths, contract tests
+   included). Either failure is an error end: a hard halt, no fix agent, no scope
+   exception. Stub and simulator paths are not protected: they are test doubles the
+   baseline may write.
+7. **Tests adapt to the system, never the reverse.** In `characterize` mode,
+   `verify-tests-pass` / `verify-tests-fail` route failures to
+   `characterization-test-fixer`, whose write scope covers tests, DSL, drivers, stubs
+   and simulators but not system code. When the fixer (or the external producer
+   refresh) changed a stand-in, only the stand-ins are restarted:
+   `gh optivem system start --restart --external-only`.
+8. **Feedback on approve.** Approve sites whose "rejected" edge loops back to a step set
+   `ask-for-changes: "true"`: a "no" asks "What should change?" and stores the answer as
+   State `feedback`, which the dispatcher renders into `${feedback-section}` of the redone
+   agent's prompt (empty when unset; a "yes" clears it). Approvals nested inside a redo
+   do not ask, so they leave the feedback alone.
+9. **Resume.** Re-running the command continues: done use cases are re-derived from the
+   files (a tagged acceptance test exists and the use case holds no criteria), and the
+   resume unit id of a layer is keyed per use case (`<parent>@<node>@UC-002`), so one
+   use case's completed layer does not skip another's.
+
 ## Spec-driven stages: executor, reviewer, approver
 
 The 2026-11 redesign (from the "Spec-Driven Development for QA" talk, the 2026-11-06
@@ -153,7 +204,7 @@ time. Current state per stage:
 | Red | `execute-agent` takes an optional `reviewer`: the acceptance-test, DSL and driver-adapter writers are each checked by a read-only `*-reviewer`; blocking findings return to the writer (2 passes max); the approval names the approver role and lists findings. Channels run API before UI. | — |
 | Green | Once the last channel is green, `remove-wip-gate` strips `GH_OPTIVEM_RUN_WIP_TESTS` from the story's tests (also in `cover-system-behavior`), so CI runs them from then on. For a story, `APPLY_AC_POLICY` then deletes its `merged-criteria` from the use cases (deterministic, no agent; a criterion missing from the use cases fails the run) and `COMMIT_AC_POLICY` commits the deletion: the tagged tests are the spec, and `gh optivem spec generate` renders them back as Gherkin for POs; `spec check` keeps gating them as delivered criteria (from their tests). Spec fingerprints are retired. | — |
 | Refactor & review | The `refactor` menu offers `review-code-and-architecture`: reviewer proposes a plan, human approves, refactorers execute it with the full suite, human lists issues, `guidelines-updater` records rules under `${guidelines-path}` and fixes other occurrences (3 rounds max). | UX/UI review ([plan](../plans/20261109-1302-ux-ui-review.md)); running only the touched use case's tests after refactor ([discussion](../plans/20261109-1250-refactor-touched-use-case-tests.md)). |
-| Legacy | `cover-system-behavior` pins the expected result to success. | Legacy baseline mode ([discussion](../plans/20261109-1301-legacy-baseline-mode.md)). |
+| Legacy | `cover-system-behavior` pins the expected result to success (per ticket). `characterize` baselines a whole legacy system in one run (see [Legacy baseline](#legacy-baseline-characterize)). | — |
 
 Statuses are unchanged: gh-optivem ends at IN ACCEPTANCE; manual QA (quick functional,
 exploratory and usability testing) happens outside it, and a human sets DONE.
