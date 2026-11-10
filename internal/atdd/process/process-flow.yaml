@@ -1577,6 +1577,13 @@ processes:
         process: implement-external-drivers-if-needed
         name: "External Layer for This Use Case"
 
+      # The external layer's contract-test-writer overwrites `test-names` with
+      # its contract tests; re-derive the use case's acceptance tests first.
+      - id: RESTAMP_USE_CASE_AFTER_EXTERNAL
+        type: service-task
+        action: restamp-current-use-case
+        name: "Re-stamp the Use Case Acceptance Tests"
+
       - id: VERIFY_TESTS_PASS_ACCEPTANCE
         type: call-activity
         process: verify-tests-pass
@@ -1597,7 +1604,8 @@ processes:
       - {from: GATE_EXTERNAL_DRIVER_PORT_CHANGED, to: CHARACTERIZE_DSL_LAYER_END,        when: "external-driver-port-changed == false"}
       - {from: ADD_ESCC_FOR_DISCOVERED_SYSTEMS,   to: RESTAMP_USE_CASE}
       - {from: RESTAMP_USE_CASE,                  to: EXTERNAL_LAYER}
-      - {from: EXTERNAL_LAYER,                    to: VERIFY_TESTS_PASS_ACCEPTANCE}
+      - {from: EXTERNAL_LAYER,                    to: RESTAMP_USE_CASE_AFTER_EXTERNAL}
+      - {from: RESTAMP_USE_CASE_AFTER_EXTERNAL,   to: VERIFY_TESTS_PASS_ACCEPTANCE}
       - {from: VERIFY_TESTS_PASS_ACCEPTANCE,      to: CHARACTERIZE_DSL_LAYER_END}
 
   # System driver adapter layer (plan 20261110-1130, 2b): the adapter tail of

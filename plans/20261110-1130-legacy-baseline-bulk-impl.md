@@ -1,7 +1,5 @@
 # 2026-11-10 11:30 — Legacy baseline: bulk process (implementation)
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-10T13:51:53Z`
-
 ## TL;DR
 
 **Why:** The published article "Acceptance test coverage with AI" (`substack/articles/published/2026-11-06-PAID-ATDD-acceptance-test-coverage-with-ai.md`) describes a legacy on-ramp, but gh-optivem only has the per-ticket `cover-system-behavior` (`task/legacy-coverage`). It writes passing tests for given criteria, but generates no diagram, narratives or criteria, and starts the system again on each ticket, which is too slow for a whole-system baseline.
@@ -9,19 +7,19 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 4 tests (incl. gap 6 below). Runtime gaps 1–5 are fixed: `select-next-use-case` / `restamp-current-use-case` re-derive `test-names`, the port-changed flags and the criteria from git and the use case file (`use_case_state.go`; commits matched by ` - ACCEPTANCE TESTS (<id>)` / ` - DSL (<id>)` labels since `system-test-start-commit`). `STAMP_CHARACTERIZED_TEST_NAMES` runs before the final WIP removal, an empty use case list gives `use-case-left=false`, and `SNAPSHOT_STAND_INS` gives the stand-in check a fixed baseline.
+Step 3, part 3: `gh optivem characterize` entry point (top level, beside `kickoff`) + Step 5 docs. Parts 1, 2 and 2b plus the Step 4 tests are done and committed: Go actions, flow wiring, 3 agents, runtime gaps, transition tests (`internal/atdd/process/characterize_flow_test.go`) and the general agent-node-params check (`clauderun/node_params_test.go`). The full `go test -p 2 ./...` passes.
 
-6. Test that every agent's required node params (`use-case-id`, `discovered-external-port-paths`, `verify-failure-output`) are supplied along each call path.
+The entry point must:
+- Seed `ticket-id` / `issue-title` (or replace them via a preset): commit messages use `#${ticket-id} ${issue-title}`, and the resume probe is keyed by ticket. Keep the `- ${layer}` commit-message suffix, because `use_case_state.go` matches ` - ACCEPTANCE TESTS (<id>)` / ` - DSL (<id>)` labels.
+- Add `characterize` to the driver's `topProcesses` (phase banners) and the diagram's `processOrder`.
 
-Open question (needs user, before a real rehearsal; does not block Step 4):
+Open question (needs user, before a real rehearsal):
 - **Cross-use-case DSL reuse in bulk.** In the bulk AT layer, use case B's tests may call a DSL port method that use case A's AT added in the same bulk layer; it is not implemented until the bulk DSL layer. B's `dsl-port-changed` is then false, so B's AT verify expects green and hits the TODO stubs (unfixable by the characterization fixer → `FIX_LOOP_EXHAUSTED`). Recommendation: in characterize, derive `dsl-port-changed` for the AT layer as "any DSL port change since `system-test-start-commit` not yet followed by that use case's DSL commit", i.e. pending until the DSL layer has run for the use case. That fits the layer-by-layer decision without loosening the verify.
+- **Declined layer/diagram feedback.** Re-runs get no feedback text (`approve` collects none); redo loops are capped by `max-visits: 3`. Recommendation: accept for v1.
+
+Observation (from Step 4): the external layer makes no commit of its own; its CT/adapters/stubs/simulator are swept into the next commit (normally `ACCEPTANCE TESTS (<id>)`), so in bulk all use cases' external work lands in the first use case's AT commit. The per-ticket flow behaves the same way. It weakens "one commit per (layer, use case)" for the external layer only; revisit if resume granularity matters there.
 
 Known limitations (accepted for now): TS parameterised test names may not match `remove-wip-gate`'s regex (existing); commit labels assume the part-3 entry point keeps the `- ${layer}` commit-message suffix.
-
-Left for part 3 (entry point), not part 2b:
-- Commit messages use `#${ticket-id} ${issue-title}` and the resume probe is keyed by ticket; the `characterize` entry point must seed these (or a preset).
-- `characterize` is not in the driver's `topProcesses` (phase banners) or the diagram's `processOrder`.
-- Declined layer/diagram re-runs get no feedback text (`approve` collects none); redo loops are capped by `max-visits: 3`. Accept as v1 or add feedback capture.
 
 Wiring judgment calls (accepted, for the record): the `characterize` binding treats unset as false; new param binding `gated` (strict); new binding `stand-ins-changed` + action `check-stand-ins-changed` (restart only when the fixer touched a stub/simulator); new action `record-use-case-criteria`; new config key `use-cases-path` (default `docs/use-cases`); fixer category `test-agent`; the test-instance contract-real verify is a new node; the `channels.go` adapter-channel unroll also covers `characterize-adapter-layer`; 2 new commit-after-verify invariant exceptions in `invariants.go`.
 
@@ -421,7 +419,6 @@ flowchart TD
 ## Steps
 
 - [ ] Step 3: Implement in `internal/atdd/process/process-flow.yaml` (+ Go actions for the safety gate, use case loop and entry point, + runner `--external-only`). Entry point is separate from kickoff and from the per-ticket flow. Resumable: state is in git, one commit per (layer, use case), so a failure resumes at that layer.
-- [ ] Step 4: Tests: process transitions test (incl. the late-discovery route and both `refresh-external-producer` branches), "system started once" invariant (no `build-system` / `start-system-restart` in characterize). (Unit tests for the safety-gate actions and runner `--external-only` were done in part 1.)
 - [ ] Step 5: Docs: `docs/bpmn-process-design.md`, README/CLI reference for the new entry point and `system start --external-only`.
 
 Edits `process-flow.yaml`: never run in parallel with another plan editing it. Diagrams under `docs/process-diagram*` are regenerated by CI; don't regenerate locally.
