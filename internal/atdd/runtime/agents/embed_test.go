@@ -196,6 +196,26 @@ func TestFixKindAgentsExist(t *testing.T) {
 	}
 }
 
+func TestPrompt_ESCCFormat(t *testing.T) {
+	// Only the agents that author an ESCC section themselves carry the pinned
+	// escc-format chunk, appended after the body.
+	for _, name := range DefaultAgentSet().Names() {
+		t.Run(name, func(t *testing.T) {
+			body, err := DefaultAgentSet().Prompt(name)
+			if err != nil {
+				t.Fatalf("Prompt: %v", err)
+			}
+			got := strings.Contains(body, esccFormat)
+			if want := esccFormatWriters[name]; got != want {
+				t.Errorf("escc-format present = %v, want %v", got, want)
+			}
+		})
+	}
+	if !esccFormatWriters["legacy-use-case-writer"] {
+		t.Errorf("legacy-use-case-writer must carry the escc-format chunk")
+	}
+}
+
 func TestPrompt_FixerPreamble(t *testing.T) {
 	// The five failure-kind fixers share the fixer-preamble chunk (the git
 	// read-carve-out + one-attempt/approval-gated/stay-in-scope contract),

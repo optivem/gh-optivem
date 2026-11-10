@@ -264,6 +264,15 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 			// Non-empty here so the maximally-seeded matrix fills the placeholder;
 			// production passes it via the write-contract-tests node param.
 			"external-system-contract-criteria": "External System: erp\n  Shared (stub + real):\n    Given products Apple (1.00)\n    Then erp has products Apple (1.00)",
+			// execute-agent's own task-name param, inherited via ctx.Params; the
+			// characterization-test-fixer reads it to tell its failing case from
+			// its passing case (plan 20261110-1130).
+			"task-name": "fix-characterization-failing-tests",
+			// Characterize flow (plan 20261110-1130): the use case the
+			// legacy-use-case-writer works on, and the external driver port
+			// paths of a late-discovery re-dispatch (empty on a first pass).
+			"use-case-id":                    "UC-001",
+			"discovered-external-port-paths": "system-test/src/main/java/shop/testkit/driver/port/external/erp/ErpDriver.java",
 			// Issues the human found at the Code & Architecture Review's
 			// HUMAN_REVIEW, passed to the guidelines-updater by the
 			// UPDATE_GUIDELINES node param (plan 20261109-1259).

@@ -1842,7 +1842,8 @@ func fixChangedFiles(ctx *statemachine.Context, agent, repoPath string) string {
 	switch agent {
 	case "fix-scope-diff",
 		"fix-unexpected-failing-tests",
-		"fix-unexpected-passing-tests":
+		"fix-unexpected-passing-tests",
+		"characterization-test-fixer":
 		if v := ctx.GetString("phase-changed-files"); v != "" {
 			return v
 		}

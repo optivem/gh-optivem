@@ -20,6 +20,7 @@ const (
 	interactiveSuffixPath = "runtime/shared/interactive-suffix.md"
 	headlessSuffixPath    = "runtime/shared/headless-no-ask.md"
 	touchListPath         = "runtime/shared/green-touch-list.md"
+	esccFormatPath        = "runtime/shared/escc-format.md"
 )
 
 // sharedPreamble is the universal ticket-vars + don't-commit/summarise block
@@ -54,6 +55,7 @@ var (
 	interactiveSuffix = mustReadAsset(interactiveSuffixPath)
 	headlessSuffix    = mustReadAsset(headlessSuffixPath)
 	touchList         = mustReadAsset(touchListPath)
+	esccFormat        = mustReadAsset(esccFormatPath)
 )
 
 // greenImplementers are the GREEN-phase implementer agents. They — and only
@@ -76,6 +78,15 @@ var redReviewers = map[string]bool{
 	"acceptance-test-reviewer":       true,
 	"dsl-reviewer":                   true,
 	"system-driver-adapter-reviewer": true,
+}
+
+// esccFormatWriters are the agents that author an External System Contract
+// Criteria section themselves (plan 20261110-1130: the characterize flow's
+// use case writer, which has no ticket to take the section from). They get
+// the pinned escc-format.md chunk appended after the body, so the format has
+// one source instead of a copy in the prompt.
+var esccFormatWriters = map[string]bool{
+	"legacy-use-case-writer": true,
 }
 
 func mustReadAsset(path string) string {
@@ -207,7 +218,11 @@ func (s *AgentSet) Prompt(name string) (string, error) {
 	if greenImplementers[name] {
 		prompt += touchList + "\n\n"
 	}
-	return prompt + body + "\n", nil
+	prompt += body
+	if esccFormatWriters[name] {
+		prompt += "\n\n" + esccFormat
+	}
+	return prompt + "\n", nil
 }
 
 // isFixer reports whether name is one of the failure-kind fixer agents.

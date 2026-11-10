@@ -1255,6 +1255,7 @@ func TestFixChangedFiles_SnapshotStashAgents_PreferStash(t *testing.T) {
 		"fix-scope-diff",
 		"fix-unexpected-failing-tests",
 		"fix-unexpected-passing-tests",
+		"characterization-test-fixer",
 	} {
 		t.Run(agent, func(t *testing.T) {
 			ctx := statemachine.NewContext()
