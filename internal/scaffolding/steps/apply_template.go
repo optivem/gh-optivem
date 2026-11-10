@@ -155,7 +155,7 @@ func copySystemTests(shop, repoDir, testLang, composeVariant, systemLang string,
 
 	// Spec-coverage gate inputs (spec.yaml + use-case markdown) land beside
 	// system-test/: the acceptance gate's spec-gate step and ATDD's
-	// record-spec-fingerprints both read ./spec.yaml at the repo root.
+	// `gh optivem spec generate` both read ./spec.yaml at the repo root.
 	copySpec(shop, repoDir, testLang)
 
 	// Regenerate ChannelType from the declared channel set (the SSoT), replacing
