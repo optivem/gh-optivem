@@ -11,6 +11,7 @@ import (
 
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
+	"github.com/optivem/gh-optivem/internal/spec/generate"
 )
 
 // WIP-gate removal at Green (plan 20261109-1300-remove-wip-gate-at-green).
@@ -29,8 +30,17 @@ const wipGateEnvVar = wipTestsEnvVar
 var (
 	javaMethodRE   = regexp.MustCompile(`\bvoid\s+([A-Za-z_]\w*)\s*\(`)
 	csharpMethodRE = regexp.MustCompile(`\b(?:Task|void)\s+([A-Za-z_]\w*)\s*\(`)
-	tsTestRE       = regexp.MustCompile("\\btest\\(\\s*['\"`]([A-Za-z_]\\w*)['\"`]")
+	// tsTestStartRE matches a test declaration: plain `test(`, or the
+	// parameterised `test.each(cases)(` / `test.eachAlsoFirstRow(cases)(`
+	// (group 1 is set for the parameterised forms).
+	tsTestStartRE = regexp.MustCompile(`\btest(\.each|\.eachAlsoFirstRow)?\(`)
+	// tsTitleRE matches the title string at the start of the remaining text.
+	tsTitleRE = regexp.MustCompile("^\\s*['\"`]([^'\"`]+)['\"`]")
 )
+
+// tsTestLookahead bounds how many lines after a test declaration are searched
+// for its title and the start of its body.
+const tsTestLookahead = 8
 
 const javaWipGateImport = "import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;"
 
@@ -260,17 +270,77 @@ func (s *wipGateScan) unskipAttributes(i int) {
 	}
 }
 
+// stripTypescript handles plain `test('name', async (...) => {` and the
+// parameterised `test.each(cases)(` / `test.eachAlsoFirstRow(cases)(` forms,
+// whose title may sit on the next line, carry a `_$param` suffix (compared
+// stripped, as generate.TaggedTestNames reports it), and be followed by
+// `criteria(...)` before the callback. The gate is the first statement of the
+// callback body.
 func (s *wipGateScan) stripTypescript() {
 	for i, l := range s.lines {
-		name, ok := s.wantedTest(tsTestRE, l)
+		title, ok := s.tsTitle(i, l)
 		if !ok {
 			continue
 		}
-		k := s.skipBlank(i + 1)
+		name := title
+		if !s.want[name] {
+			name = generate.StripTitleParams(title)
+		}
+		if !s.want[name] {
+			continue
+		}
+		s.found = append(s.found, name)
+		body, ok := s.tsBodyStart(i)
+		if !ok {
+			continue
+		}
+		k := s.skipBlank(body + 1)
 		if k < len(s.lines) && s.isGateLine(k, "test.skip(") {
 			s.markGate(k, name)
 		}
 	}
+}
+
+// tsTitle returns the title of the test declared on line i, if any.
+func (s *wipGateScan) tsTitle(i int, l string) (string, bool) {
+	loc := tsTestStartRE.FindStringSubmatchIndex(l)
+	if loc == nil {
+		return "", false
+	}
+	rest := l[loc[1]:]
+	if loc[2] >= 0 { // parameterised: the title follows the closing `)(`
+		cut := strings.LastIndex(rest, ")(")
+		if cut < 0 {
+			return "", false
+		}
+		rest = rest[cut+2:]
+	}
+	if strings.TrimSpace(rest) == "" {
+		k := s.skipBlank(i + 1)
+		if k >= len(s.lines) {
+			return "", false
+		}
+		rest = s.lines[k]
+	}
+	m := tsTitleRE.FindStringSubmatch(rest)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// tsBodyStart returns the line, from i on, that opens the test callback body
+// (`=> {`), stopping at the next test declaration.
+func (s *wipGateScan) tsBodyStart(i int) (int, bool) {
+	for k := i; k < len(s.lines) && k <= i+tsTestLookahead; k++ {
+		if k > i && tsTestStartRE.MatchString(s.lines[k]) {
+			return 0, false
+		}
+		if strings.Contains(s.lines[k], "=>") && strings.HasSuffix(strings.TrimSpace(s.lines[k]), "{") {
+			return k, true
+		}
+	}
+	return 0, false
 }
 
 // keptLines returns the source lines not marked for dropping.

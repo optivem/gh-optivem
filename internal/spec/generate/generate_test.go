@@ -197,8 +197,8 @@ func TestStripTitleParams(t *testing.T) {
 		`shouldRejectCouponWithBlankCode_"${code}"`:                "shouldRejectCouponWithBlankCode",
 		"plainTitle": "plainTitle",
 	} {
-		if got := stripTitleParams(in); got != want {
-			t.Errorf("stripTitleParams(%q) = %q, want %q", in, got, want)
+		if got := StripTitleParams(in); got != want {
+			t.Errorf("StripTitleParams(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

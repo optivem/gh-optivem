@@ -128,7 +128,7 @@ func parseTSTest(file string, line int, args, data []token, hasData bool, loop *
 	if len(parts) < 2 || len(parts[0]) != 1 || parts[0][0].Kind != tokString && parts[0][0].Kind != tokTemplate {
 		return fail("test( must start with a title string and end with the test callback")
 	}
-	tc.Name = stripTitleParams(parts[0][0].Text)
+	tc.Name = StripTitleParams(parts[0][0].Text)
 	for _, d := range parts[1 : len(parts)-1] {
 		if len(d) < 3 || !d[0].is(tokIdent, "criteria") || !d[1].punct("(") {
 			return fail("unsupported test detail `%s`; tag criteria with criteria('UC-N.M', ...)", abbreviate(d))
@@ -163,9 +163,9 @@ func parseTSTest(file string, line int, args, data []token, hasData bool, loop *
 	return tc, nil
 }
 
-// stripTitleParams removes a `_$param` / `_"${param}"` suffix from a
+// StripTitleParams removes a `_$param` / `_"${param}"` suffix from a
 // parameterised title: everything from the last "_" before the first "$".
-func stripTitleParams(title string) string {
+func StripTitleParams(title string) string {
 	d := strings.IndexByte(title, '$')
 	if d < 0 {
 		return title

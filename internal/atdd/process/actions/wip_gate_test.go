@@ -114,6 +114,88 @@ func TestStripWipGate_Typescript(t *testing.T) {
 	}
 }
 
+const tsGate = `        test.skip(process.env.GH_OPTIVEM_RUN_WIP_TESTS !== "1", "Work-in-progress test; set GH_OPTIVEM_RUN_WIP_TESTS=1 to run");`
+
+func TestStripWipGate_TypescriptParameterised(t *testing.T) {
+	cases := map[string]struct {
+		src  []string
+		want string
+	}{
+		"test.each, title on next line with $param suffix": {
+			src: []string{
+				"    test.each(nonExistentOrderCases)(",
+				"        'shouldNotCancelNonExistentOrder_$orderNumber',",
+				"        criteria('UC-003.6'),",
+				"        async ({ scenario, orderNumber, message }) => {",
+				tsGate,
+				"            await scenario.when().cancelOrder();",
+				"        },",
+				"    );",
+			},
+			want: "shouldNotCancelNonExistentOrder",
+		},
+		"test.eachAlsoFirstRow with inline array": {
+			src: []string{
+				"    test.eachAlsoFirstRow(['3.5', 'lala'])(",
+				"        'shouldRejectOrderWithNonIntegerQuantity_$quantity',",
+				"        async ({ scenario, quantity }) => {",
+				tsGate,
+				"        },",
+				"    );",
+			},
+			want: "shouldRejectOrderWithNonIntegerQuantity",
+		},
+		"test.each with object array, full template name reported": {
+			src: []string{
+				"    test.each([{ status: OrderStatus.CANCELLED }, { status: OrderStatus.DELIVERED }])(",
+				"        'shouldNotDeliverOrder_$status',",
+				"        async ({ scenario, status }) => {",
+				"",
+				tsGate,
+				"        },",
+				"    );",
+			},
+			want: "shouldNotDeliverOrder_$status",
+		},
+		"plain test with criteria before the callback": {
+			src: []string{
+				"    test(",
+				"        'shouldPlaceOrder',",
+				"        criteria('UC-001.1'),",
+				"        async ({ scenario }) => {",
+				tsGate,
+				"        },",
+				"    );",
+			},
+			want: "shouldPlaceOrder",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			src := strings.Join(tc.src, "\n")
+			out, stripped, found := StripWipGate(projectconfig.LangTypescript, src, map[string]bool{tc.want: true})
+			if len(found) != 1 || len(stripped) != 1 || strings.Contains(out, "test.skip") {
+				t.Fatalf("found=%v stripped=%v out:\n%s", found, stripped, out)
+			}
+		})
+	}
+}
+
+func TestStripWipGate_TypescriptGateOfNextTestUntouched(t *testing.T) {
+	src := strings.Join([]string{
+		"    test('shouldMine', async ({ scenario }) => {",
+		"        await scenario.when().placeOrder();",
+		"    });",
+		"    test('shouldOther', async ({ scenario }) => {",
+		tsGate,
+		"    });",
+	}, "\n")
+	out, stripped, found := StripWipGate(projectconfig.LangTypescript, src, map[string]bool{"shouldMine": true})
+	if out != src || len(stripped) != 0 || len(found) != 1 {
+		t.Fatalf("another test's gate must stay: stripped=%v found=%v", stripped, found)
+	}
+}
+
 func TestStripWipGate_UnwantedTestUntouched(t *testing.T) {
 	src := "class X {\n" + javaGate + "\n    @TestTemplate\n    void shouldOther() {\n    }\n}"
 	out, stripped, found := StripWipGate(projectconfig.LangJava, src, map[string]bool{"shouldMine": true})
