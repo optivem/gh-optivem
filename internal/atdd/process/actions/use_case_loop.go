@@ -106,11 +106,11 @@ func splitUseCaseIDs(raw string) []string {
 	return out
 }
 
-// CtxKeyCriterionIDs is the legacy-use-case-writer's `criterion-ids` output:
+// CtxKeyCriterionIDs is the legacy-use-case-criteria-writer's `criterion-ids` output:
 // the UC-NNN.M ids of the criteria it wrote this dispatch.
 const CtxKeyCriterionIDs = "criterion-ids"
 
-// recordUseCaseCriteria runs after the legacy-use-case-writer in
+// recordUseCaseCriteria runs after the legacy-use-case-criteria-writer in
 // write-use-case-criteria (plan 20261110-1130). It appends the criterion ids
 // the writer reported to merged-criteria, the list apply-ac-policy deletes at
 // the end of characterize, keeping the order and dropping duplicates (the

@@ -178,10 +178,16 @@ func validateFrontMatter(uc *UseCase) string {
 // the folder (narrative, business rules) are for people and are not parsed.
 const criteriaFileName = "acceptance-criteria.md"
 
+// DependencyDiagramFile is the use case dependency diagram (`UC-A --> UC-B`:
+// B needs data A creates) that the characterize flow keeps in the use cases
+// dir (plan 20261110-1130). It is not a use case, so LoadDir skips it.
+const DependencyDiagramFile = "dependencies.md"
+
 var useCaseFolderPattern = regexp.MustCompile(`^(UC-\d+)-`)
 
 // LoadDir parses the use cases under dir, in two layouts that can be mixed:
-//   - flat: every .md file directly inside dir except README.md;
+//   - flat: every .md file directly inside dir except README.md and
+//     DependencyDiagramFile;
 //   - folder per use case: <dir>/<folder>/acceptance-criteria.md, one level deep.
 //
 // Results are sorted by file path (folder name for the folder layout).
@@ -200,7 +206,8 @@ func LoadDir(dir string) ([]UseCase, error) {
 			} else if !os.IsNotExist(err) {
 				return nil, fmt.Errorf("stat %s: %w", p, err)
 			}
-		case strings.EqualFold(filepath.Ext(e.Name()), ".md") && !strings.EqualFold(e.Name(), "README.md"):
+		case strings.EqualFold(filepath.Ext(e.Name()), ".md") && !strings.EqualFold(e.Name(), "README.md") &&
+			!strings.EqualFold(e.Name(), DependencyDiagramFile):
 			names = append(names, e.Name())
 		}
 	}

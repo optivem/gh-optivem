@@ -1447,21 +1447,29 @@ processes:
       - {from: GATE_LAYER_APPROVED,  to: CHARACTERIZE_LAYER_END, when: "approval-outcome == approved"}
       - {from: GATE_LAYER_APPROVED,  to: RUN_LAYER,              when: "approval-outcome == rejected"}
 
-  # Criteria + ESCC layer (plan 20261110-1130, 2b): the use case's narrative,
-  # business rules and Gherkin UC-NNN.M criteria from the source code, plus an
-  # External System Contract Criteria section for every external system its
-  # code calls. Also the DSL layer's late-discovery route, which passes the
-  # external driver port paths the DSL touched as
+  # Criteria + ESCC layer (plan 20261110-1130, 2b): the use case's narrative
+  # and business rules, then its Gherkin UC-NNN.M criteria plus an External
+  # System Contract Criteria section for every external system its code calls,
+  # from the source code. Also the DSL layer's late-discovery route, which
+  # passes the external driver port paths the DSL touched as
   # `discovered-external-port-paths` ("" on the criteria layer). The criterion
   # ids are recorded for the deletion at the end of characterize.
   write-use-case-criteria:
     name: "Write Use Case Criteria"
-    start: WRITE_LEGACY_USE_CASE
+    start: WRITE_LEGACY_USE_CASE_NARRATIVE
     nodes:
-      - id: WRITE_LEGACY_USE_CASE
+      - id: WRITE_LEGACY_USE_CASE_NARRATIVE
         type: call-activity
-        process: write-legacy-use-case
-        name: "Write the Use Case"
+        process: write-legacy-use-case-narrative
+        name: "Write the Use Case Narrative"
+        params:
+          use-case-id: ${use-case-id}
+          discovered-external-port-paths: ${discovered-external-port-paths}
+
+      - id: WRITE_LEGACY_USE_CASE_CRITERIA
+        type: call-activity
+        process: write-legacy-use-case-criteria
+        name: "Write the Use Case Criteria"
         params:
           use-case-id: ${use-case-id}
           discovered-external-port-paths: ${discovered-external-port-paths}
@@ -1484,7 +1492,8 @@ processes:
         name: "Use Case Criteria Written"
 
     sequence-flows:
-      - {from: WRITE_LEGACY_USE_CASE,    to: COMMIT_USE_CASE}
+      - {from: WRITE_LEGACY_USE_CASE_NARRATIVE, to: WRITE_LEGACY_USE_CASE_CRITERIA}
+      - {from: WRITE_LEGACY_USE_CASE_CRITERIA,  to: COMMIT_USE_CASE}
       - {from: COMMIT_USE_CASE,          to: RECORD_USE_CASE_CRITERIA}
       - {from: RECORD_USE_CASE_CRITERIA, to: WRITE_USE_CASE_CRITERIA_END}
 
@@ -4073,12 +4082,38 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: WRITE_LEGACY_USE_CASE_DIAGRAM_END}
 
-  # Characterize (plan 20261110-1130): one use case's narrative, business rules
-  # and criteria (plus its ESCC section) from the source code. `scope: none`
+  # Characterize (plan 20261110-1130): one use case's narrative, preconditions
+  # (the use cases it depends on) and business rules from the source code; it
+  # may add a found dependency to the dependency diagram. `scope: none` like
+  # merge-use-cases (spec only, under the use cases dir).
+  write-legacy-use-case-narrative:
+    name: "Write Legacy Use Case Narrative"
+    start: EXECUTE_AGENT
+    nodes:
+      - id: EXECUTE_AGENT
+        type: call-activity
+        process: execute-agent
+        name: "Dispatch the Agent"
+        params:
+          task-name: write-legacy-use-case-narrative
+          agent: legacy-use-case-narrative-writer
+          # test-agent tier: the use case is the test contract.
+          category: test-agent
+        scope: none
+
+      - id: WRITE_LEGACY_USE_CASE_NARRATIVE_END
+        type: end-event
+        name: "Use Case Narrative Written"
+
+    sequence-flows:
+      - {from: EXECUTE_AGENT, to: WRITE_LEGACY_USE_CASE_NARRATIVE_END}
+
+  # Characterize (plan 20261110-1130): one use case's Gherkin criteria (plus
+  # its ESCC section) from its narrative and the source code. `scope: none`
   # like merge-use-cases (spec only). `criterion-ids` feeds the deletion of the
   # criteria at the end (record-use-case-criteria).
-  write-legacy-use-case:
-    name: "Write Legacy Use Case"
+  write-legacy-use-case-criteria:
+    name: "Write Legacy Use Case Criteria"
     start: EXECUTE_AGENT
     outputs:
       - key: criterion-ids
@@ -4090,18 +4125,18 @@ processes:
         process: execute-agent
         name: "Dispatch the Agent"
         params:
-          task-name: write-legacy-use-case
-          agent: legacy-use-case-writer
-          # test-agent tier: the use case is the test contract.
+          task-name: write-legacy-use-case-criteria
+          agent: legacy-use-case-criteria-writer
+          # test-agent tier: the criteria are the test contract.
           category: test-agent
         scope: none
 
-      - id: WRITE_LEGACY_USE_CASE_END
+      - id: WRITE_LEGACY_USE_CASE_CRITERIA_END
         type: end-event
-        name: "Use Case Written"
+        name: "Use Case Criteria Written"
 
     sequence-flows:
-      - {from: EXECUTE_AGENT, to: WRITE_LEGACY_USE_CASE_END}
+      - {from: EXECUTE_AGENT, to: WRITE_LEGACY_USE_CASE_CRITERIA_END}
 
   # Characterization fixers (plan 20261110-1130, 2d), the characterize variant
   # of fix-unexpected-failing-tests / fix-unexpected-passing-tests. The system

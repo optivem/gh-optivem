@@ -272,7 +272,7 @@ func renderMatrixOpts(arch, surface, channel string) Options {
 			// its passing case (plan 20261110-1130).
 			"task-name": "fix-characterization-failing-tests",
 			// Characterize flow (plan 20261110-1130): the use case the
-			// legacy-use-case-writer works on, and the external driver port
+			// legacy use case writers work on, and the external driver port
 			// paths of a late-discovery re-dispatch (empty on a first pass).
 			"use-case-id":                    "UC-001",
 			"discovered-external-port-paths": "system-test/src/main/java/shop/testkit/driver/port/external/erp/ErpDriver.java",
@@ -3074,7 +3074,7 @@ func TestRenderScopeBlock_UnresolvableKeyErrors(t *testing.T) {
 // declined redo gate, and render nothing for it on a first pass (plan
 // 20261110-1130, Step 3a).
 func TestRenderPrompt_FeedbackSection(t *testing.T) {
-	for _, agent := range []string{"legacy-use-case-diagram-writer", "legacy-use-case-writer"} {
+	for _, agent := range []string{"legacy-use-case-diagram-writer", "legacy-use-case-narrative-writer", "legacy-use-case-criteria-writer"} {
 		opts := renderMatrixOpts(projectconfig.ArchMonolith, "system", "")
 		opts.Agent = agent
 		got, err := renderPrompt(opts)

@@ -305,8 +305,9 @@ func TestCharacterizeAgents_NodeParamValues(t *testing.T) {
 
 	// The prompts reference these, so the general test enforces presence.
 	for agent, keys := range map[string][]string{
-		"legacy-use-case-writer":      {"use-case-id", "discovered-external-port-paths"},
-		"characterization-test-fixer": {"task-name"},
+		"legacy-use-case-narrative-writer": {"use-case-id", "discovered-external-port-paths"},
+		"legacy-use-case-criteria-writer":  {"use-case-id", "discovered-external-port-paths"},
+		"characterization-test-fixer":      {"task-name"},
 	} {
 		got := promptNodeParams(t, agent)
 		for _, k := range keys {
@@ -316,18 +317,20 @@ func TestCharacterizeAgents_NodeParamValues(t *testing.T) {
 		}
 	}
 
-	writers := byAgent["legacy-use-case-writer"]
-	if len(writers) == 0 {
-		t.Fatal("legacy-use-case-writer is never dispatched")
-	}
-	for _, s := range writers {
-		if s.params["use-case-id"] != "${use-case-id}" {
-			t.Errorf("legacy-use-case-writer use-case-id = %q (want the State use case, ${use-case-id}) on %v", s.params["use-case-id"], s.path)
+	for _, writer := range []string{"legacy-use-case-narrative-writer", "legacy-use-case-criteria-writer"} {
+		writers := byAgent[writer]
+		if len(writers) == 0 {
+			t.Fatalf("%s is never dispatched", writer)
 		}
-		// "" on the criteria layer, the DSL's changed external port paths on
-		// the late-discovery route.
-		if v := s.params["discovered-external-port-paths"]; v != "" && v != "${external-driver-port-changed-paths}" {
-			t.Errorf("legacy-use-case-writer discovered-external-port-paths = %q on %v", v, s.path)
+		for _, s := range writers {
+			if s.params["use-case-id"] != "${use-case-id}" {
+				t.Errorf("%s use-case-id = %q (want the State use case, ${use-case-id}) on %v", writer, s.params["use-case-id"], s.path)
+			}
+			// "" on the criteria layer, the DSL's changed external port paths
+			// on the late-discovery route.
+			if v := s.params["discovered-external-port-paths"]; v != "" && v != "${external-driver-port-changed-paths}" {
+				t.Errorf("%s discovered-external-port-paths = %q on %v", writer, v, s.path)
+			}
 		}
 	}
 
@@ -378,7 +381,7 @@ func TestAgentNodeParams_DetectsDroppedParam(t *testing.T) {
 	delete(eng.Processes["characterize-dsl-layer"].Nodes["ADD_ESCC_FOR_DISCOVERED_SYSTEMS"].Raw.Params, "discovered-external-port-paths")
 	sites, _ := collectAgentDispatches(t, eng)
 	if got := missingNodeParams(t, eng, sites); !slices.ContainsFunc(got, func(m string) bool {
-		return strings.Contains(m, "legacy-use-case-writer") && strings.Contains(m, "ADD_ESCC_FOR_DISCOVERED_SYSTEMS") &&
+		return strings.Contains(m, "legacy-use-case-criteria-writer") && strings.Contains(m, "ADD_ESCC_FOR_DISCOVERED_SYSTEMS") &&
 			strings.Contains(m, "discovered-external-port-paths")
 	}) {
 		t.Errorf("dropped param not reported; reports: %v", got)

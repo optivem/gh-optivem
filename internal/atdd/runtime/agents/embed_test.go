@@ -211,8 +211,8 @@ func TestPrompt_ESCCFormat(t *testing.T) {
 			}
 		})
 	}
-	if !esccFormatWriters["legacy-use-case-writer"] {
-		t.Errorf("legacy-use-case-writer must carry the escc-format chunk")
+	if !esccFormatWriters["legacy-use-case-criteria-writer"] {
+		t.Errorf("legacy-use-case-criteria-writer must carry the escc-format chunk")
 	}
 }
 

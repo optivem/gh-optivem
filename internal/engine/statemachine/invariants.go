@@ -153,11 +153,12 @@ func isVerifyingPredecessor(pn Node, compileOnly bool) bool {
 // specWriterProcesses are the writing-agent MIDs that write only the spec (the
 // use case diagram, narratives, business rules and criteria under the use
 // cases dir), never code a test could verify: their commits carry no verify.
-// Both belong to the characterize flow (plan 20261110-1130), whose safety
+// All belong to the characterize flow (plan 20261110-1130), whose safety
 // gate checks the system code after every commit instead.
 var specWriterProcesses = map[string]bool{
-	"write-legacy-use-case-diagram": true,
-	"write-legacy-use-case":         true,
+	"write-legacy-use-case-diagram":   true,
+	"write-legacy-use-case-narrative": true,
+	"write-legacy-use-case-criteria":  true,
 }
 
 // isSpecWriter reports whether pn calls a specWriterProcesses MID.

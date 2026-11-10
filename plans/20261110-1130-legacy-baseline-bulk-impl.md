@@ -9,7 +9,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 3b: split `legacy-use-case-writer` into the narrative writer and the criteria writer (see "Steps"); Step 3a (feedback on `approve`) is done. The flow was redesigned on 2026-11-10 to go use case by use case (see "Revised flow"); parts 1, 2, 2b, Step 3a and Step 4 are committed but wired layer by layer, so Step 3d rewires them. Steps 3b-3e build on each other and all touch `process-flow.yaml`: run them one after another, not in parallel.
+Step 3c: the diagram writer also writes the dependency diagram, plus action `order-use-cases` (see "Steps"); Steps 3a (feedback on `approve`) and 3b (narrative / criteria writer split) are done. The flow was redesigned on 2026-11-10 to go use case by use case (see "Revised flow"); parts 1, 2, 2b, Steps 3a, 3b and 4 are committed but wired layer by layer, so Step 3d rewires them. Steps 3c-3e build on each other and all touch `process-flow.yaml`: run them one after another, not in parallel.
 
 **Execution mode (user, 2026-11-10):** autonomous. The user asked for autonomous work: incremental commits per completed step (after its tests pass, `go test -p 2`) are approved; no per-step gate.
 
@@ -20,6 +20,7 @@ Observation (from Step 4): the external layer makes no commit of its own; its CT
 Wiring judgment calls (accepted, for the record): the `characterize` binding treats unset as false; new param binding `gated` (strict); new binding `stand-ins-changed` + action `check-stand-ins-changed` (restart only when the fixer touched a stub/simulator); new action `record-use-case-criteria`; new config key `use-cases-path` (default `docs/use-cases`); fixer category `test-agent`; the test-instance contract-real verify is a new node; the `channels.go` adapter-channel unroll also covers `characterize-adapter-layer`; 2 new commit-after-verify invariant exceptions in `invariants.go`.
 
 - Step 3a: feedback is opt-in per approve call site (`ask-for-changes: "true"`), not on every approve: the approvals nested inside a redo (execute-agent / execute-command / fix PRE) would otherwise clear or overwrite it before the redone agent reads it. Pinned by `TestApproveSites_RedoGatesAskForChanges` (a site asks iff its "rejected" edge loops back to a step). A "no" there asks "What should change?" (blank re-asks; end of input stores ""), State `feedback`; a "yes" there unsets it. The dispatcher renders it into the always-registered `${feedback-section}` (empty when unset), so no node params or seeding; only the two legacy writers' prompts include it so far. Step 3d: add `${feedback-section}` to the agents the tests gate (A3) redoes (contract-test, AT, DSL, adapter writers) and pass `ask-for-changes` on the new gates. The refiner's own `refinement-feedback` loop is left as is.
+- Step 3b: two MIDs, `write-legacy-use-case-narrative` (agent `legacy-use-case-narrative-writer`, no outputs) and `write-legacy-use-case-criteria` (agent `legacy-use-case-criteria-writer`, output `criterion-ids`, carries the `escc-format` chunk), both `scope: none` (spec only) and in `specWriterProcesses`. `write-use-case-criteria` calls them in sequence before its one commit, both on the criteria layer and on the DSL late-discovery route (both get `discovered-external-port-paths`: the narrative writer fixes narrative steps, the criteria writer adds the ESCC). Dependency diagram file: `${use-cases-path}/dependencies.md` (`spec.DependencyDiagramFile`); `spec.LoadDir` skips it like `README.md` so the flat layout still validates. The prompts use `${use-cases-path}` instead of the old "`specDir` in spec.yaml" wording. Step 3d splits the two writers into their own gated steps.
 
 ### Part 1 handoff (done 2026-11-10)
 
@@ -329,7 +330,6 @@ flowchart TD
 
 ## Steps
 
-- [ ] Step 3b: Split `legacy-use-case-writer` into `legacy-use-case-narrative-writer` (narrative + Preconditions naming dependency UC ids; may add a found dependency to the dependency diagram) and `legacy-use-case-criteria-writer` (Gherkin `UC-NNN.M` criteria + ESCC section). Both take `feedback`.
 - [ ] Step 3c: `legacy-use-case-diagram-writer` also writes the dependency diagram (Mermaid, under `use-cases-path`) and takes `feedback`; NEW action `order-use-cases` (modes: pilot = chosen + transitive deps; scaling = the rest; re-order after a narrative adds a dependency): topological, ties by UC id, cycle -> hard error. Unit tests.
 - [ ] Step 3d: Rewire `characterize` in `process-flow.yaml` to the revised flow (use case by use case, gates on pilot only, per-use-case WIP removal + criteria deletion, no go-ahead gate, final safety gate + stop at the end); update `characterize_flow_test.go` and any affected tests.
 - [ ] Step 3e: `gh optivem characterize` entry point (top level, beside `kickoff`): seed `ticket-id` / `issue-title` for commit messages (keep the `- ${layer}` suffix), add `characterize` to the driver's `topProcesses` and the diagram's `processOrder`.

@@ -82,11 +82,11 @@ var redReviewers = map[string]bool{
 
 // esccFormatWriters are the agents that author an External System Contract
 // Criteria section themselves (plan 20261110-1130: the characterize flow's
-// use case writer, which has no ticket to take the section from). They get
+// use case criteria writer, which has no ticket to take the section from). They get
 // the pinned escc-format.md chunk appended after the body, so the format has
 // one source instead of a copy in the prompt.
 var esccFormatWriters = map[string]bool{
-	"legacy-use-case-writer": true,
+	"legacy-use-case-criteria-writer": true,
 }
 
 func mustReadAsset(path string) string {

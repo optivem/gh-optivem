@@ -172,7 +172,7 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("select-next-use-case", a.selectNextUseCase)
 	r.Register("restamp-current-use-case", a.restampUseCase)
 	r.Register("stamp-characterized-test-names", a.stampCharacterizedTestNames)
-	// record-use-case-criteria appends the legacy-use-case-writer's
+	// record-use-case-criteria appends the legacy-use-case-criteria-writer's
 	// criterion-ids to merged-criteria, which apply-ac-policy deletes at the
 	// end of characterize.
 	r.Register("record-use-case-criteria", a.recordUseCaseCriteria)

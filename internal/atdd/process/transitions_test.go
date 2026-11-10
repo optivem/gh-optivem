@@ -84,7 +84,8 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"merge-story-into-use-cases",
 		"merge-use-cases",
 		"write-legacy-use-case-diagram",
-		"write-legacy-use-case",
+		"write-legacy-use-case-narrative",
+		"write-legacy-use-case-criteria",
 		"fix-characterization-failing-tests",
 		"fix-characterization-passing-tests",
 		// MID — command tasks

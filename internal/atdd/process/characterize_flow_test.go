@@ -308,8 +308,8 @@ func bindChar(t *testing.T, eng *statemachine.Engine, sc *charScenario, run *cha
 				ctx.Set("core-use-case", sc.core)
 				ctx.Set("other-use-cases", sc.others)
 				ctx.Set("core-use-case-reasons", "most used")
-			case "legacy-use-case-writer":
-				// The writer adds the ESCC section for discovered systems.
+			case "legacy-use-case-criteria-writer":
+				// The criteria writer adds the ESCC section for discovered systems.
 				if ctx.Params["discovered-external-port-paths"] != "" {
 					uc(ctx.Params["use-case-id"]).escc = true
 				}
@@ -423,7 +423,8 @@ func TestCharacterize_HappyPath(t *testing.T) {
 		"commit:USE CASE DIAGRAM",
 		"approve:diagram",
 		// Core use case: each layer, then its human gate.
-		"agent:legacy-use-case-writer", "commit:USE CASE (UC-001)", "approve:write-use-case-criteria",
+		"agent:legacy-use-case-narrative-writer", "agent:legacy-use-case-criteria-writer",
+		"commit:USE CASE (UC-001)", "approve:write-use-case-criteria",
 		"agent:contract-test-writer", "approve:implement-external-drivers-if-needed",
 		"agent:acceptance-test-writer", "commit:ACCEPTANCE TESTS (UC-001)", "approve:characterize-at-layer",
 		"agent:dsl-implementer", "commit:DSL (UC-001)", "approve:characterize-dsl-layer",
@@ -764,7 +765,8 @@ func TestCharacterizeDSLLayer_LateExternalDiscovery(t *testing.T) {
 		run.wantInOrder(t,
 			"agent:dsl-implementer",
 			"commit:DSL (UC-001)",
-			"agent:legacy-use-case-writer",
+			"agent:legacy-use-case-narrative-writer",
+			"agent:legacy-use-case-criteria-writer",
 			"commit:USE CASE (UC-001)",
 			"action:record-use-case-criteria",
 			"action:restamp-current-use-case",
@@ -772,21 +774,23 @@ func TestCharacterizeDSLLayer_LateExternalDiscovery(t *testing.T) {
 			"agent:contract-test-writer",
 			"cmd:restart-external-systems",
 		)
-		// The writer gets the discovered port paths and the use case.
-		var writer *agentDispatch
-		for i := range run.agentParams {
-			if run.agentParams[i].name == "legacy-use-case-writer" {
-				writer = &run.agentParams[i]
+		// Both writers get the discovered port paths and the use case.
+		for _, name := range []string{"legacy-use-case-narrative-writer", "legacy-use-case-criteria-writer"} {
+			var writer *agentDispatch
+			for i := range run.agentParams {
+				if run.agentParams[i].name == name {
+					writer = &run.agentParams[i]
+				}
 			}
-		}
-		if writer == nil {
-			t.Fatal("legacy-use-case-writer not dispatched")
-		}
-		if got := writer.params["discovered-external-port-paths"]; got != "driver/port/external/erp/ErpDriver.java" {
-			t.Errorf("discovered-external-port-paths = %q", got)
-		}
-		if got := writer.params["use-case-id"]; got != "UC-001" {
-			t.Errorf("use-case-id = %q, want UC-001", got)
+			if writer == nil {
+				t.Fatalf("%s not dispatched", name)
+			}
+			if got := writer.params["discovered-external-port-paths"]; got != "driver/port/external/erp/ErpDriver.java" {
+				t.Errorf("%s discovered-external-port-paths = %q", name, got)
+			}
+			if got := writer.params["use-case-id"]; got != "UC-001" {
+				t.Errorf("%s use-case-id = %q, want UC-001", name, got)
+			}
 		}
 		// The DSL verify expected red (an external driver is pending); the
 		// route ends with the acceptance tests verified green.
@@ -807,7 +811,7 @@ func TestCharacterizeDSLLayer_LateExternalDiscovery(t *testing.T) {
 		if run.err != nil {
 			t.Fatalf("characterize-dsl-layer: %v", run.err)
 		}
-		for _, e := range []string{"agent:legacy-use-case-writer", "action:restamp-current-use-case", "agent:contract-test-writer"} {
+		for _, e := range []string{"agent:legacy-use-case-narrative-writer", "agent:legacy-use-case-criteria-writer", "action:restamp-current-use-case", "agent:contract-test-writer"} {
 			if run.count(e) != 0 {
 				t.Errorf("%s ran without an external driver port change", e)
 			}
@@ -939,7 +943,7 @@ func TestCharacterizeLayer_LoopAndApproval(t *testing.T) {
 		gated        string
 		rejects      int // APPROVE_LAYER rejections (on the last use case)
 		wantErr      string
-		wantWriters  []string // use-case-id per legacy-use-case-writer dispatch
+		wantWriters  []string // use-case-id per legacy-use-case-criteria-writer dispatch
 		wantApproves int
 	}{
 		{name: "bulk", useCases: "UC-002,UC-003", gated: "false", wantWriters: []string{"UC-002", "UC-003"}},
@@ -970,7 +974,7 @@ func TestCharacterizeLayer_LoopAndApproval(t *testing.T) {
 			}
 			var writers []string
 			for _, d := range run.agentParams {
-				if d.name == "legacy-use-case-writer" {
+				if d.name == "legacy-use-case-criteria-writer" {
 					writers = append(writers, d.params["use-case-id"])
 				}
 			}
@@ -1011,7 +1015,7 @@ func TestCharacterize_DiagramRedoAndCap(t *testing.T) {
 		if got := run.count("agent:legacy-use-case-diagram-writer"); got != 4 {
 			t.Errorf("diagram writer = %d, want 4 (cap 3 approvals, the 4th writer pass then halts at the confirm)", got)
 		}
-		if run.count("agent:legacy-use-case-writer") != 0 {
+		if run.count("agent:legacy-use-case-narrative-writer") != 0 {
 			t.Error("criteria layer ran without a confirmed diagram")
 		}
 	})

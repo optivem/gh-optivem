@@ -156,7 +156,8 @@ func writeTree(t *testing.T, files map[string]string) string {
 
 func TestLoadDir_FolderPerUseCase(t *testing.T) {
 	dir := writeTree(t, map[string]string{
-		"README.md": "# Use cases\n\nNo front matter here.\n",
+		"README.md":       "# Use cases\n\nNo front matter here.\n",
+		"dependencies.md": "# Use case dependencies\n\nNo front matter here.\n",
 		"UC-001-place-order/use-case-narrative.md":  "# Narrative\n",
 		"UC-001-place-order/business-rules.md":      "# Rules\n",
 		"UC-001-place-order/acceptance-criteria.md": "---\nid: UC-001\ntitle: Place Order\n---\n```gherkin\n@UC-001.1\nScenario: A\n```\n",
