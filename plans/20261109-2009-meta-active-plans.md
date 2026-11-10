@@ -3,7 +3,7 @@
 ## TL;DR
 
 **Why:** 8 top-level plans were open; most waited on user decisions.
-**End result:** all decisions were taken on 2026-11-10. What is left, in order: `1130` implementation (3 parts), the `1300` release check, then the shop-dependent items, then the user-only items under **Verification**.
+**End result:** all decisions were taken on 2026-11-10. What is left, in order: `1130` implementation (3 parts), then the shop-dependent items, then the user-only items under **Verification**.
 
 ## ▶ Next executable step (resume here)
 
@@ -16,9 +16,10 @@ Shop-independent work first; shop-dependent items last (user, 2026-11-10).
 1. `1130` Step 3, part 1: Go code (see above).
 2. `1130` Step 3, part 2: `process-flow.yaml` (new/changed processes per the plan's Step 3 work list) + the 3 new agents + Step 4 process transition tests. Never in parallel with another plan that edits `process-flow.yaml`.
 3. `1130` Step 3, part 3: `gh optivem characterize` entry point + Step 5 docs.
-4. `1300` release check (its Step 5). Release run dispatched 2026-11-10 (user-approved): https://github.com/optivem/gh-optivem/actions/runs/42806020020. It tests against shop's latest `meta-v*` release (`meta-v1.0.224`), not shop `main`, so shop's CI state does not block it. A push to `main` does NOT cut a release (`gh-acceptance-stage.yml` is `workflow_dispatch` only). Once a release newer than v1.6.107 exists: clone shop into a temp dir (user-approved, read-only, deleted afterwards), run `gh optivem spec validate`, confirm 14 UC-001 criteria, delete `1300` (the shop-side copy is deleted from a shop session). If the run failed, root-cause it before re-dispatching.
-5. Shop-dependent, last: E2 shop config write (needs the new release) and the Docker rehearsals, both tracked in `plans/20261104-1120-meta-backlog-consolidation.md`.
-6. Delete this meta-plan once 1–4 are done (5 lives in the backlog meta-plan).
+4. Shop-dependent, last: E2 shop config write (now unblocked: v1.6.108 released 2026-11-10) and the Docker rehearsals, both tracked in `plans/20261104-1120-meta-backlog-consolidation.md`.
+5. Delete this meta-plan once 1–3 are done (4 lives in the backlog meta-plan).
+
+`1300` done 2026-11-10: v1.6.108 released (run 42806020020); `gh optivem spec validate` on shop `main` prints `OK: 12 use case(s) valid, 25 criteria gated` (UC-001 now has 16 criteria, UC-001.1–.16, because shop added 2 after the plan was written; UC-004 has 9). Plan deleted. Its shop-side copy is deleted from a shop session.
 
 ## Decisions taken (2026-11-10)
 
