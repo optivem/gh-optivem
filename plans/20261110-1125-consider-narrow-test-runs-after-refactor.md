@@ -11,7 +11,7 @@ Design/decision only: run `/refine-plan plans/20261110-1125-consider-narrow-test
 
 ## Context
 
-Decided 2026-11-10 (meta-plan `20261109-2009`, Q3): for now, keep running the whole suite after a refactoring. Narrowing is deferred to this plan. Source discussion: the former `20261109-1250-refactor-touched-use-case-tests` plan (deleted; see git history).
+Decided 2026-11-10 (meta-plan `20261110-2159`, Q3): for now, keep running the whole suite after a refactoring. Narrowing is deferred to this plan. Source discussion: the former `20261109-1250-refactor-touched-use-case-tests` plan (deleted; see git history).
 
 ## Idea
 
