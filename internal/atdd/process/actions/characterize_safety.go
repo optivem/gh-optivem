@@ -86,8 +86,8 @@ var assertionPatterns = map[string][]*regexp.Regexp{
 // It resolves the system paths (the surface plus the db migrations) and the
 // stand-in paths, fails hard when they cannot be resolved or overlap, and
 // records the start commit of every repo holding system paths plus the
-// system-test commit the assertion check starts from. Resume-safe: start
-// commits already in State are kept.
+// system-test commit the assertion check and the per-use-case port-change
+// derivation start from. Resume-safe: start commits already in State are kept.
 func (a actions) recordStartCommits(ctx *statemachine.Context) statemachine.Outcome {
 	cfg := a.deps.Config
 	if cfg == nil {
@@ -122,12 +122,15 @@ func (a actions) recordStartCommits(ctx *statemachine.Context) statemachine.Outc
 			fmt.Fprintf(a.deps.Out.Phase, "System start commit %s%s for %s.\n", repoLabel(cfg, r.Repo), shortSHA(r.Commit), strings.Join(r.Paths, ", "))
 		}
 	}
-	if ctx.GetString(CtxKeyAssertionCheckedCommit) == "" {
+	for _, key := range []string{CtxKeyAssertionCheckedCommit, CtxKeySystemTestStartCommit} {
+		if ctx.GetString(key) != "" {
+			continue
+		}
 		sha, err := a.headCommit(cfg, cfg.SystemTest.Repo)
 		if err != nil {
 			return statemachine.Outcome{Err: fmt.Errorf("record-start-commits: %w", err)}
 		}
-		ctx.Set(CtxKeyAssertionCheckedCommit, sha)
+		ctx.Set(key, sha)
 	}
 	return statemachine.Outcome{}
 }
@@ -516,23 +519,43 @@ func shortSHA(sha string) string {
 // characterization fixer MIDs.
 const CtxKeyStandInsChanged = "stand-ins-changed"
 
+// CtxKeyStandInBaseline is the working-tree fingerprint snapshot-stand-ins
+// takes at the start of a characterization fixer MID, before its
+// execute-agent. It is separate from execute-agent's pre-agent-fingerprint,
+// which a nested fix dispatch (invalid output -> fix -> execute-agent)
+// re-snapshots after the fixer already edited files.
+const CtxKeyStandInBaseline = "stand-in-baseline-fingerprint"
+
+// snapshotStandIns is SNAPSHOT_STAND_INS, the first node of the
+// characterization fixer MIDs (plan 20261110-1130, 2d).
+func (a actions) snapshotStandIns(ctx *statemachine.Context) statemachine.Outcome {
+	fp, err := a.captureWorkingTreeFingerprint(context.Background())
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("snapshot-stand-ins: %w", err)}
+	}
+	ctx.Set(CtxKeyStandInBaseline, fp)
+	return statemachine.Outcome{}
+}
+
 // checkStandInsChanged runs after a characterization fixer dispatch (plan
 // 20261110-1130, 2d). The fixer may edit a stub or simulator; the stand-in
 // containers then run stale code until recreated, so the next test run would
-// judge the old stand-in. It stamps stand-ins-changed = (a path the fixer
-// itself modified, measured against execute-agent's pre-agent snapshot, lies
-// under a stand-in path). A declined dispatch never ran, so it changed
-// nothing; no stand-in paths (no external-systems: registry) means nothing to
-// restart. A missing snapshot on a dispatch that ran is a wiring bug.
+// judge the old stand-in. It stamps stand-ins-changed = (a path modified since
+// snapshot-stand-ins, at the start of the MID, lies under a stand-in path).
+// Measuring from the MID's own snapshot, not execute-agent's pre-agent one,
+// keeps the fixer's edits counted when its output failed validation and a
+// nested fix dispatch re-snapshotted. A declined dispatch never ran, so it
+// changed nothing; no stand-in paths (no external-systems: registry) means
+// nothing to restart. A missing snapshot is a wiring bug.
 func (a actions) checkStandInsChanged(ctx *statemachine.Context) statemachine.Outcome {
 	standIns := splitNonEmptyLines(ctx.GetString(CtxKeyStandInPaths))
 	if len(standIns) == 0 || ctx.GetString("approval-outcome") == "rejected" {
 		ctx.Set(CtxKeyStandInsChanged, false)
 		return statemachine.Outcome{}
 	}
-	snapshot, ok := ctx.State[CtxKeyPreAgentFingerprint].(WorkingTreeFingerprint)
+	snapshot, ok := ctx.State[CtxKeyStandInBaseline].(WorkingTreeFingerprint)
 	if !ok {
-		return statemachine.Outcome{Err: fmt.Errorf("check-stand-ins-changed: %s not set — the fixer must run through execute-agent (snapshot-working-tree) first", CtxKeyPreAgentFingerprint)}
+		return statemachine.Outcome{Err: fmt.Errorf("check-stand-ins-changed: %s not set — the fixer MID must run snapshot-stand-ins before its execute-agent", CtxKeyStandInBaseline)}
 	}
 	modified, err := a.modifiedPathsSinceFingerprint(context.Background(), snapshot)
 	if err != nil {

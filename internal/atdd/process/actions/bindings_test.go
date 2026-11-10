@@ -147,6 +147,9 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"check-no-assertion-removed",
 		"select-next-use-case",
 		"restamp-current-use-case",
+		"stamp-characterized-test-names",
+		"snapshot-stand-ins",
+		"check-stand-ins-changed",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {

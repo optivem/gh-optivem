@@ -110,6 +110,45 @@ func Generate(opts Options) (Result, error) {
 	return res, nil
 }
 
+// TaggedTestNames reads every test source under dirs (the files Generate
+// reads) and returns, in file and line order without duplicates, the names of
+// the tests tagged with a criterion of one of useCases (UC-NNN ids). A test
+// the grammar rejects has no readable tags, so a rejected test in a file that
+// mentions one of the use cases ("UC-NNN.") is an error, never silently left
+// out; rejected tests in other files are ignored.
+func TaggedTestNames(dirs, useCases []string) ([]string, error) {
+	if len(useCases) == 0 {
+		return nil, nil // filterUseCases keeps everything for an empty filter
+	}
+	files, err := collectFiles(dirs, nil)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	var errs []error
+	seen := map[string]bool{}
+	for _, f := range files {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", f, err)
+		}
+		cases, es, _ := ParseFile(filepath.ToSlash(f), src)
+		if len(es) > 0 && slices.ContainsFunc(useCases, func(uc string) bool { return strings.Contains(string(src), uc+".") }) {
+			errs = append(errs, es...)
+		}
+		for _, tc := range filterUseCases(cases, useCases) {
+			if !seen[tc.Name] {
+				seen[tc.Name] = true
+				names = append(names, tc.Name)
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return nil, errors.Join(errs...)
+	}
+	return names, nil
+}
+
 // filterUseCases keeps tags of the selected use cases and drops tests left
 // with none (untagged tests are dropped whenever a filter is set).
 func filterUseCases(cases []TestCase, only []string) []TestCase {

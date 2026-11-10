@@ -9,16 +9,14 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 3, part 2b: close the runtime gaps the wiring left (list below), then Step 4 transition tests. Wiring and agents are done (commit `5ddc36f4` agents, then the wiring commit after it). All existing tests pass, but these gaps fail only at runtime; no test catches them. All are covered by existing decisions; no new design questions.
+Step 4 tests (incl. gap 6 below). Runtime gaps 1–5 are fixed: `select-next-use-case` / `restamp-current-use-case` re-derive `test-names`, the port-changed flags and the criteria from git and the use case file (`use_case_state.go`; commits matched by ` - ACCEPTANCE TESTS (<id>)` / ` - DSL (<id>)` labels since `system-test-start-commit`). `STAMP_CHARACTERIZED_TEST_NAMES` runs before the final WIP removal, an empty use case list gives `use-case-left=false`, and `SNAPSHOT_STAND_INS` gives the stand-in check a fixed baseline.
 
-Runtime gaps (fix in this order; mainly `process-flow.yaml` + `internal/atdd/process/actions/use_case_loop.go`):
+6. Test that every agent's required node params (`use-case-id`, `discovered-external-port-paths`, `verify-failure-output`) are supplied along each call path.
 
-1. Per-use-case State not re-derived in bulk (Decision "Per-use-case State"): `select-next-use-case` stamps only `use-case-id` + ESCC keys, so in the bulk DSL/adapter layers `test-names`, `dsl-port-changed`, `system-driver-port-changed` hold the previous use case's values. Re-derive from git: tests tagged `UC-NNN`, port changes from that use case's commits.
-2. `acceptance-criteria` / `scenario-criteria` never stamped for a use case, so the AT layer's strict `${acceptance-criteria}` fails. Stamp them from the use case file in `select-next-use-case`.
-3. `remove-wip-gate` at the end sees only the last use case's `test-names`; it must cover every use case's tagged tests.
-4. Empty `other-use-cases` (system with only the core use case) hard-errors in `select-next-use-case`; it must give `use-case-left=false`.
-5. Stand-in check edge case: if the fixer's output fails validation and the nested fix re-snapshots, earlier stand-in edits are missed and no restart happens.
-6. Test that every agent's required node params (`use-case-id`, `discovered-external-port-paths`, `verify-failure-output`) are supplied along each call path (with Step 4).
+Open question (needs user, before a real rehearsal; does not block Step 4):
+- **Cross-use-case DSL reuse in bulk.** In the bulk AT layer, use case B's tests may call a DSL port method that use case A's AT added in the same bulk layer; it is not implemented until the bulk DSL layer. B's `dsl-port-changed` is then false, so B's AT verify expects green and hits the TODO stubs (unfixable by the characterization fixer → `FIX_LOOP_EXHAUSTED`). Recommendation: in characterize, derive `dsl-port-changed` for the AT layer as "any DSL port change since `system-test-start-commit` not yet followed by that use case's DSL commit", i.e. pending until the DSL layer has run for the use case. That fits the layer-by-layer decision without loosening the verify.
+
+Known limitations (accepted for now): TS parameterised test names may not match `remove-wip-gate`'s regex (existing); commit labels assume the part-3 entry point keeps the `- ${layer}` commit-message suffix.
 
 Left for part 3 (entry point), not part 2b:
 - Commit messages use `#${ticket-id} ${issue-title}` and the resume probe is keyed by ticket; the `characterize` entry point must seed these (or a preset).

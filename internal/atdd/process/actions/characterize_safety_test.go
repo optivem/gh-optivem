@@ -369,3 +369,90 @@ func TestRemovedAssertions_PerLanguage(t *testing.T) {
 		}
 	}
 }
+
+func TestRecordStartCommits_RecordsSystemTestStartCommit(t *testing.T) {
+	repo := gitRepo(t, baseRepoFiles)
+	a := newActions(Deps{Config: characterizeConfig(), RepoPath: repo, Stdout: &bytes.Buffer{}})
+	ctx := recordedCtx(t, a)
+	head := strings.TrimSpace(runGit(t, repo, "rev-parse", "HEAD"))
+	if got := ctx.GetString(CtxKeySystemTestStartCommit); got != head {
+		t.Fatalf("system-test-start-commit = %q, want %s", got, head)
+	}
+	// Unlike assertion-checked-commit it never advances, and a resume keeps it.
+	writeRepoFile(t, repo, "system-test/at/New.java", "class New {}\n")
+	commitAll(t, repo, "layer")
+	if out := a.checkNoAssertionRemoved(ctx); out.Err != nil {
+		t.Fatal(out.Err)
+	}
+	if out := a.recordStartCommits(ctx); out.Err != nil {
+		t.Fatal(out.Err)
+	}
+	if got := ctx.GetString(CtxKeySystemTestStartCommit); got != head {
+		t.Fatalf("system-test-start-commit moved to %q, want %s", got, head)
+	}
+}
+
+func standInCtx(t *testing.T, a actions) *statemachine.Context {
+	t.Helper()
+	ctx := recordedCtx(t, a)
+	if out := a.snapshotStandIns(ctx); out.Err != nil {
+		t.Fatal(out.Err)
+	}
+	return ctx
+}
+
+func TestCheckStandInsChanged(t *testing.T) {
+	repo := gitRepo(t, baseRepoFiles)
+	a := newActions(Deps{Config: characterizeConfig(), RepoPath: repo, Stdout: &bytes.Buffer{}})
+
+	// A test-only fix changes no stand-in.
+	ctx := standInCtx(t, a)
+	writeRepoFile(t, repo, "system-test/at/OrderTest.java", "class OrderTest {}\n")
+	if out := a.checkStandInsChanged(ctx); out.Err != nil || ctx.Get(CtxKeyStandInsChanged) != false {
+		t.Fatalf("test-only fix: err=%v changed=%v", out.Err, ctx.Get(CtxKeyStandInsChanged))
+	}
+
+	ctx = standInCtx(t, a)
+	writeRepoFile(t, repo, "external-systems/stubs/mappings/erp.json", "{\"changed\": true}\n")
+	if out := a.checkStandInsChanged(ctx); out.Err != nil || ctx.Get(CtxKeyStandInsChanged) != true {
+		t.Fatalf("stub fix: err=%v changed=%v", out.Err, ctx.Get(CtxKeyStandInsChanged))
+	}
+}
+
+// Gap 5: the fixer edits a stub, its output fails validation, and the nested
+// fix dispatch re-snapshots the working tree (execute-agent's
+// pre-agent-fingerprint) before fixing the output. The stub edit predates
+// that snapshot but must still trigger the restart.
+func TestCheckStandInsChanged_SurvivesNestedReSnapshot(t *testing.T) {
+	repo := gitRepo(t, baseRepoFiles)
+	a := newActions(Deps{Config: characterizeConfig(), RepoPath: repo, Stdout: &bytes.Buffer{}})
+	ctx := standInCtx(t, a)
+	if out := a.snapshotWorkingTree(ctx); out.Err != nil { // outer execute-agent
+		t.Fatal(out.Err)
+	}
+	writeRepoFile(t, repo, "external-systems/stubs/mappings/erp.json", "{\"changed\": true}\n")
+	if out := a.snapshotWorkingTree(ctx); out.Err != nil { // nested fix re-snapshot
+		t.Fatal(out.Err)
+	}
+	writeRepoFile(t, repo, "system-test/at/OrderTest.java", "class OrderTest {}\n")
+	if out := a.checkStandInsChanged(ctx); out.Err != nil || ctx.Get(CtxKeyStandInsChanged) != true {
+		t.Fatalf("err=%v changed=%v, want the earlier stub edit counted", out.Err, ctx.Get(CtxKeyStandInsChanged))
+	}
+}
+
+func TestCheckStandInsChanged_NoBaselineIsWiringError(t *testing.T) {
+	repo := gitRepo(t, baseRepoFiles)
+	a := newActions(Deps{Config: characterizeConfig(), RepoPath: repo, Stdout: &bytes.Buffer{}})
+	ctx := recordedCtx(t, a)
+	if out := a.snapshotWorkingTree(ctx); out.Err != nil {
+		t.Fatal(out.Err)
+	}
+	if out := a.checkStandInsChanged(ctx); out.Err == nil || !strings.Contains(out.Err.Error(), CtxKeyStandInBaseline) {
+		t.Fatalf("want a missing-baseline error, got %v", out.Err)
+	}
+	// A declined dispatch or no stand-ins: nothing to check, no baseline needed.
+	ctx.Set("approval-outcome", "rejected")
+	if out := a.checkStandInsChanged(ctx); out.Err != nil || ctx.Get(CtxKeyStandInsChanged) != false {
+		t.Fatalf("rejected: err=%v changed=%v", out.Err, ctx.Get(CtxKeyStandInsChanged))
+	}
+}

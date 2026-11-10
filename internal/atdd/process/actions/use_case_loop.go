@@ -3,12 +3,9 @@ package actions
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"unicode"
 
-	"github.com/optivem/gh-optivem/internal/atdd/runtime/intake"
 	"github.com/optivem/gh-optivem/internal/engine/statemachine"
 )
 
@@ -16,9 +13,9 @@ import (
 // 20261110-1130, section 2b). characterize-layer runs one layer over a list of
 // use cases: select-next-use-case pops the next one, GW_MORE routes on
 // use-case-left, and the layer runs for the popped use case. Per-use-case
-// State is re-derived from the files each time, so a resumed run picks up the
-// same values: the use case id, and the External System Contract Criteria
-// keys parse-ticket would stamp, read from the use case's criteria file.
+// State is re-derived from the files and the branch history each time
+// (stampUseCase, use_case_state.go), so a bulk layer never sees the previous
+// use case's values and a resumed run picks up the same ones.
 
 const (
 	// CtxKeyUseCaseID is the use case the current layer pass works on.
@@ -33,9 +30,10 @@ const (
 
 // selectNextUseCase is the NEXT_UC service task. It reads the call's
 // `use-cases` (comma- or space-separated UC ids) and `layer-process` params,
-// pops the call site's next use case and stamps its State; with none left it
-// stamps use-case-left=false and keeps the last use case's State (a declined
-// core layer re-runs it). With the `same-use-case: "true"` param it re-stamps
+// pops the call site's next use case and stamps its State; with none left (or
+// an empty list: a system with only the core use case) it stamps
+// use-case-left=false and keeps the last use case's State (a declined core
+// layer re-runs it). With the `same-use-case: "true"` param it re-stamps
 // the current use case without popping (late external discovery in the DSL
 // layer, after the criteria gained an ESCC section).
 func (a actions) selectNextUseCase(ctx *statemachine.Context) statemachine.Outcome {
@@ -44,7 +42,11 @@ func (a actions) selectNextUseCase(ctx *statemachine.Context) statemachine.Outco
 	}
 	ids := splitUseCaseIDs(ctx.Params["use-cases"])
 	if len(ids) == 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("select-next-use-case: the use-cases param is empty; characterize-layer must be called with at least one use case")}
+		// A system with only the core use case has no other use cases: the
+		// bulk passes have nothing to do. The State is left as it is.
+		ctx.Set(CtxKeyUseCaseLeft, false)
+		fmt.Fprintf(a.deps.Out.Phase, "No use cases for %s; skipping.\n", ctx.Params["layer-process"])
+		return statemachine.Outcome{}
 	}
 	cursors := map[string]int{}
 	if raw := ctx.GetString(CtxKeyUseCaseCursors); raw != "" {
@@ -86,39 +88,6 @@ func (a actions) restampUseCase(ctx *statemachine.Context) statemachine.Outcome 
 	ctx.Set(CtxKeyUseCaseLeft, true)
 	fmt.Fprintf(a.deps.Out.Phase, "Re-stamped use case %s.\n", id)
 	return statemachine.Outcome{}
-}
-
-// stampUseCase sets use-case-id and the ESCC keys from the use case's
-// criteria file. A use case with no criteria file yet (the criteria layer
-// writes it after this runs) has no ESCC. The file is not a ticket body
-// (front matter, narrative and business-rule headings), so only its External
-// System Contract Criteria section goes through intake's parser, which
-// validates it and extracts the system names exactly as for a ticket.
-func (a actions) stampUseCase(ctx *statemachine.Context, id string) error {
-	ucs, dir, err := a.loadUseCases()
-	if err != nil {
-		return err
-	}
-	var body string
-	for _, uc := range ucs {
-		if uc.ID != id {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(uc.File)))
-		if err != nil {
-			return err
-		}
-		body = strings.ReplaceAll(string(data), "\r\n", "\n")
-		break
-	}
-	escc := intake.ExtractSection(body, intake.SectionExternalSystemContractCriteria).Body
-	r, err := intake.ParseSections(map[string]string{intake.SectionExternalSystemContractCriteria: escc})
-	if err != nil {
-		return fmt.Errorf("use case %s: %w", id, err)
-	}
-	ctx.Set(CtxKeyUseCaseID, id)
-	stampESCC(ctx, r.ExternalSystemContractCriteria)
-	return nil
 }
 
 // splitUseCaseIDs splits a comma- or space-separated list (optionally in

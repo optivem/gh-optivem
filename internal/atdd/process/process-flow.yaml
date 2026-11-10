@@ -1290,6 +1290,12 @@ processes:
           use-cases: ${other-use-cases}
           gated: "false"
 
+      # test-names holds one use case's tests at a time; un-gate them all.
+      - id: STAMP_CHARACTERIZED_TEST_NAMES
+        type: service-task
+        action: stamp-characterized-test-names
+        name: "Collect Every Use Case's Tests"
+
       - id: REMOVE_WIP_GATE
         type: service-task
         action: remove-wip-gate
@@ -1353,7 +1359,8 @@ processes:
       - {from: BULK_EXTERNAL,                 to: BULK_ACCEPTANCE_TESTS}
       - {from: BULK_ACCEPTANCE_TESTS,         to: BULK_DSL}
       - {from: BULK_DSL,                      to: BULK_SYSTEM_DRIVER_ADAPTERS}
-      - {from: BULK_SYSTEM_DRIVER_ADAPTERS,   to: REMOVE_WIP_GATE}
+      - {from: BULK_SYSTEM_DRIVER_ADAPTERS,   to: STAMP_CHARACTERIZED_TEST_NAMES}
+      - {from: STAMP_CHARACTERIZED_TEST_NAMES, to: REMOVE_WIP_GATE}
       - {from: REMOVE_WIP_GATE,               to: COMMIT_WIP_GATE_REMOVAL}
       - {from: COMMIT_WIP_GATE_REMOVAL,       to: FINAL_SAFETY_GATE}
       - {from: FINAL_SAFETY_GATE,             to: STOP_SYSTEM}
@@ -1366,7 +1373,8 @@ processes:
   # case, or the others), `gated` ("true" for the core use case only).
   #
   # Use case loop: SELECT_NEXT_USE_CASE pops the next use case and stamps its
-  # State (use-case-id, the ESCC keys); the layer runs for it, then the safety
+  # State, re-derived from the files and its layer commits (use-case-id, ESCC keys,
+  # criteria, tagged test-names, port-changed flags); the layer runs for it, then the safety
   # gate, then the next one. With none left, a gated layer asks the human; a
   # "no" re-runs the layer on the last use case as a new commit on top
   # (capped). The loop terminates: the cursor only moves forward.
@@ -4097,8 +4105,16 @@ processes:
   # containers are recreated before the verify re-runs the tests.
   fix-characterization-failing-tests:
     name: "Fix Failing Characterization Tests"
-    start: EXECUTE_AGENT
+    start: SNAPSHOT_STAND_INS
     nodes:
+      # The MID's own baseline for CHECK_STAND_INS_CHANGED: execute-agent's
+      # pre-agent snapshot is retaken by a nested fix dispatch, after the
+      # fixer already edited files.
+      - id: SNAPSHOT_STAND_INS
+        type: service-task
+        action: snapshot-stand-ins
+        name: "Snapshot the Working Tree for the Stand-in Check"
+
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
@@ -4130,6 +4146,7 @@ processes:
         name: "Failing Characterization Tests Fixed"
 
     sequence-flows:
+      - {from: SNAPSHOT_STAND_INS,      to: EXECUTE_AGENT}
       - {from: EXECUTE_AGENT,           to: CHECK_STAND_INS_CHANGED}
       - {from: CHECK_STAND_INS_CHANGED, to: GATE_STAND_INS_CHANGED}
       - {from: GATE_STAND_INS_CHANGED,  to: RESTART_EXTERNAL_SYSTEMS, when: "stand-ins-changed == true"}
@@ -4141,8 +4158,16 @@ processes:
   # output (run-tests clears it), so the node pins verify-failure-output.
   fix-characterization-passing-tests:
     name: "Fix Passing Characterization Tests"
-    start: EXECUTE_AGENT
+    start: SNAPSHOT_STAND_INS
     nodes:
+      # The MID's own baseline for CHECK_STAND_INS_CHANGED: execute-agent's
+      # pre-agent snapshot is retaken by a nested fix dispatch, after the
+      # fixer already edited files.
+      - id: SNAPSHOT_STAND_INS
+        type: service-task
+        action: snapshot-stand-ins
+        name: "Snapshot the Working Tree for the Stand-in Check"
+
       - id: EXECUTE_AGENT
         type: call-activity
         process: execute-agent
@@ -4175,6 +4200,7 @@ processes:
         name: "Passing Characterization Tests Fixed"
 
     sequence-flows:
+      - {from: SNAPSHOT_STAND_INS,      to: EXECUTE_AGENT}
       - {from: EXECUTE_AGENT,           to: CHECK_STAND_INS_CHANGED}
       - {from: CHECK_STAND_INS_CHANGED, to: GATE_STAND_INS_CHANGED}
       - {from: GATE_STAND_INS_CHANGED,  to: RESTART_EXTERNAL_SYSTEMS, when: "stand-ins-changed == true"}

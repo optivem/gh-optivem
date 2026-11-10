@@ -214,9 +214,10 @@ func isVerifiedPostGreenPredecessor(proc *Process, n Node, depth int) bool {
 	if isCallTo(n, "characterize-layer") && strings.TrimSpace(n.Raw.Params["layer-process"]) == "characterize-adapter-layer" {
 		return true
 	}
-	// The safety gate and the system stop change no code: look through them
-	// to what ran before.
-	if isCallTo(n, "verify-system-unchanged") || isCallTo(n, "stop-system") {
+	// The safety gate, the system stop and the collection of every use
+	// case's test names change no code: look through them to what ran before.
+	if isCallTo(n, "verify-system-unchanged") || isCallTo(n, "stop-system") ||
+		(n.Kind == ServiceTask && strings.TrimSpace(n.Raw.Action) == "stamp-characterized-test-names") {
 		return allPredecessorsVerifiedPostGreen(proc, n.ID, depth+1)
 	}
 	if !isCallTo(n, "commit") {

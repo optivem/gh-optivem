@@ -38,6 +38,7 @@ var resumeExtraStateKeys = []string{
 	actions.CtxKeySystemStartCommits,
 	actions.CtxKeyStandInPaths,
 	actions.CtxKeyAssertionCheckedCommit,
+	actions.CtxKeySystemTestStartCommit,
 	actions.CtxKeyUseCaseCursors,
 	actions.CtxKeyUseCaseID,
 	actions.CtxKeyMergedCriteria,

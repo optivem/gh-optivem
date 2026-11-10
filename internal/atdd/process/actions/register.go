@@ -163,11 +163,15 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("check-no-assertion-removed", a.checkNoAssertionRemoved)
 	// Characterize use case loop (plan 20261110-1130, 2b). select-next-use-case
 	// pops the call site's next use case (use-case-left for GW_MORE) and
-	// stamps use-case-id + the ESCC keys from its criteria file;
+	// re-derives its State (use-case-id, ESCC keys, criteria, tagged
+	// test-names, port-changed flags from its layer commits);
 	// restamp-current-use-case is its same-use-case mode for the DSL layer's
-	// late-discovery route. See use_case_loop.go.
+	// late-discovery route. stamp-characterized-test-names feeds the final
+	// remove-wip-gate every use case's tagged tests. See use_case_loop.go and
+	// use_case_state.go.
 	r.Register("select-next-use-case", a.selectNextUseCase)
 	r.Register("restamp-current-use-case", a.restampUseCase)
+	r.Register("stamp-characterized-test-names", a.stampCharacterizedTestNames)
 	// record-use-case-criteria appends the legacy-use-case-writer's
 	// criterion-ids to merged-criteria, which apply-ac-policy deletes at the
 	// end of characterize.
@@ -175,5 +179,8 @@ func RegisterAll(r *Registry, deps Deps) {
 	// Characterization fixer tail (plan 20261110-1130, 2d): stamps
 	// stand-ins-changed when the fixer's own edits touched a stub/simulator
 	// path, so the next test run does not hit a stale stand-in container.
+	// snapshot-stand-ins takes the MID's own baseline first, which a nested
+	// fix dispatch's re-snapshot cannot overwrite.
+	r.Register("snapshot-stand-ins", a.snapshotStandIns)
 	r.Register("check-stand-ins-changed", a.checkStandInsChanged)
 }
