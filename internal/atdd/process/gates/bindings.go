@@ -207,6 +207,9 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("system-unchanged", b.systemUnchanged)
 	r.Register("no-assertion-removed", b.noAssertionRemoved)
 	r.Register("use-case-left", b.useCaseLeft)
+	// use-case-deferred: reorder-use-cases found an unfinished dependency of
+	// the current use case, which goes back in the list behind it.
+	r.Register("use-case-deferred", b.useCaseDeferred)
 	// characterize (GW_CHAR in 2d/2e): routes the verify fix loops and the
 	// external producer refresh to the characterization variants. gated
 	// (GW_GATED in characterize-layer): the core use case's layers get a
@@ -588,6 +591,12 @@ func (b bindings) noAssertionRemoved(ctx *statemachine.Context) statemachine.Out
 // stamps it.
 func (b bindings) useCaseLeft(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "use-case-left")
+}
+
+// useCaseDeferred routes on reorder-use-cases' verdict (plan 20261110-1130,
+// Step 3c); the action always stamps it.
+func (b bindings) useCaseDeferred(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "use-case-deferred")
 }
 
 // characterize is GW_CHAR (plan 20261110-1130, 2d/2e). The characterize

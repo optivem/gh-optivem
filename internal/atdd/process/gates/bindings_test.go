@@ -88,6 +88,7 @@ func TestRegisterAll_AllBindingsRegistered(t *testing.T) {
 		"system-unchanged",
 		"no-assertion-removed",
 		"use-case-left",
+		"use-case-deferred",
 		"characterize",
 		"gated",
 		"stand-ins-changed",

@@ -259,7 +259,7 @@ func (a actions) useCasePortChanges(ctx *statemachine.Context, cfg *projectconfi
 // stampCharacterizedTestNames runs before characterize's REMOVE_WIP_GATE. The
 // acceptance test layer's test-names holds one use case's tests at a time, so
 // it stamps test-names with the tests tagged with a criterion of any
-// characterized use case (core-use-case plus other-use-cases): remove-wip-gate
+// characterized use case (proposed-use-case plus other-use-cases): remove-wip-gate
 // then un-gates every test the run wrote. No tagged test at all means the
 // acceptance test layers wrote nothing to un-gate, a wiring or tagging bug.
 func (a actions) stampCharacterizedTestNames(ctx *statemachine.Context) statemachine.Outcome {
@@ -267,10 +267,10 @@ func (a actions) stampCharacterizedTestNames(ctx *statemachine.Context) statemac
 	if cfg == nil {
 		return statemachine.Outcome{Err: fmt.Errorf("stamp-characterized-test-names: no gh-optivem config wired (driver bug)")}
 	}
-	core := ctx.GetString("core-use-case")
+	core := ctx.GetString("proposed-use-case")
 	ids := splitUseCaseIDs(core + "," + strings.Join(stringListState(ctx, "other-use-cases"), ","))
 	if strings.TrimSpace(core) == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("stamp-characterized-test-names: core-use-case is not in State; the use case diagram writer must have run")}
+		return statemachine.Outcome{Err: fmt.Errorf("stamp-characterized-test-names: proposed-use-case is not in State; the use case diagram writer must have run")}
 	}
 	names, err := a.useCaseTestNames(cfg, ids)
 	if err != nil {

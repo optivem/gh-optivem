@@ -1189,7 +1189,7 @@ processes:
         process: approve
         name: "Confirm the Diagram and the Core Use Case"
         params:
-          question: "Approve the use case diagram and the core use case ${core-use-case}? ${core-use-case-reasons}"
+          question: "Approve the use case diagram and the proposed use case ${proposed-use-case}? ${proposed-use-case-reasons}"
           ask-for-changes: "true"
           category: human
         max-visits: 3
@@ -1206,7 +1206,7 @@ processes:
         name: "Core Use Case: Criteria Layer"
         params:
           layer-process: write-use-case-criteria
-          use-cases: ${core-use-case}
+          use-cases: ${proposed-use-case}
           gated: "true"
           discovered-external-port-paths: ""
 
@@ -1216,7 +1216,7 @@ processes:
         name: "Core Use Case: External Layer"
         params:
           layer-process: implement-external-drivers-if-needed
-          use-cases: ${core-use-case}
+          use-cases: ${proposed-use-case}
           gated: "true"
 
       - id: CORE_ACCEPTANCE_TESTS
@@ -1225,7 +1225,7 @@ processes:
         name: "Core Use Case: Acceptance Test Layer"
         params:
           layer-process: characterize-at-layer
-          use-cases: ${core-use-case}
+          use-cases: ${proposed-use-case}
           gated: "true"
 
       - id: CORE_DSL
@@ -1234,7 +1234,7 @@ processes:
         name: "Core Use Case: DSL Layer"
         params:
           layer-process: characterize-dsl-layer
-          use-cases: ${core-use-case}
+          use-cases: ${proposed-use-case}
           gated: "true"
 
       - id: CORE_SYSTEM_DRIVER_ADAPTERS
@@ -1243,7 +1243,7 @@ processes:
         name: "Core Use Case: System Driver Adapter Layer"
         params:
           layer-process: characterize-adapter-layer
-          use-cases: ${core-use-case}
+          use-cases: ${proposed-use-case}
           gated: "true"
 
       - id: BULK_CRITERIA
@@ -4048,19 +4048,20 @@ processes:
     sequence-flows:
       - {from: EXECUTE_AGENT, to: MERGE_USE_CASES_END}
 
-  # Characterize (plan 20261110-1130): the use case diagram from the source
-  # code, plus the proposed core use case and why. `scope: none` like
+  # Characterize (plan 20261110-1130): the use case diagram and the dependency
+  # diagram (${use-cases-path}/dependencies.md, read by order-use-cases) from
+  # the source code, plus the proposed most important use case and why. `scope: none` like
   # merge-use-cases: it writes only the use case spec, no code layer; the
   # safety gate checks the system code after the commit.
   write-legacy-use-case-diagram:
     name: "Write Legacy Use Case Diagram"
     start: EXECUTE_AGENT
     outputs:
-      - key: core-use-case
+      - key: proposed-use-case
         type: string
       - key: other-use-cases
         type: string-list
-      - key: core-use-case-reasons
+      - key: proposed-use-case-reasons
         type: string
     nodes:
       - id: EXECUTE_AGENT

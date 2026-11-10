@@ -397,7 +397,7 @@ func TestStampCharacterizedTestNames(t *testing.T) {
 	a := loopActions(root)
 
 	ctx := statemachine.NewContext()
-	ctx.Set("core-use-case", "UC-001")
+	ctx.Set("proposed-use-case", "UC-001")
 	ctx.Set("other-use-cases", []string{"UC-002"})
 	ctx.Set("test-names", []string{"shouldPlaceOrder"})
 	if out := a.stampCharacterizedTestNames(ctx); out.Err != nil {
@@ -417,11 +417,11 @@ func TestStampCharacterizedTestNames(t *testing.T) {
 	}
 
 	none := statemachine.NewContext()
-	none.Set("core-use-case", "UC-005")
+	none.Set("proposed-use-case", "UC-005")
 	if out := a.stampCharacterizedTestNames(none); out.Err == nil {
 		t.Error("no tagged test must error")
 	}
 	if out := a.stampCharacterizedTestNames(statemachine.NewContext()); out.Err == nil {
-		t.Error("missing core-use-case must error")
+		t.Error("missing proposed-use-case must error")
 	}
 }

@@ -176,6 +176,15 @@ func RegisterAll(r *Registry, deps Deps) {
 	// criterion-ids to merged-criteria, which apply-ac-policy deletes at the
 	// end of characterize.
 	r.Register("record-use-case-criteria", a.recordUseCaseCriteria)
+	// Characterize use case order (plan 20261110-1130, Step 3c): the pilot
+	// (proposed use case + its transitive dependencies), the scaling rest, and
+	// the re-order after a narrative adds a dependency, from the dependency
+	// diagram. order-use-cases takes the mode from its `order-mode` param; the
+	// three aliases fix it for a bare service task. See order_use_cases.go.
+	r.Register("order-use-cases", a.orderUseCases)
+	r.Register("order-pilot-use-cases", a.orderPilotUseCases)
+	r.Register("order-scaling-use-cases", a.orderScalingUseCases)
+	r.Register("reorder-use-cases", a.reorderUseCases)
 	// Characterization fixer tail (plan 20261110-1130, 2d): stamps
 	// stand-ins-changed when the fixer's own edits touched a stub/simulator
 	// path, so the next test run does not hit a stale stand-in container.

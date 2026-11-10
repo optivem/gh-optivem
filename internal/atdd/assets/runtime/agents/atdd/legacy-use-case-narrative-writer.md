@@ -54,7 +54,7 @@ In the folder layout (`UC-NNN-<slug>/`), the narrative and preconditions go in `
 ## Rules
 
 - **Preconditions:** one bullet per use case whose data `${use-case-id}` needs (`UC-NNN <Title>: <what it needs>`); `- None.` when it needs none. Name only use cases in the diagram.
-- **New dependency:** when the code shows a dependency the dependency diagram lacks, add the arrow `UC-A --> UC-B` to it with a one-line reason, and name it in your final message. Change no other arrow.
+- **New dependency:** when the code shows a dependency the dependency diagram lacks, add the arrow to its mermaid block in the format the diagram already uses, one edge per line with the reason as the label: `UC-A -->|"<one-line reason>"| UC-B` (plain ids, no `|` or `"` in the reason), and name it in your final message. Change no other arrow and no node.
 - **Narrative:** the steps the code performs, in domain language, with one extension per branch and error the code has. No formulas: a step that calculates references its rules.
 - **Business rules:** `- BR-n. <rule or formula>`, one per rule the code applies (calculations, limits, defaults, state transitions). Every formula lives here, with the constants the code uses.
 - Write only the use case's narrative file(s) and the dependency diagram. Do not write acceptance criteria, and do not edit `docs/use-cases.md`, other use cases, `gh-optivem.yaml`, the system code or tests.

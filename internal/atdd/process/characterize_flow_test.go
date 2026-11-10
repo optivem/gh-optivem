@@ -305,9 +305,9 @@ func bindChar(t *testing.T, eng *statemachine.Engine, sc *charScenario, run *cha
 			id := ctx.GetString("use-case-id")
 			switch n {
 			case "legacy-use-case-diagram-writer":
-				ctx.Set("core-use-case", sc.core)
+				ctx.Set("proposed-use-case", sc.core)
 				ctx.Set("other-use-cases", sc.others)
-				ctx.Set("core-use-case-reasons", "most used")
+				ctx.Set("proposed-use-case-reasons", "most used")
 			case "legacy-use-case-criteria-writer":
 				// The criteria writer adds the ESCC section for discovered systems.
 				if ctx.Params["discovered-external-port-paths"] != "" {

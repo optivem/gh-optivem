@@ -150,6 +150,10 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"stamp-characterized-test-names",
 		"snapshot-stand-ins",
 		"check-stand-ins-changed",
+		"order-use-cases",
+		"order-pilot-use-cases",
+		"order-scaling-use-cases",
+		"reorder-use-cases",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {
