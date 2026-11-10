@@ -159,6 +159,48 @@ flowchart TD
     REVIEW_CODE_AND_ARCHITECTURE --> GATE_REFACTOR_TYPE_CHOICE
 ```
 
+## Characterize Legacy System
+
+```mermaid
+flowchart TD
+    RECORD_START_COMMITS[[Record System Start Commits]]
+    START_SYSTEM[Start System Once — see § start-system]
+    WRITE_USE_CASE_DIAGRAM[Write the Use Case and Dependency Diagrams — see § write-legacy-use-case-diagram]
+    COMMIT_USE_CASE_DIAGRAM["Commit the Use Case Diagrams — see § commit<br/>category = test-commit<br/>layer = USE CASE DIAGRAM"]
+    SAFETY_GATE_USE_CASE_DIAGRAM[Safety Gate — see § verify-system-unchanged]
+    CONFIRM_USE_CASE_DIAGRAM["Confirm the Diagrams and the Most Important Use Case — see § approve<br/>ask-for-changes = true<br/>category = human"]
+    GATE_USE_CASE_DIAGRAM_CONFIRMED{Approved?}
+    ORDER_PILOT_USE_CASES[[Order the Pilot Use Cases]]
+    PILOT["Pilot: the Use Case and Its Dependencies, Gated — see § characterize-use-cases<br/>gated = true"]
+    ORDER_SCALING_USE_CASES[[Order the Remaining Use Cases]]
+    SCALING["Scaling: the Remaining Use Cases, Unattended — see § characterize-use-cases<br/>gated = false"]
+    FINAL_SAFETY_GATE[Final Safety Gate — see § verify-system-unchanged]
+    STOP_SYSTEM[Stop System]
+    CHARACTERIZE_END(( ))
+    USE_CASE_DIAGRAM_CONFIRMATION_EXHAUSTED((⚡))
+
+    RECORD_START_COMMITS --> START_SYSTEM
+    START_SYSTEM --> WRITE_USE_CASE_DIAGRAM
+    WRITE_USE_CASE_DIAGRAM --> COMMIT_USE_CASE_DIAGRAM
+    COMMIT_USE_CASE_DIAGRAM --> SAFETY_GATE_USE_CASE_DIAGRAM
+    SAFETY_GATE_USE_CASE_DIAGRAM --> CONFIRM_USE_CASE_DIAGRAM
+    CONFIRM_USE_CASE_DIAGRAM --> GATE_USE_CASE_DIAGRAM_CONFIRMED
+    GATE_USE_CASE_DIAGRAM_CONFIRMED -- Approved --> ORDER_PILOT_USE_CASES
+    GATE_USE_CASE_DIAGRAM_CONFIRMED -- Rejected --> WRITE_USE_CASE_DIAGRAM
+    ORDER_PILOT_USE_CASES --> PILOT
+    PILOT --> ORDER_SCALING_USE_CASES
+    ORDER_SCALING_USE_CASES --> SCALING
+    SCALING --> FINAL_SAFETY_GATE
+    FINAL_SAFETY_GATE --> STOP_SYSTEM
+    STOP_SYSTEM --> CHARACTERIZE_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class ORDER_PILOT_USE_CASES,ORDER_SCALING_USE_CASES,RECORD_START_COMMITS serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class USE_CASE_DIAGRAM_CONFIRMATION_EXHAUSTED errorEndNode
+```
+
 ## Refine Backlog Item
 
 ```mermaid
@@ -925,68 +967,6 @@ flowchart TD
     class FIX_REJECTED_END errorEndNode
 ```
 
-## Characterize Legacy System
-
-```mermaid
-flowchart TD
-    RECORD_START_COMMITS[[Record System Start Commits]]
-    START_SYSTEM[Start System Once — see § start-system]
-    WRITE_USE_CASE_DIAGRAM[Write the Use Case Diagram — see § write-legacy-use-case-diagram]
-    COMMIT_USE_CASE_DIAGRAM["Commit the Use Case Diagram — see § commit<br/>category = test-commit<br/>layer = USE CASE DIAGRAM"]
-    CONFIRM_CORE_USE_CASE["Confirm the Diagram and the Core Use Case — see § approve<br/>category = human"]
-    GATE_CORE_USE_CASE_CONFIRMED{Approved?}
-    CORE_CRITERIA["Core Use Case: Criteria Layer — see § characterize-layer<br/>discovered-external-port-paths = <br/>gated = true<br/>layer-process = write-use-case-criteria"]
-    CORE_EXTERNAL["Core Use Case: External Layer — see § characterize-layer<br/>gated = true<br/>layer-process = implement-external-drivers-if-needed"]
-    CORE_ACCEPTANCE_TESTS["Core Use Case: Acceptance Test Layer — see § characterize-layer<br/>gated = true<br/>layer-process = characterize-at-layer"]
-    CORE_DSL["Core Use Case: DSL Layer — see § characterize-layer<br/>gated = true<br/>layer-process = characterize-dsl-layer"]
-    CORE_SYSTEM_DRIVER_ADAPTERS["Core Use Case: System Driver Adapter Layer — see § characterize-layer<br/>gated = true<br/>layer-process = characterize-adapter-layer"]
-    BULK_CRITERIA["Other Use Cases: Criteria Layer — see § characterize-layer<br/>discovered-external-port-paths = <br/>gated = false<br/>layer-process = write-use-case-criteria"]
-    BULK_EXTERNAL["Other Use Cases: External Layer — see § characterize-layer<br/>gated = false<br/>layer-process = implement-external-drivers-if-needed"]
-    BULK_ACCEPTANCE_TESTS["Other Use Cases: Acceptance Test Layer — see § characterize-layer<br/>gated = false<br/>layer-process = characterize-at-layer"]
-    BULK_DSL["Other Use Cases: DSL Layer — see § characterize-layer<br/>gated = false<br/>layer-process = characterize-dsl-layer"]
-    BULK_SYSTEM_DRIVER_ADAPTERS["Other Use Cases: System Driver Adapter Layer — see § characterize-layer<br/>gated = false<br/>layer-process = characterize-adapter-layer"]
-    STAMP_CHARACTERIZED_TEST_NAMES[[Collect Every Use Case's Tests]]
-    REMOVE_WIP_GATE[[Remove WIP Gate From Green Tests]]
-    COMMIT_WIP_GATE_REMOVAL["Commit WIP Gate Removal — see § commit<br/>category = test-commit<br/>layer = WIP GATE REMOVAL"]
-    FINAL_SAFETY_GATE[Final Safety Gate — see § verify-system-unchanged]
-    STOP_SYSTEM[Stop System]
-    APPLY_AC_POLICY[[Delete the Criteria]]
-    COMMIT_AC_DELETION["Commit Criteria Deletion — see § commit<br/>category = test-commit<br/>layer = CRITERIA DELETION"]
-    CHARACTERIZE_END(( ))
-    CORE_USE_CASE_CONFIRMATION_EXHAUSTED((⚡))
-
-    RECORD_START_COMMITS --> START_SYSTEM
-    START_SYSTEM --> WRITE_USE_CASE_DIAGRAM
-    WRITE_USE_CASE_DIAGRAM --> COMMIT_USE_CASE_DIAGRAM
-    COMMIT_USE_CASE_DIAGRAM --> CONFIRM_CORE_USE_CASE
-    CONFIRM_CORE_USE_CASE --> GATE_CORE_USE_CASE_CONFIRMED
-    GATE_CORE_USE_CASE_CONFIRMED -- Approved --> CORE_CRITERIA
-    GATE_CORE_USE_CASE_CONFIRMED -- Rejected --> WRITE_USE_CASE_DIAGRAM
-    CORE_CRITERIA --> CORE_EXTERNAL
-    CORE_EXTERNAL --> CORE_ACCEPTANCE_TESTS
-    CORE_ACCEPTANCE_TESTS --> CORE_DSL
-    CORE_DSL --> CORE_SYSTEM_DRIVER_ADAPTERS
-    CORE_SYSTEM_DRIVER_ADAPTERS --> BULK_CRITERIA
-    BULK_CRITERIA --> BULK_EXTERNAL
-    BULK_EXTERNAL --> BULK_ACCEPTANCE_TESTS
-    BULK_ACCEPTANCE_TESTS --> BULK_DSL
-    BULK_DSL --> BULK_SYSTEM_DRIVER_ADAPTERS
-    BULK_SYSTEM_DRIVER_ADAPTERS --> STAMP_CHARACTERIZED_TEST_NAMES
-    STAMP_CHARACTERIZED_TEST_NAMES --> REMOVE_WIP_GATE
-    REMOVE_WIP_GATE --> COMMIT_WIP_GATE_REMOVAL
-    COMMIT_WIP_GATE_REMOVAL --> FINAL_SAFETY_GATE
-    FINAL_SAFETY_GATE --> STOP_SYSTEM
-    STOP_SYSTEM --> APPLY_AC_POLICY
-    APPLY_AC_POLICY --> COMMIT_AC_DELETION
-    COMMIT_AC_DELETION --> CHARACTERIZE_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class APPLY_AC_POLICY,RECORD_START_COMMITS,REMOVE_WIP_GATE,STAMP_CHARACTERIZED_TEST_NAMES serviceNode
-
-    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class CORE_USE_CASE_CONFIRMATION_EXHAUSTED errorEndNode
-```
-
 ## Characterize System Driver Adapter Layer
 
 ```mermaid
@@ -1044,36 +1024,128 @@ flowchart TD
     class RESTAMP_USE_CASE,RESTAMP_USE_CASE_AFTER_EXTERNAL serviceNode
 ```
 
-## Characterize Layer
+## Characterize Test Layers
 
 ```mermaid
 flowchart TD
-    SELECT_NEXT_USE_CASE[[Select the Next Use Case]]
-    GATE_USE_CASE_LEFT{Use Case Left?}
-    RUN_LAYER["Run the Layer for This Use Case — see § ${layer-process}"]
+    RESTAMP_BEFORE_EXTERNAL[[Re-stamp the Use Case]]
+    EXTERNAL_LAYER[External Layer — see § implement-external-drivers-if-needed]
+    SAFETY_GATE_EXTERNAL[Safety Gate — see § verify-system-unchanged]
+    RESTAMP_BEFORE_ACCEPTANCE_TESTS[[Re-stamp the Use Case]]
+    ACCEPTANCE_TEST_LAYER[Acceptance Test Layer — see § characterize-at-layer]
+    SAFETY_GATE_ACCEPTANCE_TESTS[Safety Gate — see § verify-system-unchanged]
+    RESTAMP_BEFORE_DSL[[Re-stamp the Use Case]]
+    DSL_LAYER[DSL Layer — see § characterize-dsl-layer]
+    SAFETY_GATE_DSL[Safety Gate — see § verify-system-unchanged]
+    RESTAMP_BEFORE_SYSTEM_DRIVER_ADAPTERS[[Re-stamp the Use Case]]
+    SYSTEM_DRIVER_ADAPTER_LAYER[System Driver Adapter Layer — see § characterize-adapter-layer]
+    SAFETY_GATE_SYSTEM_DRIVER_ADAPTERS[Safety Gate — see § verify-system-unchanged]
     GATE_GATED{Gated?}
-    SAFETY_GATE[Safety Gate — see § verify-system-unchanged]
-    APPROVE_LAYER["Approve the Layer — see § approve<br/>category = human"]
-    CHARACTERIZE_LAYER_END(( ))
-    GATE_LAYER_APPROVED{Approved?}
-    LAYER_APPROVAL_EXHAUSTED((⚡))
+    APPROVE_TESTS["Approve the Tests — see § approve<br/>ask-for-changes = true<br/>category = human"]
+    RESTAMP_FOR_WIP_GATE_REMOVAL[[Re-stamp the Use Case's Tests]]
+    GATE_TESTS_APPROVED{Approved?}
+    CHARACTERIZE_TEST_LAYERS_END(( ))
+    TESTS_APPROVAL_EXHAUSTED((⚡))
 
-    SELECT_NEXT_USE_CASE --> GATE_USE_CASE_LEFT
-    GATE_USE_CASE_LEFT -- Yes --> RUN_LAYER
-    GATE_USE_CASE_LEFT -- No --> GATE_GATED
-    RUN_LAYER --> SAFETY_GATE
-    SAFETY_GATE --> SELECT_NEXT_USE_CASE
-    GATE_GATED -- Yes --> APPROVE_LAYER
-    GATE_GATED -- No --> CHARACTERIZE_LAYER_END
-    APPROVE_LAYER --> GATE_LAYER_APPROVED
-    GATE_LAYER_APPROVED -- Approved --> CHARACTERIZE_LAYER_END
-    GATE_LAYER_APPROVED -- Rejected --> RUN_LAYER
+    RESTAMP_BEFORE_EXTERNAL --> EXTERNAL_LAYER
+    EXTERNAL_LAYER --> SAFETY_GATE_EXTERNAL
+    SAFETY_GATE_EXTERNAL --> RESTAMP_BEFORE_ACCEPTANCE_TESTS
+    RESTAMP_BEFORE_ACCEPTANCE_TESTS --> ACCEPTANCE_TEST_LAYER
+    ACCEPTANCE_TEST_LAYER --> SAFETY_GATE_ACCEPTANCE_TESTS
+    SAFETY_GATE_ACCEPTANCE_TESTS --> RESTAMP_BEFORE_DSL
+    RESTAMP_BEFORE_DSL --> DSL_LAYER
+    DSL_LAYER --> SAFETY_GATE_DSL
+    SAFETY_GATE_DSL --> RESTAMP_BEFORE_SYSTEM_DRIVER_ADAPTERS
+    RESTAMP_BEFORE_SYSTEM_DRIVER_ADAPTERS --> SYSTEM_DRIVER_ADAPTER_LAYER
+    SYSTEM_DRIVER_ADAPTER_LAYER --> SAFETY_GATE_SYSTEM_DRIVER_ADAPTERS
+    SAFETY_GATE_SYSTEM_DRIVER_ADAPTERS --> GATE_GATED
+    GATE_GATED -- Yes --> APPROVE_TESTS
+    GATE_GATED -- No --> RESTAMP_FOR_WIP_GATE_REMOVAL
+    APPROVE_TESTS --> GATE_TESTS_APPROVED
+    GATE_TESTS_APPROVED -- Approved --> RESTAMP_FOR_WIP_GATE_REMOVAL
+    GATE_TESTS_APPROVED -- Rejected --> RESTAMP_BEFORE_EXTERNAL
+    RESTAMP_FOR_WIP_GATE_REMOVAL --> CHARACTERIZE_TEST_LAYERS_END
 
     classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class SELECT_NEXT_USE_CASE serviceNode
+    class RESTAMP_BEFORE_ACCEPTANCE_TESTS,RESTAMP_BEFORE_DSL,RESTAMP_BEFORE_EXTERNAL,RESTAMP_BEFORE_SYSTEM_DRIVER_ADAPTERS,RESTAMP_FOR_WIP_GATE_REMOVAL serviceNode
 
     classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
-    class LAYER_APPROVAL_EXHAUSTED errorEndNode
+    class TESTS_APPROVAL_EXHAUSTED errorEndNode
+```
+
+## Characterize Use Case
+
+```mermaid
+flowchart TD
+    WRITE_NARRATIVE["Write the Use Case Narrative — see § write-legacy-use-case-narrative<br/>discovered-external-port-paths = "]
+    COMMIT_NARRATIVE["Commit the Narrative — see § commit<br/>category = test-commit"]
+    SAFETY_GATE_NARRATIVE[Safety Gate — see § verify-system-unchanged]
+    GATE_GATED_NARRATIVE{Gated?}
+    APPROVE_NARRATIVE["Approve the Narrative — see § approve<br/>ask-for-changes = true<br/>category = human"]
+    REORDER_USE_CASES[[Re-order If a Dependency Is Not Done]]
+    GATE_NARRATIVE_APPROVED{Approved?}
+    GATE_USE_CASE_DEFERRED{Deferred Behind a Dependency?}
+    USE_CASE_DEFERRED_END(( ))
+    WRITE_CRITERIA["Write the Use Case Criteria — see § write-legacy-use-case-criteria<br/>discovered-external-port-paths = "]
+    COMMIT_CRITERIA["Commit the Criteria — see § commit<br/>category = test-commit"]
+    SAFETY_GATE_CRITERIA[Safety Gate — see § verify-system-unchanged]
+    GATE_GATED_CRITERIA{Gated?}
+    APPROVE_CRITERIA["Approve the Criteria — see § approve<br/>ask-for-changes = true<br/>category = human"]
+    CHARACTERIZE_TEST_LAYERS[Characterize the Test Layers — see § characterize-test-layers]
+    GATE_CRITERIA_APPROVED{Approved?}
+    REMOVE_WIP_GATE[[Remove WIP Gate From This Use Case's Tests]]
+    COMMIT_WIP_GATE_REMOVAL["Commit WIP Gate Removal — see § commit<br/>category = test-commit"]
+    DELETE_USE_CASE_CRITERIA[[Delete This Use Case's Criteria]]
+    COMMIT_CRITERIA_DELETION["Commit Criteria Deletion — see § commit<br/>category = test-commit"]
+    CHARACTERIZE_USE_CASE_END(( ))
+    CRITERIA_APPROVAL_EXHAUSTED((⚡))
+    NARRATIVE_APPROVAL_EXHAUSTED((⚡))
+
+    WRITE_NARRATIVE --> COMMIT_NARRATIVE
+    COMMIT_NARRATIVE --> SAFETY_GATE_NARRATIVE
+    SAFETY_GATE_NARRATIVE --> GATE_GATED_NARRATIVE
+    GATE_GATED_NARRATIVE -- Yes --> APPROVE_NARRATIVE
+    GATE_GATED_NARRATIVE -- No --> REORDER_USE_CASES
+    APPROVE_NARRATIVE --> GATE_NARRATIVE_APPROVED
+    GATE_NARRATIVE_APPROVED -- Approved --> REORDER_USE_CASES
+    GATE_NARRATIVE_APPROVED -- Rejected --> WRITE_NARRATIVE
+    REORDER_USE_CASES --> GATE_USE_CASE_DEFERRED
+    GATE_USE_CASE_DEFERRED -- Yes --> USE_CASE_DEFERRED_END
+    GATE_USE_CASE_DEFERRED -- No --> WRITE_CRITERIA
+    WRITE_CRITERIA --> COMMIT_CRITERIA
+    COMMIT_CRITERIA --> SAFETY_GATE_CRITERIA
+    SAFETY_GATE_CRITERIA --> GATE_GATED_CRITERIA
+    GATE_GATED_CRITERIA -- Yes --> APPROVE_CRITERIA
+    GATE_GATED_CRITERIA -- No --> CHARACTERIZE_TEST_LAYERS
+    APPROVE_CRITERIA --> GATE_CRITERIA_APPROVED
+    GATE_CRITERIA_APPROVED -- Approved --> CHARACTERIZE_TEST_LAYERS
+    GATE_CRITERIA_APPROVED -- Rejected --> WRITE_CRITERIA
+    CHARACTERIZE_TEST_LAYERS --> REMOVE_WIP_GATE
+    REMOVE_WIP_GATE --> COMMIT_WIP_GATE_REMOVAL
+    COMMIT_WIP_GATE_REMOVAL --> DELETE_USE_CASE_CRITERIA
+    DELETE_USE_CASE_CRITERIA --> COMMIT_CRITERIA_DELETION
+    COMMIT_CRITERIA_DELETION --> CHARACTERIZE_USE_CASE_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class DELETE_USE_CASE_CRITERIA,REMOVE_WIP_GATE,REORDER_USE_CASES serviceNode
+
+    classDef errorEndNode fill:#ffffff,stroke:#dc3545,stroke-width:2px,color:#000000
+    class CRITERIA_APPROVAL_EXHAUSTED,NARRATIVE_APPROVAL_EXHAUSTED errorEndNode
+```
+
+## Characterize Use Cases
+
+```mermaid
+flowchart TD
+    NEXT_USE_CASE["Select the Next Use Case — see § select-next-use-case-in-order<br/>layer-process = characterize-use-case"]
+    GATE_USE_CASE_LEFT{Use Case Left?}
+    CHARACTERIZE_USE_CASE[Characterize This Use Case — see § characterize-use-case]
+    CHARACTERIZE_USE_CASES_END(( ))
+
+    NEXT_USE_CASE --> GATE_USE_CASE_LEFT
+    GATE_USE_CASE_LEFT -- Yes --> CHARACTERIZE_USE_CASE
+    GATE_USE_CASE_LEFT -- No --> CHARACTERIZE_USE_CASES_END
+    CHARACTERIZE_USE_CASE --> NEXT_USE_CASE
 ```
 
 ## Fix Failing Characterization Tests
@@ -1428,6 +1500,19 @@ flowchart TD
     class REVIEW-SYSTEM-DRIVER-ADAPTERS_OUTPUTS outputNode
 ```
 
+## Select the Next Use Case in Order
+
+```mermaid
+flowchart TD
+    SELECT_NEXT_USE_CASE[[Select the Next Use Case]]
+    SELECT_NEXT_USE_CASE_END(( ))
+
+    SELECT_NEXT_USE_CASE --> SELECT_NEXT_USE_CASE_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class SELECT_NEXT_USE_CASE serviceNode
+```
+
 ## Setup Tests
 
 ```mermaid
@@ -1536,19 +1621,14 @@ flowchart TD
     class ASSERTION_REMOVED_HALT,SYSTEM_CHANGED_HALT errorEndNode
 ```
 
-## Write Legacy Use Case
+## Write Legacy Use Case Criteria
 
 ```mermaid
 flowchart TD
-    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = legacy-use-case-writer<br/>category = test-agent<br/>task-name = write-legacy-use-case"]
-    WRITE_LEGACY_USE_CASE_END(( ))
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = legacy-use-case-criteria-writer<br/>category = test-agent<br/>task-name = write-legacy-use-case-criteria"]
+    WRITE_LEGACY_USE_CASE_CRITERIA_END(( ))
 
-    EXECUTE_AGENT --> WRITE_LEGACY_USE_CASE_END
-    WRITE-LEGACY-USE-CASE_OUTPUTS[/criterion-ids?: string-list/]
-    WRITE_LEGACY_USE_CASE_END -. produces .-> WRITE-LEGACY-USE-CASE_OUTPUTS
-
-    classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
-    class WRITE-LEGACY-USE-CASE_OUTPUTS outputNode
+    EXECUTE_AGENT --> WRITE_LEGACY_USE_CASE_CRITERIA_END
 ```
 
 ## Write Legacy Use Case Diagram
@@ -1559,11 +1639,21 @@ flowchart TD
     WRITE_LEGACY_USE_CASE_DIAGRAM_END(( ))
 
     EXECUTE_AGENT --> WRITE_LEGACY_USE_CASE_DIAGRAM_END
-    WRITE-LEGACY-USE-CASE-DIAGRAM_OUTPUTS[/"core-use-case: string<br/>other-use-cases: string-list<br/>core-use-case-reasons: string"/]
+    WRITE-LEGACY-USE-CASE-DIAGRAM_OUTPUTS[/"proposed-use-case: string<br/>proposed-use-case-reasons: string"/]
     WRITE_LEGACY_USE_CASE_DIAGRAM_END -. produces .-> WRITE-LEGACY-USE-CASE-DIAGRAM_OUTPUTS
 
     classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
     class WRITE-LEGACY-USE-CASE-DIAGRAM_OUTPUTS outputNode
+```
+
+## Write Legacy Use Case Narrative
+
+```mermaid
+flowchart TD
+    EXECUTE_AGENT["Dispatch the Agent — see § execute-agent<br/>agent = legacy-use-case-narrative-writer<br/>category = test-agent<br/>task-name = write-legacy-use-case-narrative"]
+    WRITE_LEGACY_USE_CASE_NARRATIVE_END(( ))
+
+    EXECUTE_AGENT --> WRITE_LEGACY_USE_CASE_NARRATIVE_END
 ```
 
 ## Write External System Stub-Fidelity Tests
@@ -1585,16 +1675,13 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    WRITE_LEGACY_USE_CASE[Write the Use Case — see § write-legacy-use-case]
+    WRITE_LEGACY_USE_CASE_NARRATIVE[Write the Use Case Narrative — see § write-legacy-use-case-narrative]
+    WRITE_LEGACY_USE_CASE_CRITERIA[Write the Use Case Criteria — see § write-legacy-use-case-criteria]
     COMMIT_USE_CASE["Commit the Use Case — see § commit<br/>category = test-commit"]
-    RECORD_USE_CASE_CRITERIA[[Record the Criteria to Delete]]
     WRITE_USE_CASE_CRITERIA_END(( ))
 
-    WRITE_LEGACY_USE_CASE --> COMMIT_USE_CASE
-    COMMIT_USE_CASE --> RECORD_USE_CASE_CRITERIA
-    RECORD_USE_CASE_CRITERIA --> WRITE_USE_CASE_CRITERIA_END
-
-    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
-    class RECORD_USE_CASE_CRITERIA serviceNode
+    WRITE_LEGACY_USE_CASE_NARRATIVE --> WRITE_LEGACY_USE_CASE_CRITERIA
+    WRITE_LEGACY_USE_CASE_CRITERIA --> COMMIT_USE_CASE
+    COMMIT_USE_CASE --> WRITE_USE_CASE_CRITERIA_END
 ```
 
