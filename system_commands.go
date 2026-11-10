@@ -13,12 +13,15 @@ package main
 
 import (
 	"os"
+	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
+	"github.com/optivem/gh-optivem/internal/kernel/projectconfig"
 )
 
 // newSystemCmd builds the `gh optivem system` parent. The parent has no Run,
@@ -63,34 +66,87 @@ func newSystemBuildCmd() *cobra.Command {
 	return cmd
 }
 
-// newSystemStartCmd implements `gh optivem system start [--restart] [--log-lines 50] [--up-timeout 5m]`.
+// newSystemStartCmd implements `gh optivem system start [--restart [--external-only]] [--log-lines 50] [--up-timeout 5m]`.
 // Brings up every entry in systems[] and waits for health. Pairs with
 // `system stop`; `start` rather than `run` so the verb doesn't collide with
-// `test run`.
+// `test run`. --external-only (with --restart) recreates only the
+// external-system stand-ins (simulators / stubs), leaving the system under
+// test running.
 func newSystemStartCmd() *cobra.Command {
 	var (
-		restart   bool
-		logLines  int
-		upTimeout time.Duration
+		restart      bool
+		externalOnly bool
+		logLines     int
+		upTimeout    time.Duration
 	)
 	cmd := &cobra.Command{
-		Use:     "start",
-		Short:   "docker compose up + wait for health",
-		Example: `  gh optivem system start --restart`,
+		Use:   "start",
+		Short: "docker compose up + wait for health",
+		Long: `Bring up every entry in systems[] (docker compose up -d) and wait for health.
+
+Without --restart, a stack that already responds is left as is.
+
+--restart recreates the changed services in place (rebuild + force-recreate of
+every non-persistent service) so new code, stubs, and migrations are picked up,
+while the database keeps running.
+
+--restart --external-only narrows that recreate to the external-system
+stand-ins only: the compose services whose build context or bind-mount source
+lies under an external-systems: registry stub.path / simulator.path in
+gh-optivem.yaml. The system under test and the database are not rebuilt or
+recreated (--no-deps). It is an error if no service matches.`,
+		Example: `  gh optivem system start --restart
+  gh optivem system start --restart --external-only`,
 		Run: func(cmd *cobra.Command, args []string) {
 			exitIfComponentKind("gh optivem system start", "there is no compose stack to bring up")
+			opts := runner.SystemOptions{LogLines: logLines, Restart: restart, UpTimeout: upTimeout, ExternalOnly: externalOnly}
+			if externalOnly {
+				paths, baseDir, err := externalStandInPaths()
+				exitOnError(err)
+				opts.StandInPaths = paths
+				opts.StandInBaseDir = baseDir
+			}
+			exitOnError(opts.Validate())
 			resolved, err := resolveSystemPath()
 			exitOnError(err)
 			sys, err := runner.LoadSystem(resolved)
 			exitOnError(err)
-			opts := runner.SystemOptions{LogLines: logLines, Restart: restart, UpTimeout: upTimeout}
 			exitOnError(runner.Up(sys, cwdForPath(resolved), opts))
 		},
 	}
 	cmd.Flags().BoolVar(&restart, "restart", false, "Recreate changed services to pick up new code/stubs/migrations; keeps the database running (incremental, no full down/up)")
+	cmd.Flags().BoolVar(&externalOnly, "external-only", false, "With --restart: rebuild and recreate only the external-system stand-ins (simulators/stubs under the external-systems: registry paths); the system under test keeps running")
 	cmd.Flags().IntVar(&logLines, "log-lines", 50, "Lines of compose logs to dump on health-probe failure")
 	cmd.Flags().DurationVar(&upTimeout, "up-timeout", 0, "Per-attempt timeout for `docker compose up -d` (zero = 5m default)")
 	return cmd
+}
+
+// externalStandInPaths returns the external-systems: registry stub.path +
+// simulator.path values (deduplicated, sorted) and the absolute directory of
+// gh-optivem.yaml they are relative to.
+func externalStandInPaths() ([]string, string, error) {
+	cfg, path, err := loadProjectConfigForRunner()
+	if err != nil {
+		return nil, "", err
+	}
+	return standInPathsFromConfig(cfg), filepath.Dir(path), nil
+}
+
+// standInPathsFromConfig merges the stub and simulator registry paths.
+func standInPathsFromConfig(cfg *projectconfig.Config) []string {
+	set := map[string]bool{}
+	var out []string
+	for _, key := range []string{projectconfig.ExternalStubPathKey, projectconfig.ExternalSimulatorPathKey} {
+		paths, _ := cfg.ExternalRegistryPaths(key)
+		for _, p := range paths {
+			if !set[p] {
+				set[p] = true
+				out = append(out, p)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // newSystemStatusCmd implements `gh optivem system status [--timeout 2s]`.

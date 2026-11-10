@@ -152,4 +152,20 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("reset-code-review", a.resetCodeReview)
 	r.Register("summarize-refactoring-plan", a.summarizeRefactoringPlan)
 	r.Register("record-human-review-issues", a.recordHumanReviewIssues)
+	// Characterize (legacy baseline) safety gate (plan 20261110-1130, 2a/2c).
+	// record-start-commits resolves the system and stand-in paths (hard error
+	// on microservices / overlap) and pins a start commit per system repo,
+	// kept across resumes; check-system-unchanged and check-no-assertion-
+	// removed stamp system-unchanged / no-assertion-removed for the error-end
+	// gateways of verify-system-unchanged. See characterize_safety.go.
+	r.Register("record-start-commits", a.recordStartCommits)
+	r.Register("check-system-unchanged", a.checkSystemUnchanged)
+	r.Register("check-no-assertion-removed", a.checkNoAssertionRemoved)
+	// Characterize use case loop (plan 20261110-1130, 2b). select-next-use-case
+	// pops the call site's next use case (use-case-left for GW_MORE) and
+	// stamps use-case-id + the ESCC keys from its criteria file;
+	// restamp-current-use-case is its same-use-case mode for the DSL layer's
+	// late-discovery route. See use_case_loop.go.
+	r.Register("select-next-use-case", a.selectNextUseCase)
+	r.Register("restamp-current-use-case", a.restampUseCase)
 }

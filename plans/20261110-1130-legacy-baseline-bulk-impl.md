@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Step 3: implement. All design questions are answered (see `## Decisions`).
+Step 3, part 2: `process-flow.yaml` wiring + the 3 new agents + Step 4 process-transition tests. Part 1 (Go code) is done; see `### Part 1 handoff` below for the exact names to wire. All design questions are answered (see `## Decisions`).
 
 Step 3 work list (never in parallel with another plan that edits `process-flow.yaml`):
 
@@ -15,10 +15,21 @@ Step 3 work list (never in parallel with another plan that edits `process-flow.y
   - NEW processes: `characterize`, `characterize-layer`, `write-use-case-criteria`, `characterize-at-layer`, `characterize-dsl-layer`, `characterize-adapter-layer`, `verify-system-unchanged`, `refresh-external-producer`, `restart-external-systems`, `stop-system`, `fix-characterization-failing-tests`, `fix-characterization-passing-tests`.
   - CHANGED: `verify-tests-pass`, `verify-tests-fail` (characterize gateway); `reconcile-external-contract-producer` (4 build+restart pairs → `refresh-external-producer`; plus the new-question edge on `GATE_CONTRACT_REAL_RED_KIND`); `main` `preset-state` (`characterize: false`).
   - REUSE as is: `implement-external-drivers-if-needed` (external layer, already unrolled per system), `write-and-verify-acceptance-test-code`, `implement-and-verify-dsl`, `implement-and-verify-system-driver-adapters`, `start-system`, `approve`, `commit`.
-- Go actions (`internal/atdd/process/actions/`): `record-start-commits`, `select-next-use-case` (reuses `intake.Parse`, `internal/atdd/runtime/intake/parse.go:120`, to stamp the ESCC keys), `check-system-unchanged`, `check-no-assertion-removed`; register in `register.go`.
-- Runner + CLI: `internal/build/runner/system.go` + `system_commands.go`: `system start --restart --external-only`.
+- Resume: add `system-start-commits`, `stand-in-paths`, `assertion-checked-commit`, `use-case-cursors`, `use-case-id` to the resume config's `ExtraStateKeys` (driver/wiring side), so start commits and cursors survive a resume.
+- Gate binding for the `characterize` State flag (`GW_CHAR` in 2d/2e) is not yet registered in `internal/atdd/process/gates/bindings.go`; add it with the wiring.
 - New agents (`internal/atdd/runtime/agents/` + embed list): `legacy-use-case-diagram-writer`, `legacy-use-case-writer`, `characterization-test-fixer`.
 - Entry point: `gh optivem characterize` command (top level, beside `kickoff`).
+
+### Part 1 handoff (done 2026-11-10)
+
+- Runner: `gh optivem system start --restart --external-only` (`internal/build/runner/standins.go`, `SystemOptions.ExternalOnly` / `StandInPaths` / `StandInBaseDir`, `SelectStandInServices`; `--external-only` without `--restart`, no stand-in paths, or zero matched services → hard error). Not yet run against real Docker.
+- Actions (`internal/atdd/process/actions/characterize_safety.go`, `use_case_loop.go`, registered in `register.go`):
+  - `record-start-commits` → `system-start-commits` (JSON `[{repo, commit, paths}]`, keyed by repo slug), `stand-in-paths`, `assertion-checked-commit`; kept on resume; fails hard on microservices/unset, empty paths, stand-in/system overlap.
+  - `check-system-unchanged` → `system-unchanged` (bool, binding `system-unchanged`), `system-changed-files`.
+  - `check-no-assertion-removed` → `no-assertion-removed` (bool, binding `no-assertion-removed`), `removed-assertions`; advances `assertion-checked-commit` on pass. A removed line re-added verbatim in the same diff counts as a move.
+  - `select-next-use-case` (params `use-cases`, `layer-process`) → `use-case-id`, `use-case-left` (bool, binding `use-case-left`), `use-case-cursors`, plus the ESCC keys (`ticket-has-escc`, `escc-systems`, `external-system-contract-criteria`) from the use case file's ESCC section (`intake.ExtractSection` + `intake.ParseSections`; no file yet → `ticket-has-escc=false`).
+  - `restamp-current-use-case`: same-use-case mode, for the DSL layer's RESTAMP node (service tasks can't carry params).
+  - Shared helper `stampESCC` extracted from `parse-ticket` (behaviour unchanged).
 
 ## Decisions (user, 2026-11-10)
 - **Vendor contract test fails during characterize (user, 2026-11-10):** route the red to `verify-tests-pass` (suite `contract-real`), so the characterization fixer handles it, with the existing human halt when it makes no progress. The per-ticket flow keeps `CONTRACT_REAL_UPSTREAM_GAP_HALT`.
@@ -405,7 +416,7 @@ flowchart TD
 ## Steps
 
 - [ ] Step 3: Implement in `internal/atdd/process/process-flow.yaml` (+ Go actions for the safety gate, use case loop and entry point, + runner `--external-only`). Entry point is separate from kickoff and from the per-ticket flow. Resumable: state is in git, one commit per (layer, use case), so a failure resumes at that layer.
-- [ ] Step 4: Tests: process transitions test (incl. the late-discovery route and both `refresh-external-producer` branches), safety gate (system path changed → fails; stand-in path changed → passes; assertion removed → fails; stand-in/system overlap → fails at start), runner `buildUpArgs` with `--external-only` (only stand-in services, zero-match fails), "system started once" invariant (no `build-system` / `start-system-restart` in characterize).
+- [ ] Step 4: Tests: process transitions test (incl. the late-discovery route and both `refresh-external-producer` branches), "system started once" invariant (no `build-system` / `start-system-restart` in characterize). (Unit tests for the safety-gate actions and runner `--external-only` were done in part 1.)
 - [ ] Step 5: Docs: `docs/bpmn-process-design.md`, README/CLI reference for the new entry point and `system start --external-only`.
 
 Edits `process-flow.yaml`: never run in parallel with another plan editing it. Diagrams under `docs/process-diagram*` are regenerated by CI; don't regenerate locally.

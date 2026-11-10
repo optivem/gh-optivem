@@ -202,6 +202,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	// stamps the bool; a story whose scenarios already name existing use case
 	// criteria skips the merge agent and its approval.
 	r.Register("story-merge-needed", b.storyMergeNeeded)
+	// Characterize gates (plan 20261110-1130): the safety-gate and use case
+	// loop actions stamp these bools immediately upstream.
+	r.Register("system-unchanged", b.systemUnchanged)
+	r.Register("no-assertion-removed", b.noAssertionRemoved)
+	r.Register("use-case-left", b.useCaseLeft)
 	// Cover-path mode-aware acceptance-test verify gate + its case-D
 	// terminal-verify gate (plan 20260606-1518). The shared verify gate
 	// routes on at-verify-expectation so the cover path expects AT green
@@ -557,6 +562,24 @@ func (b bindings) ticketHasESCC(ctx *statemachine.Context) statemachine.Outcome 
 // immediately upstream, so an unset key is a wiring bug, not a default no.
 func (b bindings) storyMergeNeeded(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "story-merge-needed")
+}
+
+// systemUnchanged is GW_SYS in verify-system-unchanged; check-system-unchanged
+// always stamps it.
+func (b bindings) systemUnchanged(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "system-unchanged")
+}
+
+// noAssertionRemoved is GW_ASSERT in verify-system-unchanged;
+// check-no-assertion-removed always stamps it.
+func (b bindings) noAssertionRemoved(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "no-assertion-removed")
+}
+
+// useCaseLeft is GW_MORE in characterize-layer; select-next-use-case always
+// stamps it.
+func (b bindings) useCaseLeft(ctx *statemachine.Context) statemachine.Outcome {
+	return boolStateGate(ctx, "use-case-left")
 }
 
 // atVerifyExpectation is the mode-aware acceptance-test verify gate (plan

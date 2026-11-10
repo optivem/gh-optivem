@@ -7,17 +7,16 @@
 
 ## ▶ Next executable step (resume here)
 
-`1130` Step 3, part 1 (Go code): `/execute-plan plans/20261110-1130-legacy-baseline-bulk-impl.md`. Covers `system start --restart --external-only` (`internal/build/runner/system.go` + `system_commands.go`) and the Go actions `record-start-commits`, `select-next-use-case`, `check-system-unchanged`, `check-no-assertion-removed` (registered in `register.go`), with unit tests. No shop, no Docker.
+`1130` Step 3, part 2 (`process-flow.yaml` + 3 new agents + Step 4 transition tests): `/execute-plan plans/20261110-1130-legacy-baseline-bulk-impl.md`. Part 1 (Go code) done 2026-11-10; wiring names are in that plan's `### Part 1 handoff`.
 
 ## Order of remaining work
 
 Shop-independent work first; shop-dependent items last (user, 2026-11-10).
 
-1. `1130` Step 3, part 1: Go code (see above).
-2. `1130` Step 3, part 2: `process-flow.yaml` (new/changed processes per the plan's Step 3 work list) + the 3 new agents + Step 4 process transition tests. Never in parallel with another plan that edits `process-flow.yaml`.
-3. `1130` Step 3, part 3: `gh optivem characterize` entry point + Step 5 docs.
-4. Shop-dependent, last: E2 shop config write (now unblocked: v1.6.108 released 2026-11-10) and the Docker rehearsals, both tracked in `plans/20261104-1120-meta-backlog-consolidation.md`.
-5. Delete this meta-plan once 1–3 are done (4 lives in the backlog meta-plan).
+1. `1130` Step 3, part 2: `process-flow.yaml` (new/changed processes per the plan's Step 3 work list) + the 3 new agents + Step 4 process transition tests. Never in parallel with another plan that edits `process-flow.yaml`.
+2. `1130` Step 3, part 3: `gh optivem characterize` entry point + Step 5 docs.
+3. Shop-dependent, last: E2 shop config write (now unblocked: v1.6.108 released 2026-11-10) and the Docker rehearsals, both tracked in `plans/20261104-1120-meta-backlog-consolidation.md`.
+4. Delete this meta-plan once 1–2 are done (3 lives in the backlog meta-plan).
 
 `1300` done 2026-11-10: v1.6.108 released (run 42806020020); `gh optivem spec validate` on shop `main` prints `OK: 12 use case(s) valid, 25 criteria gated` (UC-001 now has 16 criteria, UC-001.1–.16, because shop added 2 after the plan was written; UC-004 has 9). Plan deleted. Its shop-side copy is deleted from a shop session.
 

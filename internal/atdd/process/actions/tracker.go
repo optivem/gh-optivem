@@ -125,10 +125,19 @@ func (a actions) parseTicket(ctx *statemachine.Context) statemachine.Outcome {
 	// `escc-systems` feeds validate-external-systems-registered; the verbatim
 	// body flows to the contract-test writers via ${external-system-contract-
 	// criteria}. parse-ticket stays dumb — it reads only presence + names.
-	ctx.Set("ticket-has-escc", r.ExternalSystemContractCriteria.Found)
-	ctx.Set("escc-systems", r.ExternalSystemContractCriteria.Systems)
-	ctx.Set("external-system-contract-criteria", r.ExternalSystemContractCriteria.Body)
+	stampESCC(ctx, r.ExternalSystemContractCriteria)
 	return statemachine.Outcome{}
+}
+
+// stampESCC writes the External System Contract Criteria triple
+// (ticket-has-escc, escc-systems, external-system-contract-criteria) the
+// contract/stub room reads. Shared by parse-ticket (from the ticket body) and
+// select-next-use-case (from the use case's criteria file), so both feed the
+// downstream ESCC consumers identically.
+func stampESCC(ctx *statemachine.Context, escc intake.ESCCResult) {
+	ctx.Set("ticket-has-escc", escc.Found)
+	ctx.Set("escc-systems", escc.Systems)
+	ctx.Set("external-system-contract-criteria", escc.Body)
 }
 
 // issueFromContext builds a tracker.Issue from the conventional Context

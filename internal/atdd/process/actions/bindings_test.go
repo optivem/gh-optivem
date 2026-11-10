@@ -142,6 +142,11 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"link-story-criteria",
 		"check-fix-progress",
 		"categorize-scope-exception",
+		"record-start-commits",
+		"check-system-unchanged",
+		"check-no-assertion-removed",
+		"select-next-use-case",
+		"restamp-current-use-case",
 	}
 	for _, name := range want {
 		if r.Lookup(name) == nil {

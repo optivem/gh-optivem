@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -36,6 +37,34 @@ type SystemOptions struct {
 	// defaultUpTimeout. The Up retry loop treats a timeout as transient and
 	// retries, so the effective ceiling is roughly UpTimeout * maxAttempts.
 	UpTimeout time.Duration
+	// ExternalOnly, valid only with Restart, narrows the recreate to the
+	// external-system stand-in services (simulators / stubs): `up -d --build
+	// --force-recreate --no-deps <stand-ins>`, then the usual health wait. The
+	// system under test and postgres are left running untouched. Stand-ins are
+	// selected deterministically by SelectStandInServices against StandInPaths.
+	// Up never takes the "already running, skip" shortcut in this mode.
+	ExternalOnly bool
+	// StandInPaths are the external-systems: registry stub.path /
+	// simulator.path values (projectconfig.ExternalRegistryPaths). Required
+	// (non-empty) when ExternalOnly is set.
+	StandInPaths []string
+	// StandInBaseDir is the absolute directory relative StandInPaths resolve
+	// against (the directory holding gh-optivem.yaml).
+	StandInBaseDir string
+}
+
+// Validate rejects inconsistent option combinations before any docker call.
+func (o SystemOptions) Validate() error {
+	if !o.ExternalOnly {
+		return nil
+	}
+	if !o.Restart {
+		return errors.New("--external-only requires --restart (it recreates the external-system stand-in services of an already-running stack)")
+	}
+	if len(o.StandInPaths) == 0 {
+		return errors.New("--external-only: no external-system stand-in paths configured; declare stub.path / simulator.path under external-systems: in gh-optivem.yaml")
+	}
+	return nil
 }
 
 // BuildOptions tunes behavior of Build. Zero-values are safe defaults.
@@ -126,6 +155,9 @@ func Build(sys *SystemConfig, cwd string, opts BuildOptions) error {
 //     while leaving postgres (and its data volume) running, then health-wait. On
 //     a cold stack (postgres not up yet) it falls back to a full `up -d --build`
 //     so postgres + deps start first. No `down`, so the loop stays fast.
+//   - opts.Restart=true + opts.ExternalOnly=true → rebuild and force-recreate
+//     only the external-system stand-in services (`up -d --build
+//     --force-recreate --no-deps <stand-ins>`), then health-wait. Never skipped.
 //   - opts.Restart=false    → if IsAnyURLUp returns true, skip the entry; else
 //     `down` + `up -d` + health-wait. (Mirrors the PS1 runner's behavior so
 //     local re-runs are fast when the stack is already healthy.)
@@ -133,6 +165,9 @@ func Build(sys *SystemConfig, cwd string, opts BuildOptions) error {
 // The `up` invocation is wrapped in a small retry loop for transient network
 // errors.
 func Up(sys *SystemConfig, cwd string, opts SystemOptions) error {
+	if err := opts.Validate(); err != nil {
+		return err
+	}
 	for _, s := range sys.Systems {
 		fmt.Fprintf(os.Stdout, "\n=== System: %s ===\n", s.Label)
 		if !opts.Restart && IsAnyURLUp(s, opts.Health) {
@@ -208,6 +243,8 @@ func upOne(s SystemEntry, cwd string, opts SystemOptions) error {
 //     plain `up -d`. Unchanged legacy behaviour.
 //   - Restart: query the stack's services and which are running, then delegate
 //     to buildUpArgs for the incremental-vs-cold-start decision. No `down`.
+//   - Restart + ExternalOnly: select the stand-in services from the resolved
+//     compose config and recreate only those (externalOnlyUpArgs). No `down`.
 func upComposeArgs(s SystemEntry, cwd string, opts SystemOptions) ([]string, error) {
 	if !opts.Restart {
 		if err := downOne(s, cwd); err != nil {
@@ -215,6 +252,9 @@ func upComposeArgs(s SystemEntry, cwd string, opts SystemOptions) ([]string, err
 			fmt.Fprintf(os.Stderr, "warn: down %s: %v\n", s.Label, err)
 		}
 		return []string{"-f", s.ComposeFile, "up", "-d"}, nil
+	}
+	if opts.ExternalOnly {
+		return externalOnlyUpArgs(s, cwd, opts)
 	}
 	services, err := composeServices(s.ComposeFile, cwd)
 	if err != nil {
@@ -225,6 +265,28 @@ func upComposeArgs(s SystemEntry, cwd string, opts SystemOptions) ([]string, err
 		return nil, err
 	}
 	return buildUpArgs(s.ComposeFile, services, running), nil
+}
+
+// externalOnlyUpArgs selects the stack's stand-in services from its resolved
+// compose config and returns the stand-in-only recreate args.
+func externalOnlyUpArgs(s SystemEntry, cwd string, opts SystemOptions) ([]string, error) {
+	cfgJSON, err := composeConfigJSON(s.ComposeFile, cwd)
+	if err != nil {
+		return nil, err
+	}
+	composeDir := filepath.Join(cwd, filepath.Dir(s.ComposeFile))
+	if filepath.IsAbs(s.ComposeFile) {
+		composeDir = filepath.Dir(s.ComposeFile)
+	}
+	if abs, err := filepath.Abs(composeDir); err == nil {
+		composeDir = abs
+	}
+	standIns, err := SelectStandInServices(cfgJSON, composeDir, opts.StandInBaseDir, opts.StandInPaths)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(os.Stdout, "Restarting external-system stand-ins only: %s\n", strings.Join(standIns, ", "))
+	return buildExternalOnlyUpArgs(s.ComposeFile, standIns), nil
 }
 
 // buildUpArgs is the pure arg-selection core of the --restart path: given the
