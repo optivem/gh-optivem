@@ -7,7 +7,7 @@
 
 ## ▶ Next executable step (resume here)
 
-Release check for `plans/20261107-1300-spec-parse-gherkin-criteria.md` (its Step 5): the push to `main` made on 2026-11-10 triggers gh-optivem's acceptance pipeline, which cuts the release. Once the release exists, ask the user for permission to clone shop into a temp dir (read-only), run `gh optivem spec validate` and confirm 14 UC-001 criteria, then delete `1300` (shop-side copy is deleted from a shop session), then delete this meta-plan.
+Release check for `plans/20261107-1300-spec-parse-gherkin-criteria.md` (its Step 5): the push to `main` made on 2026-11-10 triggers gh-optivem's acceptance pipeline, which cuts the release. As of 2026-11-10 the latest release was still v1.6.107 (2026-11-06) and shop's `main` was failing (another agent is fixing it). Wait for BOTH a new release and a green shop. The user has approved cloning shop into a temp dir (read-only, deleted afterwards) at that point; then run `gh optivem spec validate` and confirm 14 UC-001 criteria, then delete `1300` (shop-side copy is deleted from a shop session), then delete this meta-plan.
 
 ## Decisions taken (2026-11-10)
 
