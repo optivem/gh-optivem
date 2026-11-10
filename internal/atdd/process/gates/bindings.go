@@ -212,8 +212,9 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("use-case-deferred", b.useCaseDeferred)
 	// characterize (GW_CHAR in 2d/2e): routes the verify fix loops and the
 	// external producer refresh to the characterization variants. gated
-	// (GW_GATED in characterize-layer): the core use case's layers get a
-	// human approval. stand-ins-changed: the characterization fixer edited
+	// (the GATE_GATED* gateways of characterize-use-case and
+	// characterize-test-layers): the pilot use cases get a human approval
+	// after the narrative, the criteria and the tests. stand-ins-changed: the characterization fixer edited
 	// a stub/simulator, so the stand-ins are restarted.
 	r.Register("characterize", b.characterize)
 	r.Register("gated", b.gated)
@@ -587,8 +588,8 @@ func (b bindings) noAssertionRemoved(ctx *statemachine.Context) statemachine.Out
 	return boolStateGate(ctx, "no-assertion-removed")
 }
 
-// useCaseLeft is GW_MORE in characterize-layer; select-next-use-case always
-// stamps it.
+// useCaseLeft is GATE_USE_CASE_LEFT in characterize-use-cases;
+// select-next-use-case always stamps it.
 func (b bindings) useCaseLeft(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "use-case-left")
 }
@@ -612,14 +613,15 @@ func (b bindings) characterize(ctx *statemachine.Context) statemachine.Outcome {
 	return boolStateGate(ctx, "characterize")
 }
 
-// gated is GW_GATED in characterize-layer: true for the core use case's
-// layers (human approval after each), false for the bulk passes. Every
-// characterize-layer call site passes the param, so unset is a wiring bug.
+// gated is the GATE_GATED* gateways of characterize-use-case and
+// characterize-test-layers: true for the pilot use cases (a human approval
+// after the narrative, the criteria and the tests), false for scaling. Every
+// characterize-use-cases call site passes the param, so unset is a wiring bug.
 func (b bindings) gated(ctx *statemachine.Context) statemachine.Outcome {
 	raw := strings.TrimSpace(ctx.Params["gated"])
 	yes, ok := promptio.ParseYN(raw)
 	if !ok || raw == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("gated: param is %q (expected true|false); every characterize-layer call site must pass gated", raw)}
+		return statemachine.Outcome{Err: fmt.Errorf("gated: param is %q (expected true|false); every characterize-use-cases call site must pass gated", raw)}
 	}
 	return statemachine.Outcome{Bool: yes}
 }

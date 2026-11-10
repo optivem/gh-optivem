@@ -161,21 +161,19 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("record-start-commits", a.recordStartCommits)
 	r.Register("check-system-unchanged", a.checkSystemUnchanged)
 	r.Register("check-no-assertion-removed", a.checkNoAssertionRemoved)
-	// Characterize use case loop (plan 20261110-1130, 2b). select-next-use-case
-	// pops the call site's next use case (use-case-left for GW_MORE) and
-	// re-derives its State (use-case-id, ESCC keys, criteria, tagged
+	// Characterize use case loop (plan 20261110-1130). select-next-use-case
+	// pops the call site's next use case (use-case-left for GATE_USE_CASE_LEFT)
+	// and re-derives its State (use-case-id, ESCC keys, criteria, tagged
 	// test-names, port-changed flags from its layer commits);
-	// restamp-current-use-case is its same-use-case mode for the DSL layer's
-	// late-discovery route. stamp-characterized-test-names feeds the final
-	// remove-wip-gate every use case's tagged tests. See use_case_loop.go and
-	// use_case_state.go.
+	// restamp-current-use-case is its same-use-case mode, run before each test
+	// layer and on the DSL layer's late-discovery route. See use_case_loop.go
+	// and use_case_state.go.
 	r.Register("select-next-use-case", a.selectNextUseCase)
 	r.Register("restamp-current-use-case", a.restampUseCase)
-	r.Register("stamp-characterized-test-names", a.stampCharacterizedTestNames)
-	// record-use-case-criteria appends the legacy-use-case-criteria-writer's
-	// criterion-ids to merged-criteria, which apply-ac-policy deletes at the
-	// end of characterize.
-	r.Register("record-use-case-criteria", a.recordUseCaseCriteria)
+	// delete-use-case-criteria deletes the current use case's criteria once
+	// its tests are green and un-gated (apply-ac-policy's deletion, scoped to
+	// one use case). See ac_policy.go.
+	r.Register("delete-use-case-criteria", a.deleteUseCaseCriteria)
 	// Characterize use case order (plan 20261110-1130, Step 3c): the pilot
 	// (proposed use case + its transitive dependencies), the scaling rest, and
 	// the re-order after a narrative adds a dependency, from the dependency

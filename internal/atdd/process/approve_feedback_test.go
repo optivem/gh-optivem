@@ -40,7 +40,12 @@ func TestApproveSites_RedoGatesAskForChanges(t *testing.T) {
 		}
 	}
 	sort.Strings(asking)
-	want := []string{"characterize-layer/APPROVE_LAYER", "characterize/CONFIRM_CORE_USE_CASE"}
+	want := []string{
+		"characterize-test-layers/APPROVE_TESTS",
+		"characterize-use-case/APPROVE_CRITERIA",
+		"characterize-use-case/APPROVE_NARRATIVE",
+		"characterize/CONFIRM_USE_CASE_DIAGRAM",
+	}
 	if !slices.Equal(asking, want) {
 		t.Errorf("approve sites asking for changes = %v, want %v", asking, want)
 	}

@@ -32,6 +32,8 @@ No substituted input — discover `TODO: DSL` prototypes by reading the files un
 
 ${review-findings-section}
 
+${feedback-section}
+
 ## Steps
 
 1. Implement the DSL Core (`${dsl-core}`) for real — replace each `TODO: DSL` prototype with actual logic.

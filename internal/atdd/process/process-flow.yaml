@@ -1126,26 +1126,28 @@ processes:
       - {from: REFACTOR_AND_VERIFY_TESTS,      to: REFACTOR_TEST_STRUCTURE_END}
 
   # Legacy baseline (plan 20261110-1130): `gh optivem characterize` baselines a
-  # whole legacy system, layer by layer, with characterization tests. The
+  # whole legacy system with characterization tests, use case by use case. The
   # system is the truth and never changes: it is started once and stopped once,
   # and verify-system-unchanged halts the run if any system code changed.
   #
-  #   RECORD_START_COMMITS  pins a start commit per system repo and resolves the
-  #                         system and stand-in paths; hard error (no gateway)
-  #                         on microservices, unresolved or overlapping paths.
-  #   WRITE_USE_CASE_DIAGRAM the agent writes the use case diagram from the
-  #                         source code and proposes the core use case; the
-  #                         human confirms both (CONFIRM_CORE).
-  #   CORE_*                the core use case through every layer, with a human
-  #                         approval after each (gated: "true").
-  #   BULK_*                the other use cases, layer by layer, unattended.
-  #   then the WIP gate removal, the final safety gate, the system stop and the
-  #   deletion of the criteria (`gh optivem spec generate` renders them back
-  #   from the tagged tests).
-  #
-  # Layer order per use case: criteria (incl. ESCC) -> external -> acceptance
-  # tests -> DSL -> system driver adapters. The external layer runs before the
-  # acceptance tests so the stubs exist when they run.
+  #   RECORD_START_COMMITS   pins a start commit per system repo and resolves
+  #                          the system and stand-in paths; hard error (no
+  #                          gateway) on microservices, unresolved or
+  #                          overlapping paths.
+  #   WRITE_USE_CASE_DIAGRAM the agent writes the use case diagram and the
+  #                          dependency diagram from the source code and
+  #                          proposes the most important use case; the human
+  #                          confirms both (CONFIRM_USE_CASE_DIAGRAM; a "no"
+  #                          redoes the diagrams with the feedback).
+  #   PILOT                  the proposed use case and its transitive
+  #                          dependencies (ORDER_PILOT_USE_CASES), one at a
+  #                          time, with a human approval after the narrative,
+  #                          the criteria and the tests (gated: "true").
+  #   SCALING                every other use case (ORDER_SCALING_USE_CASES),
+  #                          unattended. No go-ahead gate in between.
+  #   then the final safety gate and the system stop. The diagrams and the
+  #   narratives stay (the requirements documentation); each use case's
+  #   criteria were deleted when its tests went green.
   characterize:
     name: "Characterize Legacy System"
     diagram-section-order: 12
@@ -1172,144 +1174,62 @@ processes:
       - id: WRITE_USE_CASE_DIAGRAM
         type: call-activity
         process: write-legacy-use-case-diagram
-        name: "Write the Use Case Diagram"
+        name: "Write the Use Case and Dependency Diagrams"
 
       - id: COMMIT_USE_CASE_DIAGRAM
         type: call-activity
         process: commit
-        name: "Commit the Use Case Diagram"
+        name: "Commit the Use Case Diagrams"
         params:
           category: test-commit
           layer: "USE CASE DIAGRAM"
 
+      - id: SAFETY_GATE_USE_CASE_DIAGRAM
+        type: call-activity
+        process: verify-system-unchanged
+        name: "Safety Gate"
+
       # A "no" asks what should change and re-runs the diagram writer with
       # that feedback (capped).
-      - id: CONFIRM_CORE_USE_CASE
+      - id: CONFIRM_USE_CASE_DIAGRAM
         type: call-activity
         process: approve
-        name: "Confirm the Diagram and the Core Use Case"
+        name: "Confirm the Diagrams and the Most Important Use Case"
         params:
-          question: "Approve the use case diagram and the proposed use case ${proposed-use-case}? ${proposed-use-case-reasons}"
+          question: "Approve the use case diagram, the dependency diagram and the proposed use case ${proposed-use-case}? ${proposed-use-case-reasons}"
           ask-for-changes: "true"
           category: human
         max-visits: 3
-        on-max-visits: CORE_USE_CASE_CONFIRMATION_EXHAUSTED
+        on-max-visits: USE_CASE_DIAGRAM_CONFIRMATION_EXHAUSTED
 
-      - id: GATE_CORE_USE_CASE_CONFIRMED
+      - id: GATE_USE_CASE_DIAGRAM_CONFIRMED
         type: gateway
         binding: approval-outcome
         name: "Approved?"
 
-      - id: CORE_CRITERIA
-        type: call-activity
-        process: characterize-layer
-        name: "Core Use Case: Criteria Layer"
-        params:
-          layer-process: write-use-case-criteria
-          use-cases: ${proposed-use-case}
-          gated: "true"
-          discovered-external-port-paths: ""
-
-      - id: CORE_EXTERNAL
-        type: call-activity
-        process: characterize-layer
-        name: "Core Use Case: External Layer"
-        params:
-          layer-process: implement-external-drivers-if-needed
-          use-cases: ${proposed-use-case}
-          gated: "true"
-
-      - id: CORE_ACCEPTANCE_TESTS
-        type: call-activity
-        process: characterize-layer
-        name: "Core Use Case: Acceptance Test Layer"
-        params:
-          layer-process: characterize-at-layer
-          use-cases: ${proposed-use-case}
-          gated: "true"
-
-      - id: CORE_DSL
-        type: call-activity
-        process: characterize-layer
-        name: "Core Use Case: DSL Layer"
-        params:
-          layer-process: characterize-dsl-layer
-          use-cases: ${proposed-use-case}
-          gated: "true"
-
-      - id: CORE_SYSTEM_DRIVER_ADAPTERS
-        type: call-activity
-        process: characterize-layer
-        name: "Core Use Case: System Driver Adapter Layer"
-        params:
-          layer-process: characterize-adapter-layer
-          use-cases: ${proposed-use-case}
-          gated: "true"
-
-      - id: BULK_CRITERIA
-        type: call-activity
-        process: characterize-layer
-        name: "Other Use Cases: Criteria Layer"
-        params:
-          layer-process: write-use-case-criteria
-          use-cases: ${other-use-cases}
-          gated: "false"
-          discovered-external-port-paths: ""
-
-      - id: BULK_EXTERNAL
-        type: call-activity
-        process: characterize-layer
-        name: "Other Use Cases: External Layer"
-        params:
-          layer-process: implement-external-drivers-if-needed
-          use-cases: ${other-use-cases}
-          gated: "false"
-
-      - id: BULK_ACCEPTANCE_TESTS
-        type: call-activity
-        process: characterize-layer
-        name: "Other Use Cases: Acceptance Test Layer"
-        params:
-          layer-process: characterize-at-layer
-          use-cases: ${other-use-cases}
-          gated: "false"
-
-      - id: BULK_DSL
-        type: call-activity
-        process: characterize-layer
-        name: "Other Use Cases: DSL Layer"
-        params:
-          layer-process: characterize-dsl-layer
-          use-cases: ${other-use-cases}
-          gated: "false"
-
-      - id: BULK_SYSTEM_DRIVER_ADAPTERS
-        type: call-activity
-        process: characterize-layer
-        name: "Other Use Cases: System Driver Adapter Layer"
-        params:
-          layer-process: characterize-adapter-layer
-          use-cases: ${other-use-cases}
-          gated: "false"
-
-      # test-names holds one use case's tests at a time; un-gate them all.
-      - id: STAMP_CHARACTERIZED_TEST_NAMES
+      - id: ORDER_PILOT_USE_CASES
         type: service-task
-        action: stamp-characterized-test-names
-        name: "Collect Every Use Case's Tests"
+        action: order-pilot-use-cases
+        name: "Order the Pilot Use Cases"
 
-      - id: REMOVE_WIP_GATE
-        type: service-task
-        action: remove-wip-gate
-        name: "Remove WIP Gate From Green Tests"
-
-      - id: COMMIT_WIP_GATE_REMOVAL
+      - id: PILOT
         type: call-activity
-        process: commit
-        name: "Commit WIP Gate Removal"
+        process: characterize-use-cases
+        name: "Pilot: the Use Case and Its Dependencies, Gated"
         params:
-          category: test-commit
-          layer: "WIP GATE REMOVAL"
+          gated: "true"
+
+      - id: ORDER_SCALING_USE_CASES
+        type: service-task
+        action: order-scaling-use-cases
+        name: "Order the Remaining Use Cases"
+
+      - id: SCALING
+        type: call-activity
+        process: characterize-use-cases
+        name: "Scaling: the Remaining Use Cases, Unattended"
+        params:
+          gated: "false"
 
       - id: FINAL_SAFETY_GATE
         type: call-activity
@@ -1321,67 +1241,82 @@ processes:
         process: stop-system
         name: "Stop System"
 
-      - id: APPLY_AC_POLICY
-        type: service-task
-        action: apply-ac-policy
-        name: "Delete the Criteria"
-
-      - id: COMMIT_AC_DELETION
-        type: call-activity
-        process: commit
-        name: "Commit Criteria Deletion"
-        params:
-          category: test-commit
-          layer: "CRITERIA DELETION"
-
       - id: CHARACTERIZE_END
         type: end-event
         name: "Legacy System Characterized"
 
       # Loop-cap halt. The `_EXHAUSTED` suffix marks it for the
       # halt-terminals-are-error-end invariant.
-      - id: CORE_USE_CASE_CONFIRMATION_EXHAUSTED
+      - id: USE_CASE_DIAGRAM_CONFIRMATION_EXHAUSTED
         type: error-end-event
-        name: "Core Use Case Not Confirmed — the diagram or the core use case was declined 3 times (fix the use case diagram by hand and re-run)"
+        name: "Use Case Diagrams Not Confirmed — the diagrams or the proposed use case were declined 3 times (fix them by hand and re-run)"
 
     sequence-flows:
-      - {from: RECORD_START_COMMITS,          to: START_SYSTEM}
-      - {from: START_SYSTEM,                  to: WRITE_USE_CASE_DIAGRAM}
-      - {from: WRITE_USE_CASE_DIAGRAM,        to: COMMIT_USE_CASE_DIAGRAM}
-      - {from: COMMIT_USE_CASE_DIAGRAM,       to: CONFIRM_CORE_USE_CASE}
-      - {from: CONFIRM_CORE_USE_CASE,         to: GATE_CORE_USE_CASE_CONFIRMED}
-      - {from: GATE_CORE_USE_CASE_CONFIRMED,  to: CORE_CRITERIA,          when: "approval-outcome == approved"}
-      - {from: GATE_CORE_USE_CASE_CONFIRMED,  to: WRITE_USE_CASE_DIAGRAM, when: "approval-outcome == rejected"}
-      - {from: CORE_CRITERIA,                 to: CORE_EXTERNAL}
-      - {from: CORE_EXTERNAL,                 to: CORE_ACCEPTANCE_TESTS}
-      - {from: CORE_ACCEPTANCE_TESTS,         to: CORE_DSL}
-      - {from: CORE_DSL,                      to: CORE_SYSTEM_DRIVER_ADAPTERS}
-      - {from: CORE_SYSTEM_DRIVER_ADAPTERS,   to: BULK_CRITERIA}
-      - {from: BULK_CRITERIA,                 to: BULK_EXTERNAL}
-      - {from: BULK_EXTERNAL,                 to: BULK_ACCEPTANCE_TESTS}
-      - {from: BULK_ACCEPTANCE_TESTS,         to: BULK_DSL}
-      - {from: BULK_DSL,                      to: BULK_SYSTEM_DRIVER_ADAPTERS}
-      - {from: BULK_SYSTEM_DRIVER_ADAPTERS,   to: STAMP_CHARACTERIZED_TEST_NAMES}
-      - {from: STAMP_CHARACTERIZED_TEST_NAMES, to: REMOVE_WIP_GATE}
-      - {from: REMOVE_WIP_GATE,               to: COMMIT_WIP_GATE_REMOVAL}
-      - {from: COMMIT_WIP_GATE_REMOVAL,       to: FINAL_SAFETY_GATE}
-      - {from: FINAL_SAFETY_GATE,             to: STOP_SYSTEM}
-      - {from: STOP_SYSTEM,                   to: APPLY_AC_POLICY}
-      - {from: APPLY_AC_POLICY,               to: COMMIT_AC_DELETION}
-      - {from: COMMIT_AC_DELETION,            to: CHARACTERIZE_END}
+      - {from: RECORD_START_COMMITS,            to: START_SYSTEM}
+      - {from: START_SYSTEM,                    to: WRITE_USE_CASE_DIAGRAM}
+      - {from: WRITE_USE_CASE_DIAGRAM,          to: COMMIT_USE_CASE_DIAGRAM}
+      - {from: COMMIT_USE_CASE_DIAGRAM,         to: SAFETY_GATE_USE_CASE_DIAGRAM}
+      - {from: SAFETY_GATE_USE_CASE_DIAGRAM,    to: CONFIRM_USE_CASE_DIAGRAM}
+      - {from: CONFIRM_USE_CASE_DIAGRAM,        to: GATE_USE_CASE_DIAGRAM_CONFIRMED}
+      - {from: GATE_USE_CASE_DIAGRAM_CONFIRMED, to: ORDER_PILOT_USE_CASES,  when: "approval-outcome == approved"}
+      - {from: GATE_USE_CASE_DIAGRAM_CONFIRMED, to: WRITE_USE_CASE_DIAGRAM, when: "approval-outcome == rejected"}
+      - {from: ORDER_PILOT_USE_CASES,           to: PILOT}
+      - {from: PILOT,                           to: ORDER_SCALING_USE_CASES}
+      - {from: ORDER_SCALING_USE_CASES,         to: SCALING}
+      - {from: SCALING,                         to: FINAL_SAFETY_GATE}
+      - {from: FINAL_SAFETY_GATE,               to: STOP_SYSTEM}
+      - {from: STOP_SYSTEM,                     to: CHARACTERIZE_END}
 
-  # One characterize layer over a list of use cases (plan 20261110-1130, 2b).
-  # Params: `layer-process` (the layer wrapper), `use-cases` (the core use
-  # case, or the others), `gated` ("true" for the core use case only).
+  # The use case loop of characterize (plan 20261110-1130): every use case in
+  # `use-case-order`, one at a time, through characterize-use-case. Param
+  # `gated` ("true" for the pilot) flows down to its gates.
   #
-  # Use case loop: SELECT_NEXT_USE_CASE pops the next use case and stamps its
-  # State, re-derived from the files and its layer commits (use-case-id, ESCC keys,
-  # criteria, tagged test-names, port-changed flags); the layer runs for it, then the safety
-  # gate, then the next one. With none left, a gated layer asks the human; a
-  # "no" re-runs the layer on the last use case as a new commit on top
-  # (capped). The loop terminates: the cursor only moves forward.
-  characterize-layer:
-    name: "Characterize Layer"
+  # NEXT_USE_CASE pops the next use case and stamps its State (use-case-id,
+  # ESCC keys, criteria, tagged test-names, port-changed flags), re-derived
+  # from the files and its commits. It is a call so `use-cases:
+  # ${use-case-order}` is expanded on every pass: a deferred use case
+  # (characterize-use-case's REORDER_USE_CASES) writes a new order, whose
+  # cursor starts at its beginning. The loop terminates: within one order the
+  # cursor only moves forward, and a new order is only written when a use
+  # case depends on one not done yet, which goes first (the diagram is
+  # acyclic, order-use-cases fails on a cycle).
+  characterize-use-cases:
+    name: "Characterize Use Cases"
+    start: NEXT_USE_CASE
+    nodes:
+      - id: NEXT_USE_CASE
+        type: call-activity
+        process: select-next-use-case-in-order
+        name: "Select the Next Use Case"
+        params:
+          use-cases: ${use-case-order}
+          layer-process: characterize-use-case
+
+      - id: GATE_USE_CASE_LEFT
+        type: gateway
+        binding: use-case-left
+        name: "Use Case Left?"
+
+      - id: CHARACTERIZE_USE_CASE
+        type: call-activity
+        process: characterize-use-case
+        name: "Characterize This Use Case"
+
+      - id: CHARACTERIZE_USE_CASES_END
+        type: end-event
+        name: "Use Cases Characterized"
+
+    sequence-flows:
+      - {from: NEXT_USE_CASE,         to: GATE_USE_CASE_LEFT}
+      - {from: GATE_USE_CASE_LEFT,    to: CHARACTERIZE_USE_CASE,      when: "use-case-left == true"}
+      - {from: GATE_USE_CASE_LEFT,    to: CHARACTERIZE_USE_CASES_END, when: "use-case-left == false"}
+      - {from: CHARACTERIZE_USE_CASE, to: NEXT_USE_CASE}
+
+  # Wrapper so select-next-use-case reads the current `use-case-order`
+  # (service tasks carry no params of their own; call params are expanded
+  # on entry).
+  select-next-use-case-in-order:
+    name: "Select the Next Use Case in Order"
     start: SELECT_NEXT_USE_CASE
     nodes:
       - id: SELECT_NEXT_USE_CASE
@@ -1389,17 +1324,272 @@ processes:
         action: select-next-use-case
         name: "Select the Next Use Case"
 
-      - id: GATE_USE_CASE_LEFT
-        type: gateway
-        binding: use-case-left
-        name: "Use Case Left?"
+      - id: SELECT_NEXT_USE_CASE_END
+        type: end-event
+        name: "Next Use Case Selected"
 
-      - id: RUN_LAYER
+    sequence-flows:
+      - {from: SELECT_NEXT_USE_CASE, to: SELECT_NEXT_USE_CASE_END}
+
+  # One use case of characterize (plan 20261110-1130, "Revised flow"):
+  #
+  #   1. narrative (+ preconditions; may add a dependency to the dependency
+  #      diagram) -> commit -> safety gate -> gated? approve;
+  #      REORDER_USE_CASES: a dependency not done yet defers this use case
+  #      behind it (its narrative commit stays) and ends here;
+  #   2. criteria (Gherkin + ESCC) -> commit -> safety gate -> gated? approve;
+  #   3. the test layers (characterize-test-layers, gated approval inside);
+  #   4. the WIP gate removal for this use case's tests -> commit;
+  #   5. this use case's criteria deleted -> commit (`gh optivem spec
+  #      generate` renders them back from the tagged tests).
+  #
+  # A gate's "no" asks what should change and redoes that step with the
+  # feedback, as a new commit on top (capped). A use case that cannot go
+  # green halts the run (the fix loop's human halt): later use cases may
+  # depend on it.
+  characterize-use-case:
+    name: "Characterize Use Case"
+    start: WRITE_NARRATIVE
+    nodes:
+      - id: WRITE_NARRATIVE
         type: call-activity
-        process: ${layer-process}
-        name: "Run the Layer for This Use Case"
+        process: write-legacy-use-case-narrative
+        name: "Write the Use Case Narrative"
+        params:
+          use-case-id: ${use-case-id}
+          discovered-external-port-paths: ""
 
-      - id: SAFETY_GATE
+      - id: COMMIT_NARRATIVE
+        type: call-activity
+        process: commit
+        name: "Commit the Narrative"
+        params:
+          category: test-commit
+          layer: "USE CASE NARRATIVE (${use-case-id})"
+
+      - id: SAFETY_GATE_NARRATIVE
+        type: call-activity
+        process: verify-system-unchanged
+        name: "Safety Gate"
+
+      - id: GATE_GATED_NARRATIVE
+        type: gateway
+        binding: gated
+        name: "Gated?"
+
+      - id: APPROVE_NARRATIVE
+        type: call-activity
+        process: approve
+        name: "Approve the Narrative"
+        params:
+          question: "Approve the narrative of use case ${use-case-id}?"
+          ask-for-changes: "true"
+          category: human
+        max-visits: 3
+        on-max-visits: NARRATIVE_APPROVAL_EXHAUSTED
+
+      - id: GATE_NARRATIVE_APPROVED
+        type: gateway
+        binding: approval-outcome
+        name: "Approved?"
+
+      - id: REORDER_USE_CASES
+        type: service-task
+        action: reorder-use-cases
+        name: "Re-order If a Dependency Is Not Done"
+
+      - id: GATE_USE_CASE_DEFERRED
+        type: gateway
+        binding: use-case-deferred
+        name: "Deferred Behind a Dependency?"
+
+      - id: WRITE_CRITERIA
+        type: call-activity
+        process: write-legacy-use-case-criteria
+        name: "Write the Use Case Criteria"
+        params:
+          use-case-id: ${use-case-id}
+          discovered-external-port-paths: ""
+
+      - id: COMMIT_CRITERIA
+        type: call-activity
+        process: commit
+        name: "Commit the Criteria"
+        params:
+          category: test-commit
+          layer: "USE CASE CRITERIA (${use-case-id})"
+
+      - id: SAFETY_GATE_CRITERIA
+        type: call-activity
+        process: verify-system-unchanged
+        name: "Safety Gate"
+
+      - id: GATE_GATED_CRITERIA
+        type: gateway
+        binding: gated
+        name: "Gated?"
+
+      - id: APPROVE_CRITERIA
+        type: call-activity
+        process: approve
+        name: "Approve the Criteria"
+        params:
+          question: "Approve the acceptance criteria of use case ${use-case-id}?"
+          ask-for-changes: "true"
+          category: human
+        max-visits: 3
+        on-max-visits: CRITERIA_APPROVAL_EXHAUSTED
+
+      - id: GATE_CRITERIA_APPROVED
+        type: gateway
+        binding: approval-outcome
+        name: "Approved?"
+
+      - id: CHARACTERIZE_TEST_LAYERS
+        type: call-activity
+        process: characterize-test-layers
+        name: "Characterize the Test Layers"
+
+      - id: REMOVE_WIP_GATE
+        type: service-task
+        action: remove-wip-gate
+        name: "Remove WIP Gate From This Use Case's Tests"
+
+      - id: COMMIT_WIP_GATE_REMOVAL
+        type: call-activity
+        process: commit
+        name: "Commit WIP Gate Removal"
+        params:
+          category: test-commit
+          layer: "WIP GATE REMOVAL (${use-case-id})"
+
+      - id: DELETE_USE_CASE_CRITERIA
+        type: service-task
+        action: delete-use-case-criteria
+        name: "Delete This Use Case's Criteria"
+
+      - id: COMMIT_CRITERIA_DELETION
+        type: call-activity
+        process: commit
+        name: "Commit Criteria Deletion"
+        params:
+          category: test-commit
+          layer: "CRITERIA DELETION (${use-case-id})"
+
+      - id: CHARACTERIZE_USE_CASE_END
+        type: end-event
+        name: "Use Case Characterized"
+
+      - id: USE_CASE_DEFERRED_END
+        type: end-event
+        name: "Use Case Deferred Behind Its Dependency"
+
+      # Loop-cap halts. The `_EXHAUSTED` suffix marks them for the
+      # halt-terminals-are-error-end invariant.
+      - id: NARRATIVE_APPROVAL_EXHAUSTED
+        type: error-end-event
+        name: "Narrative Not Approved — the use case narrative was declined 3 times (fix it by hand, commit, and re-run)"
+
+      - id: CRITERIA_APPROVAL_EXHAUSTED
+        type: error-end-event
+        name: "Criteria Not Approved — the use case criteria were declined 3 times (fix them by hand, commit, and re-run)"
+
+    sequence-flows:
+      - {from: WRITE_NARRATIVE,          to: COMMIT_NARRATIVE}
+      - {from: COMMIT_NARRATIVE,         to: SAFETY_GATE_NARRATIVE}
+      - {from: SAFETY_GATE_NARRATIVE,    to: GATE_GATED_NARRATIVE}
+      - {from: GATE_GATED_NARRATIVE,     to: APPROVE_NARRATIVE,         when: "gated == true"}
+      - {from: GATE_GATED_NARRATIVE,     to: REORDER_USE_CASES,         when: "gated == false"}
+      - {from: APPROVE_NARRATIVE,        to: GATE_NARRATIVE_APPROVED}
+      - {from: GATE_NARRATIVE_APPROVED,  to: REORDER_USE_CASES,         when: "approval-outcome == approved"}
+      - {from: GATE_NARRATIVE_APPROVED,  to: WRITE_NARRATIVE,           when: "approval-outcome == rejected"}
+      - {from: REORDER_USE_CASES,        to: GATE_USE_CASE_DEFERRED}
+      - {from: GATE_USE_CASE_DEFERRED,   to: USE_CASE_DEFERRED_END,     when: "use-case-deferred == true"}
+      - {from: GATE_USE_CASE_DEFERRED,   to: WRITE_CRITERIA,            when: "use-case-deferred == false"}
+      - {from: WRITE_CRITERIA,           to: COMMIT_CRITERIA}
+      - {from: COMMIT_CRITERIA,          to: SAFETY_GATE_CRITERIA}
+      - {from: SAFETY_GATE_CRITERIA,     to: GATE_GATED_CRITERIA}
+      - {from: GATE_GATED_CRITERIA,      to: APPROVE_CRITERIA,          when: "gated == true"}
+      - {from: GATE_GATED_CRITERIA,      to: CHARACTERIZE_TEST_LAYERS,  when: "gated == false"}
+      - {from: APPROVE_CRITERIA,         to: GATE_CRITERIA_APPROVED}
+      - {from: GATE_CRITERIA_APPROVED,   to: CHARACTERIZE_TEST_LAYERS,  when: "approval-outcome == approved"}
+      - {from: GATE_CRITERIA_APPROVED,   to: WRITE_CRITERIA,            when: "approval-outcome == rejected"}
+      - {from: CHARACTERIZE_TEST_LAYERS, to: REMOVE_WIP_GATE}
+      - {from: REMOVE_WIP_GATE,          to: COMMIT_WIP_GATE_REMOVAL}
+      - {from: COMMIT_WIP_GATE_REMOVAL,  to: DELETE_USE_CASE_CRITERIA}
+      - {from: DELETE_USE_CASE_CRITERIA, to: COMMIT_CRITERIA_DELETION}
+      - {from: COMMIT_CRITERIA_DELETION, to: CHARACTERIZE_USE_CASE_END}
+
+  # The test layers of one use case (plan 20261110-1130): external ->
+  # acceptance tests -> DSL -> system driver adapters, each committing its own
+  # work, then the safety gate. The external layer runs before the acceptance
+  # tests so the stubs exist when they run. Each layer starts with the use
+  # case's State re-derived (RESTAMP_*): the criteria file's ESCC and
+  # criteria, the tagged tests, the port changes of its layer commits; the
+  # contract test writer overwrites test-names and dsl-port-changed. Gated
+  # (the pilot): a "no" asks what should change and redoes every layer with
+  # the feedback, as new commits on top (capped). The last re-stamp gives
+  # REMOVE_WIP_GATE this use case's tagged tests.
+  characterize-test-layers:
+    name: "Characterize Test Layers"
+    start: RESTAMP_BEFORE_EXTERNAL
+    nodes:
+      - id: RESTAMP_BEFORE_EXTERNAL
+        type: service-task
+        action: restamp-current-use-case
+        name: "Re-stamp the Use Case"
+
+      - id: EXTERNAL_LAYER
+        type: call-activity
+        process: implement-external-drivers-if-needed
+        name: "External Layer"
+
+      - id: SAFETY_GATE_EXTERNAL
+        type: call-activity
+        process: verify-system-unchanged
+        name: "Safety Gate"
+
+      - id: RESTAMP_BEFORE_ACCEPTANCE_TESTS
+        type: service-task
+        action: restamp-current-use-case
+        name: "Re-stamp the Use Case"
+
+      - id: ACCEPTANCE_TEST_LAYER
+        type: call-activity
+        process: characterize-at-layer
+        name: "Acceptance Test Layer"
+
+      - id: SAFETY_GATE_ACCEPTANCE_TESTS
+        type: call-activity
+        process: verify-system-unchanged
+        name: "Safety Gate"
+
+      - id: RESTAMP_BEFORE_DSL
+        type: service-task
+        action: restamp-current-use-case
+        name: "Re-stamp the Use Case"
+
+      - id: DSL_LAYER
+        type: call-activity
+        process: characterize-dsl-layer
+        name: "DSL Layer"
+
+      - id: SAFETY_GATE_DSL
+        type: call-activity
+        process: verify-system-unchanged
+        name: "Safety Gate"
+
+      - id: RESTAMP_BEFORE_SYSTEM_DRIVER_ADAPTERS
+        type: service-task
+        action: restamp-current-use-case
+        name: "Re-stamp the Use Case"
+
+      - id: SYSTEM_DRIVER_ADAPTER_LAYER
+        type: call-activity
+        process: characterize-adapter-layer
+        name: "System Driver Adapter Layer"
+
+      - id: SAFETY_GATE_SYSTEM_DRIVER_ADAPTERS
         type: call-activity
         process: verify-system-unchanged
         name: "Safety Gate"
@@ -1409,51 +1599,64 @@ processes:
         binding: gated
         name: "Gated?"
 
-      - id: APPROVE_LAYER
+      - id: APPROVE_TESTS
         type: call-activity
         process: approve
-        name: "Approve the Layer"
+        name: "Approve the Tests"
         params:
-          question: "Approve the ${layer-process} layer for use case ${use-case-id}?"
+          question: "Approve the acceptance tests of use case ${use-case-id} (external, acceptance test, DSL and driver adapter layers)?"
           ask-for-changes: "true"
           category: human
         max-visits: 3
-        on-max-visits: LAYER_APPROVAL_EXHAUSTED
+        on-max-visits: TESTS_APPROVAL_EXHAUSTED
 
-      - id: GATE_LAYER_APPROVED
+      - id: GATE_TESTS_APPROVED
         type: gateway
         binding: approval-outcome
         name: "Approved?"
 
-      - id: CHARACTERIZE_LAYER_END
+      - id: RESTAMP_FOR_WIP_GATE_REMOVAL
+        type: service-task
+        action: restamp-current-use-case
+        name: "Re-stamp the Use Case's Tests"
+
+      - id: CHARACTERIZE_TEST_LAYERS_END
         type: end-event
-        name: "Layer Characterized"
+        name: "Test Layers Characterized"
 
       # Loop-cap halt. The `_EXHAUSTED` suffix marks it for the
       # halt-terminals-are-error-end invariant.
-      - id: LAYER_APPROVAL_EXHAUSTED
+      - id: TESTS_APPROVAL_EXHAUSTED
         type: error-end-event
-        name: "Layer Not Approved — the core use case's layer was declined 3 times (fix it by hand, commit, and re-run)"
+        name: "Tests Not Approved — the use case's tests were declined 3 times (fix them by hand, commit, and re-run)"
 
     sequence-flows:
-      - {from: SELECT_NEXT_USE_CASE, to: GATE_USE_CASE_LEFT}
-      - {from: GATE_USE_CASE_LEFT,   to: RUN_LAYER,              when: "use-case-left == true"}
-      - {from: GATE_USE_CASE_LEFT,   to: GATE_GATED,             when: "use-case-left == false"}
-      - {from: RUN_LAYER,            to: SAFETY_GATE}
-      - {from: SAFETY_GATE,          to: SELECT_NEXT_USE_CASE}
-      - {from: GATE_GATED,           to: APPROVE_LAYER,          when: "gated == true"}
-      - {from: GATE_GATED,           to: CHARACTERIZE_LAYER_END, when: "gated == false"}
-      - {from: APPROVE_LAYER,        to: GATE_LAYER_APPROVED}
-      - {from: GATE_LAYER_APPROVED,  to: CHARACTERIZE_LAYER_END, when: "approval-outcome == approved"}
-      - {from: GATE_LAYER_APPROVED,  to: RUN_LAYER,              when: "approval-outcome == rejected"}
+      - {from: RESTAMP_BEFORE_EXTERNAL,               to: EXTERNAL_LAYER}
+      - {from: EXTERNAL_LAYER,                        to: SAFETY_GATE_EXTERNAL}
+      - {from: SAFETY_GATE_EXTERNAL,                  to: RESTAMP_BEFORE_ACCEPTANCE_TESTS}
+      - {from: RESTAMP_BEFORE_ACCEPTANCE_TESTS,       to: ACCEPTANCE_TEST_LAYER}
+      - {from: ACCEPTANCE_TEST_LAYER,                 to: SAFETY_GATE_ACCEPTANCE_TESTS}
+      - {from: SAFETY_GATE_ACCEPTANCE_TESTS,          to: RESTAMP_BEFORE_DSL}
+      - {from: RESTAMP_BEFORE_DSL,                    to: DSL_LAYER}
+      - {from: DSL_LAYER,                             to: SAFETY_GATE_DSL}
+      - {from: SAFETY_GATE_DSL,                       to: RESTAMP_BEFORE_SYSTEM_DRIVER_ADAPTERS}
+      - {from: RESTAMP_BEFORE_SYSTEM_DRIVER_ADAPTERS, to: SYSTEM_DRIVER_ADAPTER_LAYER}
+      - {from: SYSTEM_DRIVER_ADAPTER_LAYER,           to: SAFETY_GATE_SYSTEM_DRIVER_ADAPTERS}
+      - {from: SAFETY_GATE_SYSTEM_DRIVER_ADAPTERS,    to: GATE_GATED}
+      - {from: GATE_GATED,                            to: APPROVE_TESTS,                 when: "gated == true"}
+      - {from: GATE_GATED,                            to: RESTAMP_FOR_WIP_GATE_REMOVAL,  when: "gated == false"}
+      - {from: APPROVE_TESTS,                         to: GATE_TESTS_APPROVED}
+      - {from: GATE_TESTS_APPROVED,                   to: RESTAMP_FOR_WIP_GATE_REMOVAL,  when: "approval-outcome == approved"}
+      - {from: GATE_TESTS_APPROVED,                   to: RESTAMP_BEFORE_EXTERNAL,       when: "approval-outcome == rejected"}
+      - {from: RESTAMP_FOR_WIP_GATE_REMOVAL,          to: CHARACTERIZE_TEST_LAYERS_END}
 
-  # Criteria + ESCC layer (plan 20261110-1130, 2b): the use case's narrative
-  # and business rules, then its Gherkin UC-NNN.M criteria plus an External
-  # System Contract Criteria section for every external system its code calls,
-  # from the source code. Also the DSL layer's late-discovery route, which
-  # passes the external driver port paths the DSL touched as
-  # `discovered-external-port-paths` ("" on the criteria layer). The criterion
-  # ids are recorded for the deletion at the end of characterize.
+  # The DSL layer's late-discovery route (plan 20261110-1130, 2b): a DSL
+  # change to external driver port files means the criteria missed an
+  # external call. Both writers get the external driver port paths the DSL
+  # touched as `discovered-external-port-paths` (the narrative writer fixes
+  # the narrative steps, the criteria writer adds the ESCC section), then one
+  # commit. The use case's criteria (old and new) are deleted with the rest
+  # once its tests are green.
   write-use-case-criteria:
     name: "Write Use Case Criteria"
     start: WRITE_LEGACY_USE_CASE_NARRATIVE
@@ -1482,11 +1685,6 @@ processes:
           category: test-commit
           layer: "USE CASE (${use-case-id})"
 
-      - id: RECORD_USE_CASE_CRITERIA
-        type: service-task
-        action: record-use-case-criteria
-        name: "Record the Criteria to Delete"
-
       - id: WRITE_USE_CASE_CRITERIA_END
         type: end-event
         name: "Use Case Criteria Written"
@@ -1494,8 +1692,7 @@ processes:
     sequence-flows:
       - {from: WRITE_LEGACY_USE_CASE_NARRATIVE, to: WRITE_LEGACY_USE_CASE_CRITERIA}
       - {from: WRITE_LEGACY_USE_CASE_CRITERIA,  to: COMMIT_USE_CASE}
-      - {from: COMMIT_USE_CASE,          to: RECORD_USE_CASE_CRITERIA}
-      - {from: RECORD_USE_CASE_CRITERIA, to: WRITE_USE_CASE_CRITERIA_END}
+      - {from: COMMIT_USE_CASE,                 to: WRITE_USE_CASE_CRITERIA_END}
 
   # Acceptance test layer (plan 20261110-1130, 2b): the cover-path test-code
   # step (tests expected to pass once nothing is pending) plus the channel
@@ -4059,8 +4256,6 @@ processes:
     outputs:
       - key: proposed-use-case
         type: string
-      - key: other-use-cases
-        type: string-list
       - key: proposed-use-case-reasons
         type: string
     nodes:
@@ -4072,7 +4267,7 @@ processes:
           task-name: write-legacy-use-case-diagram
           agent: legacy-use-case-diagram-writer
           # test-agent tier: the use cases are the test contract; the human
-          # confirms the diagram at characterize's CONFIRM_CORE_USE_CASE.
+          # confirms the diagram at characterize's CONFIRM_USE_CASE_DIAGRAM.
           category: test-agent
         scope: none
 
@@ -4111,15 +4306,11 @@ processes:
 
   # Characterize (plan 20261110-1130): one use case's Gherkin criteria (plus
   # its ESCC section) from its narrative and the source code. `scope: none`
-  # like merge-use-cases (spec only). `criterion-ids` feeds the deletion of the
-  # criteria at the end (record-use-case-criteria).
+  # like merge-use-cases (spec only). characterize-use-case deletes them all
+  # (delete-use-case-criteria) once the use case's tests are green.
   write-legacy-use-case-criteria:
     name: "Write Legacy Use Case Criteria"
     start: EXECUTE_AGENT
-    outputs:
-      - key: criterion-ids
-        type: string-list
-        optional: true
     nodes:
       - id: EXECUTE_AGENT
         type: call-activity

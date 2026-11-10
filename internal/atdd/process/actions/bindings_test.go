@@ -147,7 +147,7 @@ func TestRegisterAll_AllActionsRegistered(t *testing.T) {
 		"check-no-assertion-removed",
 		"select-next-use-case",
 		"restamp-current-use-case",
-		"stamp-characterized-test-names",
+		"delete-use-case-criteria",
 		"snapshot-stand-ins",
 		"check-stand-ins-changed",
 		"order-use-cases",

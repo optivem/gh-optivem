@@ -3072,10 +3072,15 @@ func TestRenderScopeBlock_UnresolvableKeyErrors(t *testing.T) {
 
 // The redone characterize writers render the operator's feedback from a
 // declined redo gate, and render nothing for it on a first pass (plan
-// 20261110-1130, Step 3a).
+// 20261110-1130, Steps 3a and 3d: the test layers' writers are redone by the
+// pilot's tests gate).
 func TestRenderPrompt_FeedbackSection(t *testing.T) {
-	for _, agent := range []string{"legacy-use-case-diagram-writer", "legacy-use-case-narrative-writer", "legacy-use-case-criteria-writer"} {
-		opts := renderMatrixOpts(projectconfig.ArchMonolith, "system", "")
+	for _, agent := range []string{
+		"legacy-use-case-diagram-writer", "legacy-use-case-narrative-writer", "legacy-use-case-criteria-writer",
+		"contract-test-writer", "acceptance-test-writer", "dsl-implementer",
+		"system-driver-adapter-implementer", "external-system-driver-adapter-implementer",
+	} {
+		opts := renderMatrixOpts(projectconfig.ArchMonolith, "system", "api")
 		opts.Agent = agent
 		got, err := renderPrompt(opts)
 		if err != nil {

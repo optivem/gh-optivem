@@ -57,11 +57,3 @@ In the folder layout (`UC-NNN-<slug>/`), both sections go in `acceptance-criteri
 - Run `gh optivem spec validate` when you finish and fix every error it reports in your files.
 
 ${feedback-section}
-
-## Outputs
-
-${expected-outputs}
-
-Notes:
-
-- `criterion-ids` lists every `UC-NNN.M` id you added or changed in this dispatch (all of them on a first pass; in late discovery only those you fixed, possibly none).

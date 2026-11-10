@@ -98,7 +98,9 @@ func CheckInvariants(eng *Engine) []Violation {
 // plan 20261109-1258), each committed right away. Those commits' dispatching
 // predecessors are the remove-wip-gate / apply-ac-policy service tasks,
 // accepted iff the step is itself reached only from verified-green work. See
-// isVerifiedPostGreenStep.
+// isVerifiedPostGreenStep. Characterize (plan 20261110-1130) does the same per
+// use case after its characterize-test-layers call (remove-wip-gate, then
+// delete-use-case-criteria).
 func ruleCommitIsVerified(eng *Engine) []Violation {
 	const rule = "commit-is-verified"
 	var out []Violation
@@ -169,8 +171,9 @@ func isSpecWriter(pn Node) bool {
 // postGreenActions are the service-task actions of the post-green
 // bookkeeping steps whose commits carry no verify of their own.
 var postGreenActions = map[string]bool{
-	"remove-wip-gate": true, // plan 20261109-1300
-	"apply-ac-policy": true, // plan 20261109-1258
+	"remove-wip-gate":          true, // plan 20261109-1300
+	"apply-ac-policy":          true, // plan 20261109-1258
+	"delete-use-case-criteria": true, // plan 20261110-1130 (per use case)
 }
 
 // isVerifiedPostGreenStep accepts a post-green bookkeeping step (a
@@ -210,16 +213,10 @@ func isVerifiedPostGreenPredecessor(proc *Process, n Node, depth int) bool {
 	if isCallTo(n, "write-acceptance-tests-and-system-adapters") && strings.TrimSpace(n.Raw.Params["expected-test-result"]) == "success" {
 		return true
 	}
-	// Characterize (plan 20261110-1130): the bulk driver adapter layer pass is
-	// the last layer; every use case's adapter work in it ran its own verify.
-	if isCallTo(n, "characterize-layer") && strings.TrimSpace(n.Raw.Params["layer-process"]) == "characterize-adapter-layer" {
+	// Characterize (plan 20261110-1130): a use case's test layers; every
+	// layer in it ran its own verify (the tests pass against the system).
+	if isCallTo(n, "characterize-test-layers") {
 		return true
-	}
-	// The safety gate, the system stop and the collection of every use
-	// case's test names change no code: look through them to what ran before.
-	if isCallTo(n, "verify-system-unchanged") || isCallTo(n, "stop-system") ||
-		(n.Kind == ServiceTask && strings.TrimSpace(n.Raw.Action) == "stamp-characterized-test-names") {
-		return allPredecessorsVerifiedPostGreen(proc, n.ID, depth+1)
 	}
 	if !isCallTo(n, "commit") {
 		return false
@@ -230,24 +227,6 @@ func isVerifiedPostGreenPredecessor(proc *Process, n Node, depth int) bool {
 	}
 	for _, cp := range cps {
 		if !isVerifiedPostGreenStep(proc, proc.Nodes[cp], depth+1) {
-			return false
-		}
-	}
-	return true
-}
-
-// allPredecessorsVerifiedPostGreen reports whether every dispatching
-// predecessor of id is an acceptable post-green predecessor.
-func allPredecessorsVerifiedPostGreen(proc *Process, id string, depth int) bool {
-	if depth > 8 {
-		return false
-	}
-	preds := dispatchingPredecessors(proc, id)
-	if len(preds) == 0 {
-		return false
-	}
-	for _, p := range preds {
-		if !isVerifiedPostGreenPredecessor(proc, proc.Nodes[p], depth) {
 			return false
 		}
 	}

@@ -6,12 +6,13 @@ package process_test
 // binding; actions and agents are scripted.
 //
 // Loop-hazard audit (feedback_statemachine_test_loop_hazard): the reachable
-// loops are the use case loop (SAFETY_GATE -> SELECT_NEXT_USE_CASE, ends when
-// the scripted cursor passes the last use case, exactly like the real action),
-// the diagram redo (max-visits 3) and the layer redo (max-visits 3), whose
-// scripted approvals always end in "approved" or hit the cap, and the verify
-// fix loops (max-visits 2), whose scripted test outcomes converge to the
-// expected result on the second run. Every validate passes and every command
+// loops are the use case loop (CHARACTERIZE_USE_CASE -> NEXT_USE_CASE, ends
+// when the scripted cursor passes the last use case, exactly like the real
+// action; a scripted deferral writes a new order at most once per use case),
+// the diagram redo and the narrative / criteria / tests redos (max-visits 3
+// each), whose scripted approvals always end in "approved" or hit the cap, and
+// the verify fix loops (max-visits 2), whose scripted test outcomes converge
+// to the expected result on the second run. Every validate passes and every command
 // succeeds, so the execute-agent / execute-command FIX loops are never taken.
 // As a last guard, the harness fails the walk after charMaxEvents events.
 
@@ -30,18 +31,23 @@ const charMaxEvents = 5000
 
 // charUseCase is one use case's scripted behaviour.
 type charUseCase struct {
-	escc       bool // the criteria file declares ESCC (ticket-has-escc)
-	dslPort    bool // the AT writer adds DSL port methods (dsl-port-changed)
-	sysPort    bool // the DSL implementer changes system driver ports
-	extPort    bool // the DSL implementer changes external driver ports (late discovery)
-	ctDSLPort  bool // the contract test writer changes DSL ports
-	rejectLyrs map[string]int
+	escc      bool // the criteria file declares ESCC (ticket-has-escc)
+	dslPort   bool // the AT writer adds DSL port methods (dsl-port-changed)
+	sysPort   bool // the DSL implementer changes system driver ports
+	extPort   bool // the DSL implementer changes external driver ports (late discovery)
+	ctDSLPort bool // the contract test writer changes DSL ports
+	// Rejections per gated step ("narrative", "criteria", "tests").
+	rejects map[string]int
+	// The narrative finds these not-done dependencies (the first reorder
+	// defers the use case behind them; one-shot).
+	dependsOn []string
 }
 
 // charScenario scripts one characterize walk.
 type charScenario struct {
-	core     string
-	others   []string
+	proposed string   // the diagram writer's proposed use case
+	pilot    []string // order-pilot-use-cases' use-case-order
+	scaling  []string // order-scaling-use-cases' use-case-order
 	useCases map[string]*charUseCase
 	realKind string // baked real-kind of the one external system "erp"
 	// Queued outcomes per contract suite; an empty queue reads "pass".
@@ -50,7 +56,7 @@ type charScenario struct {
 	// that reports a violation; 0 = never.
 	systemChangedAt    int
 	assertionRemovedAt int
-	// Rejections of CONFIRM_CORE_USE_CASE before approval.
+	// Rejections of CONFIRM_USE_CASE_DIAGRAM before approval.
 	rejectDiagram int
 	// The characterization fixer edits a stand-in.
 	fixerTouchesStandIns bool
@@ -65,12 +71,16 @@ type charRun struct {
 	agentParams []agentDispatch
 	// testRuns is every `system-test run`: suite and test-names.
 	testRuns []testRun
+	// wipNames is the test-names each remove-wip-gate saw.
+	wipNames []string
 	err      error
 }
 
 type agentDispatch struct {
-	name   string
-	params map[string]string
+	name     string
+	params   map[string]string
+	feedback string // State "feedback" at dispatch (the operator's redo feedback)
+	useCase  string // State use-case-id at dispatch
 }
 
 type testRun struct{ suite, names string }
@@ -198,9 +208,37 @@ func bindChar(t *testing.T, eng *statemachine.Engine, sc *charScenario, run *cha
 				}
 			}
 			switch n {
-			case "record-start-commits", "record-use-case-criteria", "remove-wip-gate", "apply-ac-policy",
+			case "record-start-commits", "delete-use-case-criteria",
 				"validate-channels-registered", "validate-external-systems-registered",
 				"snapshot-working-tree", "snapshot-stand-ins":
+			case "remove-wip-gate":
+				names, _ := ctx.Get("test-names").([]string)
+				run.wipNames = append(run.wipNames, strings.Join(names, ","))
+			case "order-pilot-use-cases":
+				ctx.Set("use-case-order", strings.Join(sc.pilot, ", "))
+				ctx.Set("pilot-use-cases", strings.Join(sc.pilot, ", "))
+			case "order-scaling-use-cases":
+				ctx.Set("use-case-order", strings.Join(sc.scaling, ", "))
+			case "reorder-use-cases":
+				// As the real action: deps first, then the current use case,
+				// then the rest of the current order; a fresh cursor.
+				cur := ctx.GetString("use-case-id")
+				u := uc(cur)
+				if len(u.dependsOn) == 0 {
+					ctx.Set("use-case-deferred", false)
+					break
+				}
+				order := append(slices.Clone(u.dependsOn), cur)
+				ids := strings.FieldsFunc(ctx.GetString("use-case-order"), func(r rune) bool { return r == ',' || r == ' ' })
+				for _, id := range ids[slices.Index(ids, cur)+1:] {
+					if !slices.Contains(order, id) {
+						order = append(order, id)
+					}
+				}
+				u.dependsOn = nil
+				delete(cursors, "characterize-use-case|"+strings.Join(order, ","))
+				ctx.Set("use-case-order", strings.Join(order, ", "))
+				ctx.Set("use-case-deferred", true)
 			case "select-next-use-case":
 				ids := strings.FieldsFunc(ctx.Params["use-cases"], func(r rune) bool { return r == ',' || r == ' ' })
 				site := ctx.Params["layer-process"] + "|" + strings.Join(ids, ",")
@@ -220,8 +258,6 @@ func bindChar(t *testing.T, eng *statemachine.Engine, sc *charScenario, run *cha
 			case "check-no-assertion-removed":
 				assertionChecks++
 				ctx.Set("no-assertion-removed", assertionChecks != sc.assertionRemovedAt)
-			case "stamp-characterized-test-names":
-				ctx.Set("test-names", []string{"at_all"})
 			case "resolve-external-system":
 				ctx.Set("external-system-touched", true)
 				ctx.Set("real-kind", ctx.Params["real-kind"])
@@ -275,6 +311,7 @@ func bindChar(t *testing.T, eng *statemachine.Engine, sc *charScenario, run *cha
 			if n == "human" {
 				q := ctx.Params["question"]
 				outcome := "approved"
+				step := ""
 				switch {
 				case strings.HasPrefix(q, "Approve the use case diagram"):
 					if err := record("approve:diagram"); err != nil {
@@ -284,15 +321,30 @@ func bindChar(t *testing.T, eng *statemachine.Engine, sc *charScenario, run *cha
 						sc.rejectDiagram--
 						outcome = "rejected"
 					}
-				case strings.HasPrefix(q, "Approve the ") && strings.Contains(q, " layer for use case "):
-					layer := ctx.Params["layer-process"]
-					if err := record("approve:" + layer); err != nil {
+				case strings.HasPrefix(q, "Approve the narrative of use case "):
+					step = "narrative"
+				case strings.HasPrefix(q, "Approve the acceptance criteria of use case "):
+					step = "criteria"
+				case strings.HasPrefix(q, "Approve the acceptance tests of use case "):
+					step = "tests"
+				}
+				if step != "" {
+					id := ctx.GetString("use-case-id")
+					if err := record("approve:" + step + ":" + id); err != nil {
 						return statemachine.Outcome{Err: err}
 					}
-					u := uc(ctx.GetString("use-case-id"))
-					if u.rejectLyrs[layer] > 0 {
-						u.rejectLyrs[layer]--
+					if u := uc(id); u.rejects[step] > 0 {
+						u.rejects[step]--
 						outcome = "rejected"
+					}
+				}
+				// As the driver: a redo gate's "no" stores the feedback, its
+				// "yes" clears it.
+				if ctx.Params["ask-for-changes"] == "true" {
+					if outcome == "rejected" {
+						ctx.Set("feedback", "redo "+q)
+					} else {
+						ctx.Unset("feedback")
 					}
 				}
 				ctx.Set("approval-outcome", outcome)
@@ -301,19 +353,17 @@ func bindChar(t *testing.T, eng *statemachine.Engine, sc *charScenario, run *cha
 			if err := record("agent:" + n); err != nil {
 				return statemachine.Outcome{Err: err}
 			}
-			run.agentParams = append(run.agentParams, agentDispatch{name: n, params: cloneParams(ctx.Params)})
+			run.agentParams = append(run.agentParams, agentDispatch{name: n, params: cloneParams(ctx.Params), feedback: ctx.GetString("feedback"), useCase: ctx.GetString("use-case-id")})
 			id := ctx.GetString("use-case-id")
 			switch n {
 			case "legacy-use-case-diagram-writer":
-				ctx.Set("proposed-use-case", sc.core)
-				ctx.Set("other-use-cases", sc.others)
+				ctx.Set("proposed-use-case", sc.proposed)
 				ctx.Set("proposed-use-case-reasons", "most used")
 			case "legacy-use-case-criteria-writer":
 				// The criteria writer adds the ESCC section for discovered systems.
 				if ctx.Params["discovered-external-port-paths"] != "" {
 					uc(ctx.Params["use-case-id"]).escc = true
 				}
-				ctx.Set("criterion-ids", []string{ctx.Params["use-case-id"] + ".1"})
 			case "acceptance-test-writer":
 				ctx.Set("dsl-port-changed", uc(id).dslPort)
 				ctx.Set("test-names", []string{"at_" + id})
@@ -396,12 +446,13 @@ func runChar(t *testing.T, name string, sc *charScenario, setup func(ctx *statem
 	return run
 }
 
-// happyScenario: the core use case calls the external system and changes the
-// DSL and the system driver ports; the other use case changes only the DSL.
+// happyScenario: the pilot use case calls the external system and changes the
+// DSL and the system driver ports; the scaling use case changes only the DSL.
 func happyScenario() *charScenario {
 	return &charScenario{
-		core:   "UC-001",
-		others: []string{"UC-002"},
+		proposed: "UC-001",
+		pilot:    []string{"UC-001"},
+		scaling:  []string{"UC-002"},
 		useCases: map[string]*charUseCase{
 			"UC-001": {escc: true, dslPort: true, sysPort: true, ctDSLPort: true},
 			"UC-002": {dslPort: true},
@@ -409,7 +460,10 @@ func happyScenario() *charScenario {
 	}
 }
 
-// 1. The characterize happy path, end to end.
+// 1. The characterize happy path, end to end: the pilot use case gated, the
+// scaling one unattended, no go-ahead gate in between, each use case's WIP
+// gate removal and criteria deletion committed when its tests are green, then
+// the final safety gate and the system stop.
 func TestCharacterize_HappyPath(t *testing.T) {
 	run := runChar(t, "characterize", happyScenario(), nil)
 	if run.err != nil {
@@ -421,53 +475,80 @@ func TestCharacterize_HappyPath(t *testing.T) {
 		"cmd:start-system",
 		"agent:legacy-use-case-diagram-writer",
 		"commit:USE CASE DIAGRAM",
+		"action:check-system-unchanged",
 		"approve:diagram",
-		// Core use case: each layer, then its human gate.
-		"agent:legacy-use-case-narrative-writer", "agent:legacy-use-case-criteria-writer",
-		"commit:USE CASE (UC-001)", "approve:write-use-case-criteria",
-		"agent:contract-test-writer", "approve:implement-external-drivers-if-needed",
-		"agent:acceptance-test-writer", "commit:ACCEPTANCE TESTS (UC-001)", "approve:characterize-at-layer",
-		"agent:dsl-implementer", "commit:DSL (UC-001)", "approve:characterize-dsl-layer",
-		"agent:system-driver-adapter-implementer", "commit:SYSTEM DRIVER ADAPTERS (UC-001) (api)", "approve:characterize-adapter-layer",
-		// The other use cases, unattended.
-		"commit:USE CASE (UC-002)",
+		"action:order-pilot-use-cases",
+		// Pilot use case: each step, then its human gate.
+		"agent:legacy-use-case-narrative-writer", "commit:USE CASE NARRATIVE (UC-001)",
+		"action:check-system-unchanged", "approve:narrative:UC-001",
+		"action:reorder-use-cases",
+		"agent:legacy-use-case-criteria-writer", "commit:USE CASE CRITERIA (UC-001)",
+		"action:check-system-unchanged", "approve:criteria:UC-001",
+		"agent:contract-test-writer",
+		"agent:acceptance-test-writer", "commit:ACCEPTANCE TESTS (UC-001)",
+		"agent:dsl-implementer", "commit:DSL (UC-001)",
+		"agent:system-driver-adapter-implementer", "commit:SYSTEM DRIVER ADAPTERS (UC-001) (api)",
+		"approve:tests:UC-001",
+		"action:remove-wip-gate", "commit:WIP GATE REMOVAL (UC-001)",
+		"action:delete-use-case-criteria", "commit:CRITERIA DELETION (UC-001)",
+		// Scaling, unattended.
+		"action:order-scaling-use-cases",
+		"commit:USE CASE NARRATIVE (UC-002)",
+		"commit:USE CASE CRITERIA (UC-002)",
 		"commit:ACCEPTANCE TESTS (UC-002)",
 		"commit:DSL (UC-002)",
+		"commit:WIP GATE REMOVAL (UC-002)",
+		"commit:CRITERIA DELETION (UC-002)",
 		// Tail.
-		"action:stamp-characterized-test-names",
-		"action:remove-wip-gate",
-		"commit:WIP GATE REMOVAL",
 		"action:check-system-unchanged",
 		"action:check-no-assertion-removed",
 		"cmd:stop-system",
-		"action:apply-ac-policy",
-		"commit:CRITERIA DELETION",
 	)
+	if last := run.events[len(run.events)-1]; last != "cmd:stop-system" {
+		t.Errorf("the run must end with the system stop; trail ends %q", last)
+	}
 
 	wantCommits := []string{
 		"USE CASE DIAGRAM",
-		"USE CASE (UC-001)",
+		"USE CASE NARRATIVE (UC-001)",
+		"USE CASE CRITERIA (UC-001)",
 		"DSL (external: erp)",
 		"ACCEPTANCE TESTS (UC-001)",
 		"DSL (UC-001)",
 		"SYSTEM DRIVER ADAPTERS (UC-001) (api)",
-		"USE CASE (UC-002)",
+		"WIP GATE REMOVAL (UC-001)",
+		"CRITERIA DELETION (UC-001)",
+		"USE CASE NARRATIVE (UC-002)",
+		"USE CASE CRITERIA (UC-002)",
 		"ACCEPTANCE TESTS (UC-002)",
 		"DSL (UC-002)",
-		"WIP GATE REMOVAL",
-		"CRITERIA DELETION",
+		"WIP GATE REMOVAL (UC-002)",
+		"CRITERIA DELETION (UC-002)",
 	}
 	if got := run.commits(); !slices.Equal(got, wantCommits) {
 		t.Errorf("commits = %q, want %q", got, wantCommits)
 	}
 
-	// Gated only for the core use case: 5 layer approvals, none in bulk.
-	if got := run.countPrefix("approve:") - run.count("approve:diagram"); got != 5 {
-		t.Errorf("layer approvals = %d, want 5 (core only)", got)
+	// Gated only for the pilot: 3 approvals for UC-001, none for UC-002, and
+	// no go-ahead gate between pilot and scaling.
+	wantApprovals := []string{"approve:diagram", "approve:narrative:UC-001", "approve:criteria:UC-001", "approve:tests:UC-001"}
+	var approvals []string
+	for _, e := range run.events {
+		if strings.HasPrefix(e, "approve:") {
+			approvals = append(approvals, e)
+		}
 	}
-	// Safety gate after each (layer, use case) — 5 + 5 — plus the final one.
-	if got := run.count("action:check-system-unchanged"); got != 11 {
-		t.Errorf("check-system-unchanged ran %d times, want 11", got)
+	if !slices.Equal(approvals, wantApprovals) {
+		t.Errorf("approvals = %q, want %q", approvals, wantApprovals)
+	}
+	// Safety gate after the diagram, after each use case's narrative,
+	// criteria and 4 test layers (6 x 2), and the final one.
+	if got := run.count("action:check-system-unchanged"); got != 14 {
+		t.Errorf("check-system-unchanged ran %d times, want 14", got)
+	}
+	// Each use case's WIP gate removal gets that use case's tests only.
+	if !slices.Equal(run.wipNames, []string{"at_UC-001", "at_UC-002"}) {
+		t.Errorf("remove-wip-gate test-names = %q, want one use case each", run.wipNames)
 	}
 	// UC-002 changes no system driver port: its adapter layer is skipped.
 	if got := run.count("agent:system-driver-adapter-implementer"); got != 1 {
@@ -477,10 +558,11 @@ func TestCharacterize_HappyPath(t *testing.T) {
 	if got := run.count("agent:contract-test-writer"); got != 1 {
 		t.Errorf("contract-test-writer dispatched %d times, want 1", got)
 	}
-	// The WIP gate is removed after every use case's tests are collected, and
-	// the criteria are deleted only after the system is stopped.
-	if run.index("action:stamp-characterized-test-names") > run.index("action:remove-wip-gate") {
-		t.Error("STAMP_CHARACTERIZED_TEST_NAMES must run before REMOVE_WIP_GATE")
+	// Nothing rejected: no agent saw feedback.
+	for _, d := range run.agentParams {
+		if d.feedback != "" {
+			t.Errorf("%s saw feedback %q on an all-approved run", d.name, d.feedback)
+		}
 	}
 	// No per-ticket fixer anywhere.
 	for _, a := range []string{"agent:unexpected-failing-tests-fixer", "agent:unexpected-passing-tests-fixer"} {
@@ -741,7 +823,7 @@ func TestReconcile_TestInstanceRedRoutesOnCharacterize(t *testing.T) {
 	}
 }
 
-// lateDiscoverySetup seeds the State characterize-layer's SELECT_NEXT_USE_CASE
+// lateDiscoverySetup seeds the State characterize-test-layers' RESTAMP_BEFORE_DSL
 // leaves before the DSL layer runs for UC-001.
 func lateDiscoverySetup(ctx *statemachine.Context) {
 	ctx.Set("characterize", true)
@@ -768,7 +850,6 @@ func TestCharacterizeDSLLayer_LateExternalDiscovery(t *testing.T) {
 			"agent:legacy-use-case-narrative-writer",
 			"agent:legacy-use-case-criteria-writer",
 			"commit:USE CASE (UC-001)",
-			"action:record-use-case-criteria",
 			"action:restamp-current-use-case",
 			"action:validate-external-systems-registered",
 			"agent:contract-test-writer",
@@ -907,7 +988,7 @@ func TestCharacterize_SafetyGateHaltStopsRun(t *testing.T) {
 		mutate   func(sc *charScenario)
 		wantHalt string
 	}{
-		// 2nd check = after the core use case's external layer.
+		// 2nd check = after the pilot use case's narrative commit.
 		{"system changed", func(sc *charScenario) { sc.systemChangedAt = 2 }, "SYSTEM_CHANGED_HALT"},
 		{"assertion removed", func(sc *charScenario) { sc.assertionRemovedAt = 2 }, "ASSERTION_REMOVED_HALT"},
 	}
@@ -935,61 +1016,203 @@ func TestCharacterize_SafetyGateHaltStopsRun(t *testing.T) {
 	}
 }
 
-// 8. characterize-layer: the use case loop, the gate, the redo and its cap.
-func TestCharacterizeLayer_LoopAndApproval(t *testing.T) {
+// 8. The pilot's three gates: a "no" redoes the step with the feedback (the
+// redone agents see it, the next "yes" clears it), the cap halts; scaling use
+// cases are never gated, whatever their scripted rejections.
+func TestCharacterizeUseCase_GatesRedoWithFeedback(t *testing.T) {
 	cases := []struct {
-		name         string
-		useCases     string
-		gated        string
-		rejects      int // APPROVE_LAYER rejections (on the last use case)
-		wantErr      string
-		wantWriters  []string // use-case-id per legacy-use-case-criteria-writer dispatch
-		wantApproves int
+		step    string
+		rejects int
+		// The agents the step's redo dispatches again.
+		redone  []string
+		wantErr string
 	}{
-		{name: "bulk", useCases: "UC-002,UC-003", gated: "false", wantWriters: []string{"UC-002", "UC-003"}},
-		{name: "empty list", useCases: "", gated: "false"},
-		{name: "gated, approved", useCases: "UC-001", gated: "true", wantWriters: []string{"UC-001"}, wantApproves: 1},
-		{name: "gated, declined once", useCases: "UC-001", gated: "true", rejects: 1,
-			wantWriters: []string{"UC-001", "UC-001"}, wantApproves: 2},
-		{name: "gated, declined at cap", useCases: "UC-001", gated: "true", rejects: 3, wantErr: "LAYER_APPROVAL_EXHAUSTED",
-			wantWriters: []string{"UC-001", "UC-001", "UC-001", "UC-001"}, wantApproves: 3},
+		{step: "narrative", rejects: 1, redone: []string{"legacy-use-case-narrative-writer"}},
+		{step: "criteria", rejects: 1, redone: []string{"legacy-use-case-criteria-writer"}},
+		{step: "tests", rejects: 1, redone: []string{"contract-test-writer", "acceptance-test-writer", "dsl-implementer", "system-driver-adapter-implementer"}},
+		{step: "narrative", rejects: 3, redone: []string{"legacy-use-case-narrative-writer"}, wantErr: "NARRATIVE_APPROVAL_EXHAUSTED"},
+		{step: "criteria", rejects: 3, redone: []string{"legacy-use-case-criteria-writer"}, wantErr: "CRITERIA_APPROVAL_EXHAUSTED"},
+		{step: "tests", rejects: 3, redone: []string{"acceptance-test-writer"}, wantErr: "TESTS_APPROVAL_EXHAUSTED"},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			sc := &charScenario{useCases: map[string]*charUseCase{
-				"UC-001": {rejectLyrs: map[string]int{"write-use-case-criteria": c.rejects}},
-			}}
-			run := runChar(t, "characterize-layer", sc, func(ctx *statemachine.Context) {
-				ctx.Set("characterize", true)
-				ctx.Params["layer-process"] = "write-use-case-criteria"
-				ctx.Params["use-cases"] = c.useCases
-				ctx.Params["gated"] = c.gated
-				ctx.Params["discovered-external-port-paths"] = ""
-			})
-			if c.wantErr == "" && run.err != nil {
-				t.Fatalf("characterize-layer: %v\ntrail: %q", run.err, run.events)
+		t.Run(fmt.Sprintf("%s rejected %d", c.step, c.rejects), func(t *testing.T) {
+			sc := happyScenario()
+			sc.useCases["UC-001"].rejects = map[string]int{c.step: c.rejects}
+			// Scaling is never gated: these rejections must not fire.
+			sc.useCases["UC-002"].rejects = map[string]int{"narrative": 1, "criteria": 1, "tests": 1}
+			run := runChar(t, "characterize", sc, nil)
+			if c.wantErr != "" {
+				if run.err == nil || !strings.Contains(run.err.Error(), c.wantErr) {
+					t.Fatalf("err = %v, want %s", run.err, c.wantErr)
+				}
+				// Cap 3: three approvals, then the 4th arrival halts.
+				if got := run.count("approve:" + c.step + ":UC-001"); got != 3 {
+					t.Errorf("%s approvals = %d, want 3", c.step, got)
+				}
+				for _, a := range c.redone {
+					if got := run.count("agent:" + a); got != 4 {
+						t.Errorf("%s dispatched %d times, want 4", a, got)
+					}
+				}
+				if run.count("cmd:stop-system") != 0 {
+					t.Error("stop-system ran after a halt")
+				}
+				return
 			}
-			if c.wantErr != "" && (run.err == nil || !strings.Contains(run.err.Error(), c.wantErr)) {
-				t.Fatalf("err = %v, want %s", run.err, c.wantErr)
+			if run.err != nil {
+				t.Fatalf("characterize: %v\ntrail:\n  %s", run.err, strings.Join(run.events, "\n  "))
 			}
-			var writers []string
-			for _, d := range run.agentParams {
-				if d.name == "legacy-use-case-criteria-writer" {
-					writers = append(writers, d.params["use-case-id"])
+			if got := run.count("approve:" + c.step + ":UC-001"); got != 2 {
+				t.Errorf("%s approvals = %d, want 2 (declined, then approved)", c.step, got)
+			}
+			for _, e := range run.events {
+				if strings.HasSuffix(e, ":UC-002") && strings.HasPrefix(e, "approve:") {
+					t.Errorf("scaling use case gated: %s", e)
 				}
 			}
-			if !slices.Equal(writers, c.wantWriters) {
-				t.Errorf("writer dispatches = %q, want %q", writers, c.wantWriters)
+			// The redone agents run twice as often for UC-001 (the DSL
+			// implementer runs in the external and the DSL layer); only the
+			// redo's dispatches see the feedback, cleared once approved.
+			for _, a := range c.redone {
+				var seen []string
+				for _, d := range run.agentParams {
+					if d.name == a && d.useCase == "UC-001" {
+						seen = append(seen, d.feedback)
+					}
+				}
+				half := len(seen) / 2
+				ok := len(seen) >= 2 && len(seen)%2 == 0
+				for i, f := range seen {
+					if (i < half) != (f == "") || (i >= half && !strings.HasPrefix(f, "redo Approve the ")) {
+						ok = false
+					}
+				}
+				if !ok {
+					t.Errorf("%s feedback per UC-001 dispatch = %q, want the first pass without, the redo with feedback", a, seen)
+				}
 			}
-			if got := run.count("approve:write-use-case-criteria"); got != c.wantApproves {
-				t.Errorf("layer approvals = %d, want %d", got, c.wantApproves)
+			for _, d := range run.agentParams {
+				if d.feedback != "" && d.useCase == "UC-002" {
+					t.Errorf("%s still saw feedback for the scaling use case", d.name)
+				}
 			}
-			// One safety gate per layer run.
-			if got := run.count("action:check-system-unchanged"); got != len(c.wantWriters) {
-				t.Errorf("safety gates = %d, want %d (one per layer run)", got, len(c.wantWriters))
+			// The redo is a new commit on top.
+			label := map[string]string{
+				"narrative": "USE CASE NARRATIVE (UC-001)",
+				"criteria":  "USE CASE CRITERIA (UC-001)",
+				"tests":     "ACCEPTANCE TESTS (UC-001)",
+			}[c.step]
+			if got := run.count("commit:" + label); got != 2 {
+				t.Errorf("commit %q = %d, want 2", label, got)
 			}
 		})
 	}
+}
+
+// A narrative that finds a dependency not done yet defers its use case behind
+// it: the dependency runs through every step first, then the deferred use
+// case starts again from its narrative (its first narrative commit stays).
+func TestCharacterize_ReorderDefersBehindDependency(t *testing.T) {
+	sc := &charScenario{
+		proposed: "UC-002",
+		pilot:    []string{"UC-002"},
+		scaling:  []string{"UC-004"},
+		useCases: map[string]*charUseCase{
+			"UC-002": {dslPort: true, dependsOn: []string{"UC-003"}},
+			"UC-003": {dslPort: true},
+			"UC-004": {dslPort: true},
+		},
+	}
+	run := runChar(t, "characterize", sc, nil)
+	if run.err != nil {
+		t.Fatalf("characterize: %v\ntrail:\n  %s", run.err, strings.Join(run.events, "\n  "))
+	}
+	wantCommits := []string{
+		"USE CASE DIAGRAM",
+		"USE CASE NARRATIVE (UC-002)",
+		"USE CASE NARRATIVE (UC-003)",
+		"USE CASE CRITERIA (UC-003)",
+		"ACCEPTANCE TESTS (UC-003)",
+		"DSL (UC-003)",
+		"WIP GATE REMOVAL (UC-003)",
+		"CRITERIA DELETION (UC-003)",
+		"USE CASE NARRATIVE (UC-002)",
+		"USE CASE CRITERIA (UC-002)",
+		"ACCEPTANCE TESTS (UC-002)",
+		"DSL (UC-002)",
+		"WIP GATE REMOVAL (UC-002)",
+		"CRITERIA DELETION (UC-002)",
+		"USE CASE NARRATIVE (UC-004)",
+		"USE CASE CRITERIA (UC-004)",
+		"ACCEPTANCE TESTS (UC-004)",
+		"DSL (UC-004)",
+		"WIP GATE REMOVAL (UC-004)",
+		"CRITERIA DELETION (UC-004)",
+	}
+	if got := run.commits(); !slices.Equal(got, wantCommits) {
+		t.Errorf("commits = %q, want %q", got, wantCommits)
+	}
+	// The deferred use case's criteria writer does not run before the
+	// re-order; the dependency, added during the pilot, is gated like it.
+	for _, want := range []string{"approve:narrative:UC-002", "approve:narrative:UC-003", "approve:criteria:UC-003", "approve:tests:UC-003", "approve:tests:UC-002"} {
+		if run.count(want) == 0 {
+			t.Errorf("%s missing: the pilot (incl. a dependency found during it) is gated", want)
+		}
+	}
+	if run.count("approve:narrative:UC-002") != 2 {
+		t.Errorf("approve:narrative:UC-002 = %d, want 2 (before and after the deferral)", run.count("approve:narrative:UC-002"))
+	}
+	if run.countPrefix("approve:") != 1+1+3+3 {
+		t.Errorf("approvals = %d, want 8 (diagram, UC-002 narrative, UC-003 x3, UC-002 x3 again)", run.countPrefix("approve:"))
+	}
+	if run.count("action:reorder-use-cases") != 4 {
+		t.Errorf("reorder-use-cases = %d, want 4 (UC-002 deferred, UC-003, UC-002, UC-004)", run.count("action:reorder-use-cases"))
+	}
+}
+
+// Pilot covers every use case: scaling has nothing to do; the run still ends
+// with the final safety gate and the stop.
+func TestCharacterize_EmptyScaling(t *testing.T) {
+	sc := happyScenario()
+	sc.scaling = nil
+	run := runChar(t, "characterize", sc, nil)
+	if run.err != nil {
+		t.Fatalf("characterize: %v", run.err)
+	}
+	if run.count("agent:legacy-use-case-narrative-writer") != 1 {
+		t.Errorf("narrative writer = %d, want 1 (pilot only)", run.count("agent:legacy-use-case-narrative-writer"))
+	}
+	run.wantInOrder(t, "commit:CRITERIA DELETION (UC-001)", "action:order-scaling-use-cases", "action:check-system-unchanged", "cmd:stop-system")
+}
+
+// The wiring the walks rely on, pinned on the graph.
+func TestCharacterize_Wiring(t *testing.T) {
+	eng := loadSnapshot(t)
+	ch := eng.Processes["characterize"]
+	wantEdge(t, ch, "GATE_USE_CASE_DIAGRAM_CONFIRMED", "ORDER_PILOT_USE_CASES", "approval-outcome == approved")
+	wantEdge(t, ch, "GATE_USE_CASE_DIAGRAM_CONFIRMED", "WRITE_USE_CASE_DIAGRAM", "approval-outcome == rejected")
+	wantEdge(t, ch, "ORDER_PILOT_USE_CASES", "PILOT", "")
+	wantEdge(t, ch, "PILOT", "ORDER_SCALING_USE_CASES", "")
+	wantEdge(t, ch, "ORDER_SCALING_USE_CASES", "SCALING", "")
+	wantEdge(t, ch, "SCALING", "FINAL_SAFETY_GATE", "")
+	wantEdge(t, ch, "FINAL_SAFETY_GATE", "STOP_SYSTEM", "")
+	wantEdge(t, ch, "STOP_SYSTEM", "CHARACTERIZE_END", "")
+	if g := ch.Nodes["PILOT"].Raw.Params["gated"]; g != "true" {
+		t.Errorf("PILOT gated = %q, want true", g)
+	}
+	if g := ch.Nodes["SCALING"].Raw.Params["gated"]; g != "false" {
+		t.Errorf("SCALING gated = %q, want false", g)
+	}
+	loop := eng.Processes["characterize-use-cases"]
+	if u := loop.Nodes["NEXT_USE_CASE"].Raw.Params["use-cases"]; u != "${use-case-order}" {
+		t.Errorf("NEXT_USE_CASE use-cases = %q, want ${use-case-order} (re-read on every pass)", u)
+	}
+	wantEdge(t, loop, "CHARACTERIZE_USE_CASE", "NEXT_USE_CASE", "")
+	uc := eng.Processes["characterize-use-case"]
+	wantEdge(t, uc, "GATE_USE_CASE_DEFERRED", "USE_CASE_DEFERRED_END", "use-case-deferred == true")
+	wantEdge(t, uc, "GATE_NARRATIVE_APPROVED", "WRITE_NARRATIVE", "approval-outcome == rejected")
+	wantEdge(t, uc, "GATE_CRITERIA_APPROVED", "WRITE_CRITERIA", "approval-outcome == rejected")
+	wantEdge(t, eng.Processes["characterize-test-layers"], "GATE_TESTS_APPROVED", "RESTAMP_BEFORE_EXTERNAL", "approval-outcome == rejected")
 }
 
 // The diagram redo: a declined diagram re-runs the writer; the cap halts.
@@ -1009,14 +1232,14 @@ func TestCharacterize_DiagramRedoAndCap(t *testing.T) {
 		sc := happyScenario()
 		sc.rejectDiagram = 3
 		run := runChar(t, "characterize", sc, nil)
-		if run.err == nil || !strings.Contains(run.err.Error(), "CORE_USE_CASE_CONFIRMATION_EXHAUSTED") {
-			t.Fatalf("err = %v, want CORE_USE_CASE_CONFIRMATION_EXHAUSTED", run.err)
+		if run.err == nil || !strings.Contains(run.err.Error(), "USE_CASE_DIAGRAM_CONFIRMATION_EXHAUSTED") {
+			t.Fatalf("err = %v, want USE_CASE_DIAGRAM_CONFIRMATION_EXHAUSTED", run.err)
 		}
 		if got := run.count("agent:legacy-use-case-diagram-writer"); got != 4 {
 			t.Errorf("diagram writer = %d, want 4 (cap 3 approvals, the 4th writer pass then halts at the confirm)", got)
 		}
 		if run.count("agent:legacy-use-case-narrative-writer") != 0 {
-			t.Error("criteria layer ran without a confirmed diagram")
+			t.Error("a use case ran without confirmed diagrams")
 		}
 	})
 }

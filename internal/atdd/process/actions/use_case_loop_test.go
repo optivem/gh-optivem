@@ -70,7 +70,7 @@ func loopActions(root string) actions {
 	return newActions(Deps{Config: loopConfig(), RepoPath: root, Stdout: &bytes.Buffer{}})
 }
 
-// layerCtx is a characterize-layer call scope whose system-test start commit
+// layerCtx is a select-next-use-case call scope whose system-test start commit
 // is the repo's current HEAD (record-start-commits' value).
 func layerCtx(t *testing.T, root, useCases, layer string) *statemachine.Context {
 	t.Helper()
@@ -222,8 +222,8 @@ func TestSelectNextUseCase_Errors(t *testing.T) {
 	}
 }
 
-// Gap 4: a system with only the core use case has an empty other-use-cases;
-// the bulk passes skip, they do not fail.
+// Gap 4: an empty use-case-order (e.g. the pilot covered every use case, so
+// scaling has none left) skips, it does not fail.
 func TestSelectNextUseCase_EmptyListHasNoneLeft(t *testing.T) {
 	root := useCaseRepo(t)
 	a := loopActions(root)
@@ -384,44 +384,5 @@ func TestStampUseCaseCriteria_FolderLayout(t *testing.T) {
 	}
 	if got := ctx.GetString(CtxKeyScenarioCriteria); got != "Pay an order => UC-004.1" {
 		t.Errorf("scenario-criteria = %q", got)
-	}
-}
-
-// Gap 3: the final remove-wip-gate gets every characterized use case's
-// tagged tests, not the last use case's test-names.
-func TestStampCharacterizedTestNames(t *testing.T) {
-	root := useCaseRepo(t)
-	writeRepoFile(t, root, "system-test/at/BrowseTest.java", taggedJavaTest("BrowseTest", map[string]string{"shouldListProducts": "UC-001.1"}))
-	writeRepoFile(t, root, "system-test/at/OrderTest.java", taggedJavaTest("OrderTest", map[string]string{"shouldPlaceOrder": "UC-002.1"}))
-	writeRepoFile(t, root, "system-test/at/OtherTest.java", taggedJavaTest("OtherTest", map[string]string{"shouldDoOther": "UC-007.1"}))
-	a := loopActions(root)
-
-	ctx := statemachine.NewContext()
-	ctx.Set("proposed-use-case", "UC-001")
-	ctx.Set("other-use-cases", []string{"UC-002"})
-	ctx.Set("test-names", []string{"shouldPlaceOrder"})
-	if out := a.stampCharacterizedTestNames(ctx); out.Err != nil {
-		t.Fatal(out.Err)
-	}
-	if names, _ := ctx.Get("test-names").([]string); strings.Join(names, ",") != "shouldListProducts,shouldPlaceOrder" {
-		t.Errorf("test-names = %v, want both use cases' tests and not UC-007's", ctx.Get("test-names"))
-	}
-
-	// Only the core use case (other-use-cases empty).
-	ctx.Set("other-use-cases", []string{})
-	if out := a.stampCharacterizedTestNames(ctx); out.Err != nil {
-		t.Fatal(out.Err)
-	}
-	if names, _ := ctx.Get("test-names").([]string); strings.Join(names, ",") != "shouldListProducts" {
-		t.Errorf("core only: test-names = %v", ctx.Get("test-names"))
-	}
-
-	none := statemachine.NewContext()
-	none.Set("proposed-use-case", "UC-005")
-	if out := a.stampCharacterizedTestNames(none); out.Err == nil {
-		t.Error("no tagged test must error")
-	}
-	if out := a.stampCharacterizedTestNames(statemachine.NewContext()); out.Err == nil {
-		t.Error("missing proposed-use-case must error")
 	}
 }

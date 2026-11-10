@@ -18,11 +18,11 @@ import (
 )
 
 // Per-use-case State of the characterize flow (plan 20261110-1130, decision
-// "Per-use-case State"). The bulk passes run one layer over every use case
-// before the next layer, so State a writer emitted for one use case (its
-// test-names, its port-changed verdicts) is stale by the time the next layer
-// reaches that use case. select-next-use-case therefore re-derives it from the
-// files and the branch history each time.
+// "Per-use-case State"). select-next-use-case and restamp-current-use-case
+// re-derive it from the files and the branch history, so a resumed run and a
+// redone layer see the same values, and State another writer emitted in
+// between (the contract test writer's test-names) does not leak into the next
+// layer.
 
 // CtxKeySystemTestStartCommit is the system-test repo commit characterize
 // started from (record-start-commits, kept on resume): the lower bound of the
@@ -254,32 +254,4 @@ func (a actions) useCasePortChanges(ctx *statemachine.Context, cfg *projectconfi
 		out[src.key] = files
 	}
 	return out, nil
-}
-
-// stampCharacterizedTestNames runs before characterize's REMOVE_WIP_GATE. The
-// acceptance test layer's test-names holds one use case's tests at a time, so
-// it stamps test-names with the tests tagged with a criterion of any
-// characterized use case (proposed-use-case plus other-use-cases): remove-wip-gate
-// then un-gates every test the run wrote. No tagged test at all means the
-// acceptance test layers wrote nothing to un-gate, a wiring or tagging bug.
-func (a actions) stampCharacterizedTestNames(ctx *statemachine.Context) statemachine.Outcome {
-	cfg := a.deps.Config
-	if cfg == nil {
-		return statemachine.Outcome{Err: fmt.Errorf("stamp-characterized-test-names: no gh-optivem config wired (driver bug)")}
-	}
-	core := ctx.GetString("proposed-use-case")
-	ids := splitUseCaseIDs(core + "," + strings.Join(stringListState(ctx, "other-use-cases"), ","))
-	if strings.TrimSpace(core) == "" {
-		return statemachine.Outcome{Err: fmt.Errorf("stamp-characterized-test-names: proposed-use-case is not in State; the use case diagram writer must have run")}
-	}
-	names, err := a.useCaseTestNames(cfg, ids)
-	if err != nil {
-		return statemachine.Outcome{Err: fmt.Errorf("stamp-characterized-test-names: %w", err)}
-	}
-	if len(names) == 0 {
-		return statemachine.Outcome{Err: fmt.Errorf("stamp-characterized-test-names: no acceptance test is tagged with a criterion of %s; every characterization test must carry its UC-NNN.M tag", strings.Join(ids, ", "))}
-	}
-	ctx.Set("test-names", names)
-	fmt.Fprintf(a.deps.Out.Phase, "%d characterization test(s) across %d use case(s) to un-gate.\n", len(names), len(ids))
-	return statemachine.Outcome{}
 }

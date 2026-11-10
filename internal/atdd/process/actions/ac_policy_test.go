@@ -77,3 +77,29 @@ func TestApplyAcPolicy_FailsLoud(t *testing.T) {
 		t.Fatalf("a failed policy must write nothing, got:\n%s", got)
 	}
 }
+
+// characterize's per-use-case deletion: every criterion of the current use
+// case goes, the rest of the file stays; a second run (resume before the
+// commit) is a no-op; no use case selected is an error.
+func TestDeleteUseCaseCriteria(t *testing.T) {
+	root := mergeRepo(t, mergeTestUseCase)
+	a := newActions(Deps{RepoPath: root})
+	ctx := statemachine.NewContext()
+	ctx.Set(CtxKeyUseCaseID, "UC-001")
+	if out := a.deleteUseCaseCriteria(ctx); out.Err != nil {
+		t.Fatal(out.Err)
+	}
+	got := readUseCase(t, root)
+	if strings.Contains(got, "UC-001.1") || strings.Contains(got, "UC-001.2") || !strings.Contains(got, "title: Place Order") {
+		t.Fatalf("use case after the deletion:\n%s", got)
+	}
+	if out := a.deleteUseCaseCriteria(ctx); out.Err != nil {
+		t.Fatalf("second run must be a no-op: %v", out.Err)
+	}
+	if again := readUseCase(t, root); again != got {
+		t.Fatalf("second run changed the file:\n%s", again)
+	}
+	if out := a.deleteUseCaseCriteria(statemachine.NewContext()); out.Err == nil || !strings.Contains(out.Err.Error(), CtxKeyUseCaseID) {
+		t.Fatalf("no use case selected: err = %v", out.Err)
+	}
+}

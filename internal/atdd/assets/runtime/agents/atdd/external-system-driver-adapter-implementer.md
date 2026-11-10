@@ -20,6 +20,8 @@ ${scope-block}
 - `architecture` — the architecture variant (monolith / multitier) the implementation targets.
 - `external-system-name` — the external system whose driver adapters this dispatch must implement. Implement only the `${external-system-name}` adapters (under `${external-system-driver-adapter}`) and modify no other external system's adapters.
 
+${feedback-section}
+
 ## Steps
 
 1. Implement the External System Driver adapters (`${external-system-driver-adapter}`) for real — replace each `TODO: External System Driver` prototype with actual logic. Do NOT read external-system source code to figure out behavior; rely on the contract tests and the published external API contract. ${re-entry-policy} The "broken/missing piece" for this agent is typically a forgotten Driver stub under `${external-system-driver-adapter}`.

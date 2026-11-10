@@ -26,6 +26,8 @@ Leave any `Stub only:` register (`has exactly products` / `has no products`) **u
 
 When the block is **empty** (no External System Contract Criteria declared — the file-change-proxy path), ignore this section and model each test on the existing sibling contract test, as Step 1 describes.
 
+${feedback-section}
+
 ## Steps
 
 1. Write External System Contract Tests (`${ct-test}`) against the existing DSL surface (`${dsl-port}`). If new DSL methods (`${dsl-port}`) are needed, call them in the test as if they exist.

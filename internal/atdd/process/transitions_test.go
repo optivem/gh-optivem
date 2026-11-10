@@ -44,7 +44,10 @@ func TestLoadSnapshot_AllProcessesParse(t *testing.T) {
 		"review-code-and-architecture",
 		// TOP — legacy baseline (plan 20261110-1130)
 		"characterize",
-		"characterize-layer",
+		"characterize-use-cases",
+		"select-next-use-case-in-order",
+		"characterize-use-case",
+		"characterize-test-layers",
 		"write-use-case-criteria",
 		"characterize-at-layer",
 		"characterize-dsl-layer",
@@ -1512,11 +1515,16 @@ func TestBackEdgesAreAudited(t *testing.T) {
 		"verify-tests-fail: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":          true,
 		// Characterize (plan 20261110-1130). The use case loop ends when
 		// select-next-use-case's cursor passes the last use case (it only moves
-		// forward); the diagram redo is capped by max-visits 3 on
-		// CONFIRM_CORE_USE_CASE, then CORE_USE_CASE_CONFIRMATION_EXHAUSTED.
-		"characterize-layer: SAFETY_GATE -> SELECT_NEXT_USE_CASE":              true,
-		"characterize: GATE_CORE_USE_CASE_CONFIRMED -> WRITE_USE_CASE_DIAGRAM": true,
-		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":               true,
+		// forward; a deferral writes a new order only for a not-done
+		// dependency of an acyclic diagram); the diagram, narrative, criteria
+		// and tests redos are each capped by max-visits 3 on their approve
+		// node, then the matching *_EXHAUSTED halt.
+		"characterize-use-cases: CHARACTERIZE_USE_CASE -> NEXT_USE_CASE":           true,
+		"characterize: GATE_USE_CASE_DIAGRAM_CONFIRMED -> WRITE_USE_CASE_DIAGRAM":  true,
+		"characterize-use-case: GATE_NARRATIVE_APPROVED -> WRITE_NARRATIVE":        true,
+		"characterize-use-case: GATE_CRITERIA_APPROVED -> WRITE_CRITERIA":          true,
+		"characterize-test-layers: GATE_TESTS_APPROVED -> RESTAMP_BEFORE_EXTERNAL": true,
+		"verify-tests-pass: GATE_FIX_FLOW_APPROVED -> RUN_TESTS":                   true,
 	}
 	got := map[string]bool{}
 	for name, p := range eng.Processes {

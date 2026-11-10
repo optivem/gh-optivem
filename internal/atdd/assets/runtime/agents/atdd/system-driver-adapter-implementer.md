@@ -22,6 +22,8 @@ ${scope-block}
 
 ${review-findings-section}
 
+${feedback-section}
+
 ## Steps
 
 1. Implement the `${channel}` System Driver adapter (the `${channel}` adapter under `${system-driver-adapter}`) for real — replace each `TODO: System Driver` prototype in that channel's adapter with actual logic, and touch no adapter other than the `${channel}` one. ${re-entry-policy} The "broken/missing piece" for this agent is typically a forgotten `${channel}` Driver stub under `${system-driver-adapter}`.

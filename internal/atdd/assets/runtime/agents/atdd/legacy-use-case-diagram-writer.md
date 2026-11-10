@@ -48,5 +48,4 @@ ${expected-outputs}
 Notes:
 
 - `proposed-use-case` is the proposed use case's id (`UC-NNN`), as written in the `## Most important use case` section. If that section names a different one than you would pick (the reviewer changed it), emit the reviewer's choice.
-- `other-use-cases` lists every other use case id in the diagram. Together with `proposed-use-case` it is exactly the set of use cases in the diagram (and of nodes in the dependency diagram).
 - `proposed-use-case-reasons` is the reasons from the `## Most important use case` section, one line.
