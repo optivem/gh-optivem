@@ -290,6 +290,29 @@ func TestSelectNextUseCase_RederivesTestsAndPortChanges(t *testing.T) {
 	}
 }
 
+// The external layer's own commit carries the contract test writer's DSL port
+// changes: they count for dsl-port-changed together with (not instead of) the
+// acceptance test layer's.
+func TestSelectNextUseCase_DslPortChangesMergeExternalAndAcceptanceCommits(t *testing.T) {
+	root := useCaseRepo(t)
+	a := loopActions(root)
+	ctx := layerCtx(t, root, "UC-001", "characterize-dsl-layer")
+
+	writeRepoFile(t, root, "system-test/dsl/port/ErpDsl.java", "interface ErpDsl {}\n")
+	commitAll(t, root, "#1 t - EXTERNAL SYSTEMS (UC-001)")
+	// The acceptance test commit changes no DSL port file: a second source
+	// label must not overwrite the first one's files.
+	writeRepoFile(t, root, "system-test/at/BrowseTest.java", taggedJavaTest("BrowseTest", map[string]string{"shouldListProducts": "UC-001.1"}))
+	commitAll(t, root, "#1 t - ACCEPTANCE TESTS (UC-001)")
+
+	if out := a.selectNextUseCase(ctx); out.Err != nil {
+		t.Fatal(out.Err)
+	}
+	if ctx.Get("dsl-port-changed") != true {
+		t.Fatalf("dsl-port-changed = %v, want true (from the EXTERNAL SYSTEMS commit)", ctx.Get("dsl-port-changed"))
+	}
+}
+
 // Before a use case's acceptance test layer it has no tagged tests and no
 // port change: test-names is unset (an empty list would run the whole suite)
 // and the flags are false, whatever the previous use case left.

@@ -145,8 +145,16 @@ func commitVerifiedViolations(proc *Process, node Node, rule string) []Violation
 // gates is verified. On the compile-only route the idempotent system-start (or
 // the compile step itself) is a legitimate predecessor when COMPILE_TESTS gates
 // the commit instead of a verify.
+//
+// Characterize (plan 20261110-1130) commits the external layer on its own
+// (COMMIT_EXTERNAL_SYSTEMS): implement-external-drivers-if-needed verifies
+// its contract tests inside (each external system's contract path ends in
+// verify-tests-pass) and changes nothing when the use case has no ESCC.
 func isVerifyingPredecessor(pn Node, compileOnly bool) bool {
 	if isCallTo(pn, "verify-tests-pass") || isCallTo(pn, "verify-tests-fail") || isCallTo(pn, "verify-inner-loop") {
+		return true
+	}
+	if isCallTo(pn, "implement-external-drivers-if-needed") {
 		return true
 	}
 	return compileOnly && (isCallTo(pn, "start-system") || isCallTo(pn, "start-system-restart") || isCallTo(pn, "compile-tests"))

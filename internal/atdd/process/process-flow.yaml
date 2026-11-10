@@ -1550,6 +1550,17 @@ processes:
         process: implement-external-drivers-if-needed
         name: "External Layer"
 
+      # The external layer's contract tests, external DSL, driver adapters,
+      # stubs and simulator get their own commit (one per layer and use
+      # case); a no-op on a clean tree when the use case has no ESCC.
+      - id: COMMIT_EXTERNAL_SYSTEMS
+        type: call-activity
+        process: commit
+        name: "Commit External Systems"
+        params:
+          category: test-commit
+          layer: "EXTERNAL SYSTEMS (${use-case-id})"
+
       - id: SAFETY_GATE_EXTERNAL
         type: call-activity
         process: verify-system-unchanged
@@ -1638,7 +1649,8 @@ processes:
 
     sequence-flows:
       - {from: RESTAMP_BEFORE_EXTERNAL,               to: EXTERNAL_LAYER}
-      - {from: EXTERNAL_LAYER,                        to: SAFETY_GATE_EXTERNAL}
+      - {from: EXTERNAL_LAYER,                        to: COMMIT_EXTERNAL_SYSTEMS}
+      - {from: COMMIT_EXTERNAL_SYSTEMS,               to: SAFETY_GATE_EXTERNAL}
       - {from: SAFETY_GATE_EXTERNAL,                  to: RESTAMP_BEFORE_ACCEPTANCE_TESTS}
       - {from: RESTAMP_BEFORE_ACCEPTANCE_TESTS,       to: ACCEPTANCE_TEST_LAYER}
       - {from: ACCEPTANCE_TEST_LAYER,                 to: SAFETY_GATE_ACCEPTANCE_TESTS}

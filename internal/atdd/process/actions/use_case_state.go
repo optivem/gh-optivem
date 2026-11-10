@@ -205,8 +205,11 @@ func (a actions) useCaseTestNames(cfg *projectconfig.Config, useCases []string) 
 // and implement-and-verify-dsl ("DSL${layer-suffix}") under characterize's
 // layer-suffix " (${use-case-id})": the acceptance-test writer changes the DSL
 // port and the DSL implementer the driver ports, the same writers whose
-// verdicts set these flags on the ticket path.
+// verdicts set these flags on the ticket path. The external layer's own
+// commit ("EXTERNAL SYSTEMS", characterize-test-layers) carries the contract
+// test writer's DSL port changes, which also set dsl-port-changed.
 var useCasePortChangeSources = []struct{ key, label, layer string }{
+	{"dsl-port-changed", "EXTERNAL SYSTEMS", "dsl-port"},
 	{"dsl-port-changed", "ACCEPTANCE TESTS", "dsl-port"},
 	{"system-driver-port-changed", "DSL", "system-driver-port"},
 	{"external-driver-port-changed", "DSL", "external-system-driver-port"},
@@ -244,7 +247,7 @@ func (a actions) useCasePortChanges(ctx *statemachine.Context, cfg *projectconfi
 		if err != nil {
 			return nil, err
 		}
-		var files []string
+		files := out[src.key] // a flag may have several source labels
 		for _, f := range splitNonEmptyLines(string(raw)) {
 			if pathInScope(cleanRelPath(f), roots) && !slices.Contains(files, f) {
 				files = append(files, f)
