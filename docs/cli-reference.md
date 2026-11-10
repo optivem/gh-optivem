@@ -471,11 +471,13 @@ gh optivem system build --rebuild         # force full rebuild (no layer cache r
 
 ### Start system
 
-`docker compose up` + wait for health.
+`docker compose up -d --build` + wait for health.
+
+Plain `start` always rebuilds, so a stack never runs an image older than its source; Docker's layer cache keeps an unchanged rebuild to a few seconds. A stack that already responds is not torn down: Compose recreates only the services whose image changed. A stack that does not respond is torn down first (clearing stray containers). In CI the pipeline compose files pull the system under test via `image:` only, so `--build` touches only the services that declare `build:` (the simulators).
 
 ```bash
 gh optivem system start
-gh optivem system start --restart         # recreate changed services (keeps the database running — no full down/up)
+gh optivem system start --restart         # also force-recreate every non-persistent service (reloads stub mappings, re-runs migrations) even when no image changed; the database keeps running
 gh optivem system start --restart --external-only   # recreate only the external-system stubs/simulators; the system under test keeps running
 gh optivem system start --log-lines 200   # lines of compose logs to dump on health-probe failure (default 50)
 gh optivem system start --up-timeout 10m  # per-attempt timeout for `docker compose up -d` (default 5m)

@@ -25,11 +25,14 @@ type SystemOptions struct {
 	// LogLines controls how many trailing lines of compose logs are dumped on
 	// a health-probe failure during Up. Zero defaults to 50.
 	LogLines int
-	// Restart, when true, recreates the changed services in place so a freshly
-	// built image (and changed stubs/migrations) is picked up, while leaving the
-	// persistent services (postgres + its data volume) running — an incremental
-	// recreate rather than a full down/up. When false, Up first checks
-	// IsAnyURLUp; if the system already responds, Up is a no-op.
+	// Restart, when true, force-recreates every non-persistent service
+	// (`--force-recreate --no-deps`) even when its image did not change, so
+	// bind-mounted WireMock stub mappings are reloaded and Flyway re-runs, while
+	// leaving the persistent services (postgres + its data volume) running. It is
+	// also the prerequisite for ExternalOnly. When false, Up still rebuilds
+	// (`up -d --build`) but Compose recreates only services whose image changed;
+	// IsAnyURLUp merely decides whether a `down` runs first (not healthy) or not
+	// (healthy).
 	Restart bool
 	// Health overrides default polling parameters.
 	Health HealthOptions
@@ -42,7 +45,6 @@ type SystemOptions struct {
 	// --force-recreate --no-deps <stand-ins>`, then the usual health wait. The
 	// system under test and postgres are left running untouched. Stand-ins are
 	// selected deterministically by SelectStandInServices against StandInPaths.
-	// Up never takes the "already running, skip" shortcut in this mode.
 	ExternalOnly bool
 	// StandInPaths are the external-systems: registry stub.path /
 	// simulator.path values (projectconfig.ExternalRegistryPaths). Required
@@ -158,9 +160,12 @@ func Build(sys *SystemConfig, cwd string, opts BuildOptions) error {
 //   - opts.Restart=true + opts.ExternalOnly=true → rebuild and force-recreate
 //     only the external-system stand-in services (`up -d --build
 //     --force-recreate --no-deps <stand-ins>`), then health-wait. Never skipped.
-//   - opts.Restart=false    → if IsAnyURLUp returns true, skip the entry; else
-//     `down` + `up -d` + health-wait. (Mirrors the PS1 runner's behavior so
-//     local re-runs are fast when the stack is already healthy.)
+//   - opts.Restart=false    → never skipped, always `up -d --build` +
+//     health-wait, so a stack is never run from an image older than its source
+//     (Docker's layer cache keeps an unchanged rebuild to seconds). IsAnyURLUp
+//     only picks the pre-up step: a healthy stack gets no `down` (Compose
+//     recreates just the services whose image changed); a stack that is not
+//     healthy is torn down first to clear stray containers.
 //
 // The `up` invocation is wrapped in a small retry loop for transient network
 // errors.
@@ -170,11 +175,11 @@ func Up(sys *SystemConfig, cwd string, opts SystemOptions) error {
 	}
 	for _, s := range sys.Systems {
 		fmt.Fprintf(os.Stdout, "\n=== System: %s ===\n", s.Label)
-		if !opts.Restart && IsAnyURLUp(s, opts.Health) {
-			fmt.Fprintln(os.Stdout, "System is already running, skipping restart")
-			continue
+		healthy := !opts.Restart && IsAnyURLUp(s, opts.Health)
+		if healthy {
+			fmt.Fprintln(os.Stdout, "System is already running, rebuilding changed services in place")
 		}
-		if err := upOne(s, cwd, opts); err != nil {
+		if err := upOne(s, cwd, opts, healthy); err != nil {
 			return err
 		}
 	}
@@ -189,8 +194,8 @@ func Up(sys *SystemConfig, cwd string, opts SystemOptions) error {
 // field on SystemEntry, defaulting to {"postgres"}.
 var persistentServices = map[string]bool{"postgres": true}
 
-func upOne(s SystemEntry, cwd string, opts SystemOptions) error {
-	upArgs, err := upComposeArgs(s, cwd, opts)
+func upOne(s SystemEntry, cwd string, opts SystemOptions, healthy bool) error {
+	upArgs, err := upComposeArgs(s, cwd, opts, healthy)
 	if err != nil {
 		return fmt.Errorf("up %s: %w", s.Label, err)
 	}
@@ -238,20 +243,24 @@ func upOne(s SystemEntry, cwd string, opts SystemOptions) error {
 // pre-up cleanup, returning the `docker compose` argument list for the retry
 // loop.
 //
-//   - Non-restart (opts.Restart == false): only reached when the stack is not
-//     already healthy. Tear it down first (clearing stray containers), then a
-//     plain `up -d`. Unchanged legacy behaviour.
+//   - Non-restart (opts.Restart == false): plainStartArgs. When the stack is
+//     not healthy, tear it down first (clearing stray containers); when it is
+//     healthy, no `down`. Either way `up -d --build`.
 //   - Restart: query the stack's services and which are running, then delegate
 //     to buildUpArgs for the incremental-vs-cold-start decision. No `down`.
+//     healthy is ignored.
 //   - Restart + ExternalOnly: select the stand-in services from the resolved
 //     compose config and recreate only those (externalOnlyUpArgs). No `down`.
-func upComposeArgs(s SystemEntry, cwd string, opts SystemOptions) ([]string, error) {
+func upComposeArgs(s SystemEntry, cwd string, opts SystemOptions, healthy bool) ([]string, error) {
 	if !opts.Restart {
-		if err := downOne(s, cwd); err != nil {
-			// Down errors are not fatal — the system may already be down.
-			fmt.Fprintf(os.Stderr, "warn: down %s: %v\n", s.Label, err)
+		args, down := plainStartArgs(s.ComposeFile, healthy)
+		if down {
+			if err := downOne(s, cwd); err != nil {
+				// Down errors are not fatal — the system may already be down.
+				fmt.Fprintf(os.Stderr, "warn: down %s: %v\n", s.Label, err)
+			}
 		}
-		return []string{"-f", s.ComposeFile, "up", "-d"}, nil
+		return args, nil
 	}
 	if opts.ExternalOnly {
 		return externalOnlyUpArgs(s, cwd, opts)
@@ -287,6 +296,21 @@ func externalOnlyUpArgs(s SystemEntry, cwd string, opts SystemOptions) ([]string
 	}
 	fmt.Fprintf(os.Stdout, "Restarting external-system stand-ins only: %s\n", strings.Join(standIns, ", "))
 	return buildExternalOnlyUpArgs(s.ComposeFile, standIns), nil
+}
+
+// plainStartArgs is the pure arg-selection core of plain `system start` (no
+// --restart): it returns the `docker compose up` arguments and whether a `down`
+// must run first. The stack always gets `up -d --build`; only a stack that is
+// not healthy is torn down first.
+//
+// --build is deliberately unconditional — do not gate it on local vs pipeline.
+// It only affects services that declare a `build:` section. The shop's pipeline
+// compose files (docker-compose.pipeline.{real,stub}.yml) pull the system under
+// test via `image:` only, with no `build:`, so pulled RC images are never
+// rebuilt; the only buildable pipeline service is the external-system
+// simulators, which a clean CI runner builds anyway.
+func plainStartArgs(composeFile string, healthy bool) (args []string, down bool) {
+	return []string{"-f", composeFile, "up", "-d", "--build"}, !healthy
 }
 
 // buildUpArgs is the pure arg-selection core of the --restart path: given the

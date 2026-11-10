@@ -146,3 +146,27 @@ func TestTransientNetRE(t *testing.T) {
 		})
 	}
 }
+
+// TestPlainStartArgs pins plain `system start` (no --restart): it always
+// rebuilds, and only a stack that is not healthy is torn down first.
+func TestPlainStartArgs(t *testing.T) {
+	cases := []struct {
+		name     string
+		healthy  bool
+		wantDown bool
+	}{
+		{name: "healthy stack rebuilds in place without down", healthy: true, wantDown: false},
+		{name: "unhealthy stack is torn down then rebuilt", healthy: false, wantDown: true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			args, down := plainStartArgs("docker-compose.yml", c.healthy)
+			if got, want := strings.Join(args, " "), "-f docker-compose.yml up -d --build"; got != want {
+				t.Errorf("args = %q, want %q", got, want)
+			}
+			if down != c.wantDown {
+				t.Errorf("down = %v, want %v", down, c.wantDown)
+			}
+		})
+	}
+}

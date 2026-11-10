@@ -134,7 +134,7 @@ func TestUpComposeArgs_ExternalOnly(t *testing.T) {
 		StandInPaths:   []string{"external-systems/simulators", "external-systems/stubs"},
 		StandInBaseDir: "/repo/shop",
 	}
-	args, err := upComposeArgs(SystemEntry{Label: "shop", ComposeFile: "docker-compose.yml"}, t.TempDir(), opts)
+	args, err := upComposeArgs(SystemEntry{Label: "shop", ComposeFile: "docker-compose.yml"}, t.TempDir(), opts, false)
 	if err != nil {
 		t.Fatalf("upComposeArgs: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestUpComposeArgs_ExternalOnly_ConfigErrorSurfaces(t *testing.T) {
 	composeConfigJSON = func(string, string) ([]byte, error) { return nil, errors.New("daemon down") }
 
 	opts := SystemOptions{Restart: true, ExternalOnly: true, StandInPaths: []string{"stubs"}, StandInBaseDir: "/r"}
-	if _, err := upComposeArgs(SystemEntry{ComposeFile: "c.yml"}, t.TempDir(), opts); err == nil || !strings.Contains(err.Error(), "daemon down") {
+	if _, err := upComposeArgs(SystemEntry{ComposeFile: "c.yml"}, t.TempDir(), opts, false); err == nil || !strings.Contains(err.Error(), "daemon down") {
 		t.Fatalf("err = %v, want daemon down", err)
 	}
 }

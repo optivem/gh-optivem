@@ -81,14 +81,18 @@ func newSystemStartCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "start",
-		Short: "docker compose up + wait for health",
-		Long: `Bring up every entry in systems[] (docker compose up -d) and wait for health.
+		Short: "docker compose up --build + wait for health",
+		Long: `Bring up every entry in systems[] (docker compose up -d --build) and wait for health.
 
-Without --restart, a stack that already responds is left as is.
+Plain start always rebuilds, so a stack never runs an image older than its
+source (Docker's layer cache keeps an unchanged rebuild to seconds). A stack
+that already responds is not torn down: Compose recreates only the services
+whose image changed. A stack that does not respond is torn down first.
 
---restart recreates the changed services in place (rebuild + force-recreate of
-every non-persistent service) so new code, stubs, and migrations are picked up,
-while the database keeps running.
+--restart additionally force-recreates every non-persistent service even when
+its image did not change, so bind-mounted stub mappings are reloaded and
+database migrations re-run, while the database (and its data volume) keeps
+running. It is the prerequisite for --external-only.
 
 --restart --external-only narrows that recreate to the external-system
 stand-ins only: the compose services whose build context or bind-mount source
@@ -114,7 +118,7 @@ recreated (--no-deps). It is an error if no service matches.`,
 			exitOnError(runner.Up(sys, cwdForPath(resolved), opts))
 		},
 	}
-	cmd.Flags().BoolVar(&restart, "restart", false, "Recreate changed services to pick up new code/stubs/migrations; keeps the database running (incremental, no full down/up)")
+	cmd.Flags().BoolVar(&restart, "restart", false, "Also force-recreate every non-persistent service (reloads stub mappings, re-runs migrations) even when no image changed; keeps the database running")
 	cmd.Flags().BoolVar(&externalOnly, "external-only", false, "With --restart: rebuild and recreate only the external-system stand-ins (simulators/stubs under the external-systems: registry paths); the system under test keeps running")
 	cmd.Flags().IntVar(&logLines, "log-lines", 50, "Lines of compose logs to dump on health-probe failure")
 	cmd.Flags().DurationVar(&upTimeout, "up-timeout", 0, "Per-attempt timeout for `docker compose up -d` (zero = 5m default)")
