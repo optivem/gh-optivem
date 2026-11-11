@@ -308,10 +308,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    RESOLVE_TEST_USE_CASES[[Resolve Use Cases to Verify]]
     IMPLEMENT_AND_VERIFY_SYSTEM["Refactor System — see § implement-and-verify-system<br/>action = refactor-system<br/>layer-suffix = <br/>suite = <br/>task-name = refactor-system<br/>test-names = "]
     REFACTOR_SYSTEM_STRUCTURE_END(( ))
 
+    RESOLVE_TEST_USE_CASES --> IMPLEMENT_AND_VERIFY_SYSTEM
     IMPLEMENT_AND_VERIFY_SYSTEM --> REFACTOR_SYSTEM_STRUCTURE_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class RESOLVE_TEST_USE_CASES serviceNode
 
     classDef tddRefactorNode stroke:#007bff,stroke-width:3px
     class IMPLEMENT_AND_VERIFY_SYSTEM tddRefactorNode
@@ -321,10 +326,15 @@ flowchart TD
 
 ```mermaid
 flowchart TD
+    RESOLVE_TEST_USE_CASES[[Resolve Use Cases to Verify]]
     REFACTOR_AND_VERIFY_TESTS["Refactor and Verify Tests<br/>task-name = refactor-tests"]
     REFACTOR_TEST_STRUCTURE_END(( ))
 
+    RESOLVE_TEST_USE_CASES --> REFACTOR_AND_VERIFY_TESTS
     REFACTOR_AND_VERIFY_TESTS --> REFACTOR_TEST_STRUCTURE_END
+
+    classDef serviceNode fill:#ffffff,stroke:#000000,stroke-width:1px,color:#000000
+    class RESOLVE_TEST_USE_CASES serviceNode
 
     classDef tddRefactorNode stroke:#007bff,stroke-width:3px
     class REFACTOR_AND_VERIFY_TESTS tddRefactorNode
@@ -1422,7 +1432,7 @@ flowchart TD
     EXECUTE_TEST_PLAN[Execute the Test Refactoring Plan — see § refactor-test-structure]
     BUILD_SYSTEM[Build the System — see § build-system]
     START_SYSTEM[Start the System — see § start-system-restart]
-    VERIFY_TESTS_PASS["Verify Tests Pass<br/>suite = <br/>test-names = "]
+    VERIFY_TESTS_PASS["Verify Tests Pass<br/>suite = <br/>test-names = <br/>test-use-cases = "]
     COMMIT_GUIDELINES["Commit Fixes and Guidelines — see § commit<br/>category = system-commit<br/>layer = GUIDELINES"]
     GUIDELINES_LOOP_EXHAUSTED((⚡))
 
@@ -1465,7 +1475,7 @@ flowchart TD
     REVIEW_CODE_ARCHITECTURE_END(( ))
 
     EXECUTE_AGENT --> REVIEW_CODE_ARCHITECTURE_END
-    REVIEW-CODE-ARCHITECTURE_OUTPUTS[/"refactoring-needed: bool<br/>system-refactoring-plan?: string<br/>test-refactoring-plan?: string<br/>findings?: string"/]
+    REVIEW-CODE-ARCHITECTURE_OUTPUTS[/"refactoring-needed: bool<br/>system-refactoring-plan?: string<br/>test-refactoring-plan?: string<br/>findings?: string<br/>refactor-use-case-ids?: string-list"/]
     REVIEW_CODE_ARCHITECTURE_END -. produces .-> REVIEW-CODE-ARCHITECTURE_OUTPUTS
 
     classDef outputNode fill:#e7f0ff,stroke:#004085,stroke-width:1px,stroke-dasharray:4 2,color:#000000
