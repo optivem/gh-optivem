@@ -9,8 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/optivem/gh-optivem/internal/spec"
 )
 
 // Stack keys for the per-stack use-case filter defaults. They match the
@@ -83,15 +81,17 @@ func ParseUseCaseIDs(raw []string) ([]string, error) {
 }
 
 // ResolveUseCaseSelection builds the selection for raw `--use-case` tokens.
-// Every UC must be declared in the project spec (useCases, from spec.yaml's
-// specDir); an unknown one is an error naming it. For Java, each UC is
+// Every UC must be declared in the project spec: declared maps each spec
+// use-case ID (from spec.yaml's specDir) to its spec criterion IDs, and a UC
+// absent from it is an error naming it. Plain data keeps internal/build free of
+// the spec package (TestBuildImportsKernelOnly). For Java, each UC is
 // expanded to its criterion IDs: the union of the spec's criteria and the
 // `"UC-NNN.M"` tag literals in the Java test sources under testsDir. The
 // sources are needed because a done use case keeps no criteria in the spec
 // (its tests are the spec), so a spec-only expansion would select nothing — or,
 // worse, only part of the tests. A Java UC with no criterion ID anywhere is an
 // error rather than a silently empty filter.
-func ResolveUseCaseSelection(raw []string, lang string, useCases []spec.UseCase, testsDir string) (UseCaseSelection, error) {
+func ResolveUseCaseSelection(raw []string, lang string, declared map[string][]string, testsDir string) (UseCaseSelection, error) {
 	ids, err := ParseUseCaseIDs(raw)
 	if err != nil || len(ids) == 0 {
 		return UseCaseSelection{}, err
@@ -101,15 +101,9 @@ func ResolveUseCaseSelection(raw []string, lang string, useCases []spec.UseCase,
 	default:
 		return UseCaseSelection{}, fmt.Errorf("--use-case: no use-case filter for system-test.lang %q (supported: java, dotnet, typescript)", lang)
 	}
-	known := map[string]spec.UseCase{}
-	for _, uc := range useCases {
-		if uc.ID != "" {
-			known[uc.ID] = uc
-		}
-	}
 	var unknown []string
 	for _, id := range ids {
-		if _, ok := known[id]; !ok {
+		if _, ok := declared[id]; !ok {
 			unknown = append(unknown, id)
 		}
 	}
@@ -128,8 +122,8 @@ func ResolveUseCaseSelection(raw []string, lang string, useCases []spec.UseCase,
 	var empty []string
 	for _, id := range ids {
 		set := map[string]bool{}
-		for _, c := range known[id].Criteria {
-			set[c.ID] = true
+		for _, c := range declared[id] {
+			set[c] = true
 		}
 		for c := range tagged {
 			if strings.HasPrefix(c, id+".") {

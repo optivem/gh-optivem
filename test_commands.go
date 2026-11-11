@@ -201,7 +201,18 @@ func resolveUseCaseSelection(raw, test []string, sample bool, testsDir string) (
 	if err != nil {
 		return runner.UseCaseSelection{}, fmt.Errorf("--use-case needs the project spec to check the IDs: %w", err)
 	}
-	return runner.ResolveUseCaseSelection(ids, cfg.SystemTest.Lang, useCases, testsDir)
+	declared := map[string][]string{}
+	for _, uc := range useCases {
+		if uc.ID == "" {
+			continue
+		}
+		criteria := []string{}
+		for _, c := range uc.Criteria {
+			criteria = append(criteria, c.ID)
+		}
+		declared[uc.ID] = criteria
+	}
+	return runner.ResolveUseCaseSelection(ids, cfg.SystemTest.Lang, declared, testsDir)
 }
 
 // loadSpecUseCases reads the use cases under root's spec.yaml specDir (the

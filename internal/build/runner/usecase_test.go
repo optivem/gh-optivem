@@ -6,8 +6,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
-	"github.com/optivem/gh-optivem/internal/spec"
 )
 
 func TestParseUseCaseIDsReducesAndDedupes(t *testing.T) {
@@ -39,10 +37,10 @@ func TestParseUseCaseIDsRejectsMalformed(t *testing.T) {
 	}
 }
 
-func specUseCases() []spec.UseCase {
-	return []spec.UseCase{
-		{ID: "UC-001", Criteria: []spec.Criterion{{ID: "UC-001.1"}, {ID: "UC-001.2"}}},
-		{ID: "UC-003"}, // done use case: criteria deleted from the spec
+func specUseCases() map[string][]string {
+	return map[string][]string{
+		"UC-001": {"UC-001.1", "UC-001.2"},
+		"UC-003": {}, // done use case: criteria deleted from the spec
 	}
 }
 
