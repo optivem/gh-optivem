@@ -69,6 +69,13 @@ func shellEscape(s string) string {
 //     method names (the writer-agent's
 //     emitted test-names, joined via
 //     coerceStateValue's []string case)
+//   - ctx.Params["test-use-cases"] — optional; appended as --use-case=…
+//     comma-separated UC ids the refactor
+//     cycles narrow their verify run to
+//     (resolve-test-use-cases); never
+//     bound by an intermediate process, it
+//     reaches here by Params inheritance.
+//     Empty or absent ⇒ no flag (whole suite)
 //   - ctx.Params["message"]     — optional; appended as a positional
 //     `"<msg>"` argument when the command
 //     starts with `gh optivem commit`,
@@ -144,9 +151,10 @@ func (a actions) runCommand(ctx *statemachine.Context) statemachine.Outcome {
 	return statemachine.Outcome{}
 }
 
-// appendCommandFlags renders the optional `--suite` / `--test` flags onto a
-// `gh optivem system-test run` command and the `message` positional onto a
-// `gh optivem commit` command; any other command is returned unchanged.
+// appendCommandFlags renders the optional `--suite` / `--test` / `--use-case`
+// flags onto a `gh optivem system-test run` command and the `message`
+// positional onto a `gh optivem commit` command; any other command is returned
+// unchanged.
 //
 // A commit made inside a resumable unit also carries the unit's `--trailer`
 // flags (ticket, unit id, saved state) so a later run can prove the unit done.
@@ -157,6 +165,9 @@ func (a actions) appendCommandFlags(ctx *statemachine.Context, cmd string, isTes
 		}
 		if testNames := strings.TrimSpace(ctx.Params["test-names"]); testNames != "" {
 			cmd += " --test=" + shellEscape(testNames)
+		}
+		if useCases := strings.TrimSpace(ctx.Params[ParamTestUseCases]); useCases != "" {
+			cmd += " --use-case=" + shellEscape(useCases)
 		}
 	}
 	if isCommit {

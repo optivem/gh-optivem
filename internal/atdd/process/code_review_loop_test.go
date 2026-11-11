@@ -40,6 +40,9 @@ type codeReviewScenario struct {
 	rejectPlan   bool       // the human declines APPROVE_PLAN
 	humanIssues  [][]string // issues per HUMAN_REVIEW round
 	noVerdictKey bool       // reviewer omits refactoring-needed
+	useCaseIDs   []string   // reviewer's refactor-use-case-ids (nil = omitted)
+	merged       string     // the story's merged-criteria in State ("" = none)
+	process      string     // process to run ("" = review-code-and-architecture)
 }
 
 // codeReviewRun is the observable trail of one walk.
@@ -49,7 +52,8 @@ type codeReviewRun struct {
 	issuesSeen    []string          // human-review-issues at each updater dispatch
 	planQuestion  string            // APPROVE_PLAN's question
 	commits       []string          // commit layers, in order
-	fullSuiteRuns int               // verify runs with no suite/test filter
+	fullSuiteRuns int               // verify runs with no suite/test/use-case filter
+	useCaseRuns   []string          // --use-case selection of each verify run ("" = whole suite)
 	err           error
 }
 
@@ -81,7 +85,7 @@ func runCodeReview(t *testing.T, sc codeReviewScenario) codeReviewRun {
 	run := codeReviewRun{checklists: map[string]string{}}
 	eng.ActionFn = func(name string) statemachine.NodeFn {
 		switch name {
-		case "reset-code-review", "summarize-refactoring-plan", "record-human-review-issues":
+		case "reset-code-review", "summarize-refactoring-plan", "record-human-review-issues", "resolve-test-use-cases":
 			return realActions.Lookup(name)
 		}
 		return func(ctx *statemachine.Context) statemachine.Outcome {
@@ -97,7 +101,9 @@ func runCodeReview(t *testing.T, sc codeReviewScenario) codeReviewRun {
 				cmd := ctx.Params["command"]
 				if strings.HasPrefix(cmd, "gh optivem system-test run") {
 					ctx.Set("test-outcome", "pass")
-					if ctx.Params["suite"] == "" && ctx.Params["test-names"] == "" {
+					useCases := ctx.Params[actions.ParamTestUseCases]
+					run.useCaseRuns = append(run.useCaseRuns, useCases)
+					if ctx.Params["suite"] == "" && ctx.Params["test-names"] == "" && useCases == "" {
 						run.fullSuiteRuns++
 					}
 				}
@@ -126,6 +132,9 @@ func runCodeReview(t *testing.T, sc codeReviewScenario) codeReviewRun {
 				}
 				if sc.testPlan != "" {
 					ctx.Set("test-refactoring-plan", sc.testPlan)
+				}
+				if sc.useCaseIDs != nil {
+					ctx.Set("refactor-use-case-ids", sc.useCaseIDs)
 				}
 			case "system-refactorer", "test-refactorer":
 				run.checklists[n] = ctx.Params["checklist"]
@@ -162,7 +171,14 @@ func runCodeReview(t *testing.T, sc codeReviewScenario) codeReviewRun {
 	// The commit message names the run's ticket.
 	ctx.Set("ticket-id", "7")
 	ctx.Set("issue-title", "Code review")
-	run.err = eng.RunProcess("review-code-and-architecture", ctx)
+	if sc.merged != "" {
+		ctx.Set(actions.CtxKeyMergedCriteria, sc.merged)
+	}
+	process := sc.process
+	if process == "" {
+		process = "review-code-and-architecture"
+	}
+	run.err = eng.RunProcess(process, ctx)
 	return run
 }
 
@@ -207,6 +223,48 @@ func TestCodeReview_ApprovedPlanRunsBothRefactorers(t *testing.T) {
 	}
 	if run.fullSuiteRuns != 2 {
 		t.Errorf("full-suite runs = %d, want 2", run.fullSuiteRuns)
+	}
+}
+
+// TestCodeReview_PlanUseCasesNarrowEveryVerifyRun: the use cases the review
+// plan names (criterion ids reduced to their use case) narrow both refactor
+// halves to those use cases' tests and override the story's use cases. The
+// guideline round stays on the whole suite (the updater fixes other
+// occurrences, which can land in any use case).
+func TestCodeReview_PlanUseCasesNarrowEveryVerifyRun(t *testing.T) {
+	run := runCodeReview(t, codeReviewScenario{
+		systemPlan:  "OrderService.java: extract OrderValidator",
+		testPlan:    "OrderTest.java: inline the unused helper",
+		useCaseIDs:  []string{"UC-003.2", "UC-001"},
+		merged:      "UC-009.1",
+		humanIssues: [][]string{{"OrderService.java: magic number"}},
+	})
+	if run.err != nil {
+		t.Fatalf("RunProcess: %v", run.err)
+	}
+	want := "UC-003,UC-001|UC-003,UC-001|"
+	if got := strings.Join(run.useCaseRuns, "|"); got != want {
+		t.Errorf("verify-run use cases = %q, want %q (system half, test half, guideline round)", got, want)
+	}
+	if !strings.Contains(run.planQuestion, "Verified on: the tests of UC-003, UC-001") {
+		t.Errorf("APPROVE_PLAN question does not name the verified use cases:\n%s", run.planQuestion)
+	}
+}
+
+// TestCodeReview_PlanWithoutUseCasesRunsWholeSuiteEvenInAStory: a review plan
+// naming no use case (cross-cutting) runs the whole suite, even when the
+// story in flight has use cases.
+func TestCodeReview_PlanWithoutUseCasesRunsWholeSuiteEvenInAStory(t *testing.T) {
+	run := runCodeReview(t, codeReviewScenario{
+		systemPlan:  "OrderService.java: extract OrderValidator",
+		merged:      "UC-009.1",
+		humanIssues: [][]string{{"OrderService.java: magic number"}},
+	})
+	if run.err != nil {
+		t.Fatalf("RunProcess: %v", run.err)
+	}
+	if got := strings.Join(run.useCaseRuns, "|"); got != "|" || run.fullSuiteRuns != 2 {
+		t.Errorf("verify-run use cases = %q, full-suite runs = %d; want two whole-suite runs", got, run.fullSuiteRuns)
 	}
 }
 
@@ -294,5 +352,29 @@ func TestCodeReview_VerdictPlanMismatchFails(t *testing.T) {
 	out := a.Lookup("summarize-refactoring-plan")(ctx)
 	if out.Err == nil || !strings.Contains(out.Err.Error(), "neither") {
 		t.Fatalf("Err = %v, want the verdict/plan mismatch error", out.Err)
+	}
+}
+
+// TestRefactorCycles_StoryUseCasesNarrowTheVerifyRun pins the story/menu
+// path of plan 20261111-1023: entered outside the review, the refactor cycles
+// verify on the story's use cases (merged-criteria reduced to use cases), and
+// on the whole suite when there is no story (bug, refactor ticket, ad hoc).
+func TestRefactorCycles_StoryUseCasesNarrowTheVerifyRun(t *testing.T) {
+	for _, process := range []string{"refactor-system-structure", "refactor-test-structure"} {
+		for _, tc := range []struct {
+			merged string
+			want   string
+		}{
+			{merged: "UC-001.1, UC-001.2, UC-004.3", want: "UC-001,UC-004"},
+			{merged: "", want: ""},
+		} {
+			run := runCodeReview(t, codeReviewScenario{process: process, merged: tc.merged})
+			if run.err != nil {
+				t.Fatalf("%s (merged=%q): RunProcess: %v", process, tc.merged, run.err)
+			}
+			if len(run.useCaseRuns) != 1 || run.useCaseRuns[0] != tc.want {
+				t.Errorf("%s (merged=%q): verify-run use cases = %q, want one run on %q", process, tc.merged, run.useCaseRuns, tc.want)
+			}
+		}
 	}
 }

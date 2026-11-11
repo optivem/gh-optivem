@@ -90,6 +90,12 @@
 #     `test-names` is the comma-separated list of bare test method names
 #     emitted by the writing agent (`test-names` output, joined by
 #     `coerceStateValue`'s `[]string` case). Both absent ⇒ run all tests.
+#     A third, optional `test-use-cases` param (comma-separated UC ids) is
+#     appended as `--use-case=…` (plan 20261111-1023). Unlike the two above
+#     it is not re-bound by verify-tests-pass / run-tests: only the refactor
+#     cycles (refactor-system-structure, refactor-test-structure) and the
+#     review's guideline round bind it, and it reaches execute-command by
+#     Params inheritance. Absent or empty ⇒ no flag (whole suite).
 #
 #   - `fix-*` agent inventory (Q-late-5 (β-convention) routing): each `fix`
 #     call dispatches `execute-agent` with `task-name: "fix-${failure-kind}"`
@@ -906,14 +912,17 @@ processes:
   #   EXECUTE_*_PLAN      the existing refactor-system-structure /
   #                       refactor-test-structure cycles run the approved half
   #                       as their ${checklist}: refactor, build/compile,
-  #                       start, the full suite (plus the component inner loop
-  #                       where configured), commit.
+  #                       start, the tests of the plan's use cases
+  #                       (refactor-use-case-ids; the full suite when it names
+  #                       none), plus the component inner loop where
+  #                       configured, commit.
   #   HUMAN_REVIEW        the human lists the issues they still find, one per
   #                       line; an empty answer ends the review.
   #   UPDATE_GUIDELINES   guidelines-updater fixes each issue, records it in
   #                       the guidelines and fixes other occurrences; then the
-  #                       full suite runs, the result is committed and the
-  #                       human reviews again.
+  #                       tests of the plan's use cases run (the full suite
+  #                       when it names none), the result is committed and
+  #                       the human reviews again.
   #
   # Loop cap: 3 guideline rounds (max-visits on UPDATE_GUIDELINES); the 4th
   # arrival halts at GUIDELINES_LOOP_EXHAUSTED. The rounds already done are
@@ -969,6 +978,9 @@ processes:
         name: "Execute the System Refactoring Plan"
         params:
           checklist: ${system-refactoring-plan}
+          # The plan's use cases ("" = whole suite); the cycle's
+          # RESOLVE_TEST_USE_CASES takes them over the story's.
+          test-use-cases: ${refactor-use-case-ids}
 
       - id: GATE_TEST_PLAN_PRESENT
         type: gateway
@@ -981,6 +993,8 @@ processes:
         name: "Execute the Test Refactoring Plan"
         params:
           checklist: ${test-refactoring-plan}
+          # See EXECUTE_SYSTEM_PLAN.
+          test-use-cases: ${refactor-use-case-ids}
 
       - id: HUMAN_REVIEW
         type: service-task
@@ -1023,10 +1037,14 @@ processes:
         type: call-activity
         process: verify-tests-pass
         name: "Verify Tests Pass"
-        # Behaviour-preserving change: full regression, like the refactor cycles.
+        # Behaviour-preserving change: no suite / test-name filter, like the
+        # refactor cycles. Full regression, NOT narrowed to the review plan's
+        # use cases: the guidelines updater fixes other occurrences of the
+        # rule, which can land in any use case.
         params:
           suite: ""
           test-names: ""
+          test-use-cases: ""
 
       - id: COMMIT_GUIDELINES
         type: call-activity
@@ -1078,21 +1096,34 @@ processes:
   # Step 1 calls HIGH `implement-and-verify-system` with
   # `action: refactor-system`. Was the prototype encoded in Item 1 of
   # this plan; preserved unchanged.
+  #
+  # RESOLVE_TEST_USE_CASES (plan 20261111-1023) picks the use cases whose
+  # tests verify the refactor: the review plan's (test-use-cases bound by the
+  # Code & Architecture Review's EXECUTE_SYSTEM_PLAN), else the story's
+  # merged-criteria reduced to use cases, else none (whole suite). The
+  # pipeline after push still runs the full suite.
   refactor-system-structure:
     name: "Refactor System Structure"
     diagram-section-order: 8
-    start: IMPLEMENT_AND_VERIFY_SYSTEM
+    start: RESOLVE_TEST_USE_CASES
     nodes:
+      - id: RESOLVE_TEST_USE_CASES
+        type: service-task
+        action: resolve-test-use-cases
+        name: "Resolve Use Cases to Verify"
+
       - id: IMPLEMENT_AND_VERIFY_SYSTEM
         type: call-activity
         process: implement-and-verify-system
         params:
           task-name: refactor-system
           action: refactor-system
-          # Structural refactor: behavior must be preserved across ALL tests,
-          # so VERIFY_TESTS_PASS runs the full regression.
+          # Structural refactor: no suite / test-name filter. VERIFY_TESTS_PASS
+          # runs the tests of the touched use cases (test-use-cases, rendered
+          # as --use-case); none known ⇒ the full regression.
           suite: ""
           test-names: ""
+          test-use-cases: ${refactor-test-use-cases}
           # No channel discriminator on the refactor path (not channel-unrolled).
           layer-suffix: ""
         name: "Refactor System"
@@ -1103,13 +1134,21 @@ processes:
         name: "System Structure Refactored"
 
     sequence-flows:
+      - {from: RESOLVE_TEST_USE_CASES,          to: IMPLEMENT_AND_VERIFY_SYSTEM}
       - {from: IMPLEMENT_AND_VERIFY_SYSTEM,     to: REFACTOR_SYSTEM_STRUCTURE_END}
 
+  # RESOLVE_TEST_USE_CASES: as in refactor-system-structure (the review's
+  # EXECUTE_TEST_PLAN binds test-use-cases).
   refactor-test-structure:
     name: "Refactor Test Structure"
     diagram-section-order: 9
-    start: REFACTOR_AND_VERIFY_TESTS
+    start: RESOLVE_TEST_USE_CASES
     nodes:
+      - id: RESOLVE_TEST_USE_CASES
+        type: service-task
+        action: resolve-test-use-cases
+        name: "Resolve Use Cases to Verify"
+
       - id: REFACTOR_AND_VERIFY_TESTS
         type: call-activity
         process: refactor-and-verify-tests
@@ -1117,12 +1156,15 @@ processes:
         tdd-stage: refactor
         params:
           task-name: refactor-tests
+          # Inherited by refactor-and-verify-tests' VERIFY_TESTS_PASS.
+          test-use-cases: ${refactor-test-use-cases}
 
       - id: REFACTOR_TEST_STRUCTURE_END
         type: end-event
         name: "Test Structure Refactored"
 
     sequence-flows:
+      - {from: RESOLVE_TEST_USE_CASES,         to: REFACTOR_AND_VERIFY_TESTS}
       - {from: REFACTOR_AND_VERIFY_TESTS,      to: REFACTOR_TEST_STRUCTURE_END}
 
   # Legacy baseline (plan 20261110-1130): `gh optivem characterize` baselines a
@@ -2870,8 +2912,11 @@ processes:
         # `suite: acceptance` — the GREEN proof that the new AT passes,
         # without paying for a full regression on every story / bug. Structural
         # cycles (`redesign-*`, `refactor-system-structure`) bind both to ""
-        # to mean full regression, which is the only meaningful verification
-        # that a behavior-preserving change preserved all tests. Strict-mode
+        # to mean no suite / test-name filter. Redesign runs the full
+        # regression; refactor-system-structure additionally binds
+        # `test-use-cases` (inherited down to run-tests' execute-command,
+        # rendered as --use-case) to run only the touched use cases' tests,
+        # full regression when none is known (plan 20261111-1023). Strict-mode
         # `ExpandParams` (run.go:334) rejects an unresolved `${suite}` /
         # `${test-names}` at dispatch, so every caller MUST bind both — see
         # the strict-mode rule on `run-tests` (process-flow.yaml:1991).
@@ -2992,7 +3037,10 @@ processes:
         # `suite: ""` and `test-names: ""` must be bound explicitly to
         # prevent ExpandParams' state-fallback from leaking either an
         # outer `${suite}` placeholder or the stale per-cycle `test-names`
-        # output from the upstream RED writing agent into the CLI.
+        # output from the upstream RED writing agent into the CLI. The
+        # touched use cases (`test-use-cases`, bound by
+        # refactor-test-structure) arrive by Params inheritance and narrow
+        # the run; none ⇒ the full suite.
         params:
           suite: ""
           test-names: ""
@@ -4057,6 +4105,12 @@ processes:
   #   system-refactoring-plan  steps for system-refactorer (system only).
   #   test-refactoring-plan    steps for test-refactorer (test code only).
   #   findings                 what the reviewer found, shown at APPROVE_PLAN.
+  #   refactor-use-case-ids    the use cases (UC-NNN, or criterion ids
+  #                            UC-NNN.M, reduced to their use case) the plan
+  #                            touches; the refactor cycles and the guideline
+  #                            round run only their tests (plan 20261111-1023).
+  #                            Omitted ⇒ the whole suite (cross-cutting plan).
+  #                            summarize-refactoring-plan normalises it.
   review-code-architecture:
     name: "Review Code & Architecture"
     start: EXECUTE_AGENT
@@ -4071,6 +4125,9 @@ processes:
         optional: true
       - key: findings
         type: string
+        optional: true
+      - key: refactor-use-case-ids
+        type: string-list
         optional: true
     nodes:
       - id: EXECUTE_AGENT

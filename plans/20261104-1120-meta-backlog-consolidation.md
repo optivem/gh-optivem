@@ -92,6 +92,14 @@ Done when: each check is recorded pass/fail; failures become new plan items or `
 - **D2 attended check:** in an attended run, let the fixer loop exhaust after an out-of-scope edit and confirm the halt is report-only and lists "fixer edited: N file(s)" (#15, commit 416a761f).
 - **C2b attended check:** in an attended `implement` run that hits a compile failure, approve the `fix-*` (human-category) dispatch and confirm the fixer runs with the writer's scope.
 
+Moved in 2026-11-11 from the deleted `20261111-2359-meta-active-plans` (its Verification section):
+
+- **`1305` Step 5:** live GCP run with a short repo name, following `docs/cloud-setup.md`; settle its unverified bits (GHCR `/orgs/` vs `/users/` link, public-package default, multirepo script location).
+- **`1121`:** waits on the walking-skeleton decision (Phase B).
+- **`1258` operator check:** read `gh optivem spec generate` output on shop and judge if it reads well to a PO.
+- **Rehearsals from the deleted `1219` umbrella** (once shop/Docker is free): Align loop (rule stated only in general terms → refiner proposes a numeric example; answer "no" once → next round uses the feedback); Use Case Criteria body section on a GitHub issue (re-run still parses); gift-wrap rehearsal (Red reviewer flags a planted dropped `.then().shouldSucceed()`; commits match the talk); Code & Architecture Review on shop (`refactor` → `review-code-and-architecture`, `docs/guidelines/<area>.md` gains a rule, a `GUIDELINES` commit lands); WIP-gate removal (final commit has no gate, pipeline runs the tests).
+- **Narrowed post-refactor test runs** (shipped 2026-11-11, from the deleted plan `20261111-1023`): rehearse one story with a system refactor and one review-driven refactor on each stack; confirm the local run executes only the use case's tests (`--use-case` in the `system-test run` line; Java via `-DincludeTags`, .NET via `tag~`, TypeScript via `--grep @UC-…`), that the guideline round still runs the whole suite, and that the pipeline runs the full suite after push. The Java `&(…)` and TypeScript lookahead filters through `gradlew.bat` / `npx.cmd` are not yet run against a real stack.
+
 ## Not in scope (triggers, not units)
 
 `plans/backlog/p4-maintenance/20260511-1702-shop-frontend-react-to-typescript-rename.md` (blocked until shop renames its frontend); everything under `parked/`. Possible follow-up (unplanned): cross-check every registered external system appears in the approved use-case diagram.

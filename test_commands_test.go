@@ -262,3 +262,55 @@ func TestResolveTestsPath_MissingYAMLErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestNewTestRunCmdUseCaseFlag verifies --use-case is a repeatable,
+// comma-separated StringSlice like --test.
+func TestNewTestRunCmdUseCaseFlag(t *testing.T) {
+	cmd := newTestRunCmd()
+	if err := cmd.ParseFlags([]string{"--use-case", "UC-001,UC-003.2", "--use-case", "UC-004"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := cmd.Flags().GetStringSlice("use-case")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"UC-001", "UC-003.2", "UC-004"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+// TestResolveUseCaseSelectionRejectsTestCombo checks the mutual exclusion is
+// enforced before any config is read.
+func TestResolveUseCaseSelectionRejectsTestCombo(t *testing.T) {
+	if _, err := resolveUseCaseSelection([]string{"UC-001"}, []string{"T1"}, false, "."); err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("want mutual-exclusion error, got %v", err)
+	}
+	sel, err := resolveUseCaseSelection(nil, []string{"T1"}, false, ".")
+	if err != nil || sel.Active() {
+		t.Fatalf("no --use-case must be inactive, got %+v, %v", sel, err)
+	}
+}
+
+// TestLoadSpecUseCasesReadsSpecDir checks spec.yaml's specDir is honoured and
+// a missing spec dir is an error.
+func TestLoadSpecUseCasesReadsSpecDir(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "spec.yaml"), []byte("specDir: specs\nresults: \"**/*.xml\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := loadSpecUseCases(root); err == nil {
+		t.Fatal("want error for a missing spec dir")
+	}
+	ucDir := filepath.Join(root, "specs", "UC-001-place-order")
+	if err := os.MkdirAll(ucDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	md := "---\nid: UC-001\ntitle: Place Order\n---\n"
+	if err := os.WriteFile(filepath.Join(ucDir, "acceptance-criteria.md"), []byte(md), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ucs, err := loadSpecUseCases(root)
+	if err != nil || len(ucs) != 1 || ucs[0].ID != "UC-001" {
+		t.Fatalf("got %+v, %v", ucs, err)
+	}
+}

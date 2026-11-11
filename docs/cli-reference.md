@@ -561,9 +561,12 @@ gh optivem system-test run --test "MyTest"       # narrow to one test name (subs
 gh optivem system-test run --test T1 --test T2   # multiple names, repeatable
 gh optivem system-test run --test T1,T2          # ...or comma-separated
 gh optivem system-test run --sample              # use each suite's sampleTest field as the test name
+gh optivem system-test run --suite acceptance --use-case UC-001,UC-003.2   # only tests tagged with these use cases
 ```
 
 `--test` cannot be combined with multiple `--suite` values — a test name is substituted into one suite's `testFilter`, so applying it across suites is ambiguous. Narrow to a single `--suite`, or run the command once per suite.
+
+`--use-case` narrows every selected suite to the tests tagged with the given use cases. A criterion ID (`UC-003.2`) is reduced to its use case, so all `UC-003.*` tests run; each use case must be declared in the project spec (`spec.yaml`), and an empty value runs the whole suite. The filter is built per `system-test.lang`: .NET injects `&(tag~UC-001.|...)` into the suite's `--filter '...'`; Java expands each use case to its criterion IDs (from the spec and the `@Tag("UC-NNN.M")` literals in the tests) and ANDs them into `-DincludeTags`; TypeScript greps Playwright native tags (`@UC-001.`), ANDed with an existing `--grep`. It cannot be combined with `--test` or `--sample`, needs at least one selected suite with a `testCountPath`, and fails if the selection executes zero tests.
 
 Multi-test semantics depend on the suite's `testFilter` in `tests.yaml`. The runner combines multiple `--test` values per `testFilterJoin`: `"or"` (default) joins names with `|` and substitutes once — works for playwright/jest (`--grep 'T1|T2'`) where `|` is alternation at the value level; `"repeat"` substitutes the whole `testFilter` once per name and concatenates — required for gradle (`--tests T1 --tests T2`) where the flag itself must repeat; `"fragment-or"` (for `&`-prefixed injection fragments) substitutes per name, joins with `|`, wraps in `( ... )`, and injects as one expression — required for dotnet (`&(DisplayName~T1|DisplayName~T2)`) whose `--filter` parser ORs full property terms, not bare values. Practical ceiling on Windows is ~600 typical test names per invocation (the OS caps each command line at 32K characters).
 

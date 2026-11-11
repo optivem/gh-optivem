@@ -18,14 +18,18 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/optivem/gh-optivem/internal/atdd/runtime/testselect"
 	"github.com/optivem/gh-optivem/internal/build/runner"
 	"github.com/optivem/gh-optivem/internal/kernel/log"
+	"github.com/optivem/gh-optivem/internal/spec"
 )
 
 // newSystemTestCmd builds the `gh optivem system-test` parent. The parent has
@@ -45,7 +49,7 @@ func newSystemTestCmd() *cobra.Command {
 
 // newTestRunCmd implements:
 //
-//	gh optivem system-test run [--suite id] [--test name] [--sample] [--list]
+//	gh optivem system-test run [--suite id] [--test name | --use-case UC-001] [--sample] [--list]
 //
 // Runs suites against an already-running system. The caller is responsible
 // for the lifecycle: `gh optivem system-test setup` (once) → `gh optivem system start`
@@ -61,10 +65,11 @@ func newSystemTestCmd() *cobra.Command {
 // phase is a separate verb.
 func newTestRunCmd() *cobra.Command {
 	var (
-		suites []string
-		test   []string
-		sample bool
-		list   bool
+		suites   []string
+		test     []string
+		useCases []string
+		sample   bool
+		list     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "run",
@@ -76,6 +81,7 @@ func newTestRunCmd() *cobra.Command {
   gh optivem system-test run --suite acceptance --test shouldRejectOrderWithQuantityOf100
   gh optivem system-test run --suite smoke --test T1 --test T2
   gh optivem system-test run --suite smoke --test T1,T2
+  gh optivem system-test run --suite acceptance --use-case UC-001,UC-003.2
   gh optivem system-test run --list`,
 		Run: func(cmd *cobra.Command, args []string) {
 			exitIfComponentKind("gh optivem system-test run", "there is no system under test to drive")
@@ -95,6 +101,8 @@ func newTestRunCmd() *cobra.Command {
 			// --test=foo` is two raw values and rejected. Expansion happens
 			// after validation so the runner only sees canonical suite ids.
 			exitOnError(validateSuiteTestCombo(suites, test))
+			useCaseSel, err := resolveUseCaseSelection(useCases, test, sample, cwdForPath(resolvedTests))
+			exitOnError(err)
 			// nil channels: the CLI loads only tests.yaml, not the project's
 			// channel set, so `--suite=acceptance` uses the {api,ui} fallback
 			// default. A non-{api,ui} project declares its own
@@ -105,9 +113,10 @@ func newTestRunCmd() *cobra.Command {
 			sys, err := runner.LoadSystem(resolvedSystem)
 			exitOnError(err)
 			opts := runner.TestOptions{
-				Suite:  suites,
-				Test:   test,
-				Sample: sample,
+				Suite:   suites,
+				Test:    test,
+				Sample:  sample,
+				UseCase: useCaseSel,
 				// Membership safety net (plan 20260619-1139 Step 2): the universe of
 				// acceptance suites the runner may probe to tell a benign cross-channel
 				// skip (a named test registered for another channel) from a typo that
@@ -122,6 +131,7 @@ func newTestRunCmd() *cobra.Command {
 	}
 	cmd.Flags().StringSliceVar(&suites, "suite", nil, "Run only the suite(s) with these id(s); repeatable, also accepts comma-separated values, and the group alias `acceptance` (expands to all acceptance-* suites)")
 	cmd.Flags().StringSliceVar(&test, "test", nil, "Narrow execution to the given test name(s); repeatable, also accepts comma-separated values (substituted into the suite's testFilter)")
+	cmd.Flags().StringSliceVar(&useCases, "use-case", nil, "Narrow execution to the tests tagged with these use case(s), e.g. UC-001 or criterion UC-003.2 (reduced to its use case); repeatable, also accepts comma-separated values. Each ID must be in the project spec (spec.yaml); the filter is built per system-test.lang. Cannot be combined with --test/--sample; fails if the selection executes zero tests")
 	cmd.Flags().BoolVar(&sample, "sample", false, "Use each suite's sampleTest field as the test name")
 	cmd.Flags().BoolVar(&list, "list", false, "Print suite ids from tests.yaml (one per line) and exit without running")
 	return cmd
@@ -167,6 +177,43 @@ func newTestCompileCmd() *cobra.Command {
 			exitOnError(err)
 		},
 	}
+}
+
+// resolveUseCaseSelection turns the raw --use-case values into the runner's
+// per-stack selection. Empty values mean the whole suite. The stack comes from
+// gh-optivem.yaml's system-test.lang; the use cases are read from the spec dir
+// named by spec.yaml in the working directory (the default dir when there is
+// no spec.yaml), the same resolution the ATDD story merge uses. testsDir is the
+// tests config's directory, scanned for Java criterion tags.
+func resolveUseCaseSelection(raw, test []string, sample bool, testsDir string) (runner.UseCaseSelection, error) {
+	ids, err := runner.ParseUseCaseIDs(raw)
+	if err != nil || len(ids) == 0 {
+		return runner.UseCaseSelection{}, err
+	}
+	if len(test) > 0 || sample {
+		return runner.UseCaseSelection{}, fmt.Errorf("--use-case cannot be combined with --test or --sample; narrow by use case or by test name, not both")
+	}
+	cfg, _, err := loadProjectConfigForRunner()
+	if err != nil {
+		return runner.UseCaseSelection{}, err
+	}
+	useCases, err := loadSpecUseCases(".")
+	if err != nil {
+		return runner.UseCaseSelection{}, fmt.Errorf("--use-case needs the project spec to check the IDs: %w", err)
+	}
+	return runner.ResolveUseCaseSelection(ids, cfg.SystemTest.Lang, useCases, testsDir)
+}
+
+// loadSpecUseCases reads the use cases under root's spec.yaml specDir (the
+// default dir when root has no spec.yaml). A missing spec dir is an error.
+func loadSpecUseCases(root string) ([]spec.UseCase, error) {
+	cfg := spec.Config{SpecDir: spec.DefaultSpecDir}
+	if loaded, err := spec.LoadConfig(filepath.Join(root, "spec.yaml")); err == nil {
+		cfg = loaded
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	return spec.LoadDir(resolveUnder(root, cfg.SpecDir))
 }
 
 // validateSuiteTestCombo rejects --test alongside multiple --suite values:

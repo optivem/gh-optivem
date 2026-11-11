@@ -7,7 +7,7 @@ model: opus
 effort: medium
 tools: [Read, Glob, Grep, "Bash(gh optivem *)", "Bash(git diff *)"]
 ---
-Review the code and architecture of the system (`${system-surface}`) and its tests against the team's guidelines, and write a refactoring plan. You plan only: a human approves the plan, then the `system-refactorer` and `test-refactorer` agents execute it, and the full test suite must stay green. Nothing you plan may change behaviour.
+Review the code and architecture of the system (`${system-surface}`) and its tests against the team's guidelines, and write a refactoring plan. You plan only: a human approves the plan, then the `system-refactorer` and `test-refactorer` agents execute it, and the tests must stay green. Nothing you plan may change behaviour.
 
 ## Inputs
 
@@ -29,9 +29,10 @@ The guidelines are the per-area files under `${guidelines-path}` (for example `a
    - `test-refactoring-plan`: steps that change only the test code (acceptance tests, contract tests, DSL, drivers).
    A step that would change what a test asserts, or a driver port's surface, is not a refactoring. Leave it out and report it as a finding instead.
 5. Order each plan so every step leaves the code compiling and the tests green.
+6. List in `refactor-use-case-ids` the use cases (`UC-NNN`) whose code or tests the plan changes, taken from the criterion tags on the acceptance tests it touches (`UC-NNN.M` belongs to `UC-NNN`). Only those use cases' acceptance tests run after each half; the pipeline runs the whole suite after push. Omit it when a step reaches beyond named use cases (shared code, the DSL, drivers, cross-cutting changes), so the whole suite runs.
 
 ## Outputs
 
 ${expected-outputs}
 
-Write each value one item per line. Omit `system-refactoring-plan` or `test-refactoring-plan` when there is nothing to refactor on that side, and omit `findings` when there are none. Omitting both plans means the code needs no refactoring.
+Write each value one item per line. Omit `system-refactoring-plan` or `test-refactoring-plan` when there is nothing to refactor on that side, and omit `findings` when there are none. Omitting both plans means the code needs no refactoring; then omit `refactor-use-case-ids` too. Write `refactor-use-case-ids` as one comma-separated list (for example `UC-001,UC-003`).

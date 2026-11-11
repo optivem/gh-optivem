@@ -152,6 +152,11 @@ func RegisterAll(r *Registry, deps Deps) {
 	r.Register("reset-code-review", a.resetCodeReview)
 	r.Register("summarize-refactoring-plan", a.summarizeRefactoringPlan)
 	r.Register("record-human-review-issues", a.recordHumanReviewIssues)
+	// Narrowed refactor verify runs (plan 20261111-1023): the refactor cycles'
+	// first node stamps refactor-test-use-cases (the review plan's use cases,
+	// else the story's) for their verify call's test-use-cases, which
+	// run-command renders as --use-case. See test_use_cases.go.
+	r.Register("resolve-test-use-cases", a.resolveTestUseCases)
 	// Characterize (legacy baseline) safety gate (plan 20261110-1130, 2a/2c).
 	// record-start-commits resolves the system and stand-in paths (hard error
 	// on microservices / overlap) and pins a start commit per system repo,

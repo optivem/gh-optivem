@@ -33,6 +33,12 @@ type TestOptions struct {
 	// Sample, when true, uses each suite's sampleTest field as the test
 	// name (if both Sample is set and Test is non-empty, Test wins).
 	Sample bool
+	// UseCase, when active, narrows every selected suite to the tests tagged
+	// with these use cases via the per-stack filter (see UseCaseSelection).
+	// Mutually exclusive with Test and Sample. A use-case run must include at
+	// least one suite with a TestCountPath, and fails if the selected suites
+	// together execute zero tests.
+	UseCase UseCaseSelection
 	// MembershipProbeSuites is the universe of acceptance suite ids the
 	// membership safety net may run to decide whether a requested --test that
 	// executed in NONE of the selected suites nonetheless exists elsewhere (a
@@ -87,6 +93,11 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 	suites, err := selectSuites(tests, opts.Suite)
 	if err != nil {
 		return err
+	}
+	if opts.UseCase.Active() {
+		if suites, err = applyUseCaseToSuites(suites, opts); err != nil {
+			return err
+		}
 	}
 
 	results := make([]SuiteResult, 0, len(suites))
@@ -174,10 +185,41 @@ func RunTests(sys *SystemConfig, tests *TestsConfig, systemCwd, testsCwd string,
 		return nil
 	}
 
+	if opts.UseCase.Active() && tally.totalExecuted == 0 {
+		return fmt.Errorf("0 tests executed for the given selection — --use-case %s matched no tagged test on any selected suite; check the use-case IDs and that the tests carry their criterion tags", strings.Join(opts.UseCase.UseCases, ","))
+	}
 	if tally.anyCounted && tally.totalExecuted == 0 {
 		return fmt.Errorf("0 tests executed for the given selection — the suite/test filter matched nothing on any selected suite; check --suite / --test against the available tests")
 	}
 	return nil
+}
+
+// applyUseCaseToSuites returns a copy of suites with the use-case filter merged
+// into each Command (the input may alias tests.Suites, which must stay
+// untouched). It rejects combining --use-case with --test / --sample and a
+// selection where no suite declares a TestCountPath: without a count report the
+// empty-selection guard cannot tell a narrowed run from one that ran nothing.
+func applyUseCaseToSuites(suites []Suite, opts TestOptions) ([]Suite, error) {
+	if len(opts.Test) > 0 || opts.Sample {
+		return nil, errors.New("--use-case cannot be combined with --test or --sample; narrow by use case or by test name, not both")
+	}
+	out := make([]Suite, len(suites))
+	counted := false
+	for i, s := range suites {
+		cmd, err := applyUseCaseFilter(s.Command, opts.UseCase)
+		if err != nil {
+			return nil, fmt.Errorf("suite %s: %w", s.Name, err)
+		}
+		s.Command = cmd
+		out[i] = s
+		if s.TestCountPath != "" {
+			counted = true
+		}
+	}
+	if !counted {
+		return nil, errors.New("--use-case needs at least one selected suite with a testCountPath in tests.yaml, so a selection that runs zero tests fails loud; select an acceptance suite (e.g. --suite acceptance)")
+	}
+	return out, nil
 }
 
 // suiteTally accumulates per-suite outcomes across a RunTests loop.
@@ -515,7 +557,10 @@ func runOneSuite(suite Suite, testFilter, testFilterJoin, cwd string, opts TestO
 		// countExecutedTests fold it into a 0 that masquerades downstream as an
 		// empty selection. Named runs keep tolerating the per-partition empty
 		// (the presence check guarantees the name ran somewhere).
-		if len(opts.Test) == 0 {
+		// A use-case run is partitioned the same way (a UC may have no
+		// isolated tests), so it tolerates the per-partition empty too; the
+		// use-case zero-count guard in RunTests covers the whole selection.
+		if len(opts.Test) == 0 && !opts.UseCase.Active() {
 			if _, statErr := os.Stat(countPath); os.IsNotExist(statErr) {
 				return 0, false, nil, fmt.Errorf("test count report not found at %s after suite %q ran — check testCountPath in tests.yaml resolves to the report the runner writes", countPath, suite.Name)
 			}

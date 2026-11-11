@@ -1108,12 +1108,24 @@ func TestRunCommand_SuiteAndTestFlagsAppendedOnlyWhenSet(t *testing.T) {
 		name      string
 		suite     string
 		testNames string
+		useCases  string
 		wantHas   []string
 		wantMiss  []string
 	}{
 		{
 			name:     "both unset",
+			wantMiss: []string{"--suite=", "--test=", "--use-case="},
+		},
+		{
+			name:     "test-use-cases set narrows to those use cases",
+			useCases: "UC-001,UC-003",
+			wantHas:  []string{"--use-case=UC-001,UC-003"},
 			wantMiss: []string{"--suite=", "--test="},
+		},
+		{
+			name:     "blank test-use-cases runs the whole suite",
+			useCases: "  ",
+			wantMiss: []string{"--use-case="},
 		},
 		{
 			name:     "suite only",
@@ -1152,6 +1164,9 @@ func TestRunCommand_SuiteAndTestFlagsAppendedOnlyWhenSet(t *testing.T) {
 			if tc.testNames != "" {
 				ctx.Params["test-names"] = tc.testNames
 			}
+			if tc.useCases != "" {
+				ctx.Params[ParamTestUseCases] = tc.useCases
+			}
 			out := a.runCommand(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected err: %v", out.Err)
@@ -1187,6 +1202,7 @@ func TestRunCommand_NoFilterFlagsForNonTestCommand(t *testing.T) {
 		command   string
 		suite     string
 		testNames string
+		useCases  string
 	}{
 		{name: "commit, both unset", command: "gh optivem commit"},
 		{name: "system build, both unset", command: "gh optivem system build"},
@@ -1202,6 +1218,11 @@ func TestRunCommand_NoFilterFlagsForNonTestCommand(t *testing.T) {
 			suite:     "acceptance",
 			testNames: "foo",
 		},
+		{
+			name:     "system build with inherited test-use-cases",
+			command:  "gh optivem system build",
+			useCases: "UC-001",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1215,11 +1236,14 @@ func TestRunCommand_NoFilterFlagsForNonTestCommand(t *testing.T) {
 			if tc.testNames != "" {
 				ctx.Params["test-names"] = tc.testNames
 			}
+			if tc.useCases != "" {
+				ctx.Params[ParamTestUseCases] = tc.useCases
+			}
 			out := a.runCommand(ctx)
 			if out.Err != nil {
 				t.Fatalf("unexpected err: %v", out.Err)
 			}
-			if strings.Contains(sh.calls[0], "--suite=") || strings.Contains(sh.calls[0], "--test=") {
+			if strings.Contains(sh.calls[0], "--suite=") || strings.Contains(sh.calls[0], "--test=") || strings.Contains(sh.calls[0], "--use-case=") {
 				t.Fatalf("non-test-run shell call should not carry suite/test flags: %q", sh.calls[0])
 			}
 		})

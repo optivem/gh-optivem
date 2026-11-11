@@ -10,8 +10,9 @@ import (
 
 // State keys of the Code & Architecture Review (plan 20261109-1259).
 //
-// The reviewer MID (review-code-architecture) declares the first four as
-// outputs; validate-outputs-and-scopes flattens them into ctx.State.
+// The reviewer MID (review-code-architecture) declares the first four, and
+// CtxKeyRefactorUseCaseIDs (test_use_cases.go), as outputs;
+// validate-outputs-and-scopes flattens them into ctx.State.
 // CtxKeyRefactoringPlanSummary is appended to APPROVE_PLAN's question.
 // CtxKeyHumanReviewIssues is what the human found at HUMAN_REVIEW, one issue
 // per line, handed to the guidelines-updater as ${human-review-issues}.
@@ -40,6 +41,7 @@ func (a actions) resetCodeReview(ctx *statemachine.Context) statemachine.Outcome
 		CtxKeyCodeReviewFindings,
 		CtxKeyRefactoringPlanSummary,
 		CtxKeyHumanReviewIssues,
+		CtxKeyRefactorUseCaseIDs,
 	} {
 		ctx.Unset(k)
 	}
@@ -52,6 +54,12 @@ func (a actions) resetCodeReview(ctx *statemachine.Context) statemachine.Outcome
 // loudly when the verdict and the plans disagree: refactoring-needed=true with
 // no plan would approve nothing, and a plan with refactoring-needed=false
 // would be dropped silently.
+//
+// It also normalises refactor-use-case-ids (the use cases the plan touches)
+// to deduplicated UC ids and always stamps it, "" when the plan names none:
+// the refactor cycles and the guideline round verify on those use cases'
+// tests, and on the whole suite when it is empty. A malformed id, or use
+// cases with no plan, fails loudly like the verdict/plan mismatch.
 func (a actions) summarizeRefactoringPlan(ctx *statemachine.Context) statemachine.Outcome {
 	needed := ctx.GetString(CtxKeyRefactoringNeeded) == "true"
 	system := ctx.GetString(CtxKeySystemRefactoringPlan)
@@ -63,12 +71,20 @@ func (a actions) summarizeRefactoringPlan(ctx *statemachine.Context) statemachin
 	if !needed && hasPlan {
 		return statemachine.Outcome{Err: errors.New("summarize-refactoring-plan: the reviewer reported refactoring-needed=false but emitted a refactoring plan")}
 	}
-	ctx.Set(CtxKeyRefactoringPlanSummary, renderRefactoringPlanSummary(ctx.GetString(CtxKeyCodeReviewFindings), system, test))
+	useCases, err := useCaseSelection(ctx.GetString(CtxKeyRefactorUseCaseIDs))
+	if err != nil {
+		return statemachine.Outcome{Err: fmt.Errorf("summarize-refactoring-plan: %s: %w", CtxKeyRefactorUseCaseIDs, err)}
+	}
+	if !needed && len(useCases) > 0 {
+		return statemachine.Outcome{Err: fmt.Errorf("summarize-refactoring-plan: the reviewer reported refactoring-needed=false but named use cases in %s", CtxKeyRefactorUseCaseIDs)}
+	}
+	ctx.Set(CtxKeyRefactorUseCaseIDs, strings.Join(useCases, ","))
+	ctx.Set(CtxKeyRefactoringPlanSummary, renderRefactoringPlanSummary(ctx.GetString(CtxKeyCodeReviewFindings), system, test, useCases))
 	return statemachine.Outcome{}
 }
 
 // renderRefactoringPlanSummary formats the review for the approval question.
-func renderRefactoringPlanSummary(findings, system, test string) string {
+func renderRefactoringPlanSummary(findings, system, test string, useCases []string) string {
 	var b strings.Builder
 	for _, section := range []struct{ title, body string }{
 		{"Findings", findings},
@@ -80,6 +96,11 @@ func renderRefactoringPlanSummary(findings, system, test string) string {
 			b.WriteString("  none\n")
 		}
 	}
+	verifiedOn := "the whole suite"
+	if len(useCases) > 0 {
+		verifiedOn = "the tests of " + strings.Join(useCases, ", ")
+	}
+	b.WriteString("\n\nVerified on: " + verifiedOn)
 	return strings.TrimRight(b.String(), "\n")
 }
 
