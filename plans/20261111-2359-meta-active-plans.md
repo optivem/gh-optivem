@@ -7,13 +7,13 @@
 
 ## ▶ Next executable step (resume here)
 
-`1125` decisions taken 2026-11-11 (narrow; review-plan UC IDs + story criterion IDs, whole-suite fallback; system and test refactors). Next: `/create-plan` the implementation plan from `plans/20261110-1125-consider-narrow-test-runs-after-refactor.md`. Tag precondition already checked 2026-11-11: shop tests carry `@Tag("UC-001.N")` criterion tags.
+Execute `plans/20261111-1023-narrow-post-refactor-test-runs.md` (the `1125` implementation plan, created 2026-11-11, commit 088f69a9), starting at its own resume block (Step 1: read-only tag/filter check across shop's Java/.NET/TypeScript tests). Its Step 4 edits `internal/atdd/process/process-flow.yaml`: do not run in parallel with another plan editing it.
 
 ## Order of remaining work
 
 Shop-independent work first; shop-dependent items last (user, 2026-11-10).
 
-1. `1125` narrow test runs after a refactoring: `plans/20261110-1125-consider-narrow-test-runs-after-refactor.md`. Decisions taken 2026-11-11 (answer: narrow). Remaining: `/create-plan` the implementation plan. That implementation edits `internal/atdd/process/process-flow.yaml`.
+1. `1125` narrow test runs after a refactoring: decisions taken 2026-11-11 (answer: narrow); implementation plan `plans/20261111-1023-narrow-post-refactor-test-runs.md` created. Remaining: execute it (its Step 6 deletes the `1125` decision plan). It edits `internal/atdd/process/process-flow.yaml`.
 2. Shop-dependent, last: E2 shop config write (unblocked: v1.6.108 released 2026-11-10) and the Docker rehearsals, both tracked in `plans/20261104-1120-meta-backlog-consolidation.md`.
 3. Delete this meta-plan once 1 is done (2 lives in the backlog meta-plan).
 
