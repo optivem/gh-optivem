@@ -1,4 +1,4 @@
-# 2026-11-10 21:59 — Meta-plan: run all active top-level plans
+# 2026-11-11 23:59 — Meta-plan: run all active top-level plans
 
 ## TL;DR
 
@@ -7,18 +7,17 @@
 
 ## ▶ Next executable step (resume here)
 
-`1115` open questions: `/refine-plan plans/20261110-1115-system-start-stale-images.md`, then `/execute-plan` it.
+`1125` decisions taken 2026-11-11 (narrow; review-plan UC IDs + story criterion IDs, whole-suite fallback; system and test refactors). Next: `/create-plan` the implementation plan from `plans/20261110-1125-consider-narrow-test-runs-after-refactor.md`. Tag precondition already checked 2026-11-11: shop tests carry `@Tag("UC-001.N")` criterion tags.
 
 ## Order of remaining work
 
 Shop-independent work first; shop-dependent items last (user, 2026-11-10).
 
-1. `1115` `system start` reuses stale Docker images: `plans/20261110-1115-system-start-stale-images.md`. Refine (4 open questions, each with a recommendation), then implement. Edits `internal/build/runner/system.go`. Its last item (drop the shop's `docker rmi -f` workaround) waits for a release and is shop-side.
-2. `1125` narrow test runs after a refactoring: `plans/20261110-1125-consider-narrow-test-runs-after-refactor.md`. Decision only: refine (3 open questions + a tag precondition check), then `/create-plan` an implementation plan if the answer is "narrow". That implementation edits `internal/atdd/process/process-flow.yaml`.
-3. Shop-dependent, last: E2 shop config write (unblocked: v1.6.108 released 2026-11-10) and the Docker rehearsals, both tracked in `plans/20261104-1120-meta-backlog-consolidation.md`.
-4. Delete this meta-plan once 1 and 2 are done (3 lives in the backlog meta-plan).
+1. `1125` narrow test runs after a refactoring: `plans/20261110-1125-consider-narrow-test-runs-after-refactor.md`. Decisions taken 2026-11-11 (answer: narrow). Remaining: `/create-plan` the implementation plan. That implementation edits `internal/atdd/process/process-flow.yaml`.
+2. Shop-dependent, last: E2 shop config write (unblocked: v1.6.108 released 2026-11-10) and the Docker rehearsals, both tracked in `plans/20261104-1120-meta-backlog-consolidation.md`.
+3. Delete this meta-plan once 1 is done (2 lives in the backlog meta-plan).
 
-No conflicts: `1115` and `1125` touch different files, so they can run in either order or in parallel.
+`1115` gh-optivem side done 2026-11-10 (commit 505b0861); its plan keeps only the deferred shop follow-up (drop `docker rmi -f`), blocked on the next release.
 
 `1130` done 2026-11-10: `gh optivem characterize` entry point + Step 5 docs shipped (commits 884dfb51..4bb94684, then 63795d48). Plan deleted.
 

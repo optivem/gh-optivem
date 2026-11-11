@@ -28,7 +28,7 @@ Step 1: check whether shop's .NET and TypeScript acceptance tests carry the same
   - (a) Review path: the review plan (`SUMMARIZE_REFACTORING_PLAN`) names UC IDs — add a structured output (e.g. `refactor-use-case-ids`) to the reviewer/summarizer contract.
 - [ ] Step 4: BPMN wiring in `internal/atdd/process/process-flow.yaml` — bind the new tag param in `refactor-system-structure` (`IMPLEMENT_AND_VERIFY_SYSTEM`, currently `suite: ""` / `test-names: ""`) and in `refactor-test-structure` (`refactor-and-verify-tests`), plus the guideline-round `VERIFY_TESTS_PASS` in the code-review process. Empty IDs → whole suite. Update the "full regression" comments. **Never run in parallel with another plan editing `process-flow.yaml`.**
 - [ ] Step 5: Tests — runner tag-filter per stack; BPMN binding tests (IDs present → tag filter; IDs absent → whole suite); empty-tag-selection fails loud.
-- [ ] Step 6: Delete `plans/20261110-1125-consider-narrow-test-runs-after-refactor.md`, update meta-plan `20261110-2159`.
+- [ ] Step 6: Delete `plans/20261110-1125-consider-narrow-test-runs-after-refactor.md`, update meta-plan `20261111-2359`.
 
 ## Verification
 
