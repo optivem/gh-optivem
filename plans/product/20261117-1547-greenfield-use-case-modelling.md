@@ -20,7 +20,7 @@
 - **Rebuild cost**: unlike legacy, every Green attempt changes system code, so a rebuild per Green attempt is unavoidable. Batching saves everything around it:
   - Rebuild only the system containers, keeping the database, stubs and simulators and Keycloak warm. This is the counterpart of `system start --restart --external-only`.
   - Rebuild only when system code changed: not after the test, DSL or driver steps.
-  - Iterate inside Green on the Docker-free inner loop (see `20261103-1335-tierspec-inner-loop-component-test.md`), with one acceptance rebuild at the end.
+  - Iterate inside Green on the Docker-free inner loop (see `../20261103-1335-tierspec-inner-loop-component-test.md`), with one acceptance rebuild at the end.
   - Hot reload is an option only (fragile, differs per language).
 - Optionally, the first story tickets are created instead of running the batch, for operators who want story-by-story.
 - The output feeds `implement` and the docs site unchanged. From here on there is no difference between a greenfield and a legacy project.

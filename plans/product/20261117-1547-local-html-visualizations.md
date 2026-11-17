@@ -1,5 +1,7 @@
 # 2026-11-17 14:47:43 UTC — Local HTML visualizations: run view, docs site, coverage
 
+> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-17T15:05:15Z`
+
 > **DEFERRED.** Do not start until `gh optivem characterize` has been proven end-to-end on a real legacy project (real Docker). Its output (`docs/use-cases.md`, `${use-cases-path}/dependencies.md`, narratives, tagged acceptance tests) is the input of slices 2–3; building the viewer before that format is stable risks a rebuild. Higher-priority work ahead of this: credential rotation, then the characterize rehearsal.
 
 ## TL;DR
@@ -16,7 +18,9 @@
 
 ## ▶ Next executable step (resume here)
 
-**Step 1b, the UX/UI mockup, can run now.** It is design only, with no code changes, so the DEFERRED note does not block it. Build the clickable HTML mockup of the three views with sample data, using realistic shapes from `summary.jsonl` and `steps.jsonl` (read a few `internal/atdd/runtime/driver/summary_sidecar*.go` structs for the fields) and from `docs/use-cases.md` as written by `legacy-use-case-diagram-writer`. Publish it as an Artifact, iterate on feedback, and **stop at the user's explicit approval**. Everything after Step 1b stays deferred until characterize is proven.
+**Step 1b is in progress: mockup v1 is published and waiting for the user's approval.** It is at https://claude.ai/artifact/6jwoEeEG1HFEzSKSt5BZZg. The source file is in a session scratchpad, so read it back from the artifact before iterating. On the user's request (2026-11-17), v1 tells one greenfield story with a hotel-booking example: Envision (from the sibling `20261117-1547-greenfield-use-case-modelling.md`), then the live run view, then the docs site and a use case page, then coverage. Each view is framed by the goal "build fast and safe with AI, and be able to maintain it later". Iterate on feedback; once the user explicitly approves, delete Step 1b and point this block back at the DEFERRED note.
+
+Original brief: **Step 1b, the UX/UI mockup, can run now.** It is design only, with no code changes, so the DEFERRED note does not block it. Build the clickable HTML mockup of the three views with sample data, using realistic shapes from `summary.jsonl` and `steps.jsonl` (read a few `internal/atdd/runtime/driver/summary_sidecar*.go` structs for the fields) and from `docs/use-cases.md` as written by `legacy-use-case-diagram-writer`. Publish it as an Artifact, iterate on feedback, and **stop at the user's explicit approval**. Everything after Step 1b stays deferred until characterize is proven.
 
 ## Steps
 
