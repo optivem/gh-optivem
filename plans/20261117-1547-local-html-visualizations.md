@@ -16,11 +16,17 @@
 
 ## ▶ Next executable step (resume here)
 
-Blocked: see the DEFERRED note. Once characterize is proven, the next step is design, not code: run `/refine-plan` on this file to settle the open questions (especially the run-view data inventory), then execute Step 1.
+**Step 1b, the UX/UI mockup, can run now.** It is design only, with no code changes, so the DEFERRED note does not block it. Build the clickable HTML mockup of the three views with sample data, using realistic shapes from `summary.jsonl` and `steps.jsonl` (read a few `internal/atdd/runtime/driver/summary_sidecar*.go` structs for the fields) and from `docs/use-cases.md` as written by `legacy-use-case-diagram-writer`. Publish it as an Artifact, iterate on feedback, and **stop at the user's explicit approval**. Everything after Step 1b stays deferred until characterize is proven.
 
 ## Steps
 
 - [ ] Step 1: Inventory the run-view data. Check what `summary.jsonl` and `steps.jsonl` record per dispatch and per step (node id, attempt number, status, timestamps, usage), and whether every BPMN node in `internal/atdd/process/process-flow.yaml` can be mapped to its rows. List any field the sidecars need to add.
+- [ ] Step 1b: **UX/UI mockup, approval gate.** Build a clickable static HTML mockup of all three views with realistic sample data:
+  - the run view (mid-run, with a fix loop retried)
+  - the docs site home and one use case page
+  - the coverage-colored diagram
+
+  Publish it as an Artifact so the user can open it on any device. Iterate on the user's feedback and **stop until the user explicitly approves the design**. Steps 2–6 implement the approved mockup, not a fresh design.
 - [ ] Step 2: Define the shared HTML shell: one embedded template and stylesheet, Mermaid rendering (inline for offline use, or a pinned CDN script), and a light/dark theme. All three slices use it.
 - [ ] Step 3: Build slice 1, the run view. Reuse the `process show` Mermaid generation with per-node state classes and badges, add live refresh, the expected-path remainder and tests.
 - [ ] Step 4: Build slice 2, the docs site. Parse `docs/use-cases.md`, `dependencies.md` and the narratives, resolve criteria from the use cases or `spec generate`, map criteria to test file and line, and add tests.
