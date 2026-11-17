@@ -12,6 +12,7 @@
 - A new command (name open, e.g. `envision`) takes a product idea as free text.
 - The agent asks clarifying questions, because the operator is the source of truth rather than the code ("Do guests book themselves or only staff? Is there payment?").
 - **Use case diagram**: the full product model with actors, use cases (`UC-NNN`) and external systems as secondary actors, plus `dependencies.md`, in the same format as `legacy-use-case-diagram-writer`. One approval gate, where a "no" asks what should change and redoes the step, as in `characterize`.
+- **UX/UI mockups before the narratives**: after the diagram is approved, the agent builds a clickable static HTML mockup of the main screens, one flow per use case for each human actor. It uses sample data, with no backend and no Docker. An approval gate follows, in the same approve-or-redo shape as the diagram. Showing screens first catches misunderstandings while they are still cheap to fix, because the operator reacts to something concrete instead of reading prose (the "Lovable" first-minute effect). The approved mockups are kept in the repo, e.g. under `${use-cases-path}/mockups/`. The narratives are then written against them, so a narrative step such as "Staff choose Check out" names a screen that exists, and the `ui` channel's acceptance tests and drivers later have a reference for the intended screens.
 - **All narratives up front.** They are text only, with no Docker and no builds, so writing them all is cheap. Seeing the whole model helps get the dependency order right, and rewriting a narrative later is cheap when an agent does it. The operator approves the diagram and skims the narratives.
 - **Shaped like `characterize`, minimising total development time**:
   - Pilot the most important use case, and the ones it depends on, with full approvals. It sets the test architecture.
@@ -34,11 +35,20 @@ Design only. Run `/refine-plan` on this file to settle the open questions, then 
 - [ ] Step 0: Measure before designing. From the `steps.jsonl` / `summary.jsonl` of past `implement` runs (e.g. in `shop/.gh-optivem/runs/`), work out the share of a story's elapsed time spent on stack start and stop, system rebuilds, agent work and fix loops. This decides whether a system-only restart, the inner loop or batching is the main lever.
 - [ ] Step 1: Compare with the legacy agents (`legacy-use-case-diagram-writer.md`, `legacy-use-case-narrative-writer.md`, `legacy-use-case-criteria-writer.md`). Decide per agent whether to generalise it (source = code or operator answers) or add a greenfield sibling, keeping one output format.
 - [ ] Step 2: Design the clarifying-question loop: how the agent asks, how answers are recorded, and when it stops asking.
-- [ ] Step 3: Add the BPMN flow to `process-flow.yaml`: questions, diagram, approval, core narratives, approval, optional story tickets. Reuse the characterize approval-and-redo pattern.
+- [ ] Step 2b: Design the UX/UI mockup step:
+  - the mockup agent's prompt and output format: static HTML, one folder per use case, shared styles
+  - where the mockups live in the repo
+  - how the narrative writer and later the `ui` channel test writer read them
+  - the approval-and-redo gate
+  - Decide whether a project with no human actors (API-only) skips this step.
+- [ ] Step 3: Add the BPMN flow to `process-flow.yaml`: questions, diagram, approval, UX/UI mockups, approval, narratives, approval, optional story tickets. Reuse the characterize approval-and-redo pattern.
 - [ ] Step 4: Wire the command and its flags, and refuse on `kind: component` if appropriate.
 - [ ] Step 5: Add tests and document the command in `docs/cli-reference.md` and `--help`.
 
 ## Open questions
+
+- UX/UI mockups: one mockup per use case, or one per actor journey across several use cases? Recommended: one per actor journey, since that is how the operator thinks about screens. Each screen is tagged with the `UC-NNN` it serves.
+- Should the mockups stay in sync as the real UI is built (and if so, who updates them), or are they frozen as the design record? Recommended: frozen as the design record, with the real UI and its `ui` acceptance tests taking over as the source of truth once built.
 
 - Command name: `envision`, `model`, `discover`, or a mode of an existing command?
 - Is a system-only restart a new flag (e.g. `--system-only`) on `system start --restart`, or should the batch driver decide what to restart on its own?
