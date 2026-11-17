@@ -1,7 +1,5 @@
 # 2026-11-17 14:47:43 UTC — Local HTML visualizations: run view, docs site, coverage
 
-> 🤖 **Picked up by agent** — `Valentina_Desk` at `2026-11-17T15:05:15Z`
-
 > **DEFERRED.** Do not start until `gh optivem characterize` has been proven end-to-end on a real legacy project (real Docker). Its output (`docs/use-cases.md`, `${use-cases-path}/dependencies.md`, narratives, tagged acceptance tests) is the input of slices 2–3; building the viewer before that format is stable risks a rebuild. Higher-priority work ahead of this: credential rotation, then the characterize rehearsal.
 
 ## TL;DR
