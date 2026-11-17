@@ -5,6 +5,7 @@
 - Never use hardcoded local paths (e.g. `C:\Users\...`). Always resolve paths dynamically (e.g. `git rev-parse --show-toplevel`, `$HOME`, environment variables). The user works from different computers.
 - Never use `isolation: "worktree"` when spawning agents. Worktrees leave behind orphaned directories that block git operations. Always run agents in the default (non-isolated) mode.
 - When presenting options or asking for decisions, always mark one as **recommended** and explain why in one sentence. Minimize the number of choices the user needs to make — default to the recommended option and proceed unless the user objects.
+- **Save rules to disk, never to memory.** The user works from several computers and auto-memory (`~/.claude/projects/*/memory/`) stays on one machine. When the user states a rule or a lasting preference ("from now on", "always", "write that as a rule"), write it into a git-tracked file: the repo's `CLAUDE.md` for a project rule, or `gh-optivem/internal/claude/assets/config/CLAUDE.md` (the source installed as `~/.claude/CLAUDE.md`) for a cross-project rule. Commit it via the commit skill. Never edit only the installed `~/.claude/CLAUDE.md` copy, since it gets overwritten. Memory is only for machine-local notes that aren't rules.
 
 ## Token Usage
 
@@ -54,3 +55,7 @@ Anything else — auth failure (401/403), unexpected HTTP code, registry 5xx aft
 Why: a caller asking "does X exist?" and getting `false` should be able to trust that answer means "X is absent" — not "we couldn't tell." Conflating the two masks misconfiguration as legitimate skip and propagates failure downstream (e.g. a 403 from GHCR coerced to `exists=false` silently skips the acceptance stage; QA then fails looking for an RC tag that was never published).
 
 `fail-on-error` inputs on `check-*` actions are vestigial under this rule (the always-loud behavior is mandatory) and should be removed when the action is next touched.
+
+## Writing on My Behalf
+
+- Never use the word "love" (e.g. "I'd love to", "would love to hear") in messages, emails, posts or any text written in my voice. Use neutral wording instead (e.g. "I'm interested to hear", "it would be great to").
