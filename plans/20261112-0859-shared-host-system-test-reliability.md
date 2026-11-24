@@ -1,6 +1,6 @@
 # 2026-11-12 08:59 UTC — System tests and commits from a shared checkout / docker host
 
-> Comes from shop's `plans/20261110-1207-system-test-reliability-followups.md`, ideas #36, #37, #38, #40, #42 and #45. Shop never edits gh-optivem; the shop-side follow-ups below wait for a gh-optivem release.
+> Comes from shop's `plans/20261110-1207-system-test-reliability-followups.md`, ideas #36, #37, #38, #40, #42 and #45, plus #57, #106 and #110 (added 2026-11-24 from shop meta-plan X1). Shop never edits gh-optivem; the shop-side follow-ups below wait for a gh-optivem release.
 
 ## TL;DR
 
@@ -9,11 +9,13 @@
 - `system start` refuses, naming the owner and how to override, when a stack started from a different checkout/config is still running. `system-test setup` takes a lock, so two setups in one checkout can't run at once.
 - `commit --paths` pushes even when the tree is dirty outside `--paths`: a plain push when there is nothing to pull, otherwise `pull --rebase --autostash`.
 - `--suite` restricts the run to the named suites. `--test` accepts class-qualified names on .NET. The "never executed" check matches names the way the runner did (including `|` alternation). `--help` documents the filter semantics for each language.
+- A filtered `--test` / `--suite` rerun merges into the existing JUnit/TRX results that `spec status` reads instead of replacing them (#57).
+- `commit --paths` handles commas and repeated flags instead of silently mis-staging (#106).
 - Playwright suites run the project-local binary. A missing local install fails loud ("run `gh optivem system-test setup`") instead of letting `npx` fetch whatever version is latest.
 
 ## ▶ Next executable step (resume here)
 
-Resolve the two open questions below (each has a recommendation), then do Step 1. Steps 1 to 4 touch different files and can run in any order. Steps 1 and 3 both touch `internal/build/runner/`, so don't run them in parallel.
+Resolve the two open questions below (each has a recommendation), then do Step 1. Steps 1 to 5 touch different files and can run in any order. Steps 1 and 3 both touch `internal/build/runner/`, and Steps 2 and 5 both touch `cross_repo_commands.go`, so don't run either pair in parallel.
 
 ## Resolved decisions
 
@@ -21,6 +23,9 @@ Resolve the two open questions below (each has a recommendation), then do Step 1
 2. **#37, `commit --paths` pushes from a dirty shared checkout:** when the tree is dirty only outside `--paths`, pull with `--autostash`, or fall back to a plain fast-forward push when there is nothing to pull. Decided 2026-11-12 by the user, from shop REL #37.
 3. **#38 + #42, filter semantics:** document the filter semantics per language in `--help`. Make the "never executed" check use the same matching the runner used. Make `--suite` restrict the run, and support class-qualified names on .NET. Decided 2026-11-12 by the user, from shop REL #38 (with #42 folded in).
 4. **#40, Playwright is resolved locally:** the runner calls the project-local Playwright binary instead of relying on `npx` resolution, so an unpinned download can't change the version and drop tests. (Shop's wording was "investigate if it recurs"; the fix is the part the user approved for this plan.) Decided 2026-11-12 by the user, from shop REL #40.
+5. **#57, a filtered rerun keeps the full run's evidence:** a `--test` / `--suite` rerun merges into the existing results that `spec status` reads instead of overwriting them, and the "never executed" check no longer wipes the other suites' results. Shop recommendation (2026-11-12, carried to gh-optivem by meta-plan X1): fold into #38/#42 as Step 3e.
+6. **#106, `--paths` separators:** see Step 5. Shop recommendation: accept commas or document the separator.
+7. **#110, same as #37, seen again 2026-11-24 (shop U23):** the commit succeeded, but the push's `pull --rebase` refused because a parallel lane had unstaged `package.json` edits in the same clone; the subagent then pushed by hand with `git push`, breaking the "push only via commit" rule. Parallel lanes in one clone hit this every time, which raises Step 2's priority. Until it ships, agents re-run `gh optivem commit` after the other lane commits and never push by hand.
 
 ## Open questions
 
@@ -49,7 +54,7 @@ Resolve the two open questions below (each has a recommendation), then do Step 1
     2. Otherwise run `git pull --rebase --autostash <remote> <branch>`. If the autostash pop conflicts, git keeps the stash. Report it loudly (stash ref, "the other session's changes are in the stash") and count the repo as committed-not-pushed. Never drop the stash.
   - A clean tree and the non-`--paths` path keep today's behaviour. Update the `commit` `Long` help text ("pull --rebase before …") to match.
   - Tests: nothing to pull + foreign dirty file → push without pull; upstream ahead + foreign dirty file → autostash pull keeps the foreign change in the working tree.
-  - Shop follow-up after release: delete shop idea #37.
+  - Shop follow-up after release: delete shop ideas #37 and #110.
 
 - [ ] Step 3: **#38/#42, `--test` / `--suite` filter semantics.**
   - **3a, alternation:** a `--test` value is substituted into the runner's filter as is, so `A|B` runs both tests, but `missingNames` / `nameExecuted` (`internal/build/runner/tests.go`) look for the literal `A|B`. For the presence check, split each requested value on `|` when the config joins with `or` / `fragment-or` (`TestFilterJoin`, `internal/build/runner/config.go`). Each part has to have run.
@@ -57,10 +62,13 @@ Resolve the two open questions below (each has a recommendation), then do Step 1
   - **3c, `--suite` restricts:** per open question 1 (recommended (b)): `TestOptions.MembershipProbeSuites` is set only when the new hidden `--membership-probe` flag is passed (`test_commands.go`). The ATDD verify command builder (`internal/atdd/process/actions/command.go`) passes it. `aggregate_commands.go` keeps setting it, because it runs every suite anyway. When the probe runs, it prints which suites it runs and why.
   - **3d, `--help`:** the `--test` / `--suite` flag text in `test_commands.go` and `docs/cli-reference.md` say, per language, what a token matches: Java = method (`*.<test>`), .NET = substring of the qualified name (after 3b), TS = Playwright `--grep` regex on the title. They also say that `|` is alternation and that `--suite` never runs suites outside the selection.
   - Tests in `tests_test.go` / `testnames_test.go`: `A|B` with both run → pass; a .NET class token → match; `--suite X --test Y` with Y absent → "never executed", and no other suite runs.
-  - Shop follow-up after release: the .NET `testFilter` change above, then delete shop ideas #38 and #42.
+  - **3e, #57, merge instead of overwrite:** when a run is filtered (`--test` or a subset of `--suite`), write its results next to the existing ones (or merge per test case, newest wins) instead of replacing the report files that `spec status` reads, and scope the "never executed" cleanup to the suites actually run. Test: full run, then a `--test` rerun of one test → `spec status` still shows the other suites' results.
+  - Shop follow-up after release: the .NET `testFilter` change above, then delete shop ideas #38, #42 and #57.
 
 - [ ] Step 4: **#40, call the project-local Playwright binary.**
   - Per open question 2 (recommended (a)): in `runOneSuite` (`internal/build/runner/tests.go`), before a suite whose command invokes `playwright`, check for `<testsCwd>/node_modules/.bin/playwright` (`playwright.cmd` on Windows; see `runshell_windows.go` for how `.cmd` targets are resolved). If it's missing, fail loud: "local Playwright not installed in <testsCwd>; run `gh optivem system-test setup`". Don't let `npx` fetch one.
   - The same check in the scaffold verify step (`internal/scaffolding/steps/verify.go`, which mirrors `system-test setup`).
   - Tests: missing binary → that error, and the suite command is not run.
   - Shop follow-up after release: `system-test/typescript/tests.yaml` suite and setup commands use `npx --no-install playwright`. Then delete shop idea #40.
+
+- [ ] Step 5: **#106, `commit --paths` separators.** `--paths` is a single `StringVar` split on spaces (`splitPaths`, `cross_repo_commands.go:144,362`). `--paths "a,b"` becomes one pathspec and `git add` fails with exit 128; a repeated `--paths a --paths b` silently keeps only the last value (found 2026-11-24 while reading the code). Recommended: make `--paths` a `StringSlice` (accepts commas and repeats) while still splitting each value on whitespace, and update the help text and `docs/cli-reference.md`. **Why:** both wrong forms are natural to type and one of them drops files without an error. Test: `"a,b"`, `"a b"` and `--paths a --paths b` all stage both files. Shop follow-up after release: delete shop idea #106.
