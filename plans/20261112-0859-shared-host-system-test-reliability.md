@@ -1,6 +1,6 @@
 # 2026-11-12 08:59 UTC — System tests and commits from a shared checkout / docker host
 
-> Comes from shop's `plans/20261110-1207-system-test-reliability-followups.md`, ideas #36, #37, #38, #40, #42 and #45, plus #57, #106 and #110 (added 2026-11-24 from shop meta-plan X1). Shop never edits gh-optivem; the shop-side follow-ups below wait for a gh-optivem release.
+> Comes from shop's `plans/20261110-1207-system-test-reliability-followups.md`, ideas #36, #37, #38, #40, #42 and #45, plus #57, #106, #110, #73 and #77 (added 2026-11-24 from shop meta-plan X1). Shop never edits gh-optivem; the shop-side follow-ups below wait for a gh-optivem release.
 
 ## TL;DR
 
@@ -11,11 +11,12 @@
 - `--suite` restricts the run to the named suites. `--test` accepts class-qualified names on .NET. The "never executed" check matches names the way the runner did (including `|` alternation). `--help` documents the filter semantics for each language.
 - A filtered `--test` / `--suite` rerun merges into the existing JUnit/TRX results that `spec status` reads instead of replacing them (#57).
 - `commit --paths` handles commas and repeated flags instead of silently mis-staging (#106).
+- `commit` adds its own `Co-Authored-By` trailer only when the message has none, and never names a model it isn't (#77).
 - Playwright suites run the project-local binary. A missing local install fails loud ("run `gh optivem system-test setup`") instead of letting `npx` fetch whatever version is latest.
 
 ## ▶ Next executable step (resume here)
 
-Resolve the two open questions below (each has a recommendation), then do Step 1. Steps 1 to 5 touch different files and can run in any order. Steps 1 and 3 both touch `internal/build/runner/`, and Steps 2 and 5 both touch `cross_repo_commands.go`, so don't run either pair in parallel.
+Resolve the two open questions below (each has a recommendation), then do Step 1. Steps 1 to 5 touch different files and can run in any order. Steps 1 and 3 both touch `internal/build/runner/`, and Steps 2, 5 and 6 all touch `cross_repo_commands.go`, so don't run those in parallel.
 
 ## Resolved decisions
 
@@ -26,6 +27,8 @@ Resolve the two open questions below (each has a recommendation), then do Step 1
 5. **#57, a filtered rerun keeps the full run's evidence:** a `--test` / `--suite` rerun merges into the existing results that `spec status` reads instead of overwriting them, and the "never executed" check no longer wipes the other suites' results. Shop recommendation (2026-11-12, carried to gh-optivem by meta-plan X1): fold into #38/#42 as Step 3e.
 6. **#106, `--paths` separators:** see Step 5. Shop recommendation: accept commas or document the separator.
 7. **#110, same as #37, seen again 2026-11-24 (shop U23):** the commit succeeded, but the push's `pull --rebase` refused because a parallel lane had unstaged `package.json` edits in the same clone; the subagent then pushed by hand with `git push`, breaking the "push only via commit" rule. Parallel lanes in one clone hit this every time, which raises Step 2's priority. Until it ships, agents re-run `gh optivem commit` after the other lane commits and never push by hand.
+8. **#73, same as #37, seen 2026-11-17 (shop U10, meta-plan Wave 3):** every `commit --paths` in a checkout shared by several agents committed but stopped before pushing ("cannot pull with rebase: You have unstaged changes"). Four commits (`8cf687c3`, `5a294ef7`, `a2520492` and a B-PRG commit) stayed local-only, so CI never saw them and the new `lighthouse.yml` couldn't be dispatched. Shop's recommendation differs from Step 2 in one point: pull with a merge (`git pull --no-rebase --autostash`), matching the user's "plain git pull, never rebase" rule. See open question 3. Until it ships, the orchestrator pushes once per wave when the tree is clean.
+9. **#77, the tool's own Co-Authored-By trailer:** `commitMessage` (`cross_repo_commands.go`) always appends the constant `commitCoAuthor` (`Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`). Seen 2026-11-17 (shop U9, e.g. shop `707e37a6`): the caller's `Co-Authored-By: Claude Opus 5.5` and `Claude-Session` lines, then a blank line, then the tool's Sonnet 4.6 line, so the trailer block splits and names the wrong model. Seen again 2026-11-24: in gh-optivem `8ffceb07` and optivem-testing `23f5b67` the tool's trailer was the only one, and the caller's requested trailer was missing. See Step 6.
 
 ## Open questions
 
@@ -37,6 +40,10 @@ Resolve the two open questions below (each has a recommendation), then do Step 1
    - (a) The runner checks first: before a suite whose command invokes `playwright`, it requires `<testsCwd>/node_modules/.bin/playwright` (`.cmd` on Windows) and fails loud if it's missing. Shop's tests.yaml switches to `npx --no-install playwright` as a follow-up.
    - (b) The runner rewrites `npx playwright` to the local binary path.
    - **Recommended: (a).** It fails loud and names the fix. A silent command rewrite would hide what actually ran. `--no-install` is a second guard in the config.
+3. **#37/#73: rebase or merge when the pull is needed?** Step 2 says `pull --rebase --autostash`; shop #73 asks for `pull --no-rebase --autostash`.
+   - (a) `git pull --rebase --autostash` (Step 2 as written): linear history.
+   - (b) `git pull --no-rebase --autostash`: a merge commit when upstream moved.
+   - **Recommended: (b).** It matches the user's standing rule (plain `git pull`, never rebase, because a rebase can drop commits on conflict), and the other agents' dirty files are still protected by `--autostash`.
 
 ## Steps
 
@@ -54,7 +61,7 @@ Resolve the two open questions below (each has a recommendation), then do Step 1
     2. Otherwise run `git pull --rebase --autostash <remote> <branch>`. If the autostash pop conflicts, git keeps the stash. Report it loudly (stash ref, "the other session's changes are in the stash") and count the repo as committed-not-pushed. Never drop the stash.
   - A clean tree and the non-`--paths` path keep today's behaviour. Update the `commit` `Long` help text ("pull --rebase before …") to match.
   - Tests: nothing to pull + foreign dirty file → push without pull; upstream ahead + foreign dirty file → autostash pull keeps the foreign change in the working tree.
-  - Shop follow-up after release: delete shop ideas #37 and #110.
+  - Shop follow-up after release: delete shop ideas #37, #73 and #110.
 
 - [ ] Step 3: **#38/#42, `--test` / `--suite` filter semantics.**
   - **3a, alternation:** a `--test` value is substituted into the runner's filter as is, so `A|B` runs both tests, but `missingNames` / `nameExecuted` (`internal/build/runner/tests.go`) look for the literal `A|B`. For the presence check, split each requested value on `|` when the config joins with `or` / `fragment-or` (`TestFilterJoin`, `internal/build/runner/config.go`). Each part has to have run.
@@ -72,3 +79,5 @@ Resolve the two open questions below (each has a recommendation), then do Step 1
   - Shop follow-up after release: `system-test/typescript/tests.yaml` suite and setup commands use `npx --no-install playwright`. Then delete shop idea #40.
 
 - [ ] Step 5: **#106, `commit --paths` separators.** `--paths` is a single `StringVar` split on spaces (`splitPaths`, `cross_repo_commands.go:144,362`). `--paths "a,b"` becomes one pathspec and `git add` fails with exit 128; a repeated `--paths a --paths b` silently keeps only the last value (found 2026-11-24 while reading the code). Recommended: make `--paths` a `StringSlice` (accepts commas and repeats) while still splitting each value on whitespace, and update the help text and `docs/cli-reference.md`. **Why:** both wrong forms are natural to type and one of them drops files without an error. Test: `"a,b"`, `"a b"` and `--paths a --paths b` all stage both files. Shop follow-up after release: delete shop idea #106.
+
+- [ ] Step 6: **#77, one co-author trailer, never the wrong model.** `commitMessage` (`cross_repo_commands.go`) always appends `commitCoAuthor` after the caller's `--trailer` values; its own comment already flags it for review because gh-optivem is not a Claude session. Recommended: skip the tool's trailer when the message body or a `--trailer` already has a `Co-Authored-By:` line, and keep the caller's lines in one trailer block (no blank line between them). Also find out why the caller's requested trailer was missing from gh-optivem `8ffceb07` and optivem-testing `23f5b67` (message passed without it, or lost on the way in), and make sure the caller's trailer is never dropped. **Why:** the extra line names the wrong model and splits the trailer block, and a dropped trailer loses attribution. Tests: message with a `Co-Authored-By:` in its body → no tool trailer; `--trailer "Co-Authored-By: …"` → no tool trailer; neither → today's behaviour. Shop follow-up after release: delete shop idea #77.
