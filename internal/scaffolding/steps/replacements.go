@@ -3,6 +3,7 @@ package steps
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/optivem/gh-optivem/internal/config"
@@ -42,7 +43,62 @@ func ReplaceRepoReferences(cfg *config.Config) {
 		}
 	}
 
+	rewriteCleanupPackagesForAllRepos(cfg)
+
 	log.Success("Repository reference replacement complete")
+}
+
+// cleanupContainerPackagesRE matches each `container-packages:` input line in
+// cleanup.yml (the cleanup-prereleases and cleanup-ghcr-orphan-manifests steps).
+var cleanupContainerPackagesRE = regexp.MustCompile(`(?m)^(\s*container-packages:).*$`)
+
+// rewriteCleanupPackagesForAllRepos points every scaffolded repo's cleanup.yml
+// at the GHCR packages that repo itself publishes. Shop's cleanup.yml lists
+// shop's seven packages (shop/monolith-system-java, ...), which do not exist in
+// a scaffolded repo, and the cleanup actions fail hard on a configured package
+// that is not in GHCR. A scaffolded image is ghcr.io/<owner>/<repo>/<role>, so
+// its package is <repo>/<role>. A repo that publishes no image (the multirepo
+// root, which holds only the system tests) gets an empty list.
+func rewriteCleanupPackagesForAllRepos(cfg *config.Config) {
+	switch {
+	case cfg.Arch == "monolith" && cfg.RepoStrategy == "monorepo":
+		rewriteCleanupPackages(cfg.RepoDir, cfg.Repo+"/system")
+	case cfg.Arch == "monolith" && cfg.RepoStrategy == "multirepo":
+		rewriteCleanupPackages(cfg.RepoDir)
+		rewriteCleanupPackages(cfg.SystemRepoDir, cfg.SystemRepo+"/system")
+	case cfg.Arch == "multitier" && cfg.RepoStrategy == "monorepo":
+		rewriteCleanupPackages(cfg.RepoDir, cfg.Repo+"/backend", cfg.Repo+"/frontend")
+	case cfg.Arch == "multitier" && cfg.RepoStrategy == "multirepo":
+		rewriteCleanupPackages(cfg.RepoDir)
+		rewriteCleanupPackages(cfg.BackendRepoDir, cfg.BackendRepo+"/backend")
+		rewriteCleanupPackages(cfg.FrontendRepoDir, cfg.FrontendRepo+"/frontend")
+	}
+}
+
+// rewriteCleanupPackages sets every container-packages input in repoDir's
+// cleanup.yml to packages (lowercased, as GHCR names are). With no packages the
+// value is ”, which the cleanup actions treat as "no Docker cleanup".
+func rewriteCleanupPackages(repoDir string, packages ...string) {
+	path := filepath.Join(repoDir, ".github", "workflows", Names.CleanupWf)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return
+		}
+		log.Fatalf("Failed to read %s: %v", path, err)
+	}
+	value := "''"
+	if len(packages) > 0 {
+		value = strings.ToLower(strings.Join(packages, ","))
+	}
+	updated := cleanupContainerPackagesRE.ReplaceAllString(string(data), "${1} "+value)
+	if updated == string(data) {
+		return
+	}
+	if err := os.WriteFile(path, []byte(updated), 0o644); err != nil {
+		log.Fatalf("Failed to write %s: %v", path, err)
+	}
+	log.Successf("Cleanup packages: %s -> %s", path, value)
 }
 
 // ReplaceNamespaces swaps the 6 company placeholder forms (MyCompany / myCompany
