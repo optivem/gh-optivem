@@ -84,3 +84,18 @@ func TestClaudeMDMissingHeaders_EmbeddedCopy_None(t *testing.T) {
 		t.Errorf("CLAUDE.md identical to embedded should report no missing sections, got %v", headers)
 	}
 }
+
+func TestMergeEnv_AddsMissingKeepsUserValue(t *testing.T) {
+	dst := map[string]interface{}{"env": map[string]interface{}{"KEEP": "user"}}
+	src := map[string]interface{}{"env": map[string]interface{}{"KEEP": "optivem", "NEW": "sonnet"}}
+	if !mergeEnv(dst, src) {
+		t.Fatal("expected change")
+	}
+	env := dst["env"].(map[string]interface{})
+	if env["KEEP"] != "user" || env["NEW"] != "sonnet" {
+		t.Fatalf("unexpected env: %v", env)
+	}
+	if mergeEnv(dst, src) {
+		t.Fatal("second merge should be a no-op")
+	}
+}

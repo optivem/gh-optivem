@@ -62,7 +62,8 @@ func newClaudeConfigureCmd() *cobra.Command {
 		Long: `Merge Optivem Claude configuration into your global ~/.claude/ directory.
 
 settings.json: unions the permissions.allow list and adds any hook event
-types not already present — never removes entries you have set yourself.
+types and env variables not already present — never removes or overrides
+entries you have set yourself.
 
 CLAUDE.md: appends sections not already present in your ~/.claude/CLAUDE.md —
 never overwrites or removes existing content.`,
@@ -383,7 +384,7 @@ func mergeClaudeSettings(claudeDir string) error {
 }
 
 // claudeSettingsMerge unions permissions.allow entries and adds missing hook
-// event keys from src into dst. Returns true if dst was modified.
+// event keys and env variables from src into dst. Returns true if dst was modified.
 //
 // Hooks are merged on Windows only: the embedded Stop/Notification hooks play
 // Windows system sounds through `powershell`, which does not exist on
@@ -394,7 +395,8 @@ func claudeSettingsMerge(dst, src map[string]interface{}) bool {
 	if runtime.GOOS == "windows" {
 		hooksChanged = mergeHookEvents(dst, src)
 	}
-	return permsChanged || hooksChanged
+	envChanged := mergeEnv(dst, src)
+	return permsChanged || hooksChanged || envChanged
 }
 
 // mergePermissionsAllow unions permissions.allow entries from src into dst.
@@ -426,6 +428,28 @@ func mergePermissionsAllow(dst, src map[string]interface{}) bool {
 	}
 	if changed {
 		dstPerms["allow"] = dstAllow
+	}
+	return changed
+}
+
+// mergeEnv adds env variables from src not already set in dst; a value the
+// user has set (e.g. a different CLAUDE_CODE_SUBAGENT_MODEL) is kept.
+func mergeEnv(dst, src map[string]interface{}) bool {
+	srcEnv, _ := src["env"].(map[string]interface{})
+	if len(srcEnv) == 0 {
+		return false
+	}
+	dstEnv, _ := dst["env"].(map[string]interface{})
+	if dstEnv == nil {
+		dstEnv = map[string]interface{}{}
+		dst["env"] = dstEnv
+	}
+	changed := false
+	for k, v := range srcEnv {
+		if _, ok := dstEnv[k]; !ok {
+			dstEnv[k] = v
+			changed = true
+		}
 	}
 	return changed
 }
