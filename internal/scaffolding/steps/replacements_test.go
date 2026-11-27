@@ -1012,6 +1012,19 @@ func TestMultirepoBackendRepoGetsExternalSimulators(t *testing.T) {
 	assertLiteralPresent(t, bDir, "external-systems/simulators/Dockerfile", "FROM node:20")
 }
 
+// TestCopyExternalsIncludesErpImages guards the shared docker context: the
+// simulator and stub Dockerfiles COPY erp-images/ (product photos), so a
+// scaffolded repo without it fails to build both images.
+func TestCopyExternalsIncludesErpImages(t *testing.T) {
+	shop := t.TempDir()
+	writeRepoFile(t, shop, "external-systems/erp-images/HP-15.jpg", "jpeg")
+
+	dst := t.TempDir()
+	copyExternals(shop, dst)
+
+	assertLiteralPresent(t, dst, "external-systems/erp-images/HP-15.jpg", "jpeg")
+}
+
 // TestMultirepoBackendAndFrontendReplacementsCollapseGitTagValue asserts
 // that the backendReplacements / frontendReplacements lists composed in
 // applyMultitierMultirepo (per-component repo path) collapse the 3-segment

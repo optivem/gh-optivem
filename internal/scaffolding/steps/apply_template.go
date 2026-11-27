@@ -34,6 +34,7 @@ const (
 	dirDocker                 = "docker"
 	dirSimulators             = "simulators"
 	dirStubs                  = "stubs"
+	dirErpImages              = "erp-images"
 	shopSystemPrefix          = "../../../system/"
 	shopExternalSystemsPrefix = "../../../external-systems/"
 	systemMonolithDir         = "system/monolith/"
@@ -67,9 +68,12 @@ const (
 	infoCopyingDocs         = "Copying docs..."
 )
 
-var externalDirs = []string{dirSimulators, dirStubs}
+// erp-images/ holds the product photos both the simulator and the stub images
+// COPY at build time (their docker context is external-systems/), so it must
+// travel with them.
+var externalDirs = []string{dirSimulators, dirStubs, dirErpImages}
 
-// copyExternals copies the external-system directories (simulators/, stubs/)
+// copyExternals copies the external-system directories (simulators/, stubs/, erp-images/)
 // from shop to repo, preserving shop's external-systems/ parent. Source and
 // destination both live at <root>/external-systems/<dir>; gh-optivem.yaml's
 // external-systems.{stubs,simulators}.path values match this layout.
