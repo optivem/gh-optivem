@@ -13,6 +13,7 @@
 |---|---|---|---|
 | `20261117-1547-local-html-visualizations.md` | Run view, docs site, coverage (local HTML) | Step 1b mockup v1 published at https://claude.ai/artifact/6jwoEeEG1HFEzSKSt5BZZg, waiting for design approval; Steps 2–7 deferred | characterize proven end-to-end (Steps 2–7 only) |
 | `20261117-1547-greenfield-use-case-modelling.md` | `envision`-style entry point: product idea → use case model → UX/UI mockups → narratives | Design only; needs `/refine-plan` | characterize proven end-to-end |
+| `20261125-1636-client-adoption-two-phase.md` | Spec-only repo against a client's existing system + legacy coverage (Phase 1); `implement` on client tickets with self-fixing regressions (Phase 2) | Design only; needs `/refine-plan` | characterize proven end-to-end (Phase 1 step 3) |
 
 ## Order
 
